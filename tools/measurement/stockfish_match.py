@@ -82,15 +82,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--own-book",
         choices=("true", "false"),
-        default="true",
-        help="Koi OwnBook value",
+        default="false",
+        help="Koi OwnBook value (default: no book, matching the documented measurement)",
     )
     parser.add_argument("--book-file", default="book.bin", help="Koi BookFile value")
     parser.add_argument("--book-depth", type=int, default=16, help="Koi BookDepth value")
     parser.add_argument("--book-random", choices=("true", "false"), default="false", help="Koi BookRandom value")
-    parser.add_argument("--threads", type=_positive_int, default=1, help="Koi and opponent Threads")
+    parser.add_argument("--threads", type=_positive_int, default=4, help="Koi and opponent Threads")
     parser.add_argument("--speed", type=_positive_int, default=100, help="Koi Speed")
-    parser.add_argument("--hash", type=_positive_int, default=16, dest="hash_mb", help="Koi Hash in MiB")
+    parser.add_argument("--hash", type=_positive_int, default=512, dest="hash_mb", help="Koi Hash in MiB")
     parser.add_argument(
         "--opponent-elo",
         "--stockfish-elo",
@@ -191,6 +191,10 @@ def build_command(args: argparse.Namespace, powershell: Optional[str] = None) ->
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
+    if (args.time_control is None and args.movetime_ms is None and
+            args.nodes is None and args.depth == 4):
+        print("warning: no limit given; using --depth 4, which is not strength evidence",
+              file=sys.stderr)
     try:
         completed = subprocess.run(build_command(args), check=False)
     except (MatchToolError, OSError) as error:

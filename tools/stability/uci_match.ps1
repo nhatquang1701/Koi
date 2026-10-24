@@ -770,6 +770,21 @@ function Get-KoiEvaluatorAttestation($Engine, $StopResult) {
     }
 }
 
+function Get-EngineEvaluatorEvidence($Engine, $StopResult) {
+    # Applies to any UCI engine: EvalFile confirmations/rejections are emitted
+    # as `info string` lines, which Read-UciLine keeps in $Engine.Output.
+    $lines = @($Engine.Output)
+    if ($null -ne $StopResult -and -not [string]::IsNullOrWhiteSpace($StopResult.stderr)) {
+        $lines += @($StopResult.stderr -split "`r?`n")
+    }
+    $confirmations = @($lines | Where-Object { $_ -match '^info string NNUE enabled from ' })
+    $rejections = @($lines | Where-Object { $_ -match 'EvalFile (?:rejected|installation failed)' })
+    return [ordered]@{
+        nnue_enabled_confirmations = @($confirmations)
+        evalfile_rejections = @($rejections)
+    }
+}
+
 function Wait-UciReady($Engine, [string]$Description) {
     Send-UciLine $Engine 'isready'
     while ((Read-UciLine $Engine $Description) -cne 'readyok') {
@@ -1438,6 +1453,7 @@ $engineSummary = @(
         process_status = $koiStop.status
         exit_code = $koiStop.exit_code
         stderr = $koiStop.stderr
+        evaluator_evidence = Get-EngineEvaluatorEvidence $koiEngine $koiStop
     },
     [ordered]@{
         label = 'Opponent'
@@ -1451,6 +1467,7 @@ $engineSummary = @(
         process_status = $opponentStop.status
         exit_code = $opponentStop.exit_code
         stderr = $opponentStop.stderr
+        evaluator_evidence = Get-EngineEvaluatorEvidence $opponentEngine $opponentStop
     }
 )
 

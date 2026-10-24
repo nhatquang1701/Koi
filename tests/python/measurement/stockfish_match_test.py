@@ -11,9 +11,9 @@ class StockfishMatchOptionsTests(unittest.TestCase):
         self.parser = stockfish_match._build_parser()
         self.base = ["--koi", r"C:\Koi\koi.exe", "--stockfish", r"C:\Stockfish\stockfish.exe"]
 
-    def test_defaults_keep_hash_16_and_send_book_random_false_for_koi(self):
+    def test_defaults_use_documented_measurement_settings(self):
         command = stockfish_match.build_command(self.parser.parse_args(self.base), powershell="pwsh-test")
-        self.assertEqual(command[command.index("-Hash") + 1], "16")
+        self.assertEqual(command[command.index("-Hash") + 1], "512")
         self.assertEqual(command[command.index("-KoiBookRandom") + 1], "false")
         self.assertNotIn("-OpponentElo", command)
 

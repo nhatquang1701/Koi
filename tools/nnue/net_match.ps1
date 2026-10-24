@@ -393,6 +393,23 @@ function Invoke-NetLeg {
         throw ("The '$Tag' leg report does not attest the candidate network " +
             "($($script:candidateEvaluatorMode), $($script:nnueSha256)).")
     }
+    # The reference side must be proven to run the reference container: a
+    # rejected EvalFile silently falls back to classical and would turn the
+    # net-vs-net verdict into net-vs-classical.
+    $legOpponent = @($legReport.engines | Where-Object { $_.label -eq 'Opponent' })
+    if ($legOpponent.Count -ne 1) {
+        throw "The '$Tag' leg report has no single Opponent engine entry."
+    }
+    $legOpponentEvidence = $legOpponent[0].evaluator_evidence
+    $resolvedOpponentPath = (Resolve-Path -LiteralPath $opponentPath).Path
+    $expectedOpponentConfirmation = "info string NNUE enabled from $resolvedOpponentPath"
+    if ($null -eq $legOpponentEvidence -or
+        @($legOpponentEvidence.evalfile_rejections).Count -ne 0 -or
+        @($legOpponentEvidence.nnue_enabled_confirmations |
+            Where-Object { $_ -ceq $expectedOpponentConfirmation }).Count -eq 0) {
+        throw ("The '$Tag' leg report does not attest the reference network " +
+            "($resolvedOpponentPath); refusing a net-vs-classical verdict.")
+    }
     return [pscustomobject]@{
         Tag = $Tag
         KoiColor = $KoiColor

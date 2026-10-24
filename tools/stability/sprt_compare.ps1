@@ -8,8 +8,8 @@ param(
     [int]$Nodes = 20000,
     [string]$TimeControl = '',
     [int]$Games = 1,
-    [int]$MinGames = 40,
-    [int]$MaxGames = 64,
+    [int]$MinGames = 20,
+    [int]$MaxGames = 32,
     [double]$Elo0 = 0,
     [double]$Elo1 = 5,
     [int]$Threads = 1,
@@ -100,6 +100,24 @@ Assert-FileExists $CandidatePath 'candidate engine'
 Assert-FileExists $BaselinePath 'baseline engine'
 Assert-FileExists $ReplayPath 'replay tool'
 Assert-FileExists $OpeningFile 'opening file'
+$openingCount = @(Get-Content -LiteralPath $OpeningFile |
+    Where-Object { $_ -match '\S' -and $_ -notmatch '^\s*#' }).Count
+if ($openingCount -le 0) {
+    throw "Opening file contains no positions: $OpeningFile"
+}
+$achievablePerColor = $openingCount * $Games
+if ($MinGames -gt $achievablePerColor) {
+    Write-Warning ("MinGames $MinGames exceeds the $achievablePerColor games per colour " +
+        "available from $openingCount openings; clamping to the achievable sample.")
+    $MinGames = $achievablePerColor
+}
+if ($MaxGames -gt $achievablePerColor) {
+    Write-Warning ("MaxGames $MaxGames exceeds the $achievablePerColor games per colour " +
+        "available from $openingCount openings; clamping to the achievable sample.")
+    $MaxGames = $achievablePerColor
+}
+if ($MinGames -lt 1) { $MinGames = 1 }
+if ($MaxGames -lt $MinGames) { $MaxGames = $MinGames }
 if (-not [string]::IsNullOrWhiteSpace($CandidateOptionsJsonPath)) {
     Assert-FileExists $CandidateOptionsJsonPath 'candidate UCI options JSON'
 }
