@@ -106,15 +106,23 @@ if ($openingCount -le 0) {
     throw "Opening file contains no positions: $OpeningFile"
 }
 $achievablePerColor = $openingCount * $Games
-if ($MinGames -gt $achievablePerColor) {
-    Write-Warning ("MinGames $MinGames exceeds the $achievablePerColor games per colour " +
-        "available from $openingCount openings; clamping to the achievable sample.")
-    $MinGames = $achievablePerColor
-}
-if ($MaxGames -gt $achievablePerColor) {
-    Write-Warning ("MaxGames $MaxGames exceeds the $achievablePerColor games per colour " +
-        "available from $openingCount openings; clamping to the achievable sample.")
-    $MaxGames = $achievablePerColor
+if ($achievablePerColor -ge 2) {
+    # Clamp the sequential test into a range where peeking is meaningful; a
+    # one-game sample cannot support a sequential decision, so leave the
+    # caller's bounds untouched there (the run stays inconclusive).
+    if ($MinGames -gt $achievablePerColor) {
+        Write-Warning ("MinGames $MinGames exceeds the $achievablePerColor games per colour " +
+            "available from $openingCount openings; clamping to the achievable sample.")
+        $MinGames = $achievablePerColor
+    }
+    if ($MaxGames -gt $achievablePerColor) {
+        Write-Warning ("MaxGames $MaxGames exceeds the $achievablePerColor games per colour " +
+            "available from $openingCount openings; clamping to the achievable sample.")
+        $MaxGames = $achievablePerColor
+    }
+} else {
+    Write-Warning ("The opening corpus supplies only $achievablePerColor game(s) per colour; " +
+        "the SPRT bounds ($MinGames/$MaxGames) are unreachable and the run can only be inconclusive.")
 }
 if ($MinGames -lt 1) { $MinGames = 1 }
 if ($MaxGames -lt $MinGames) { $MaxGames = $MinGames }
