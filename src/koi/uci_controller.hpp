@@ -15,7 +15,7 @@
 
 #include "koi/game_state.hpp"
 #include "koi/completion_gate.hpp"
-#include "koi/move_chooser.hpp"
+
 #include "koi/opening_book.hpp"
 #include "koi/search_service.hpp"
 #include "koi/syzygy_tablebase.hpp"
@@ -93,7 +93,7 @@ private:
     std::filesystem::path debug_file_path_;
     std::ofstream debug_file_;
     GameState position_;
-    RandomMoveChooser chooser_{0};
+
     OpeningBook opening_book_;
     SearchService search_service_;
     std::optional<SearchHandle> active_search_;
@@ -137,7 +137,7 @@ private:
     std::uint8_t syzygy_probe_limit_ = 7;
     std::uint8_t syzygy_interior_depth_ = 0;
     bool syzygy_50_move_rule_ = true;
-    std::shared_ptr<const SyzygyTablebase> syzygy_ =
+    std::shared_ptr<SyzygyTablebase> syzygy_ =
         std::make_shared<SyzygyTablebase>();
     CompletionGate completion_gate_;
     // Protocol staleness counter: begin_generation() bumps this for every new

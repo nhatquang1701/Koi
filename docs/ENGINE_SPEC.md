@@ -837,13 +837,13 @@ Behaviour details:
 
 | Result | Interior score | Root score | WDL permill |
 | --- | --- | --- | --- |
-| Win | +100,000 - 1, mate +1 | +90,000, no mate | 1000/0/0 |
-| Loss | -100,000 + 1, mate -1 | -90,000, no mate | 0/0/1000 |
+| Win | +90,000, mate sign +1 | +90,000, no mate | 1000/0/0 |
+| Loss | -90,000, mate sign -1 | -90,000, no mate | 0/0/1000 |
 | Cursed win | +1, no mate | +1, no mate | 0/1000/0 |
 | Blessed loss | -1, no mate | -1, no mate | 0/1000/0 |
 | Draw | 0 | 0 | 0/1000/0 |
 
-Successful probes may add `tbhits` to `info` lines. Root wins are reported with a
+Interior mate values carry only the sign used to pick the 90,000 band; they are never advertised as mate distances (which keeps the score below `kMateThreshold`). Successful probes may add `tbhits` to `info` lines. Root wins are reported with a
 decisive centipawn score and exact WDL, never as `mate 1`. No tablebase data is
 bundled or required.
 

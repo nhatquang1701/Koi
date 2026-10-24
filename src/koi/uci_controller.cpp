@@ -855,7 +855,7 @@ void UciController::handle_setoption(std::istream& command) {
         std::uint32_t seed = 0;
         if (parse_random_seed(value, seed)) {
             stop_and_suppress_active_search();
-            chooser_.set_seed(seed);
+
             random_seed_ = seed;
         }
         break;
@@ -1057,7 +1057,11 @@ void UciController::handle_setoption(std::istream& command) {
     case UciOptionId::syzygy_probe_depth:
         apply_unsigned(*option, syzygy_probe_depth_, [this](std::uint64_t depth) {
             syzygy_probe_depth_ = static_cast<std::uint8_t>(depth);
-            rebuild_syzygy();
+            // Only the depth gate changes; keep the loaded Fathom tables and
+            // any running search alive.
+            if (syzygy_) {
+                syzygy_->set_probe_depth(syzygy_probe_depth_);
+            }
         });
         break;
 
@@ -1079,7 +1083,10 @@ void UciController::handle_setoption(std::istream& command) {
     case UciOptionId::syzygy_50_move_rule:
         apply_boolean(syzygy_50_move_rule_, [this](bool fifty_move_rule) {
             syzygy_50_move_rule_ = fifty_move_rule;
-            rebuild_syzygy();
+            // Root/DTC selection is a policy read, not a load change.
+            if (syzygy_) {
+                syzygy_->set_fifty_move_rule(syzygy_50_move_rule_);
+            }
         });
         break;
 
@@ -1721,13 +1728,7 @@ std::filesystem::path UciController::resolved_book_path() const {
 }
 
 bool UciController::book_is_available() const {
-    std::error_code error;
-    const std::filesystem::path path = resolved_book_path();
-    if (!std::filesystem::is_regular_file(path, error)) {
-        return false;
-    }
-    const auto size = std::filesystem::file_size(path, error);
-    return !error && size >= 16U;
+    return OpeningBook::is_usable_file(resolved_book_path());
 }
 
 void UciController::write_readyok() {

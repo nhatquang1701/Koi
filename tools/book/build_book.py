@@ -81,9 +81,32 @@ def build_entries(rows: list[list[chess.Move]], max_ply: int) -> dict[int, dict[
                 break
             key = chess.polyglot.zobrist_hash(board)
             entry = book.setdefault(key, {})
-            entry[move] = entry.get(move, 0) + 1
+            # Standard Polyglot encodes castling as king-to-rook; python-chess
+            # represents it as a two-square king move, so canonicalise here.
+            encoded_move = move
+            if board.is_castling(move):
+                rook_square = polyglot_castling_destination(move)
+                if rook_square is not None:
+                    encoded_move = chess.Move(move.from_square, rook_square)
+            entry[encoded_move] = entry.get(encoded_move, 0) + 1
             board.push(move)
     return book
+
+
+def polyglot_castling_destination(move: chess.Move) -> int | None:
+    """Return the rook square for a python-chess two-square castling move.
+
+    Standard Polyglot records castling as king-to-rook; python-chess uses the
+    king destination (e1g1/e1c1), so the destination must be rewritten.
+    """
+    if move.from_square not in (chess.E1, chess.E8):
+        return None
+    delta = move.to_square - move.from_square
+    if delta == 2:
+        return move.from_square + 3
+    if delta == -2:
+        return move.from_square - 4
+    return None
 
 
 def encode(book: dict[int, dict[chess.Move, int]]) -> bytes:

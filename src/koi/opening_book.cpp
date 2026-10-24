@@ -261,15 +261,15 @@ public:
             replacement->signature = *signature;
             std::ifstream stream(signature->path, std::ios::binary);
             if (!stream) {
-                cache = replacement;
-                return cache;
+                // Transient open failure (lock, AV scan, share violation): do
+                // not publish a negative cache entry, so the next probe retries.
+                return {};
             }
             for (std::uintmax_t offset = 0; offset < size; offset += 16) {
                 std::array<unsigned char, 16> bytes{};
                 stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
                 if (!stream) {
-                    cache = replacement;
-                    return cache;
+                    return {};
                 }
                 const std::uint64_t key = read_big_endian<std::uint64_t>(bytes, 0);
                 replacement->records[key].push_back(Record{
@@ -282,11 +282,8 @@ public:
             cache = replacement;
             return cache;
         } catch (...) {
-            if (replacement) {
-                replacement->usable = false;
-                cache = replacement;
-                return cache;
-            }
+            // A partially read book is a failure, not evidence about the file:
+            // leave the cache untouched so the next choose() retries the load.
             return {};
         }
     }
@@ -313,6 +310,15 @@ public:
 
 OpeningBook::OpeningBook(std::filesystem::path executable_directory)
     : impl_(std::make_shared<Impl>(std::move(executable_directory))) {}
+
+bool OpeningBook::is_usable_file(const std::filesystem::path& path) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(path, error) || error) {
+        return false;
+    }
+    const std::uintmax_t size = std::filesystem::file_size(path, error);
+    return !error && size >= 16U && size % 16U == 0 && size <= kMaximumBookFileSize;
+}
 
 void OpeningBook::set_file(std::filesystem::path path) {
     impl_->set_file(std::move(path));

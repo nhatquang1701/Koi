@@ -857,6 +857,35 @@ void test_opening_book_is_auto_detected() {
             "the search must still return one bestmove");
 }
 
+void test_invalid_book_is_not_announced_as_detected() {
+    koi::test::TempDirectory files;
+    const std::filesystem::path book = files.path() / "book.bin";
+    {
+        // 40 bytes: not a whole number of 16-byte Polyglot records, so the
+        // loader will reject it and detection must not claim otherwise.
+        std::ofstream stream(book, std::ios::binary);
+        const std::string bytes(40, '\0');
+        stream.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    }
+
+    const ControllerResult result = run_controller_in_directory(
+        "setoption name BookFile value book.bin\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "quit\n",
+        files.path());
+    const std::vector<std::string> lines = output_lines(result.output);
+    require(result.exit_code == 0 && result.diagnostics.empty(),
+            "a rejected book must leave the transcript protocol-clean");
+    require(lines_starting_with(lines, "info string book detected: ").empty(),
+            "a file the loader rejects must not be announced as a detected book");
+    require(lines_starting_with(lines, "info string book move ").empty(),
+            "a rejected book must not produce book moves");
+    require(lines_starting_with(lines, "bestmove ").size() == 1,
+            "the search must still return exactly one bestmove");
+}
+
 void test_book_random_option_accepts_valid_values_and_ignores_invalid_values() {
     koi::test::TempDirectory files;
     const std::filesystem::path book = files.path() / "deterministic-controller-book.bin";
@@ -2196,6 +2225,7 @@ int main(int argc, char** argv) {
         {"Task 6 StrengthMode", test_task6_strength_mode_is_case_insensitive_and_cancels_active_search},
         {"opening-book normal play", test_book_options_emit_one_seeded_marker_and_bestmove_for_normal_play},
         {"opening-book auto detection", test_opening_book_is_auto_detected},
+        {"invalid book is not announced", test_invalid_book_is_not_announced_as_detected},
         {"opening-book random option", test_book_random_option_accepts_valid_values_and_ignores_invalid_values},
         {"opening-book safety option", test_book_safety_options_reject_poisoned_moves_and_fallback_to_search},
         {"opening-book fallback and bypass", test_book_fallback_and_analysis_style_commands_search_without_markers},

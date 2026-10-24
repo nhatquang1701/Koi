@@ -63,6 +63,50 @@ void test_snapshot_uses_native_rule_state_after_a_pinned_double_push() {
             "the tablebase snapshot must be sourced from native rule state rather than the shadow board");
 }
 
+void test_platform_path_list_is_forwarded_to_fathom() {
+    const koi::test::TempDirectory root;
+    const std::filesystem::path first = root.file("wdl");
+    const std::filesystem::path second = root.file("dtz");
+    std::filesystem::create_directories(first);
+    std::filesystem::create_directories(second);
+    {
+        std::ofstream tablebase(first / "KQvK.rtbw", std::ios::binary);
+        tablebase.write(std::string(80, '\0').data(), 80);
+    }
+#if defined(_WIN32)
+    const std::string separator = ";";
+#else
+    const std::string separator = ":";
+#endif
+    const std::string list = first.string() + separator + second.string();
+    const koi::SyzygyTablebase tablebase(list, 5, 1, true);
+    require(tablebase.enabled(), "a platform SyzygyPath list must reach Fathom and load tables");
+    require(tablebase.large_table_limit() > 0, "the list must register the readable component's tables");
+}
+
+void test_policy_setters_do_not_reload_fathom() {
+    const koi::test::TempDirectory root;
+    const std::filesystem::path valid = root.file("tables");
+    std::filesystem::create_directories(valid);
+    {
+        std::ofstream tablebase(valid / "KQvK.rtbw", std::ios::binary);
+        tablebase.write(std::string(80, '\0').data(), 80);
+    }
+    koi::SyzygyTablebase tablebase(valid, 5, 1, true);
+    require(tablebase.enabled() && tablebase.large_table_limit() > 0,
+            "the policy-setter fixture must load a valid table");
+    const int limit = tablebase.large_table_limit();
+    require(tablebase.allows_depth(1), "the default depth gate must allow depth 1");
+    tablebase.set_probe_depth(4);
+    require(!tablebase.allows_depth(3) && tablebase.allows_depth(4),
+            "set_probe_depth must update the gate in place");
+    tablebase.set_fifty_move_rule(false);
+    require(!tablebase.fifty_move_rule() && !tablebase.uses_clock_aware_root_probe(),
+            "set_fifty_move_rule(false) must disable the clock-aware path");
+    require(tablebase.enabled() && tablebase.large_table_limit() == limit,
+            "policy setters must not reload or unregister Fathom tables");
+}
+
 void test_absent_and_malformed_paths_disable_probing_safely() {
     const koi::TablebaseSnapshot snapshot = state_from_fen(
         "4k3/8/8/8/8/8/8/4K3 w - - 0 1").tablebase_snapshot();
@@ -344,6 +388,8 @@ int main(int argc, char** argv) {
          test_snapshot_converts_rule_metadata_and_piece_bitboards},
         {"snapshot native rule state after pinned double push",
          test_snapshot_uses_native_rule_state_after_a_pinned_double_push},
+        {"platform path list reaches Fathom", test_platform_path_list_is_forwarded_to_fathom},
+        {"policy setters do not reload Fathom", test_policy_setters_do_not_reload_fathom},
         {"absent and malformed paths disable probing safely",
          test_absent_and_malformed_paths_disable_probing_safely},
         {"empty and valid paths preserve optional fallback",

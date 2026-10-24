@@ -12,6 +12,13 @@
 #include "koi_test_support.hpp"
 #include "polyglot_book_support.hpp"
 
+#if defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
+#endif
+
 #ifdef CHESS_HPP
 #error "Public Koi opening-book headers must not include chess.hpp"
 #endif
@@ -240,6 +247,29 @@ void test_book_safety_rejects_an_immediate_hanging_piece() {
             "disabling book safety must preserve the highest-weight legal book move");
 }
 
+#if defined(_WIN32)
+void test_transient_open_failure_is_not_cached() {
+    koi::test::TempDirectory files;
+    const std::filesystem::path book_path = files.path() / "locked.bin";
+    const GameState start = GameState::startpos();
+    write_book(book_path, {{start.polyglot_key(), polyglot_move("e2", "e4"), 1, 0}});
+
+    OpeningBook book(files.path());
+    book.set_file(book_path);
+    int handle = -1;
+    const errno_t locked = _sopen_s(&handle, book_path.string().c_str(), _O_RDONLY,
+                                    _SH_DENYRW, _S_IREAD);
+    require(locked == 0 && handle != -1, "the book lock fixture must open");
+    require(!book.choose(start, 0, true, 16, 1).has_value(),
+            "a locked book must fail closed without caching the failure");
+    _close(handle);
+
+    const auto retried = book.choose(start, 0, true, 16, 1);
+    require(retried && retried->move == require_move("e2e4"),
+            "after the lock is released the next probe must retry the load");
+}
+#endif
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -251,6 +281,9 @@ int main(int argc, char** argv) {
         {"book fallback behavior", test_book_falls_back_for_unavailable_or_unusable_inputs},
         {"oversized book fallback", test_book_rejects_oversized_record_aligned_input_without_throwing},
         {"book safety", test_book_safety_rejects_an_immediate_hanging_piece},
+#if defined(_WIN32)
+        {"transient open failure retried", test_transient_open_failure_is_not_cached},
+#endif
     };
 
     return koi::test::run_tests(tests, argc, argv);

@@ -179,8 +179,8 @@ class SyzygyTablebase::Impl {
 public:
     std::filesystem::path path;
     std::uint8_t probe_limit = 7;
-    std::uint8_t probe_depth = 1;
-    bool fifty_move_rule = true;
+    std::atomic<std::uint8_t> probe_depth{1};
+    std::atomic_bool fifty_move_rule{true};
     bool enabled = false;
     std::atomic<std::uint64_t> hits = 0;
 };
@@ -188,9 +188,11 @@ public:
 SyzygyScore syzygy_score(const SyzygyWdl wdl) noexcept {
     switch (wdl) {
     case SyzygyWdl::win:
-        return {100'000 - 1, 1};
+        // Stay inside the 90 000 tablebase band: kMateThreshold is 99 000 and
+        // consumers classify >= that as a mate score.
+        return {90'000, 1};
     case SyzygyWdl::loss:
-        return {-100'000 + 1, -1};
+        return {-90'000, -1};
     case SyzygyWdl::cursed_win:
         return {1, std::nullopt};
     case SyzygyWdl::blessed_loss:
@@ -249,10 +251,21 @@ SyzygyTablebase::SyzygyTablebase(std::filesystem::path path, const std::uint8_t 
     // probes every table the user may have installed (Stockfish defaults to 7
     // as well); an explicit lower limit is still honoured.
     impl_->probe_limit = std::clamp<std::uint8_t>(probe_limit, 0, 7);
-    impl_->probe_depth = std::clamp<std::uint8_t>(probe_depth, 1, 100);
-    impl_->fifty_move_rule = fifty_move_rule;
+    impl_->probe_depth.store(std::clamp<std::uint8_t>(probe_depth, 1, 100),
+                             std::memory_order_relaxed);
+    impl_->fifty_move_rule.store(fifty_move_rule, std::memory_order_relaxed);
     std::error_code path_error;
-    const bool readable_directory = std::filesystem::is_directory(impl_->path, path_error);
+    // Fathom accepts a platform path list and splits it itself (SEP_CHAR:
+    // ';' on Windows, ':' elsewhere).  A list is not a directory, so the
+    // single-directory readability gate must not reject it up front.
+    const std::string path_text = impl_->path.string();
+#if defined(_WIN32)
+    const bool path_list = path_text.find(';') != std::string::npos;
+#else
+    const bool path_list = path_text.find(':') != std::string::npos;
+#endif
+    const bool readable_directory =
+        path_list || std::filesystem::is_directory(impl_->path, path_error);
     if (impl_->path.empty() || impl_->probe_limit == 0 || path_error || !readable_directory) {
         return;
     }
@@ -299,19 +312,33 @@ bool SyzygyTablebase::supports(const TablebaseSnapshot& snapshot) const noexcept
 
 bool SyzygyTablebase::allows_depth(const int depth) const noexcept {
     // Minimum-depth gate: probe once the search reaches the requested depth.
-    return depth >= static_cast<int>(impl_->probe_depth);
+    return depth >= static_cast<int>(impl_->probe_depth.load(std::memory_order_relaxed));
+}
+
+void SyzygyTablebase::set_probe_depth(const std::uint8_t depth) noexcept {
+    impl_->probe_depth.store(std::clamp<std::uint8_t>(depth, 1, 100),
+                             std::memory_order_relaxed);
+}
+
+void SyzygyTablebase::set_fifty_move_rule(const bool enabled) noexcept {
+    impl_->fifty_move_rule.store(enabled, std::memory_order_relaxed);
 }
 
 std::uint8_t SyzygyTablebase::probe_limit() const noexcept { return impl_->probe_limit; }
-std::uint8_t SyzygyTablebase::probe_depth() const noexcept { return impl_->probe_depth; }
-bool SyzygyTablebase::fifty_move_rule() const noexcept { return impl_->fifty_move_rule; }
+std::uint8_t SyzygyTablebase::probe_depth() const noexcept {
+    return impl_->probe_depth.load(std::memory_order_relaxed);
+}
+bool SyzygyTablebase::fifty_move_rule() const noexcept {
+    return impl_->fifty_move_rule.load(std::memory_order_relaxed);
+}
 bool SyzygyTablebase::uses_clock_aware_root_probe() const noexcept {
-    return impl_->fifty_move_rule;
+    return impl_->fifty_move_rule.load(std::memory_order_relaxed);
 }
 
 std::optional<SyzygyWdl> SyzygyTablebase::probe_wdl(
     const TablebaseSnapshot& snapshot) const noexcept {
-    if (!enabled() || !supports(snapshot) || (impl_->fifty_move_rule && snapshot.halfmove_clock != 0)) {
+    if (!enabled() || !supports(snapshot) ||
+        (impl_->fifty_move_rule.load(std::memory_order_relaxed) && snapshot.halfmove_clock != 0)) {
         return std::nullopt;
     }
     std::uint64_t white, black, kings, queens, rooks, bishops, knights, pawns;
@@ -349,7 +376,7 @@ std::optional<SyzygyRootResult> SyzygyTablebase::probe_root(
         // tb_probe_root is documented as NOT thread safe, so root probes stay
         // serialised against each other and against Fathom lifetime changes.
         std::lock_guard lock(fathom_mutex());
-        if (impl_->fifty_move_rule) {
+        if (impl_->fifty_move_rule.load(std::memory_order_relaxed)) {
             probe_succeeded = tb_probe_root_dtz(
                 white, black, kings, queens, rooks, bishops, knights, pawns,
                 snapshot.halfmove_clock, snapshot.castling_rights,

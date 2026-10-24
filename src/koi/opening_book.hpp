@@ -22,6 +22,11 @@ public:
     explicit OpeningBook(std::filesystem::path executable_directory = {});
     void set_file(std::filesystem::path path);
     void clear_cache() noexcept;
+    // True when the file could actually be loaded: ≥16 bytes, a whole number of
+    // 16-byte records, and no larger than the loader's cap.  Detection and
+    // loading must use the same predicate or the engine announces books it
+    // silently rejects.
+    [[nodiscard]] static bool is_usable_file(const std::filesystem::path& path);
     [[nodiscard]] std::optional<BookChoice> choose(
         const GameState& state, std::uint32_t root_ply, bool enabled,
         std::uint8_t maximum_depth, std::uint64_t random_seed,

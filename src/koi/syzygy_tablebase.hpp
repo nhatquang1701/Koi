@@ -68,6 +68,12 @@ public:
     // Stockfish-compatible minimum-depth semantics: the root probe is used when
     // the search depth reaches SyzygyProbeDepth (default 1, i.e. always).
     [[nodiscard]] bool allows_depth(int depth) const noexcept;
+    // Policy-only updates: these do not change what Fathom has loaded, so they
+    // must not tear down and re-initialise the process-global registry (which
+    // would cancel a running search).  Atomic so an in-flight search may read
+    // them safely.
+    void set_probe_depth(std::uint8_t depth) noexcept;
+    void set_fifty_move_rule(bool enabled) noexcept;
     [[nodiscard]] std::uint8_t probe_limit() const noexcept;
     [[nodiscard]] std::uint8_t probe_depth() const noexcept;
     [[nodiscard]] bool fifty_move_rule() const noexcept;
