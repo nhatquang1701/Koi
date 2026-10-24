@@ -464,7 +464,7 @@ if ($EnableDebug -and $opponentIsKoi) {
     $opponentArguments += @('debug', "initstr=$opponentInitString")
 }
 $matchArguments = @(
-    '-each', "tc=$TimeControl",
+    '-each', "tc=$(if ($TimeControl -match '^(\d+)\+(\d+)$') { '{0}+{1}' -f ([int]$Matches[1] * 60), [int]$Matches[2] } else { $TimeControl })",
     '-rounds', "$Games",
     '-concurrency', '1',
     '-maxmoves', "$MaxMoves",

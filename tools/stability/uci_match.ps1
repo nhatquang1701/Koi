@@ -1087,7 +1087,14 @@ function Format-Pgn($Position, $Game, [string]$WhiteName, [string]$BlackName, [s
     $headers.Add(('[Black "{0}"]' -f (Get-PgnHeaderValue $BlackName)))
     $headers.Add(('[Result "{0}"]' -f $Game.result))
     $headers.Add('[MoveFormat "UCI coordinate notation"]')
-    $headers.Add(('[TimeControl "{0}"]' -f (Get-PgnHeaderValue $TimeControl)))
+    # PGN's TimeControl tag uses seconds, while this harness' CLI takes
+    # <minutes>+<increment>; convert at the boundary so PGN consumers see the
+    # intended clock (and tools sharing the literal do not silently diverge).
+    $pgnTimeControl = $TimeControl
+    if ($TimeControl -match '^(\d+)\+(\d+)$') {
+        $pgnTimeControl = ('{0}+{1}' -f ([int]$Matches[1] * 60), [int]$Matches[2])
+    }
+    $headers.Add(('[TimeControl "{0}"]' -f (Get-PgnHeaderValue $pgnTimeControl)))
     if ($Position.Fen -cne 'startpos') {
         $headers.Add('[SetUp "1"]')
         $headers.Add(('[FEN "{0}"]' -f (Get-PgnHeaderValue $Position.Fen)))
@@ -1468,18 +1475,25 @@ $packageBinding = if ($null -eq $packageBindingInput) {
     }
 }
 
+# Book policy is a configuration claim; observed usage is the evidence.
+$bookGames = @($Games | Where-Object { $_.book_used }).Count
+$book = [ordered]@{
+    enabled = $KoiOwnBookEnabled
+    state = if ($KoiOwnBookEnabled) {
+        if ($bookGames -gt 0) { 'active-observed' } else { 'configured-not-observed' }
+    } else { 'disabled' }
+    path = if ($KoiOwnBookEnabled) { $KoiBookFile } else { $null }
+    random = $KoiBookRandomEnabled
+    games_with_book = $bookGames
+}
+
 $measurement = [ordered]@{
     network = [ordered]@{
         enabled = $false
         state = 'disabled'
         reason = 'the local UCI match harness performs no network access'
     }
-    book = [ordered]@{
-        enabled = $KoiOwnBookEnabled
-        state = if ($KoiOwnBookEnabled) { 'active' } else { 'disabled' }
-        path = if ($KoiOwnBookEnabled) { $KoiBookFile } else { $null }
-        random = $KoiBookRandomEnabled
-    }
+    book = $book
     tablebase = [ordered]@{
         enabled = $false
         state = 'disabled'

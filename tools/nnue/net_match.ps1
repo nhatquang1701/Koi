@@ -369,6 +369,7 @@ function Invoke-NetLeg {
         -KoiEvalFile $nnuePath `
         -KoiEvaluatorMode $script:candidateEvaluatorMode `
         -OpponentOptions @{ EvalFile = $opponentPath } `
+        -OpponentOwnBook 'false' `
         -TimeoutMilliseconds $TimeoutMilliseconds `
         -OutputDirectory $legDirectory `
         -BatchId "nnue-net-$Tag" `
@@ -442,6 +443,7 @@ function Add-Games {
             outcome = $outcome
             termination = $game.termination
             moves = $moves.Count
+            book_used = [bool]$game.book_used
             move_hash = Get-MoveSequenceHash -KoiColor $Leg.KoiColor -Moves $moves
         })
     }
@@ -500,7 +502,13 @@ $report = [ordered]@{
     score = $score
     percent = $percent
     verdict = $verdict
-    report_valid = -not $duplicateGamesDetected
+    # A book move produces bestmove without search, so either side using a book
+    # makes the net-vs-net comparison invalid.
+    candidate_own_book = $false
+    opponent_own_book = $false
+    games_with_book = @($gameRecords | Where-Object { $_.book_used }).Count
+    report_valid = (-not $duplicateGamesDetected) -and
+        (@($gameRecords | Where-Object { $_.book_used }).Count -eq 0)
     duplicate_games_detected = $duplicateGamesDetected
     duplicate_game_groups = @($duplicateAnalysis.duplicate_groups)
     sprt = [ordered]@{
