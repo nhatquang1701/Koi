@@ -371,6 +371,9 @@ used as a WDL target once a trainer consumes it.
 The engine discovers a network automatically at startup: it looks for `koi.nnue`
 beside the executable, then the packaged `nnue/koi.nnue`, then a single `*.nnue`
 file in either directory (and in the working directory for development runs).
+Release archives bundle the promoted gated network at `nnue/koi.nnue`; when it was
+discovered at boot the UCI handshake advertises `EvalFile` default
+`<autodiscovery>` (informational; echoing it back keeps the boot evaluator).
 Point the `KOI_NNUE_PATH` environment variable at a specific file to override the
 scan, or set `KOI_NNUE_AUTODETECT=0` to keep the classical evaluator; the UCI
 `EvalFile` option still swaps the network at runtime. A missing or rejected file falls back to the classical evaluator and
