@@ -216,10 +216,12 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     const auto increment_credit = std::min(three_quarters(clock->increment),
                                            scale_fraction(timing_.usable, 1, 4));
     const auto raw_soft = saturating_add(base_allocation, increment_credit);
-    // Sudden death has no refund, so a single unstable move may only take two
-    // base units mid-game (three at a low clock, where the absolute budget is
-    // already tiny); with an increment the third unit is recovered.
-    const auto hard_units = (has_increment || remaining <= std::chrono::milliseconds{3000}) ? 3 : 2;
+    // A single unstable move may only take two base units.  The old increment
+    // case allowed three, which let a 10+2 online game burn 70+ seconds twice in
+    // a row (two-thirds of the move's clock) before the GUI round trip was even
+    // paid; the increment is refunded over subsequent moves, not inside this
+    // one.  Emergency pacing still tightens the low-clock case separately.
+    const auto hard_units = 2;
     const auto raw_hard = saturating_add(
         scale_fraction(base_allocation, hard_units, 1),
         scale_fraction(increment_credit, 3, 2));

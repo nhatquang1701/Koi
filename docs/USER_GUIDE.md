@@ -876,7 +876,8 @@ resets the estimate. If a bot's link is consistently slower than 500 ms, set
 and/or enable `Dynamic Overhead`.
 
 Clock searches are additionally flag-proof. A single move can never consume more
-than a quarter of the usable clock, the increment credit is capped at that same
+than a quarter of the usable clock, the hard allocation is two base budget units
+(not three, even with an increment), the increment credit is capped at that same
 quarter, and a final ceiling reserves `max(2 x Move Overhead + 15 ms, min(50 ms,
 remaining/20))` on top of the normal reserve. The stop deadline is fixed when the
 search starts, so iteration evidence can pace the search but can never push it

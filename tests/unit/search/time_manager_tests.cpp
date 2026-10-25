@@ -175,6 +175,17 @@ void test_sudden_death_paces_the_whole_clock() {
             "an increment control must still allow real think time");
 }
 
+void test_increment_hard_budget_stays_near_two_soft_budgets() {
+    // 10+2: an old 3-base-unit hard allocation allowed ~74 s in one move when
+    // the soft budget was ~25 s. Online clocks cannot absorb two such moves.
+    TimeManager manager = make_clock_manager(milliseconds{600000}, milliseconds{2000},
+                                             std::nullopt, true);
+    const TimeManagementStats stats = manager.diagnostics();
+    require(stats.hard_budget <= stats.soft_budget * 2,
+            "an increment hard budget must stay within two soft budgets");
+    require(stats.hard_budget <= milliseconds{60000},
+            "a 10+2 hard budget must stay well under a minute");
+}
 void test_low_clock_engages_emergency_pacing() {
     TimeManager emergency = make_clock_manager(milliseconds{2000}, milliseconds{100},
                                                std::nullopt, true);
@@ -345,6 +356,7 @@ int main(int argc, char** argv) {
         {"fast control keeps the clock", test_fast_control_move_leaves_most_of_the_clock},
         {"sudden death pacing", test_sudden_death_paces_the_whole_clock},
         {"emergency pacing", test_low_clock_engages_emergency_pacing},
+        {"increment hard budget", test_increment_hard_budget_stays_near_two_soft_budgets},
         {"movetime budget", test_movetime_keeps_its_own_budget},
         {"frozen deadline", test_deadline_is_fixed_at_construction_and_cannot_be_extended},
         {"synthetic games never flag", test_synthetic_games_never_reach_the_flag},

@@ -648,8 +648,11 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    - Base allocation: `usable / horizon`.
    - Increment credit: `min(3/4 × increment, 1/4 × usable)`.
    - Raw soft: `base + increment_credit`.
-   - Raw hard: `hard_units × base + 1.5 × increment_credit`, where
-     `hard_units = 3` with an increment or at ≤ 3000 ms remaining, otherwise 2.
+   - Raw hard: `2 × base + 1.5 × increment_credit`. Earlier builds allowed a
+     third base unit with an increment; on a 10+2 clock that let an unstable
+     move take ~74 s twice in a row and drained the game clock, so the hard
+     allocation is now always two base units (emergency pacing tightens the
+     low-clock case further).
    - Budgets are scaled by `Slow Mover`, then by `Speed`, and capped at
      `usable`; soft is capped at hard.
    - Emergency taper: horizon `max(10, horizon / 2)`, emergency base
@@ -673,8 +676,8 @@ the search but cannot push it past the cap.
 - `observe_iteration` treats a best-move change, PV change, ≥ 75 cp score swing,
   or aspiration re-search as hard evidence. Stable means no change and |Δ| ≤ 25.
 - A hard position may exceed the soft budget only while the remaining usable
-  clock is at least 4× the hard budget (`hard_extension_affordable`). Near the
-  end the soft budget wins.
+  clock is at least `2 × soft budget + overhead` (`hard_extension_affordable`).
+  Near the end the soft budget wins.
 - `should_stop_after_iteration`: stops at the hard deadline; in emergency pacing
   stops at soft when the extension is unaffordable or the position is not hard;
   in clock mode stops at soft after at least 2 stable observations when the
