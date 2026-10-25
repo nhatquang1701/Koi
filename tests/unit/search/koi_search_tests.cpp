@@ -660,7 +660,7 @@ void test_move_overhead_and_slow_mover_scale_time_in_order() {
     clock.moves_to_go = 20;
     const koi::TimeManager configured_clock(clock, koi::Color::white, 50, 10, 50);
     const koi::TimeManagementStats timing = configured_clock.diagnostics();
-    require(configured_clock.time_budget().has_value() && *configured_clock.time_budget() == 645ms &&
+    require(configured_clock.time_budget().has_value() && *configured_clock.time_budget() == 523ms &&
                 timing.reserve == 300ms && timing.usable == 9700ms && timing.soft_budget == 308ms,
             "clock allocations must use reserve, Slow Mover, Speed, and the adaptive hard budget");
 }
@@ -2365,7 +2365,7 @@ void test_adaptive_time_manager_uses_tt_stability_and_hardness() {
     const koi::TimeManagementStats initial = manager.diagnostics();
     require(initial.reserve == 300ms, "clock timing must reserve three percent at ten seconds");
     require(initial.usable == 9700ms, "clock timing must spend only time outside the reserve");
-    require(initial.soft_budget == 1138ms && initial.hard_budget == 2289ms,
+    require(initial.soft_budget == 1138ms && initial.hard_budget == 1901ms,
             "clock timing must calculate the approved soft and hard budgets, with the hard budget "
             "capped at a quarter of the usable time");
     require(initial.initial_hardness == 0,

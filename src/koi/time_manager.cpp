@@ -221,7 +221,7 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     // a row (two-thirds of the move's clock) before the GUI round trip was even
     // paid; the increment is refunded over subsequent moves, not inside this
     // one.  Emergency pacing still tightens the low-clock case separately.
-    const auto hard_units = 2;
+    const auto hard_units = remaining <= std::chrono::milliseconds{3000} ? 3 : 2;
     const auto raw_hard = saturating_add(
         scale_fraction(base_allocation, hard_units, 1),
         scale_fraction(increment_credit, 3, 2));

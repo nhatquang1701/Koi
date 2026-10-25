@@ -648,11 +648,11 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    - Base allocation: `usable / horizon`.
    - Increment credit: `min(3/4 × increment, 1/4 × usable)`.
    - Raw soft: `base + increment_credit`.
-   - Raw hard: `2 × base + 1.5 × increment_credit`. Earlier builds allowed a
-     third base unit with an increment; on a 10+2 clock that let an unstable
-     move take ~74 s twice in a row and drained the game clock, so the hard
-     allocation is now always two base units (emergency pacing tightens the
-     low-clock case further).
+   - Raw hard: `hard_units × base + 1.5 × increment_credit`, where
+     `hard_units = 3` only at ≤ 3000 ms remaining, otherwise 2. Earlier builds
+     also used 3 whenever an increment existed; on a 10+2 clock that let an
+     unstable move take ~74 s twice in a row and drained the game clock.
+     Emergency pacing tightens the low-clock case further.
    - Budgets are scaled by `Slow Mover`, then by `Speed`, and capped at
      `usable`; soft is capped at hard.
    - Emergency taper: horizon `max(10, horizon / 2)`, emergency base
