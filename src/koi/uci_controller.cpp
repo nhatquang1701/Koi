@@ -1301,9 +1301,12 @@ void UciController::handle_ponderhit() {
                 koi::RootTimingContext{}, {}, dynamic_overhead_);
             if (const auto budget = converted_timing.time_budget();
                 budget.has_value() && budget->count() > 0) {
-                std::chrono::milliseconds deadline = *budget;
-                deadline += std::chrono::milliseconds{50};
-                active_search_->stop_after(deadline);
+                // The timer is only a fallback until the worker consumes the
+                // conversion at its next iteration boundary.  Do not add slack:
+                // the budget already includes the flag-proof safety ceiling, and
+                // an extra 50 ms was enough to flag a low-clock ponderhit when
+                // the GUI round trip was slow.
+                active_search_->stop_after(*budget);
             }
         } catch (...) {
         }

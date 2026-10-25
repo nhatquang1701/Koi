@@ -145,7 +145,9 @@ try {
     $null = Read-UciUntil -Session $session -Predicate { param($value) $value.StartsWith('bestmove') } `
         -Description 'a bestmove after ponderhit'
     $stopwatch.Stop()
-    if ($stopwatch.ElapsedMilliseconds -gt 5000) {
+    # The converted search runs against a 2500 ms clock; answering after more
+    # than 2 s would already be a flag risk in a real game.
+    if ($stopwatch.ElapsedMilliseconds -gt 2000) {
         throw "a ponderhit took $($stopwatch.ElapsedMilliseconds) ms to answer."
     }
 
