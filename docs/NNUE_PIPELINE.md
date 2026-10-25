@@ -199,7 +199,7 @@ The first NNUE-primary promotion is a v4-container halfka network:
 - equal-time gate (200 ms, NNUE side vs classical side): **68.4 % over 144
   games** (74 W / 49 D / 21 L on two opening sets), point estimate **+134 Elo**,
   95 % CI on score 0.604–0.754;
-- absolute check: pending the SF1600 run; the 256-hidden sibling scored 65.0 %
+- absolute check: **73.8 %** (29 W / 1 D / 10 L) vs Stockfish 19 `UCI_Elo=1600` on the same 20 openings, versus 34.0 % for the classical baseline; the 256-hidden sibling scored 65.0 %
   vs Stockfish 19 `UCI_Elo=1600` where the classical baseline scored 34.0 %
   (unpaired, SF-limited play is noisy);
 - shipped inside release archives at `nnue/koi.nnue`; the engine discovers it at
