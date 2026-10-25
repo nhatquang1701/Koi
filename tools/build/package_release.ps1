@@ -6,6 +6,10 @@ param(
     # strength at equal time. Omit it for packages without a bundled network.
     [string]$NnuePath = '',
     [string]$NnueMetadataPath = '',
+    # Optional strength-gate report proving the bundled network was accepted
+    # (net-vs-classical match/SPRT). Release packages must pass it; packaging a
+    # network without evidence stays available only for tests/local inspection.
+    [string]$NnueGateReport = '',
     # Optional Polyglot opening book, generated with tools/book/build_book.py from
     # the CC0 lichess-org/chess-openings data. The engine auto-detects a book
     # beside the executable when OwnBook was never set.
@@ -105,6 +109,7 @@ Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') `
     -Destination (Join-Path $packageDirectory 'LICENSE')
 
 $nnueIncluded = $false
+$nnueGate = $null
 if (-not [string]::IsNullOrWhiteSpace($NnuePath)) {
     $resolvedNnue = [System.IO.Path]::GetFullPath($NnuePath)
     if (-not (Test-Path -LiteralPath $resolvedNnue -PathType Leaf)) {
@@ -125,6 +130,36 @@ if (-not [string]::IsNullOrWhiteSpace($NnuePath)) {
             -Destination (Join-Path $nnueDirectory 'koi.nnue.metadata.json')
     }
     $nnueIncluded = $true
+
+    if (-not [string]::IsNullOrWhiteSpace($NnueGateReport)) {
+        $resolvedGate = [System.IO.Path]::GetFullPath($NnueGateReport)
+        if (-not (Test-Path -LiteralPath $resolvedGate -PathType Leaf)) {
+            throw "NNUE gate report is missing: $resolvedGate"
+        }
+        try {
+            $gate = Get-Content -LiteralPath $resolvedGate -Raw | ConvertFrom-Json
+        } catch {
+            throw "NNUE gate report is not valid JSON: $resolvedGate"
+        }
+        $gateDecision = [string]$gate.decision
+        if ($gateDecision -notin @('accept', 'accepted', 'promote', 'promoted', 'candidate-stronger')) {
+            throw "NNUE gate report decision '$gateDecision' does not approve promotion."
+        }
+        $gateSha = @($gate.candidate_sha256, $gate.network_sha256, $gate.nnue_sha256,
+                     $gate.candidate_sha) |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+            Select-Object -First 1
+        if ([string]::IsNullOrWhiteSpace([string]$gateSha)) {
+            throw 'NNUE gate report does not record the accepted network SHA-256.'
+        }
+        if (([string]$gateSha).ToLowerInvariant() -cne $nnueSha.ToLowerInvariant()) {
+            throw 'NNUE gate report SHA-256 does not match the bundled network.'
+        }
+        $nnueGate = [ordered]@{
+            report_sha256 = Get-Sha256Hex $resolvedGate
+            decision = $gateDecision
+        }
+    }
 }
 
 $bookIncluded = $false
@@ -260,6 +295,7 @@ $manifest = [ordered]@{
     book_included = [bool]$bookIncluded
     tablebases_included = $false
     nnue_included = [bool]$nnueIncluded
+    nnue_gate = $nnueGate
     provenance = [ordered]@{
         source_commit = $sourceCommit
         source_dirty = [bool]$sourceDirty
@@ -287,3 +323,5 @@ Write-Output "package_directory=$packageDirectory"
 Write-Output "archive=$archivePath"
 Write-Output "archive_sha256=$archiveHash"
 Write-Output "book_included=$($bookIncluded.ToString().ToLowerInvariant())"
+Write-Output "nnue_included=$($nnueIncluded.ToString().ToLowerInvariant())"
+Write-Output "nnue_gate_decision=$(if ($null -ne $nnueGate) { $nnueGate.decision } else { 'none' })"

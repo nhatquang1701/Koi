@@ -203,6 +203,35 @@ try {
     $netPaths = @($netManifest.files | ForEach-Object { [string]$_.path })
     Assert-True ($netPaths -contains 'nnue/koi.nnue') 'manifest file list is missing the network'
 
+    $gateReport = Join-Path $netSourceDirectory 'nnue-gate.json'
+    [ordered]@{
+        schema = 'koi-nnue-gate-test-v1'
+        decision = 'accept'
+        candidate_sha256 = Get-TestSha256 -Path $netSource
+    } | ConvertTo-Json | Set-Content -LiteralPath $gateReport -Encoding UTF8
+    $gatedOutputDirectory = Join-Path $outputDirectory 'with-gated-net'
+    & $powerShellExecutable -NoProfile -ExecutionPolicy Bypass -File $PackageScript `
+        -BuildDirectory $BuildDirectory -OutputDirectory $gatedOutputDirectory `
+        -NnuePath $netSource -NnueMetadataPath $metadataSource `
+        -NnueGateReport $gateReport | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "package script with a gate report exited with $LASTEXITCODE" }
+    $gatedManifest = Get-Content -LiteralPath (Join-Path (Join-Path $gatedOutputDirectory $packageName) 'package.json') -Raw |
+        ConvertFrom-Json
+    Assert-True ($gatedManifest.nnue_gate.decision -ceq 'accept') 'manifest must record the NNUE gate decision'
+    Assert-True (Test-Path -LiteralPath (Join-Path (Join-Path $gatedOutputDirectory $packageName) 'nnue/koi.nnue') -PathType Leaf) 'gated package is missing the network'
+
+    $badGate = Join-Path $netSourceDirectory 'nnue-gate-rejected.json'
+    [ordered]@{
+        schema = 'koi-nnue-gate-test-v1'
+        decision = 'reject'
+        candidate_sha256 = Get-TestSha256 -Path $netSource
+    } | ConvertTo-Json | Set-Content -LiteralPath $badGate -Encoding UTF8
+    $badOutputDirectory = Join-Path $outputDirectory 'with-rejected-net'
+    & $powerShellExecutable -NoProfile -ExecutionPolicy Bypass -File $PackageScript `
+        -BuildDirectory $BuildDirectory -OutputDirectory $badOutputDirectory `
+        -NnuePath $netSource -NnueGateReport $badGate 2>$null | Out-Null
+    Assert-True ($LASTEXITCODE -ne 0) 'packaging must refuse a network whose gate report rejected it'
+
     Write-Output 'PASS v1.1.4 release package manifest, checksums, provenance, and extracted archive smoke'
 } finally {
     if (Test-Path -LiteralPath $outputDirectory) {

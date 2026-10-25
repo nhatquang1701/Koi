@@ -939,7 +939,13 @@ measurement commands, never CTest thresholds.
 2. Copies README, LICENSE, `licenses/chess-library-MIT.txt`,
    `licenses/fathom-MIT.txt`, and writes `INSTALL.txt`.
 3. Optionally includes `nnue/koi.nnue` + `.sha256` + metadata and
-   `book/koi.bin` + `.sha256` + `book/COPYING.txt`.
+   `book/koi.bin` + `.sha256` + `book/COPYING.txt`. Release packages bundle the
+   promoted network inside the platform archive (`nnue/koi.nnue`, auto-discovered
+   by the engine) and must pass `-NnueGateReport` with an accepted strength-gate
+   JSON whose `candidate_sha256` matches the network; the manifest records
+   `nnue_gate.report_sha256`/`decision`. A rejected gate report makes packaging
+   fail, and a network without a report is allowed only for tests/local
+   inspection, never for a release.
 4. Writes `package.json` (`koi-engine-package-v1`) with per-file size/SHA-256,
    book/tablebase/NNUE inclusion flags, and provenance (`GITHUB_SHA` or
    `git rev-parse HEAD`, dirty flag computed with `core.autocrlf=false`).
