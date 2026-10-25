@@ -213,7 +213,7 @@ try {
     & $powerShellExecutable -NoProfile -ExecutionPolicy Bypass -File $PackageScript `
         -BuildDirectory $BuildDirectory -OutputDirectory $gatedOutputDirectory `
         -NnuePath $netSource -NnueMetadataPath $metadataSource `
-        -NnueGateReport $gateReport | Out-Null
+        -NnueGateReport $gateReport -ReleasePackage | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "package script with a gate report exited with $LASTEXITCODE" }
     $gatedManifest = Get-Content -LiteralPath (Join-Path (Join-Path $gatedOutputDirectory $packageName) 'package.json') -Raw |
         ConvertFrom-Json
@@ -231,6 +231,12 @@ try {
         -BuildDirectory $BuildDirectory -OutputDirectory $badOutputDirectory `
         -NnuePath $netSource -NnueGateReport $badGate 2>$null | Out-Null
     Assert-True ($LASTEXITCODE -ne 0) 'packaging must refuse a network whose gate report rejected it'
+
+    $unbundledOutputDirectory = Join-Path $outputDirectory 'release-without-net'
+    & $powerShellExecutable -NoProfile -ExecutionPolicy Bypass -File $PackageScript `
+        -BuildDirectory $BuildDirectory -OutputDirectory $unbundledOutputDirectory `
+        -ReleasePackage 2>$null | Out-Null
+    Assert-True ($LASTEXITCODE -ne 0) 'a release package must refuse to ship without a gated network'
 
     Write-Output 'PASS v1.1.4 release package manifest, checksums, provenance, and extracted archive smoke'
 } finally {

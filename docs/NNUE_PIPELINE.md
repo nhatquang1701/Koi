@@ -1,8 +1,9 @@
 # NNUE training and promotion loop
 
-Koi's evaluator is optional but first-class: the release packages ship a gated
-network. This page shows the loop that turns self-play data into a promoted
-`.nnue` file, with the exact tools in this repository.
+NNUE is the primary evaluator in release packages (the classical evaluator is a
+deprecated fallback, removed after at least one NNUE-primary release). This page
+shows the loop that turns self-play data into a promoted `.nnue` file bundled in
+release packages, with the exact tools in this repository.
 
 ```mermaid
 flowchart TD

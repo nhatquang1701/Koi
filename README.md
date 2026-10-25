@@ -22,14 +22,15 @@
 
 Koi is a C++26 chess engine for Windows x64, Linux x86-64, and macOS arm64
 (Apple Silicon). Its default search
-uses iterative-deepening alpha-beta with a persistent transposition table. A
-classical evaluator works out of the box; a Koi-native
-NNUE network can be enabled when available.
+uses iterative-deepening alpha-beta with a persistent transposition table.
+Release packages ship a gated Koi-native NNUE evaluator as the primary evaluator
+(bundled at `nnue/koi.nnue`, auto-discovered at boot); the classical evaluator is
+a deprecated fallback until its staged removal.
 
 | Engine area | What Koi provides |
 | --- | --- |
 | Search | Alpha-beta with Lazy SMP |
-| Evaluation | Classical by default, with optional Koi NNUE and experimental GPU NNUE (off by default) |
+| Evaluation | Gated Koi NNUE primary in release packages (bundled); deprecated classical fallback; experimental GPU NNUE off by default |
 | Chess support | Standard chess over the UCI protocol |
 | Optional assets | Bundled CC0 Polyglot opening book; user-supplied Syzygy tablebases |
 
@@ -54,7 +55,8 @@ macOS arm64 (Apple Silicon) can also build from source: install Homebrew LLVM
 (clang 19+; AppleClang 18+ also works), CMake, and Ninja, then configure with
 `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is experimental,
 disabled by default, CUDA-only, and
-unavailable on macOS; the CPU NNUE and classical evaluator paths work normally.
+unavailable on macOS; the CPU NNUE path works normally and the classical evaluator
+remains only as the deprecated fallback.
 See the [user guide](docs/USER_GUIDE.md#build-prerequisites) for the commands.
 
 ## Get started
@@ -68,7 +70,9 @@ See the [user guide](docs/USER_GUIDE.md#build-prerequisites) for the commands.
 Koi needs no configuration file or extra assets. `Threads=1` gives deterministic
 search; multiple threads use Lazy SMP and can produce different valid
 principal variations. Opening books are disabled by default (`OwnBook=false`).
-The classical evaluator remains available when no NNUE network is loaded.
+NNUE is the primary evaluator in release packages; if a network is missing or
+rejected, the classical evaluator keeps the engine usable as a deprecated fallback
+until its removal.
 
 ## Explore
 

@@ -10,6 +10,9 @@ param(
     # (net-vs-classical match/SPRT). Release packages must pass it; packaging a
     # network without evidence stays available only for tests/local inspection.
     [string]$NnueGateReport = '',
+    # Release-candidate packaging: bundles of the public release must carry a
+    # gated network and its gate report. Tests/local inspection may omit both.
+    [switch]$ReleasePackage,
     # Optional Polyglot opening book, generated with tools/book/build_book.py from
     # the CC0 lichess-org/chess-openings data. The engine auto-detects a book
     # beside the executable when OwnBook was never set.
@@ -159,6 +162,15 @@ if (-not [string]::IsNullOrWhiteSpace($NnuePath)) {
             report_sha256 = Get-Sha256Hex $resolvedGate
             decision = $gateDecision
         }
+    }
+}
+
+if ($ReleasePackage) {
+    if (-not $nnueIncluded) {
+        throw 'A release package must bundle a gated NNUE network (-NnuePath).'
+    }
+    if ($null -eq $nnueGate) {
+        throw 'A release package must pass -NnueGateReport with an accepted gate decision.'
     }
 }
 
@@ -325,3 +337,4 @@ Write-Output "archive_sha256=$archiveHash"
 Write-Output "book_included=$($bookIncluded.ToString().ToLowerInvariant())"
 Write-Output "nnue_included=$($nnueIncluded.ToString().ToLowerInvariant())"
 Write-Output "nnue_gate_decision=$(if ($null -ne $nnueGate) { $nnueGate.decision } else { 'none' })"
+Write-Output "release_package=$($ReleasePackage.ToString().ToLowerInvariant())"

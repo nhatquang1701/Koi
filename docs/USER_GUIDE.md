@@ -4,7 +4,7 @@ Koi is a Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon) UCI
 chess engine for standard chess. It is
 written in C++26 and is documented and process-tested against En Croissant as
 the primary GUI workflow. It uses deterministic iterative-deepening alpha-beta search
-with a classical evaluator, an opt-in Koi-native NNUE pipeline (training
+with a gated Koi-native NNUE as the primary evaluator (training
 tooling, a versioned container, and runtime `EvalFile` loading), and a persistent
 transposition table. Search runs on a cancellable outer worker; `Threads = 1`
 runs the deterministic serial search, while `Threads > 1` starts Lazy SMP
@@ -84,12 +84,12 @@ search context; `NnueEvaluator` uses it to keep an `NnueWorker` accumulator
 local while immutable network data remains shared. `detail::EvaluationContext`
 selects that worker path or the existing evaluator-plus-mutex fallback, so
 `SearchContext` no longer owns evaluator synchronization or a particular NNUE
-representation. The classical evaluator remains the default and malformed or
-absent NNUE input still falls back as before. `EvaluatorSelection` and
-`make_evaluator` are the selection seam used by the engine entry points: at boot
-`main.cpp` resolves `KOI_NNUE_PATH` or `koi.nnue` beside the executable, and the
-advertised `EvalFile` option swaps the evaluator at runtime. The classical
-evaluator remains the default and the fallback.
+representation. NNUE is the primary evaluator in packaged releases; malformed or
+absent NNUE input still falls back to the deprecated classical evaluator during
+the transition. `EvaluatorSelection` and `make_evaluator` are the selection seam
+used by the engine entry points: at boot `main.cpp` resolves `KOI_NNUE_PATH` or
+`koi.nnue` beside the executable, and the advertised `EvalFile` option swaps the
+evaluator at runtime.
 
 Search runtime resources have the same ownership boundary. The private
 `detail::SearchTableAccess` view is the only TT boundary used by search code:
@@ -383,7 +383,9 @@ network runs at about 76k nodes/s against about 144k for the classical evaluator
 matches 61 of the 64 positions in the tactical gate (the classical evaluator stays at
 64/64), and it lost the color-balanced equal-node A/B against the classical evaluator
 (0 wins, 10 draws, 10 losses); the version 4 versus version 3 net match drew all 20
-games. The classical evaluator therefore remains the default and NNUE stays opt-in.
+games. This official network is not yet strong enough to replace the fallback; this
+cycle retrains and gates a promotion candidate. Once promoted, NNUE becomes the
+primary evaluator and the classical fallback is deprecated for staged removal.
 The version 5 architecture ships with loader, inference, incremental, dataset, and
 trainer support only: no version 5 network has been trained or strength-validated, so
 every probe number above still describes version 4 networks.
@@ -412,7 +414,8 @@ output is a local report, not an Elo claim or a CI threshold.
 
 **GPU NNUE is experimental, disabled by default, and scheduled for removal.**
 It only runs version 5 networks on NVIDIA GPUs with a CUDA 12.x toolkit; the CPU
-NNUE path (and the classical evaluator) is the supported default and fallback.
+NNUE path is the supported default, with the classical evaluator as the deprecated
+transition fallback.
 The `GpuNnue` UCI option selects the policy:
 
 - `off` (default) never uses the GPU, even when a driver and a compatible

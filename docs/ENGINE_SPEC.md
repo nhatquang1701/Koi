@@ -9,9 +9,12 @@ experimental, or deliberately limited, the text says so.
 
 The engine is a standard-chess UCI engine written in C++26. `Threads=1` is the
 deterministic configuration; `Threads>1` is intentionally nondeterministic Lazy
-SMP. The classical evaluator is the default; the Koi-native NNUE evaluator is
-opt-in through `EvalFile` or boot-time auto-discovery. GPU NNUE is experimental,
-off at runtime, and scheduled for removal.
+SMP. Release packages ship the gated Koi-native NNUE evaluator as the primary
+evaluator: the network is bundled at `nnue/koi.nnue`, auto-discovered at boot, and
+advertised through the `EvalFile` default `<autodiscovery>`. The classical
+evaluator remains a **deprecated fallback** until the staged removal (after at
+least one NNUE-primary release); `EvalFile`/`KOI_NNUE_PATH` still override the
+boot choice. GPU NNUE is experimental, off at runtime, and scheduled for removal.
 
 ## 1. Identity and platforms
 
@@ -293,6 +296,7 @@ because the classical evaluator reads that counter (`SearchContext::evaluate`).
 ### 4.1 Evaluator selection and snapshot rules
 
 - `make_evaluator()` constructs the classical evaluator unless a network path is
+  supplied (transition fallback only; packaged releases bundle the primary NNUE),
   supplied. At boot `main.cpp` resolves `KOI_NNUE_PATH`, otherwise calls
   `discover_nnue_network` on the executable directory and then the working
   directory.
@@ -308,7 +312,11 @@ because the classical evaluator reads that counter (`SearchContext::evaluate`).
 - A running search never changes evaluator mid-search. `SearchService::start`
   captures the current evaluator; `set_evaluator` affects only later searches.
 
-### 4.2 Classical evaluator
+### 4.2 Classical evaluator (deprecated fallback)
+
+> **Deprecation:** NNUE is the primary evaluator in packaged releases. The
+> classical evaluator remains the fallback while the network is absent/rejected,
+> and is scheduled for removal after at least one NNUE-primary release.
 
 The default evaluator is `ClassicalEvaluator` with feature set
 `koi-classical-v1` and parameter version
@@ -957,6 +965,9 @@ name and version while the tag is the version alone.
 
 ## 10. Known limitations, experimental items, and deferred work
 
+- **The classical evaluator is deprecated.** NNUE is primary in release packages;
+  the classical fallback is removed after at least one NNUE-primary release (see
+  the strength-cycle plan Step 12).
 - **GPU NNUE is experimental, off by default, and scheduled for removal.** It is
   CUDA-only, unavailable on macOS, supports only v5 containers with hidden 1536
   and L1 32, and makes no speed or strength claim.
