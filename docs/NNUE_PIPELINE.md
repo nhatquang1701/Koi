@@ -185,3 +185,27 @@ flowchart TD
   `threat-pairs-v1` form written by `--arch v6`. The input width selects the
   layout. The threat form lost every match it entered (33.75% against the
   official net) and its export saturates the L1 head, so it is not the default.
+
+## Promoted network (2026-10-25)
+
+The first NNUE-primary promotion is a v4-container halfka network:
+
+- file: `koi-v7-h128-official-20261025.nnue` (2,360,459 bytes, 128 hidden,
+  8 output buckets, SHA-256
+  `0bb8d25e871fefeede3c1d00c563815510133f1daca9191638ea74d82ebba6b3`);
+- trained on the 29.9M-row `p2big-dataset-v1` corpus for 10 epochs
+  (validation MAE 137.6 cp); it is faster than the classical evaluator on the
+  local bench, so 128 hidden was chosen over the larger 256/512 nets;
+- equal-time gate (200 ms, NNUE side vs classical side): **68.4 % over 144
+  games** (74 W / 49 D / 21 L on two opening sets), point estimate **+134 Elo**,
+  95 % CI on score 0.604–0.754;
+- absolute check: pending the SF1600 run; the 256-hidden sibling scored 65.0 %
+  vs Stockfish 19 `UCI_Elo=1600` where the classical baseline scored 34.0 %
+  (unpaired, SF-limited play is noisy);
+- shipped inside release archives at `nnue/koi.nnue`; the engine discovers it at
+  boot and advertises `EvalFile` default `<autodiscovery>`. The classical
+  evaluator remains the deprecated fallback until removal.
+
+The network file is a local artifact under `artifacts/networks/` and is not
+committed; release packaging requires it plus its accepted `koi-nnue-gate-v1`
+report (`-ReleasePackage -NnuePath -NnueGateReport`).
