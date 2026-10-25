@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -26,6 +27,17 @@ namespace uci {
 
 // Parses the portion of a UCI "go" command following the command name.
 [[nodiscard]] SearchLimits parse_go_limits(std::string_view arguments);
+
+// Estimates how much wall clock a move lost outside search: the GUI/network
+// round trip.  `previous_remaining_ms` and `increment_ms` describe the clock the
+// GUI reported for the previous move, `elapsed_ms` is Koi's own search time, and
+// `current_remaining_ms` is the clock reported for this move.  Positive excess
+// above the noise floor raises the estimate; a zero/negative excess decays it
+// so a one-off stall does not permanently slow the engine.
+[[nodiscard]] std::uint32_t derive_network_overhead_ms(
+    std::int64_t previous_remaining_ms, std::int64_t increment_ms,
+    std::int64_t elapsed_ms, std::int64_t current_remaining_ms,
+    std::uint32_t previous_estimate_ms) noexcept;
 
 } // namespace uci
 
@@ -57,6 +69,10 @@ private:
     void handle_go(std::istream& command);
     void handle_ponderhit();
     void start_search(GameState root, SearchLimits limits, bool skip_book = false);
+    // Records the clock baseline for the previous/current timed move and folds
+    // the observed GUI round trip into `observed_gui_overhead_ms_`.
+    void note_clock_baseline(const SearchLimits& limits) noexcept;
+    [[nodiscard]] std::uint32_t effective_move_overhead_ms() const noexcept;
     void stop_active_search();
     void stop_and_suppress_active_search();
     void start_perft(int depth);
@@ -114,6 +130,13 @@ private:
     bool show_wdl_ = false;
     std::uint32_t move_overhead_ms_ = 30;
     bool dynamic_overhead_ = false;
+    // GUI/network overhead learned from clock discrepancies (clock searches
+    // only; never from movetime).  Added to the configured Move Overhead.
+    std::uint32_t observed_gui_overhead_ms_ = 0;
+    bool clock_baseline_valid_ = false;
+    std::int64_t previous_clock_remaining_ms_ = -1;
+    std::int64_t previous_clock_increment_ms_ = 0;
+    std::chrono::steady_clock::time_point previous_clock_search_start_{};
     std::uint32_t slow_mover_percent_ = 100;
     std::uint32_t contempt_cp_ = 0;
     bool strength_mode_ = false;

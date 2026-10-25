@@ -40,6 +40,31 @@ struct ControllerResult {
 
 using koi::test::require;
 
+void test_network_overhead_estimator_tracks_gui_latency() {
+    using koi::uci::derive_network_overhead_ms;
+    // No latency: the clock moved exactly by Koi's search time.
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 59'000, 0) == 0,
+            "a clean clock must not invent overhead");
+    // 200 ms disappeared outside search: learn it.
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 58'800, 0) == 200,
+            "a GUI/network stall must raise the overhead estimate");
+    // Keep the largest recent observation.
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 58'700, 200) == 300,
+            "a larger stall must dominate the estimate");
+    // Clock rounding/noise must not move it, and a negative delta must decay.
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 58'990, 200) == 200,
+            "sub-25 ms clock noise must be ignored");
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 59'500, 200) == 175,
+            "a negative delta must decay the estimate");
+    // Increment is refunded before the latency estimate.
+    require(derive_network_overhead_ms(5'000, 1'000, 500, 5'500, 0) == 0,
+            "the increment must be accounted for before comparing clocks");
+    // Pathological stalls stay bounded.
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 10'000, 0) == 500,
+            "the learned overhead must stay bounded");
+}
+
+
 std::size_t maximum_threads() {
     const unsigned hardware = std::thread::hardware_concurrency();
     return std::max<std::size_t>(1, std::min<std::size_t>(64, hardware == 0 ? 1 : hardware));
@@ -1919,6 +1944,23 @@ void test_debug_command_toggles_hidden_diagnostics() {
             "the debug command must honor the configured DebugFile path");
 }
 
+void test_network_overhead_is_learned_from_clock_discrepancy() {
+    koi::test::TempDirectory files;
+    const ControllerResult result = run_controller_in_directory(
+        "setoption name DebugFile value network-overhead.log\n"
+        "debug on\n"
+        "position startpos\n"
+        "go wtime 1000 btime 1000 winc 0 binc 0\n"
+        "go wtime 200 btime 200 winc 0 binc 0\n"
+        "quit\n",
+        files.path());
+    require(result.exit_code == 0 && result.diagnostics.empty(),
+            "a clock discrepancy must not disturb UCI stdio");
+    std::ifstream log(files.path() / "network-overhead.log", std::ios::binary);
+    const std::string contents((std::istreambuf_iterator<char>(log)), {});
+    require(contents.find("network overhead estimate") != std::string::npos,
+            "a clock that drops faster than Koi's search time must update the learned overhead");
+}
 void test_evalfile_autodiscovery_marker_is_informational() {
     const ControllerResult marked = run_controller_with_autodiscovery("uci\nquit\n", true);
     require(marked.exit_code == 0 && marked.diagnostics.empty(),
@@ -2305,6 +2347,7 @@ int main(int argc, char** argv) {
         {"new game and hash generation replacement", test_ucinewgame_and_hash_changes_suppress_active_generations},
         {"ucinewgame clears the hash", test_ucinewgame_clears_the_transposition_table_and_records_it},
         {"debug command toggle", test_debug_command_toggles_hidden_diagnostics},
+        {"network overhead learning", test_network_overhead_is_learned_from_clock_discrepancy},
         {"handshake option table", test_handshake_option_table_is_unique_and_well_formed},
         {"EvalFile autodiscovery marker", test_evalfile_autodiscovery_marker_is_informational},
         {"quit and EOF cleanup", test_quit_and_eof_join_without_late_bestmove},
@@ -2316,6 +2359,7 @@ int main(int argc, char** argv) {
         {"legacy strength node cap", test_legacy_strength_options_do_not_cap_clock_searches},
         {"same-value option reapplication", test_reapplying_the_current_option_value_keeps_the_search_alive},
         {"ponder move without the option", test_bestmove_reports_the_ponder_move_without_the_option},
+        {"network overhead estimator", test_network_overhead_estimator_tracks_gui_latency},
     };
 
     return koi::test::run_tests(tests, argc, argv);

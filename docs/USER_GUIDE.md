@@ -865,6 +865,16 @@ to 30 ms and accepts 0..5000; `Slow Mover` defaults to 100 and accepts 10..1000.
 not explicit depth or node limits, and changing one while searching cancels and
 joins the old generation before the next search uses the new snapshot.
 
+For online bots and network GUIs, Koi also learns the GUI round trip: when a
+clock search reports less remaining time than Koi's own elapsed search plus the
+reported increment explains (excess ≥ 25 ms), the learned overhead rises up to
+500 ms and is added to `Move Overhead` for reserve and hard-safety purposes; a
+clean or faster clock decays it. This makes repeated small network stalls
+self-correcting without slowing `movetime` analysis searches. `ucinewgame`
+resets the estimate. If a bot's link is consistently slower than 500 ms, set
+`Move Overhead` explicitly (for example 800–1500 ms for a high-latency server)
+and/or enable `Dynamic Overhead`.
+
 Clock searches are additionally flag-proof. A single move can never consume more
 than a quarter of the usable clock, the increment credit is capped at that same
 quarter, and a final ceiling reserves `max(2 x Move Overhead + 15 ms, min(50 ms,

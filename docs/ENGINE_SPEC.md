@@ -630,6 +630,15 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    - `remaining` is the side-to-move clock, clamped to ≥ 0.
    - Dynamic overhead (if enabled) is `clamp(remaining / 50, 10, 100)` ms;
      otherwise the fixed `Move Overhead` is used.
+   - Observed GUI/network overhead (clock searches only): `UciController`
+     compares the previous reported clock plus increment minus Koi's own search
+     time against the newly reported clock. Positive excess ≥ 25 ms raises a
+     learned overhead (capped at 500 ms); a negative or sub-threshold excess
+     decays it by 1/8. The effective overhead is
+     `max(Move Overhead, learned overhead)` and feeds the reserve and the final
+     hard-safety ceiling, so an online bot's network round trip is paid for
+     instead of flagging. `movetime` searches never learn or use it, and
+     `ucinewgame` resets it.
    - Horizon: `movestogo` when supplied, otherwise **25** with a positive
      increment and **50** for sudden death.
    - Reserve: `min(750 ms, max(50 ms, 3% of remaining, 2 × overhead))`, then
@@ -714,7 +723,7 @@ settable but intentionally not advertised, so 27 of the 29 entries are visible.
 | `BookSafetyDepth` | spin | 2 | 0..3 | Safety probe horizon; 0 disables the probe while retaining legal-move filtering |
 | `Clear Hash` | button | — | — | Stops and joins the active search, then logically invalidates the table |
 | `UCI_ShowWDL` | check | false | true/false | Appends heuristic `wdl W D L` to scored lines; Syzygy root results use exact WDL |
-| `Move Overhead` | spin | 30 | 0..5000 ms | Safety margin subtracted from clock/movetime budgets |
+| `Move Overhead` | spin | 30 | 0..5000 ms | Base safety margin subtracted from clock/movetime budgets; learned GUI/network overhead is added on top for clock searches |
 | `Dynamic Overhead` | check | false | true/false | Derives overhead from the clock: 2% of remaining, clamped to 10..100 ms |
 | `Slow Mover` | spin | 100 | 10..1000 | Scales clock-derived budgets; not applied to `movetime` |
 | `Contempt` | spin | 0 | 0..1000 cp | Draw avoidance: a draw is worth `-Contempt` to the root side and `+Contempt` to the opponent; 0 keeps neutral draws |

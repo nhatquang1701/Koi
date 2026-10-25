@@ -615,6 +615,33 @@ SearchLimits parse_go_limits(std::string_view arguments) {
     return limits;
 }
 
+std::uint32_t derive_network_overhead_ms(std::int64_t previous_remaining_ms,
+                                         std::int64_t increment_ms,
+                                         std::int64_t elapsed_ms,
+                                         std::int64_t current_remaining_ms,
+                                         std::uint32_t previous_estimate_ms) noexcept {
+    if (previous_remaining_ms < 0 || increment_ms < 0 || elapsed_ms < 0 ||
+        current_remaining_ms < 0) {
+        return previous_estimate_ms;
+    }
+    const std::int64_t expected = previous_remaining_ms + increment_ms - elapsed_ms;
+    const std::int64_t excess = expected - current_remaining_ms;
+    // Below the noise floor the GUI clock rounds, and a negative delta means the
+    // GUI clock is newer than Koi's elapsed estimate (or the increment was
+    // applied differently): decay rather than permanently slowing the engine.
+    constexpr std::int64_t kNoiseFloorMs = 25;
+    constexpr std::int64_t kMaximumEstimateMs = 500;
+    if (excess >= kNoiseFloorMs) {
+        const auto candidate = static_cast<std::uint32_t>(
+            std::min<std::int64_t>(excess, kMaximumEstimateMs));
+        return std::max(previous_estimate_ms, candidate);
+    }
+    if (excess <= 0) {
+        return previous_estimate_ms - previous_estimate_ms / 8U;
+    }
+    return previous_estimate_ms;
+}
+
 } // namespace uci
 
 UciController::UciController(std::istream& input, std::ostream& output, std::ostream& diagnostics)
@@ -665,6 +692,11 @@ int UciController::run() {
         } else if (name == "ucinewgame") {
             stop_and_suppress_active_search();
             search_service_.clear_hash();
+            observed_gui_overhead_ms_ = 0;
+            clock_baseline_valid_ = false;
+            previous_clock_remaining_ms_ = -1;
+            previous_clock_increment_ms_ = 0;
+            previous_clock_search_start_ = {};
             debug_json_event("ucinewgame", "\"hash_cleared\":true");
             position_ = GameState::startpos();
         } else if (name == "position") {
@@ -1256,6 +1288,7 @@ void UciController::handle_ponderhit() {
         // place. The worker keeps its TT-warm state, identity, and generation;
         // only time management switches from unbounded to the real budget.
         SearchLimits converted_for_timing = converted;
+        note_clock_baseline(converted_for_timing);
         active_search_->request_ponderhit(std::move(converted));
         // The worker consumes the conversion only at the next iteration
         // boundary; until then the pondering search has no deadline even though
@@ -1264,8 +1297,8 @@ void UciController::handle_ponderhit() {
         try {
             koi::TimeManager converted_timing(
                 converted_for_timing, position_.side_to_move(), speed_percent_,
-                move_overhead_ms_, slow_mover_percent_, koi::RootTimingContext{}, {},
-                dynamic_overhead_);
+                effective_move_overhead_ms(), slow_mover_percent_,
+                koi::RootTimingContext{}, {}, dynamic_overhead_);
             if (const auto budget = converted_timing.time_budget();
                 budget.has_value() && budget->count() > 0) {
                 std::chrono::milliseconds deadline = *budget;
@@ -1301,8 +1334,41 @@ void UciController::handle_ponderhit() {
     start_search(position_, converted, true);
 }
 
+void UciController::note_clock_baseline(const SearchLimits& limits) noexcept {
+    const bool clock_search = !limits.infinite && !limits.ponder && !limits.movetime.has_value();
+    const std::optional<ClockLimit>& clock =
+        position_.side_to_move() == Color::white ? limits.white_clock : limits.black_clock;
+    if (!clock_search || !clock.has_value()) {
+        clock_baseline_valid_ = false;
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (clock_baseline_valid_) {
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - previous_clock_search_start_).count();
+        const std::uint32_t updated = uci::derive_network_overhead_ms(
+            previous_clock_remaining_ms_, previous_clock_increment_ms_, elapsed,
+            clock->remaining.count(), observed_gui_overhead_ms_);
+        if (updated != observed_gui_overhead_ms_) {
+            debug_event("network overhead estimate " + std::to_string(updated) +
+                        " ms elapsed " + std::to_string(elapsed) + " ms");
+            observed_gui_overhead_ms_ = updated;
+        }
+    }
+    previous_clock_remaining_ms_ = clock->remaining.count();
+    previous_clock_increment_ms_ = clock->increment.count();
+    previous_clock_search_start_ = now;
+    clock_baseline_valid_ = true;
+}
+
+std::uint32_t UciController::effective_move_overhead_ms() const noexcept {
+    constexpr std::uint32_t kMaximumOverheadMs = 5'000;
+    return std::min(kMaximumOverheadMs, std::max(move_overhead_ms_, observed_gui_overhead_ms_));
+}
+
 void UciController::start_search(GameState root, SearchLimits limits, bool skip_book) {
     const std::uint64_t generation = begin_generation();
+    note_clock_baseline(limits);
     {
         std::lock_guard lock(output_mutex_);
         state_ = limits.ponder ? ControllerState::Pondering : ControllerState::Searching;
@@ -1536,7 +1602,7 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
     options.random_seed = random_seed_;
     options.analyse_mode = analyse_mode_;
     options.show_wdl = show_wdl_;
-    options.move_overhead_ms = move_overhead_ms_;
+    options.move_overhead_ms = effective_move_overhead_ms();
     options.dynamic_move_overhead = dynamic_overhead_;
     options.slow_mover_percent = slow_mover_percent_;
     options.contempt_cp = static_cast<int>(contempt_cp_);
