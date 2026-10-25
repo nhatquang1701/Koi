@@ -225,7 +225,9 @@ a fixed 256-entry, intentionally uninitialized container for the search hot path
 - Promotions generate all four piece choices. `is_legal`, `is_capture`, and
   `move_facts` resolve board facts without generating a list. `has_legal_move()`
   early-exits.
-- The theoretical maximum is 256 legal moves; the search stack, move lists, and
+- The fixed-capacity move buffers hold 256 entries. That is a power-of-two safety
+  margin, not a chess bound: the largest known number of legal moves in a
+  reachable position is 218. The search stack, move lists, and
   ordering arrays are all sized to `kMaximumLegalMoves = 256`.
 
 ### 3.3 Check detection and make/unmake
@@ -272,8 +274,13 @@ Details (`src/koi/position.cpp`):
   bishops) and exactly one documented 14-piece locked pawn wall, with a legal
   en-passant capture as an exception.
 - Claimable draws are never promoted to terminal by `is_terminal()`; automatic
-  draws and dead positions are. Checkmate is evaluated with legal generation and
-  takes precedence over draw clocks.
+  draws and dead positions are. This is a rules-helper distinction, not a search
+  gap: `SearchContext` explicitly detects a claimable draw at a node, seeds the
+  node score with the draw/contempt value, and may only improve on it with a
+  legal move (`claimable_draw` in `src/koi/detail/search_context.cpp`). Claimable
+  draws therefore do not burn a full search past the claim.
+- Checkmate is evaluated with legal generation and takes precedence over draw
+  clocks.
 
 ### 3.5 Position keys
 
@@ -296,8 +303,8 @@ because the classical evaluator reads that counter (`SearchContext::evaluate`).
 ### 4.1 Evaluator selection and snapshot rules
 
 - `make_evaluator()` constructs the classical evaluator unless a network path is
-  supplied (transition fallback only; packaged releases bundle the primary NNUE),
-  supplied. At boot `main.cpp` resolves `KOI_NNUE_PATH`, otherwise calls
+  supplied (transition fallback only; packaged releases bundle the primary NNUE).
+  At boot `main.cpp` resolves `KOI_NNUE_PATH`, otherwise calls
   `discover_nnue_network` on the executable directory and then the working
   directory.
 - A loaded network is wrapped by `NnueEvaluator` (and, if the GPU path is active,
@@ -351,7 +358,11 @@ The loader accepts Koi NNUE containers with magic `KOI-NNUE`, quantization
 `int16/int8`, a SHA-256 payload digest, and a 256 MiB maximum file size
 (`src/koi/nnue.cpp`). Supported versions are 2, 3, 4, 5, 6, and 8; version 1 is
 not accepted by `validate_manifest` even though legacy v1 constants remain in the
-header.
+header. **There is no version 7 container:** no v7 constant or parser branch
+exists, and the `koi-v7-*` names under `artifacts/training/` are trainer
+experiment labels whose exports are v4 containers. Version 8 is the only
+container the experimental GPU kernel accepts; the CPU loader dispatches it by
+the architecture word (v6 threat math or v4 halfka-only).
 
 | Version | Feature set | Inputs | Head | Notes |
 | --- | --- | --- | --- | --- |
@@ -893,9 +904,9 @@ unit -LE heavy` is the fast unit set. Search shards, `koi_strength_tests`,
 `koi_engine_process`/`koi_engine_perft_responsiveness` declare `RUN_SERIAL`.
 
 The exact registered count depends on optional dependencies (`pwsh`, Python 3,
-Cute Chess, `KOI_BUILD_SHADOW_DIFF`, modules). `tests/README.md` records 81 tests
-for the Windows Release + Python configuration, while `docs/USER_GUIDE.md` still
-mentions 67; treat `ctest -N` on the actual build as authoritative.
+Cute Chess, `KOI_BUILD_SHADOW_DIFF`, modules). The reference Windows Release +
+Python configuration registers 75 tests; always treat `ctest -N` on the actual
+build as authoritative.
 
 ### 9.2 Sanitizer and differential legs
 

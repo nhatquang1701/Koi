@@ -33,7 +33,8 @@ enum class CpuVariant {
 // Startup selector for the baseline engine. Returns -1 when the caller must
 // continue in-process (the generic build is the right choice, the faster
 // sibling is missing, or launching it failed) or the child's exit code after a
-// successful re-exec. Windows only; other platforms return -1.
+// successful re-exec. Windows launches the sibling with CreateProcessW; Linux
+// and macOS replace the process with execv; unsupported platforms return -1.
 [[nodiscard]] int run_cpu_selector() noexcept;
 
 } // namespace koi

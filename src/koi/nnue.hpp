@@ -43,8 +43,11 @@ inline constexpr std::uint32_t kKoiNnueHalfkaThreatV5FormatVersion = 5;
 // v5 reserved carries the separate diff-channel shift `l1_diff_shift` (0 keeps
 // the legacy combined head) so the two channels can quantize independently.
 inline constexpr std::uint32_t kKoiNnueHalfkaThreatV6FormatVersion = 6;
-// Version 8 reuses the v6 halfka+threat math but is the only container a GPU
-// backend accepts; the CPU loader treats it exactly like v6.
+// Version 8 is a dispatch container: it carries either the v6 halfka+threat
+// math (36864 inputs) or the v4 halfka-only layout (9216 inputs), and the CPU
+// loader selects the math from the architecture word. The experimental GPU
+// kernel accepts only the v5 threat layout; the old claim that v8 itself was
+// "the GPU container" was stale.
 inline constexpr std::uint32_t kKoiNnueHalfkaThreatV8FormatVersion = 8;
 inline constexpr std::uint32_t kKoiNnueHalfkaKingBucketV1FeatureCount =
     static_cast<std::uint32_t>(kNnueHalfkaKingBucketV1FeatureCount);

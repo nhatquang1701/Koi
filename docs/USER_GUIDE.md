@@ -655,10 +655,11 @@ continues to evaluate standard FIDE chess.
 
 ### Test inventory and known gaps
 
-The default local configuration with Python 3 registers 67 CTest tests
-(`KOI_BUILD_SHADOW_DIFF=OFF`); enabling the shadow-diff oracle adds
+The reference Windows Release configuration with Python 3 registers 75 CTest
+tests (`KOI_BUILD_SHADOW_DIFF=OFF`); enabling the shadow-diff oracle adds
 `koi_shadow_diff_tests`, and a local `cutechess-cli.exe` adds the optional
-stability smoke, so the count varies with those optional pieces. Continuous
+stability smoke, so the count varies with those optional pieces. Run `ctest -N`
+on the actual build instead of relying on a fixed number. Continuous
 integration runs the suite on Windows (`.github/workflows/windows.yml`) and on
 Linux with GCC 14 and Clang 18 (`.github/workflows/linux.yml`). `koi_search_tests`, the heaviest suite, is
 registered as four shards, every test carries labels (`unit`, `integration`,
