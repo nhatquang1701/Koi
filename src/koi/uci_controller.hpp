@@ -34,7 +34,8 @@ public:
     UciController(std::istream& input, std::ostream& output, std::ostream& diagnostics);
     UciController(std::istream& input, std::ostream& output, std::ostream& diagnostics,
                   SearchService search_service,
-                  std::filesystem::path executable_directory = {});
+                  std::filesystem::path executable_directory = {},
+                  bool nnue_autodiscovered = false);
     ~UciController();
 
     UciController(const UciController&) = delete;
@@ -133,6 +134,10 @@ private:
     std::uint32_t random_seed_ = 0;
     std::filesystem::path syzygy_path_;
     std::filesystem::path eval_file_;
+    // Boot-time autodiscovery actually installed a network: advertise that in
+    // the EvalFile handshake default.  Explicit KOI_NNUE_PATH/EvalFile are not
+    // autodiscovery.
+    bool nnue_autodiscovered_ = false;
     std::uint8_t syzygy_probe_depth_ = 1;
     std::uint8_t syzygy_probe_limit_ = 7;
     std::uint8_t syzygy_interior_depth_ = 0;

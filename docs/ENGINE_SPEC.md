@@ -439,6 +439,11 @@ recomputed scalar in the bucket-dot path so the vector path stays bit-identical.
 
 `KOI_NNUE_AUTODETECT=0` disables the scan. `KOI_NNUE_PATH` bypasses it entirely.
 `EvalFile` is the runtime override; an empty value keeps the boot evaluator.
+When boot-time autodiscovery discovered **and loaded** a network, the UCI
+handshake advertises `option name EvalFile type string default <autodiscovery>`
+(informational only); no other boot path and a rejected discovery keep the empty
+default. A GUI echoing `EvalFile=<autodiscovery>` back is a no-op that keeps the
+boot evaluator.
 Missing, malformed, oversized, or rejected files leave the current evaluator
 usable and produce one explanatory stderr line or UCI `info string`.
 
@@ -700,7 +705,7 @@ settable but intentionally not advertised, so 27 of the 29 entries are visible.
 | `SyzygyProbeLimit` | spin | 7 | 0..7 | Maximum pieces probed |
 | `SyzygyInteriorDepth` | spin | 0 | 0..100 | Experimental interior WDL cutoff depth; 0 disables |
 | `Syzygy50MoveRule` | check | true | true/false | Honors the 50-move rule in tablebase WDL results and requires a zero halfmove clock for cutoffs |
-| `EvalFile` | string | empty | path | Loads a Koi NNUE network for subsequent searches; empty keeps the boot evaluator; rejected files fall back |
+| `EvalFile` | string | empty or `<autodiscovery>` | path | Loads a Koi NNUE network for subsequent searches; empty (or the informational `<autodiscovery>` marker) keeps the boot evaluator; rejected files fall back |
 | `GpuNnue` | combo | `off` | `auto`, `on`, `off` | Experimental GPU policy; `off` never uses the GPU; see §4.4 |
 | `Debug` (hidden) | check | false | true/false | Enables the debug log; changing it stops and joins the active search |
 | `DebugFile` (hidden) | string | `koi-debug.log` | path | Log path; relative paths resolve beside the executable; rotates at 8 MiB with 3 backups |

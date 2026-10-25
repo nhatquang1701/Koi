@@ -786,6 +786,9 @@ from the starting position (for example, `bestmove e2e4`).
   explicit depth, node, and infinite searches are unchanged. Changing either
   option stops and joins the active search before the new snapshot is used by
   the next `go` command.
+- When boot-time auto-discovery actually loaded a network, the `EvalFile` option
+  advertises the informational default `<autodiscovery>`; echoing it back is a
+  no-op that keeps the boot evaluator. The marker is not a file path.
 - `setoption name EvalFile value <path>` loads a Koi NNUE network for the next
   search (an empty value keeps the boot-time evaluator, so replaying defaults
   never triggers a load). A rejected or missing file leaves the current

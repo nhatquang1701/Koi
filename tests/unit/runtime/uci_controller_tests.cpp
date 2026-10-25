@@ -63,6 +63,15 @@ ControllerResult run_controller_in_directory(std::string_view transcript,
     return {controller.run(), output.str(), diagnostics.str()};
 }
 
+ControllerResult run_controller_with_autodiscovery(std::string_view transcript,
+                                                    bool autodiscovered) {
+    std::istringstream input{std::string(transcript)};
+    std::ostringstream output;
+    std::ostringstream diagnostics;
+    UciController controller(input, output, diagnostics, koi::SearchService{
+        std::make_shared<koi::ClassicalEvaluator>()}, {}, autodiscovered);
+    return {controller.run(), output.str(), diagnostics.str()};
+}
 koi::GameState position_after(const std::vector<std::string_view>& moves) {
     koi::GameState state = koi::GameState::startpos();
     for (const std::string_view uci : moves) {
@@ -1910,6 +1919,37 @@ void test_debug_command_toggles_hidden_diagnostics() {
             "the debug command must honor the configured DebugFile path");
 }
 
+void test_evalfile_autodiscovery_marker_is_informational() {
+    const ControllerResult marked = run_controller_with_autodiscovery("uci\nquit\n", true);
+    require(marked.exit_code == 0 && marked.diagnostics.empty(),
+            "the autodiscovery handshake must stay clean");
+    require(lines_starting_with(output_lines(marked.output),
+                                "option name EvalFile type string default <autodiscovery>")
+                    .size() == 1,
+            "a boot-time auto-discovered network must advertise the <autodiscovery> default");
+
+    const ControllerResult plain = run_controller_with_autodiscovery("uci\nquit\n", false);
+    require(plain.exit_code == 0 && plain.diagnostics.empty(), "the plain handshake must stay clean");
+    require(plain.output.find("<autodiscovery>") == std::string::npos,
+            "a non-autodiscovered boot must keep the empty EvalFile default");
+
+    const ControllerResult echoed = run_controller_with_autodiscovery(
+        "uci\n"
+        "setoption name EvalFile value <autodiscovery>\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "quit\n",
+        true);
+    const std::vector<std::string> lines = output_lines(echoed.output);
+    require(echoed.exit_code == 0 && echoed.diagnostics.empty(),
+            "echoing the informational marker must stay protocol-clean");
+    require(echoed.output.find("EvalFile rejected") == std::string::npos,
+            "the informational marker must never be resolved as a path");
+    const std::vector<std::string> bestmoves = lines_starting_with(lines, "bestmove ");
+    require(bestmoves.size() == 1 && is_legal_move(Position{}, bestmoves.front().substr(9)),
+            "search must still return exactly one legal bestmove after echoing the marker");
+}
 void test_handshake_option_table_is_unique_and_well_formed() {
     const ControllerResult handshake = run_controller("uci\nisready\nquit\n");
     require(handshake.exit_code == 0 && handshake.diagnostics.empty(),
@@ -2266,6 +2306,7 @@ int main(int argc, char** argv) {
         {"ucinewgame clears the hash", test_ucinewgame_clears_the_transposition_table_and_records_it},
         {"debug command toggle", test_debug_command_toggles_hidden_diagnostics},
         {"handshake option table", test_handshake_option_table_is_unique_and_well_formed},
+        {"EvalFile autodiscovery marker", test_evalfile_autodiscovery_marker_is_informational},
         {"quit and EOF cleanup", test_quit_and_eof_join_without_late_bestmove},
         {"unknown stop quit", test_unknown_stop_and_blank_commands_are_quiet_and_quit},
         {"protocol-clean output", test_protocol_output_contains_only_valid_uci_responses},

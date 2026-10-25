@@ -623,9 +623,11 @@ UciController::UciController(std::istream& input, std::ostream& output, std::ost
 
 UciController::UciController(std::istream& input, std::ostream& output,
                              std::ostream& diagnostics, SearchService search_service,
-                             std::filesystem::path executable_directory)
+                             std::filesystem::path executable_directory,
+                             bool nnue_autodiscovered)
     : input_(input), output_(output), diagnostics_(diagnostics),
       executable_directory_(std::move(executable_directory)),
+      nnue_autodiscovered_(nnue_autodiscovered),
       opening_book_(executable_directory_),
       search_service_(std::move(search_service)) {}
 
@@ -1091,6 +1093,11 @@ void UciController::handle_setoption(std::istream& command) {
         break;
 
     case UciOptionId::eval_file: {
+        if (value == "<autodiscovery>") {
+            // The advertised default is informational; a GUI replaying it must
+            // keep the boot evaluator instead of treating it as a path.
+            break;
+        }
         if (value.empty()) {
             // The advertised default is empty: keep the boot-time evaluator
             // rather than failing a GUI that replays every default value.
@@ -1702,7 +1709,13 @@ void UciController::write_handshake() {
             output_ << "check default " << option.default_value;
             break;
         case UciOptionKind::string:
-            output_ << "string default " << option.default_value;
+            if (option.id == UciOptionId::eval_file && nnue_autodiscovered_) {
+                // Informational only: the boot evaluator was installed by
+                // auto-discovery, not by a user-supplied path.
+                output_ << "string default <autodiscovery>";
+            } else {
+                output_ << "string default " << option.default_value;
+            }
             break;
         case UciOptionKind::button:
             output_ << "button";

@@ -101,6 +101,7 @@ int main(int argc, char* argv[]) {
     // the classical evaluator instead of failing the engine.
     const std::filesystem::path engine_directory = executable_directory(argc, argv);
     std::filesystem::path nnue_path;
+    bool autodiscovered_network = false;
     if (const char* environment_path = std::getenv("KOI_NNUE_PATH");
         environment_path != nullptr && *environment_path != '\0') {
         nnue_path = environment_path;
@@ -112,6 +113,7 @@ int main(int argc, char* argv[]) {
         if (auto discovered = koi::discover_nnue_network(engine_directory);
             discovered.has_value()) {
             nnue_path = *discovered;
+            autodiscovered_network = true;
         } else {
             std::error_code working_error;
             const std::filesystem::path working_directory =
@@ -120,6 +122,7 @@ int main(int argc, char* argv[]) {
                 if (auto discovered = koi::discover_nnue_network(working_directory);
                     discovered.has_value()) {
                     nnue_path = *discovered;
+                    autodiscovered_network = true;
                 }
             }
         }
@@ -152,6 +155,7 @@ int main(int argc, char* argv[]) {
     }
     koi::SearchService search_service(selection.evaluator, {}, 1);
     koi::UciController controller(std::cin, std::cout, std::cerr, std::move(search_service),
-                                  engine_directory);
+                                  engine_directory,
+                                  autodiscovered_network && selection.nnue_enabled);
     return controller.run();
 }
