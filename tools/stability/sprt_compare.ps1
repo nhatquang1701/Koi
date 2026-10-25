@@ -7,6 +7,10 @@ param(
     [string]$OpeningFile = (Join-Path $PSScriptRoot '../../tests/data/openings/openings-curated-32.txt'),
     [int]$Nodes = 20000,
     [string]$TimeControl = '',
+    # Fixed per-move budget for paired self-play gates (mutually exclusive with
+    # -TimeControl; -Nodes is ignored when this is set).
+    [ValidateRange(0, 600000)]
+    [int]$MovetimeMs = 0,
     [int]$Games = 1,
     [int]$MinGames = 20,
     [int]$MaxGames = 32,
@@ -100,6 +104,9 @@ Assert-FileExists $CandidatePath 'candidate engine'
 Assert-FileExists $BaselinePath 'baseline engine'
 Assert-FileExists $ReplayPath 'replay tool'
 Assert-FileExists $OpeningFile 'opening file'
+if (-not [string]::IsNullOrWhiteSpace($TimeControl) -and $MovetimeMs -gt 0) {
+    throw 'Choose -TimeControl or -MovetimeMs, not both.'
+}
 $openingCount = @(Get-Content -LiteralPath $OpeningFile |
     Where-Object { $_ -match '\S' -and $_ -notmatch '^\s*#' }).Count
 if ($openingCount -le 0) {
@@ -178,6 +185,8 @@ function Start-ColorRun([string]$Color) {
     )
     if ($TimeControl -ne '') {
         $arguments += @('-TimeControl', (& $quote $TimeControl))
+    } elseif ($MovetimeMs -gt 0) {
+        $arguments += @('-MovetimeMs', "$MovetimeMs")
     } else {
         $arguments += @('-Nodes', "$Nodes")
     }
