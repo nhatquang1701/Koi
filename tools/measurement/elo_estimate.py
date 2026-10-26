@@ -965,6 +965,12 @@ def _harness_command(
         raise EloEstimateError(f"match harness is missing: {script}")
     batch_id = batch.pair_id if batch is not None else "batch-00"
     command = [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), "-KoiPath", str(koi), "-OpponentPath", str(anchor.path), "-ReplayPath", str(replay), "-OpeningFile", str(openings), "-OutputDirectory", str(output_directory), "-Games", "1", "-KoiColor", color, "-KoiRandomSeed", "1", "-Hash", "512", "-Threads", "4", "-Speed", "100", "-KoiOwnBook", str(koi_options["OwnBook"]).lower(), "-KoiBookRandom", "false", "-BatchId", batch_id, "-RunLabel", run_label]
+    # Stockfish at 4 threads can exceed the harness's default 5 s per-move
+    # timeout under a real clock (1+0), which then aborts the ladder with an
+    # opponent-provenance failure.  Give every move a generous wall-clock
+    # budget: fixed-movetime ladders finish far below it, and clock ladders stop
+    # relying on the harness default.
+    command.extend(["-TimeoutMilliseconds", "30000"])
     if time_control is not None:
         command.extend(["-TimeControl", time_control])
     else:
