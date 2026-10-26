@@ -1763,7 +1763,7 @@ std::uint64_t UciController::begin_generation() {
 void UciController::write_handshake() {
     std::lock_guard lock(output_mutex_);
     output_ << "id name Koi\n"
-               "id author Koi contributors\n";
+               "id author Contributors\n";
     for (const UciOptionDescriptor& option : kUciOptions) {
         if (!option.advertised) {
             continue;

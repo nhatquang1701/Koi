@@ -23,7 +23,7 @@ boot choice. GPU NNUE is experimental, off at runtime, and scheduled for removal
 | Property | Value | Source |
 | --- | --- | --- |
 | Product name | `Koi` | `src/koi/uci_controller.cpp` (`write_handshake`) |
-| Author string | `Koi contributors` | `src/koi/uci_controller.cpp` |
+| Author string | `Contributors` | `src/koi/uci_controller.cpp` |
 | Protocol | UCI (Universal Chess Interface) | `src/koi/uci_controller.cpp` |
 | Rules variant | Standard chess only; no Chess960 or other variants | `src/koi/position.cpp` |
 | Language | C++26 (`CMAKE_CXX_STANDARD 26`) | `CMakeLists.txt` |
@@ -704,7 +704,7 @@ the search but cannot push it past the cap.
 
 ### 7.1 Handshake and options
 
-`uci` writes `id name Koi`, `id author Koi contributors`, then every
+`uci` writes `id name Koi`, `id author Contributors`, then every
 advertised option in the fixed `kUciOptions` order, then `uciok`
 (`src/koi/uci_controller.cpp:182-248, 1631-1664`). `Debug` and `DebugFile` are
 settable but intentionally not advertised, so 27 of the 29 entries are visible.
