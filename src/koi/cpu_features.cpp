@@ -36,7 +36,9 @@ namespace {
 
 } // namespace
 
-bool cpu_supports_avx2() noexcept {
+namespace {
+
+[[nodiscard]] bool detect_avx2_support() noexcept {
 #if !KOI_CPU_ARCH_X86
     return false;
 #elif defined(_MSC_VER)
@@ -81,7 +83,20 @@ bool cpu_supports_avx2() noexcept {
 #endif
 }
 
-bool cpu_supports_avx512() noexcept {
+} // namespace
+
+bool cpu_supports_avx2() noexcept {
+    // CPUID and XGETBV are serializing and can be a hypervisor exit.  The NNUE
+    // hot path (feature deltas, accumulator refresh, inference finish) calls
+    // this per move and per evaluation, and the answer cannot change for a
+    // running process, so detect the host once.
+    static const bool supported = detect_avx2_support();
+    return supported;
+}
+
+namespace {
+
+[[nodiscard]] bool detect_avx512_support() noexcept {
 #if !KOI_CPU_ARCH_X86
     return false;
 #elif defined(_MSC_VER)
@@ -141,6 +156,14 @@ bool cpu_supports_avx512() noexcept {
 #else
     return false;
 #endif
+}
+
+} // namespace
+
+bool cpu_supports_avx512() noexcept {
+    // Same rationale as cpu_supports_avx2(): detect once per process.
+    static const bool supported = detect_avx512_support();
+    return supported;
 }
 
 bool cpu_supports_fast_pext() noexcept {
