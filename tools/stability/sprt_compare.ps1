@@ -230,6 +230,8 @@ function Read-ColorResult([string]$Color) {
 Write-Output "sprt-compare: candidate $CandidatePath vs baseline $BaselinePath"
 if ($TimeControl -ne '') {
     Write-Output "sprt-compare: fixed time control $TimeControl, $Games game(s) per opening and color"
+} elseif ($MovetimeMs -gt 0) {
+    Write-Output "sprt-compare: fixed movetime ${MovetimeMs} ms, $Games game(s) per opening and color"
 } else {
     Write-Output "sprt-compare: $Nodes nodes, $Games game(s) per opening and color"
 }
