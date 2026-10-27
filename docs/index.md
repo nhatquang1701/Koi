@@ -19,8 +19,8 @@ macOS arm64 (Apple Silicon) is a source-build target: use Homebrew LLVM clang
 -DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is CUDA-only and unavailable on macOS; the
 CPU NNUE and classical evaluator paths work normally.
 
-Koi has no required configuration file. Begin with `Hash=512`, `Threads=1`,
-and `Speed=100`. `Threads=1` provides deterministic search; higher values use
+Koi has no required configuration file. Begin with `Hash=512` and `Threads=1`.
+`Threads=1` provides deterministic search; higher values use
 Lazy SMP and can publish different valid results. The opening book is disabled
 by default (`OwnBook=false`). Enable it only with a licensed user-supplied
 `book.bin` beside the executable.

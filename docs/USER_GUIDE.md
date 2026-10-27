@@ -53,8 +53,8 @@ first, followed by staged good captures/promotions, history-ranked good quiets
 bad quiets. Stable UCI-coordinate tie-breaking keeps repeated searches
 deterministic. The public diagnostic ordering API retains its documented
 capture/killer/history view; the richer staged picker is recursive-search
-state. There is no public rule API for these policies; `Threads` and `Speed`
-are UCI controls over the search runtime.
+state. There is no public rule API for these policies; `Threads` is the UCI
+control over the search runtime.
 
 The search lifecycle is decomposed behind the public `SearchService` and
 `SearchHandle` contracts. `detail::SearchSession` owns one request's immutable
@@ -467,7 +467,7 @@ optional PowerShell harness:
 .\tools\stability\uci_match.ps1 `
   -KoiPath .\build\release\koi-engine.exe `
   -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
-  -Depth 6 -Threads 4 -Speed 100 -Hash 512 `
+  -Depth 6 -Threads 4 -Hash 512 `
   -OutputDirectory .\artifacts\matches\match-results
 ```
 
@@ -546,8 +546,8 @@ exact bound described in the release evidence report; this SPRT utility is explo
 ## Rough local Elo measurement
 
 `tools/measurement/elo_estimate.py` is a standard-library-only, measurement-only harness. Its
-primary configuration is no-book, 1+0, Koi `Hash=512`, `Threads=4`, and
-`Speed=100`, with 32 named opening lines played once with Koi White and once with
+primary configuration is no-book, 1+0, Koi `Hash=512` and `Threads=4`, with 32
+named opening lines played once with Koi White and once with
 Koi Black at each Stockfish anchor. The initial schedule is two 64-game anchor
 batches (128 games); adaptive batches may extend the run to 192, 256, or 320 games.
 The estimator uses 2,000 paired-opening bootstrap samples and rejects incomplete,
@@ -631,7 +631,7 @@ not a universal Elo claim.
 
 ## Strength regression suite
 
-The deterministic `Threads=1`, `Speed=100` reference path includes a fixed-depth
+The deterministic `Threads=1` reference path includes a fixed-depth
 64-case tactical hard gate and a separate 128-case optional positional corpus. The
 hard gate covers mates, checks, evasions, forks, pins, poisoned captures, promotions,
 defensive choices, and pawn-race motifs, plus the retained legacy queen-capture case.
@@ -686,12 +686,12 @@ built from scratch; all 17 registered CTest targets passed. Debug completed in
 tests, replay validation, UCI transcripts, benchmark/profile checks, and optional
 Python tests.
 
-The fresh Release hard gate ran at `Threads` 1, 2, and 4 with `Speed 100`: each
+The fresh Release hard gate ran at `Threads` 1, 2, and 4: each
 reported 64/64 accepted tactical rows, and normalized move/score rows were
 identical across all three runs. Node counts and elapsed times are intentionally
 not required to match. The optional 128-position profile completed with 32
 accepted rows and is diagnostic rather than a pass/fail Elo gate. A timed Release
-run at `Threads 4`, `Speed 100` visited 183,807 nodes plus quiescence nodes over
+run at `Threads 4` visited 183,807 nodes plus quiescence nodes over
 157 ms (about 1.17M visited nodes/s aggregated). Timing is machine-sensitive;
 untimed profiles report NPS as zero and identify `hash_state` as `cold` or `warm`.
 
@@ -699,8 +699,8 @@ The fresh UCI smoke transcript produced 26 lines, 21 option declarations, one
 legal coordinate `bestmove`, and empty stderr. CTest and the direct Release
 process checks covered the handshake, analysis/tutor `MultiPV`, ponder/`ponderhit`,
 book hit and missing-book fallback, `stop`, `quit`, input EOF, and clean stdout.
-The fresh En Croissant-style process scenario completed 24 legal plies with `Hash=512`,
-`Threads=4`, and `Speed=100`; both engine processes shut down cleanly. Direct
+The fresh En Croissant-style process scenario completed 24 legal plies with `Hash=512`
+and `Threads=4`; both engine processes shut down cleanly. Direct
 replay output classified the repeated knight sequence as a legal rule draw.
 
 No Stockfish executable, fresh CPL corpus, or fresh color-balanced match data was
@@ -758,8 +758,9 @@ $engine = (Resolve-Path .\build\release\koi-engine.exe).Path
 ) | & $engine
 ```
 
-The output should include, in order, the engine identification lines, the
-`RandomSeed`, `Hash`, `Threads`, `Speed`, `UCI_AnalyseMode`, `MultiPV`, `Ponder`,
+The output should include, in order, the versioned engine identification lines
+(`id name Koi <version>` plus an `info string build <commit>` line), the
+`RandomSeed`, `Hash`, `Threads`, `UCI_AnalyseMode`, `MultiPV`, `Ponder`,
 `OwnBook`, `BookFile`, `BookDepth`, `BookRandom`, and `Clear Hash` option
 declarations, `uciok`, `readyok`,
 zero or more valid `info` lines, and one legal coordinate-notation `bestmove`
@@ -769,8 +770,9 @@ from the starting position (for example, `bestmove e2e4`).
 
 - `uci` reports the engine identity, the compatibility `RandomSeed` option,
   `Hash` (default 512 MB, range 1–4096 MB), `Threads` (default 1, capped at
-  `min(64, hardware_concurrency)`), `Speed` (1–100, default 100), the opening
-  book options, and the `Clear Hash` button.
+  `min(64, hardware_concurrency)`), the opening book options, and the
+  `Clear Hash` button. The `Speed` option was removed: time allocation is
+  always the neutral 100 %% factor (use `Slow Mover` for a coarse time tweak).
 - `isready` responds immediately with `readyok`, including while searching.
 - `ucinewgame` resets the position and clears the persistent search hash
   (equivalent to `Clear Hash`) after cancelling and joining any active search;
@@ -788,11 +790,8 @@ from the starting position (for example, `bestmove e2e4`).
 - `setoption name Threads value <N>` selects the worker count. `Threads 1`
   keeps the deterministic serial search. `Threads > 1` adds Lazy SMP helpers
   and is intentionally nondeterministic because helpers share the transposition
-  table. `setoption name Speed value <1..100>` scales only movetime and
-  clock-derived budgets;
-  explicit depth, node, and infinite searches are unchanged. Changing either
-  option stops and joins the active search before the new snapshot is used by
-  the next `go` command.
+  table. Changing the thread option stops and joins the active search before the
+  new snapshot is used by the next `go` command.
 - When boot-time auto-discovery actually loaded a network, the `EvalFile` option
   advertises the informational default `<autodiscovery>`; echoing it back is a
   no-op that keeps the boot evaluator. The marker is not a file path.
@@ -819,7 +818,7 @@ from the starting position (for example, `bestmove e2e4`).
   ignored. `go mate N` searches to the depth that proves or refutes a mate in
   `N` (2N-1 plies). `go perft N` answers with `info string <move>: <nodes>`
   lines plus `info string Nodes searched: <total>` and no `bestmove`. A bare `go`
-  uses a 250 ms move-time fallback, scaled by `Speed`. If a clock is supplied
+  uses a 250 ms move-time fallback. If a clock is supplied
   only for the non-moving side, Koi uses the same bounded fallback so malformed
   or asymmetric GUI commands cannot leave the engine searching indefinitely.
 - A depth limit is capped internally at 64 plies. `nodes`, `movetime`, and
@@ -855,15 +854,14 @@ depth or node limit is combined with a side-to-move clock or `movetime`, the
 explicit limit stays a strict upper bound while the time limit remains a
 deadline: the search stops at whichever is reached first.
 For clock searches, the requested budget is adjusted in this order:
-`Slow Mover`, then `Speed`, then `Move Overhead` is subtracted, followed
-by the existing safety margin and minimum safe budget. An explicit `movetime`
-is a direct request, so only `Speed` scales it (then `Move Overhead` and the
-safety margin apply) and the budget never exceeds the requested value; `Slow
-Mover` does not extend a `movetime` search. `Move Overhead` defaults
-to 30 ms and accepts 0..5000; `Slow Mover` defaults to 100 and accepts 10..1000.
-`Speed` defaults to 100 and accepts 1..100. These controls affect allocation,
-not explicit depth or node limits, and changing one while searching cancels and
-joins the old generation before the next search uses the new snapshot.
+`Slow Mover`, then `Move Overhead` is subtracted, followed by the existing
+safety margin and minimum safe budget. An explicit `movetime` is a direct
+request (then `Move Overhead` and the safety margin apply) and the budget never
+exceeds the requested value; `Slow Mover` does not extend a `movetime` search.
+`Move Overhead` defaults to 30 ms and accepts 0..5000; `Slow Mover` defaults to
+100 and accepts 10..1000. These controls affect allocation, not explicit depth
+or node limits, and changing one while searching cancels and joins the old
+generation before the next search uses the new snapshot.
 
 For online bots and network GUIs, Koi also learns the GUI round trip: when a
 clock search reports less remaining time than Koi's own elapsed search plus the
@@ -958,7 +956,6 @@ Recommended starting options are:
 ```text
 setoption name Hash value 512
 setoption name Threads value 4
-setoption name Speed value 100
 setoption name OwnBook value true
 setoption name BookFile value book.bin
 setoption name BookDepth value 16
@@ -992,7 +989,6 @@ Recommended starting settings for a machine with sufficient memory are:
 ```text
 setoption name Hash value 512
 setoption name Threads value 4
-setoption name Speed value 100
 ```
 
 The hash is one shared total table and is not multiplied by the thread count.
@@ -1090,7 +1086,7 @@ archive itself. macOS arm64 (Apple Silicon) archives are published as well.
 
 Koi has no required configuration file. En Croissant or another UCI GUI sends
 the options at session start; the portable release defaults are `RandomSeed=0`,
-`Hash=512`, `Threads=1`, `Speed=100`, `UCI_AnalyseMode=false`, `MultiPV=1`,
+`Hash=512`, `Threads=1`, `UCI_AnalyseMode=false`, `MultiPV=1`,
 `Ponder=false`, `OwnBook=false`, `BookFile=book.bin`, `BookDepth=16`,
 `Contempt=0`, `Dynamic Overhead=false`,
 `BookRandom=false`, `BookSafety=true`, `BookSafetyDepth=2`,
@@ -1098,8 +1094,8 @@ the options at session start; the portable release defaults are `RandomSeed=0`,
 `SyzygyPath=""`, `SyzygyProbeDepth=1`, `SyzygyProbeLimit=7`,
 `Syzygy50MoveRule=true`, `SyzygyInteriorDepth=0`, and `EvalFile=""`
 (empty keeps the boot-time evaluator).
-For the recommended En Croissant smoke scenario, use `Hash=512`, `Threads=4`, and
-`Speed=100`, then keep the book and Syzygy paths explicitly configured if those
+For the recommended En Croissant smoke scenario, use `Hash=512` and `Threads=4`,
+then keep the book and Syzygy paths explicitly configured if those
 assets are available.
 
 The release packages carry a CC0 1.0 Polyglot book as `book/koi.bin`, with a

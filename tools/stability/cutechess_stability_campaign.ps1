@@ -9,7 +9,6 @@ param(
     [int]$MaxMoves = 200,
     [string]$TimeControl = '1+0',
     [int]$Hash = 512,
-    [int]$Speed = 100,
     [string]$BookFile = 'book.bin',
     [ValidateRange(0, 40)]
     [int]$BookDepth = 16,
@@ -201,7 +200,6 @@ function New-Schedule([int]$RequestedGames, [int]$ScheduleSeed, $Allocation, $Op
 if ($Games -lt 1) { throw 'Games must be at least 1.' }
 if ($MaxMoves -lt 1) { throw 'MaxMoves must be at least 1.' }
 if ($Hash -lt 1 -or $Hash -gt 4096) { throw 'Hash must be between 1 and 4096 MB.' }
-if ($Speed -lt 1 -or $Speed -gt 100) { throw 'Speed must be between 1 and 100.' }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $stabilityScript = Join-Path $repositoryRoot 'tools/stability/cutechess_stability.ps1'
@@ -257,7 +255,7 @@ $manifest = [ordered]@{
         max_moves = $MaxMoves
         time_control = $TimeControl
         hash_mb = $Hash
-        speed = $Speed
+        speed = 100
         book_file = $BookFile
         book_resolved_path = $bookResolved
         book_available = $bookAvailable
@@ -316,7 +314,6 @@ if (-not $PlanOnly) {
             TimeControl = $TimeControl
             Hash = $Hash
             Threads = $item.threads
-            Speed = $Speed
             OwnBook = [bool]$item.book_enabled
             BookFile = $BookFile
             BookDepth = $BookDepth

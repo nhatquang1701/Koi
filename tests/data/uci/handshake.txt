@@ -1,9 +1,8 @@
-id name Koi
+id name Koi {build_version}
 id author Contributors
 option name RandomSeed type spin default 0 min 0 max 2147483647
 option name Hash type spin default 512 min 1 max 4096
 option name Threads type spin default 1 min 1 max {max_threads}
-option name Speed type spin default 100 min 1 max 100
 option name UCI_AnalyseMode type check default false
 option name MultiPV type spin default 1 min 1 max 16
 option name Ponder type check default false
@@ -27,4 +26,5 @@ option name SyzygyInteriorDepth type spin default 0 min 0 max 100
 option name Syzygy50MoveRule type check default true
 option name EvalFile type string default {empty}
 option name GpuNnue type combo default off var auto var on var off
+info string build {build_commit}
 uciok

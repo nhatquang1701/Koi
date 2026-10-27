@@ -140,7 +140,7 @@ function Assert-DiagnosticHarnessArtifacts {
         $successDirectory = Join-Path $fixtureRoot 'success'
         $successOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
             -CutechessPath $fakeCutechess -OpeningFile $fixtureOpening -OutputDirectory $successDirectory `
-            -Games 2 -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 `
+            -Games 2 -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 `
             -OwnBook:$false -TimeoutMilliseconds 5000)
         if ($LASTEXITCODE -ne 0) {
             throw "Fixture stability run exited with ${LASTEXITCODE}: $($successOutput -join ' | ')"
@@ -190,7 +190,7 @@ function Assert-DiagnosticHarnessArtifacts {
         $oneDirectory = Join-Path $fixtureRoot 'one'
         $oneOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
             -CutechessPath $fakeCutechess -OutputDirectory $oneDirectory -Games 1 -MaxMoves 4 `
-            -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 -OwnBook:$false -TimeoutMilliseconds 5000)
+            -TimeControl '1+0' -Hash 16 -Threads 1 -OwnBook:$false -TimeoutMilliseconds 5000)
         if ($LASTEXITCODE -ne 0) {
             throw "An odd one-game run must allow the single Cutechess-assigned color: $($oneOutput -join ' | ')"
         }
@@ -205,7 +205,7 @@ function Assert-DiagnosticHarnessArtifacts {
             $fixedDirectory = Join-Path $fixtureRoot "fixed-$fixedColor"
             $fixedOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
                 -CutechessPath $fakeCutechess -OutputDirectory $fixedDirectory -Games 2 -MaxMoves 4 `
-                -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 -KoiColor $fixedColor `
+                -TimeControl '1+0' -Hash 16 -Threads 1 -KoiColor $fixedColor `
                 -OwnBook:$false -TimeoutMilliseconds 5000)
             if ($LASTEXITCODE -ne 0) {
                 throw "A fixed-$fixedColor two-game run must accept both games in the requested color: $($fixedOutput -join ' | ')"
@@ -224,7 +224,7 @@ function Assert-DiagnosticHarnessArtifacts {
         $fenDirectory = Join-Path $fixtureRoot 'fen'
         $fenOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
             -CutechessPath $fakeCutechess -FenFile $fixtureFen -OutputDirectory $fenDirectory `
-            -Games 2 -MaxMoves 1 -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 `
+            -Games 2 -MaxMoves 1 -TimeControl '1+0' -Hash 16 -Threads 1 `
             -OwnBook:$false -TimeoutMilliseconds 5000)
         if ($LASTEXITCODE -ne 0) {
             throw "FEN fixture run exited with ${LASTEXITCODE}: $($fenOutput -join ' | ')"
@@ -270,7 +270,7 @@ function Assert-DiagnosticHarnessArtifacts {
         $crashDirectory = Join-Path $fixtureRoot 'crash'
         $crashOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
             -CutechessPath $fakeCutechess -OutputDirectory $crashDirectory -Games 2 `
-            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 `
+            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 `
             -OwnBook:$false -TimeoutMilliseconds 5000)
         if ($LASTEXITCODE -eq 0) {
             throw 'A crashing Cutechess process must fail the stability run.'
@@ -290,7 +290,7 @@ function Assert-DiagnosticHarnessArtifacts {
         $disconnectDirectory = Join-Path $fixtureRoot 'disconnect'
         $disconnectOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
             -CutechessPath $fakeCutechess -OutputDirectory $disconnectDirectory -Games 2 `
-            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 `
+            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 `
             -OwnBook:$false -TimeoutMilliseconds 5000)
         if ($LASTEXITCODE -eq 0 -or
             (Get-Content -LiteralPath (Get-ReportPath $disconnectOutput) -Raw | ConvertFrom-Json).results.termination_classification -ne 'disconnect') {
@@ -301,7 +301,7 @@ function Assert-DiagnosticHarnessArtifacts {
         $noResultDirectory = Join-Path $fixtureRoot 'no-result'
         $noResultOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
             -CutechessPath $fakeCutechess -OutputDirectory $noResultDirectory -Games 2 `
-            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 `
+            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 `
             -OwnBook:$false -TimeoutMilliseconds 5000)
         $noResultReport = Get-Content -LiteralPath (Get-ReportPath $noResultOutput) -Raw | ConvertFrom-Json
         if ($LASTEXITCODE -eq 0 -or $noResultReport.results.termination_classification -ne 'no-result' -or
@@ -313,7 +313,7 @@ function Assert-DiagnosticHarnessArtifacts {
         $timeoutDirectory = Join-Path $fixtureRoot 'timeout'
         $timeoutOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
             -CutechessPath $fakeCutechess -OutputDirectory $timeoutDirectory -Games 2 `
-            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 `
+            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 `
             -OwnBook:$false -TimeoutMilliseconds 100)
         if ($LASTEXITCODE -eq 0) {
             throw 'A timed-out Cutechess process must fail the stability run.'
@@ -329,7 +329,7 @@ function Assert-DiagnosticHarnessArtifacts {
         $timeForfeitDirectory = Join-Path $fixtureRoot 'time-forfeit'
         $timeForfeitOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
             -CutechessPath $fakeCutechess -OutputDirectory $timeForfeitDirectory -Games 1 `
-            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 `
+            -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 `
             -OwnBook:$false -TimeoutMilliseconds 5000)
         if ($LASTEXITCODE -eq 0) {
             throw 'A Cutechess loses-on-time result must fail the stability run.'
@@ -373,7 +373,7 @@ $fenFile = Join-Path $outputDirectory 'positions.fen'
 try {
     $output = & $StabilityScript -KoiPath $EnginePath -OpponentPath $OpponentPath `
         -CutechessPath $CutechessPath -OutputDirectory $outputDirectory -Games 2 `
-        -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 `
+        -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 `
         -OwnBook:$false
     if ($LASTEXITCODE -ne 0) {
         throw "Cutechess stability smoke exited with ${LASTEXITCODE}: $($output -join ' | ')"
@@ -399,7 +399,7 @@ try {
     $fenOutputDirectory = Join-Path $outputDirectory 'fen-run'
     $fenOutput = & $StabilityScript -KoiPath $EnginePath -OpponentPath $OpponentPath `
         -CutechessPath $CutechessPath -FenFile $fenFile -OutputDirectory $fenOutputDirectory `
-        -Games 2 -MaxMoves 1 -TimeControl '1+0' -Hash 16 -Threads 1 -Speed 100 `
+        -Games 2 -MaxMoves 1 -TimeControl '1+0' -Hash 16 -Threads 1 `
         -OwnBook:$false
     if ($LASTEXITCODE -ne 0) {
         throw "Cutechess FEN smoke exited with ${LASTEXITCODE}: $($fenOutput -join ' | ')"

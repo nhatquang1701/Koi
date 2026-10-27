@@ -60,17 +60,39 @@ $handshakeFixture = [System.IO.Path]::GetFullPath(
 if (-not (Test-Path -LiteralPath $handshakeFixture)) {
     throw "Missing handshake fixture: $handshakeFixture"
 }
-$expectedHandshake = @(
-    Get-Content -LiteralPath $handshakeFixture | ForEach-Object {
-        $_.Replace('{max_threads}', [string]$MaximumThreads).Replace('{empty}', '')
+$expectedHandshake = @(Get-Content -LiteralPath $handshakeFixture)
+# The identity line carries the build version and the build line carries the
+# exact commit, so both are host/build dependent; every other line is exact.
+function Assert-UciHandshake {
+    param($UciSession, [string]$Label)
+    $expectedId = 'id name Koi {build_version}'
+    if ($expectedHandshake[0] -cne $expectedId) {
+        throw 'The UCI handshake fixture must start with the versioned identity line.'
     }
-)
-foreach ($expected in $expectedHandshake) {
-    $actual = Read-UciLine $session $expected
-    if ($actual -cne $expected) {
-        throw "Unexpected handshake line. Expected '$expected', received '$actual'."
+    $actualId = Read-UciLine $UciSession "$Label id name"
+    if ($actualId -notmatch '^id name Koi (\S+)$') {
+        throw "Unexpected $Label engine identity line: '$actualId'."
+    }
+    $buildVersion = $Matches[1]
+    for ($lineIndex = 1; $lineIndex -lt $expectedHandshake.Count; $lineIndex++) {
+        $expected = $expectedHandshake[$lineIndex].
+            Replace('{max_threads}', [string]$MaximumThreads).
+            Replace('{empty}', '').
+            Replace('{build_version}', $buildVersion)
+        if ($expected -ceq 'info string build {build_commit}') {
+            $actual = Read-UciLine $UciSession "$Label build commit"
+            if ($actual -cnotmatch '^info string build \S+$') {
+                throw "Unexpected $Label build line: '$actual'."
+            }
+            continue
+        }
+        $actual = Read-UciLine $UciSession $expected
+        if ($actual -cne $expected) {
+            throw "Unexpected $Label handshake line. Expected '$expected', received '$actual'."
+        }
     }
 }
+Assert-UciHandshake $session 'initial'
 
 Send-UciCommand $session 'isready'
 if ((Read-UciLine $session 'initial readyok') -cne 'readyok') {
@@ -89,11 +111,7 @@ try {
     $env:PATH = "$(Split-Path -Parent $EnginePath)$([System.IO.Path]::PathSeparator)$originalPath"
     $bookSession = Start-UciSession -Executable $engineFileName -WorkingDirectory $bookLaunchDirectory
     Send-UciCommand $bookSession 'uci'
-    foreach ($expected in $expectedHandshake) {
-        if ((Read-UciLine $bookSession $expected) -cne $expected) {
-            throw "Unexpected book-session handshake line. Expected '$expected'."
-        }
-    }
+    Assert-UciHandshake $bookSession 'book-session'
     Send-UciCommand $bookSession 'setoption name OwnBook value true'
     Send-UciCommand $bookSession 'setoption name RandomSeed value 29'
     Send-UciCommand $bookSession "setoption name BookFile value $bookFileName"
@@ -224,7 +242,6 @@ if ($searchmovesBestmove -cne 'bestmove e2e4') {
 
 Send-UciCommand $session 'position startpos'
 Send-UciCommand $session "setoption name Threads value $MaximumThreads"
-Send-UciCommand $session 'setoption name Speed value 50'
 Send-UciCommand $session 'go infinite'
 Send-UciCommand $session 'isready'
 while ($true) {
@@ -410,7 +427,6 @@ stop
 go
 stop
 setoption name Threads value 1
-setoption name Speed value 100
 setoption name Hash value 1
 setoption name Clear Hash
 quit
@@ -529,13 +545,8 @@ if (@($eofLines | Where-Object { $_ -like 'bestmove *' }).Count -ne 0) {
 
 $gameSession = Start-UciSession -Executable $EnginePath
 Send-UciCommand $gameSession 'uci'
-foreach ($expected in $expectedHandshake) {
-    if ((Read-UciLine $gameSession $expected) -cne $expected) {
-        throw "Unexpected multi-ply handshake line. Expected '$expected'."
-    }
-}
+Assert-UciHandshake $gameSession 'multi-ply'
 Send-UciCommand $gameSession "setoption name Threads value $MaximumThreads"
-Send-UciCommand $gameSession 'setoption name Speed value 50'
 Send-UciCommand $gameSession 'setoption name OwnBook value false'
 $gameMoves = [System.Collections.Generic.List[string]]::new()
 for ($ply = 0; $ply -lt 6; $ply++) {

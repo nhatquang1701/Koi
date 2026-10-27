@@ -255,7 +255,6 @@ $bookParagraph
 Recommended starting options:
   Hash=512
   Threads=1
-  Speed=100
   OwnBook=false
   BookFile=book.bin
   BookDepth=16

@@ -310,7 +310,7 @@ try {
     $matchOutput = Invoke-LoggedCommand (Get-Process -Id $PID).Path @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $matchScript,
         '-KoiPath', $enginePath, '-OpponentPath', $enginePath, '-ReplayPath', $replayPath,
         '-Depth', '2', '-Games', '1', '-MaxPlies', '24', '-TimeoutMilliseconds', '5000',
-        '-Threads', "$enCroissantThreads", '-Speed', '100', '-Hash', '512', '-KoiOwnBook', 'false',
+        '-Threads', "$enCroissantThreads", '-Hash', '512', '-KoiOwnBook', 'false',
         '-OutputDirectory', $enCroissantDirectory) (Join-Path $verificationRoot 'en-croissant-style-command.txt')
     $enCroissantJson = @(Get-ChildItem -LiteralPath $enCroissantDirectory -Filter '*.json' -File)
     $enCroissantPgn = @(Get-ChildItem -LiteralPath $enCroissantDirectory -Filter '*.pgn' -File)

@@ -13,7 +13,6 @@ param(
     [string]$TimeControl = '1+0',
     [int]$Hash = 512,
     [int]$Threads = 1,
-    [int]$Speed = 100,
     [bool]$OwnBook = $false,
     [string]$BookFile = 'book.bin',
     [ValidateRange(0, 40)]
@@ -272,9 +271,6 @@ if ($Hash -lt 1 -or $Hash -gt 4096) {
 if ($Threads -lt 1 -or $Threads -gt 64) {
     throw 'Threads must be between 1 and 64.'
 }
-if ($Speed -lt 1 -or $Speed -gt 100) {
-    throw 'Speed must be between 1 and 100.'
-}
 if ($BookDepth -lt 0 -or $BookDepth -gt 40) {
     throw 'BookDepth must be between 0 and 40.'
 }
@@ -445,7 +441,7 @@ if (-not [string]::IsNullOrWhiteSpace($FenFile)) {
 
 $koiArguments = @(
     '-engine', "cmd=$koi", 'name=Koi', 'proto=uci',
-    "option.Hash=$Hash", "option.Threads=$Threads", "option.Speed=$Speed",
+    "option.Hash=$Hash", "option.Threads=$Threads",
     "option.OwnBook=$($OwnBook.ToString().ToLowerInvariant())",
     "option.BookFile=$bookOption", "option.BookDepth=$BookDepth",
     'option.BookRandom=false', "stderr=$koiStderrPath"
@@ -530,7 +526,7 @@ $initialManifest = [ordered]@{
     configuration = [ordered]@{
         hash_mb = $Hash
         threads = $Threads
-        speed = $Speed
+        speed = 100
         own_book = $OwnBook
         book_file = $bookOption
         book_depth = $BookDepth
@@ -697,7 +693,7 @@ $report = [ordered]@{
         time_control = $TimeControl
         hash_mb = $Hash
         threads = $Threads
-        speed = $Speed
+        speed = 100
         own_book = $OwnBook
         book_file = $bookOption
         book_depth = $BookDepth
@@ -720,7 +716,7 @@ $report = [ordered]@{
             time_control = $TimeControl
             hash_mb = $Hash
             threads = $Threads
-            speed = $Speed
+            speed = 100
             own_book = $OwnBook
             book_depth = $BookDepth
         }

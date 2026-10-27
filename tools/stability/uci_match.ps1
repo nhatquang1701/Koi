@@ -81,7 +81,6 @@ param(
     [int]$Threads = 1,
 
     [ValidateRange(1, 100)]
-    [int]$Speed = 100,
 
     [ValidateRange(1, 4096)]
     [int]$Hash = 16,
@@ -647,8 +646,7 @@ function Initialize-UciEngine($Engine) {
 
     foreach ($option in @(
         "setoption name Hash value $Hash",
-        "setoption name Threads value $Threads",
-        "setoption name Speed value $Speed"
+        "setoption name Threads value $Threads"
     )) {
         Send-UciLine $Engine $option
         $Engine.SentOptions.Add($option)
@@ -1559,7 +1557,7 @@ $report = [ordered]@{
         movetime_ms = $MovetimeMs
         nodes = $Nodes
         threads = $Threads
-        speed = $Speed
+        speed = 100
         hash_mb = $Hash
         max_plies = $MaxPlies
         timeout_ms = $TimeoutMilliseconds

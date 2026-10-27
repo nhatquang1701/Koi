@@ -89,7 +89,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--book-depth", type=int, default=16, help="Koi BookDepth value")
     parser.add_argument("--book-random", choices=("true", "false"), default="false", help="Koi BookRandom value")
     parser.add_argument("--threads", type=_positive_int, default=4, help="Koi and opponent Threads")
-    parser.add_argument("--speed", type=_positive_int, default=100, help="Koi Speed")
     parser.add_argument("--hash", type=_positive_int, default=512, dest="hash_mb", help="Koi Hash in MiB")
     parser.add_argument(
         "--opponent-elo",
@@ -177,7 +176,6 @@ def build_command(args: argparse.Namespace, powershell: Optional[str] = None) ->
     _append(command, "-KoiBookDepth", args.book_depth)
     _append(command, "-KoiBookRandom", args.book_random)
     _append(command, "-Threads", args.threads)
-    _append(command, "-Speed", args.speed)
     _append(command, "-Hash", args.hash_mb)
     if getattr(args, "opponent_elo", None) is not None:
         _append(command, "-OpponentElo", args.opponent_elo)

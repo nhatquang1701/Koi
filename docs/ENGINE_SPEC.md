@@ -614,15 +614,15 @@ unless another file is named.
 ### 6.1 Budget construction
 
 `TimeManager::initialize` (`src/koi/time_manager.cpp:124-281`) applies these rules
-in order. `Speed` is a percentage (1..100, default 100); `Slow Mover` is a
-percentage (10..1000, default 100); `Move Overhead` is milliseconds (0..5000,
+in order. `Slow Mover` is a percentage (10..1000, default 100); `Move Overhead`
+is milliseconds (0..5000,
 default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
 
 1. **Unbounded searches** (`infinite`, `ponder`) get no deadline. Node limits
    still apply.
 2. **Node limit**: stored as the exact requested `nodes` value and checked on
    every node reservation.
-3. **`movetime`**: `scaled = movetime * Speed / 100`; then subtract the move
+3. **`movetime`**: the request is used directly; then subtract the move
    overhead; then apply the safety margin `max(1, min(50, duration/20))`. The
    result is capped at the original request. `Slow Mover` does not extend a
    `movetime`. Soft and hard budgets are both this value.
@@ -653,7 +653,7 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      also used 3 whenever an increment existed; on a 10+2 clock that let an
      unstable move take ~74 s twice in a row and drained the game clock.
      Emergency pacing tightens the low-clock case further.
-   - Budgets are scaled by `Slow Mover`, then by `Speed`, and capped at
+   - Budgets are scaled by `Slow Mover` and capped at
      `usable`; soft is capped at hard.
    - Emergency taper: horizon `max(10, horizon / 2)`, emergency base
      `usable / horizon`; soft becomes `min(soft, emergency_base + credit)`; the
@@ -695,8 +695,8 @@ the search but cannot push it past the cap.
 - When a depth or node limit is combined with a clock or `movetime`, the explicit
   limit remains an upper bound and the time limit a deadline; whichever is
   reached first stops the search.
-- A bare `go`, or one with only the non-moving side's clock, uses a 250 ms
-  fallback scaled by `Speed` (`kBareGoFallback`).
+- A bare `go`, or one with only the non-moving side's clock, uses the 250 ms
+  `kBareGoFallback` fallback.
 - A depth limit is clamped to 64 in the runner; `go mate N` is capped at 64 and
   converted to `2N - 1` plies; `go perft N` is capped at 10.
 
@@ -704,17 +704,19 @@ the search but cannot push it past the cap.
 
 ### 7.1 Handshake and options
 
-`uci` writes `id name Koi`, `id author Contributors`, then every
-advertised option in the fixed `kUciOptions` order, then `uciok`
-(`src/koi/uci_controller.cpp:182-248, 1631-1664`). `Debug` and `DebugFile` are
-settable but intentionally not advertised, so 27 of the 29 entries are visible.
+`uci` writes `id name Koi <version>` (the CMake `project()` version pin),
+`id author Contributors`, an `info string build <commit>` line carrying the
+checkout commit recorded at configure time, then every advertised option in the
+fixed `kUciOptions` order, then `uciok`
+(`src/koi/uci_controller.cpp`). `Debug` and `DebugFile` are settable but
+intentionally not advertised, so 26 of the 28 entries are visible. There is no
+`Speed` option: time allocation always uses the neutral 100 % factor.
 
 | Option | Type | Default | Range | Semantics |
 | --- | --- | --- | --- | --- |
 | `RandomSeed` | spin | 0 | 0..2147483647 | Seeds book selection only; 0 is deterministic per position. Search itself never uses it |
 | `Hash` | spin | 512 | 1..4096 MB | Shared transposition table size; resizing stops and joins the active search; physical/commit caps may reduce it with a diagnostic |
 | `Threads` | spin | 1 | 1..min(64, hardware concurrency) | Worker count; 1 is deterministic; >1 uses Lazy SMP and is nondeterministic |
-| `Speed` | spin | 100 | 1..100 | Scales movetime and clock budgets only; explicit depth/node searches are unchanged |
 | `UCI_AnalyseMode` | check | false | true/false | Analysis mode; bypasses book selection and affects root tablebase eligibility |
 | `MultiPV` | spin | 1 | 1..16 | Number of published PV lines; >1 uses the root-parallel path |
 | `Ponder` | check | false | true/false | Informational for the GUI; the engine always appends a known ponder move to `bestmove` |
@@ -748,7 +750,7 @@ Rules for `setoption`:
   for resource options that would otherwise stop the search.
 - A changed option that alters search resources or policy stops and suppresses the
   active search before the new value is committed, so the next `go` uses a coherent
-  snapshot. This includes `Hash`, `Threads`, `Speed`, `MultiPV`, `Slow Mover`,
+  snapshot. This includes `Hash`, `Threads`, `MultiPV`, `Slow Mover`,
   `Move Overhead`, `Contempt`, `OwnBook`, book options, `Syzygy*`, `EvalFile`,
   `GpuNnue`, `Debug`, and `StrengthMode`. `Clear Hash` and `ucinewgame` also stop
   and join first.

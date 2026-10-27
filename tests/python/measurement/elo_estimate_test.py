@@ -65,12 +65,12 @@ def option_line(name, value):
 def make_match_report(paths, anchor, color, *, result="1-0", own_book=False, eval_file=None):
     openings = opening_map()
     koi_options = [
-        option_line("Hash", 512), option_line("Threads", 4), option_line("Speed", 100),
+        option_line("Hash", 512), option_line("Threads", 4),
         option_line("RandomSeed", 1), option_line("OwnBook", own_book),
         option_line("BookFile", paths["book.bin"] if own_book else "book.bin"),
         option_line("BookDepth", 16), option_line("BookRandom", False),
     ]
-    opponent_options = [option_line("Hash", 512), option_line("Threads", 4), option_line("Speed", 100)]
+    opponent_options = [option_line("Hash", 512), option_line("Threads", 4)]
     if anchor.stockfish_elo is not None:
         opponent_options += [option_line("UCI_LimitStrength", True), option_line("UCI_Elo", anchor.rating)]
     configuration = {"time_control": "1+0", "movetime_ms": 0, "threads": 4, "speed": 100,
@@ -320,7 +320,7 @@ class EloEstimateTests(unittest.TestCase):
         self.assertEqual(elo_estimate.bootstrap_ci(first), (1500, 1500))
 
     def test_no_book_and_book_options_are_distinct_and_book_random_is_false(self):
-        self.assertEqual(elo_estimate.koi_option_set("no-book", None), {"Hash": 512, "Threads": 4, "Speed": 100, "OwnBook": False})
+        self.assertEqual(elo_estimate.koi_option_set("no-book", None), {"Hash": 512, "Threads": 4, "OwnBook": False})
         with_book = elo_estimate.koi_option_set("book", Path("C:/licensed/book.bin"))
         self.assertEqual((with_book["OwnBook"], with_book["BookRandom"], with_book["BookDepth"]), (True, False, 16))
 
@@ -577,7 +577,7 @@ class EloEstimateTests(unittest.TestCase):
             report = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertNotIn("koi_evaluator", report["configuration"])
             self.assertNotIn("koi_options_json", report["configuration"])
-            self.assertEqual(report["configuration"]["active_koi_options"], {"Hash": 512, "Threads": 4, "Speed": 100, "OwnBook": False})
+            self.assertEqual(report["configuration"]["active_koi_options"], {"Hash": 512, "Threads": 4, "OwnBook": False})
 
     def test_low_confidence_non_dry_run_adds_an_adaptive_64_game_batch_up_to_maximum(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

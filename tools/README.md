@@ -91,7 +91,7 @@ measurement command rather than a CTest threshold:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build\performance_gate.ps1 `
   -BaselineExecutable .\build\release\koi-bench.exe `
   -CandidateExecutable .\build\release\koi-bench.exe `
-  -Runs 5 -Threads 4 -Speed 100 `
+  -Runs 5 -Threads 4 `
   -OutputDirectory .\artifacts\verification\performance-gate
 ```
 

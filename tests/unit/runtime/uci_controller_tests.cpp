@@ -24,6 +24,13 @@
 #include "koi_test_support.hpp"
 #include "polyglot_book_support.hpp"
 
+#ifndef KOI_ENGINE_BUILD_VERSION
+#define KOI_ENGINE_BUILD_VERSION "unknown"
+#endif
+#ifndef KOI_ENGINE_BUILD_COMMIT
+#define KOI_ENGINE_BUILD_COMMIT "unknown"
+#endif
+
 namespace {
 
 using koi::Position;
@@ -520,6 +527,8 @@ std::string expected_handshake() {
     };
     replace_all("{max_threads}", std::to_string(maximum_threads()));
     replace_all("{empty}", "");
+    replace_all("{build_version}", KOI_ENGINE_BUILD_VERSION);
+    replace_all("{build_commit}", KOI_ENGINE_BUILD_COMMIT);
     return normalized;
 }
 
@@ -1249,8 +1258,6 @@ void test_hash_options_preserve_the_contract_and_never_advertise_threads() {
             "Clear Hash must remain a UCI button option");
     require(result.output.find("option name Threads type spin default 1 min 1 max ") != std::string::npos,
             "Threads must remain a valid advertised UCI option");
-    require(result.output.find("option name Speed type spin default 100 min 1 max 100\n") != std::string::npos,
-            "Speed must be advertised with its documented bounds");
     require(result.output.find("option name UCI_AnalyseMode type check default false\n") != std::string::npos,
             "UCI_AnalyseMode must be advertised for Lucas Chess");
     require(result.output.find("option name MultiPV type spin default 1 min 1 max 16\n") != std::string::npos,
@@ -1260,40 +1267,37 @@ void test_hash_options_preserve_the_contract_and_never_advertise_threads() {
     require(result.output.ends_with("readyok\n"), "Hash option changes and Clear Hash must not disrupt isready");
 }
 
-void test_threads_and_speed_options_accept_valid_values_and_ignore_invalid_values() {
+void test_threads_option_accepts_valid_values_and_ignores_invalid_values() {
     const std::string valid_threads = std::to_string(maximum_threads());
     const ControllerResult result = run_controller(
         "setoption name Threads value " + valid_threads + "\n"
         "setoption name Threads value 0\n"
         "setoption name Threads value 65\n"
-        "setoption name Speed value 50\n"
-        "setoption name Speed value 0\n"
-        "setoption name Speed value 101\n"
         "position startpos\n"
         "go depth 1\n"
         "stop\n"
         "quit\n");
     const std::vector<std::string> bestmoves =
         lines_starting_with(output_lines(result.output), "bestmove ");
-    require(result.exit_code == 0, "valid and invalid speed/thread options must not crash the controller");
+    require(result.exit_code == 0, "valid and invalid Threads options must not crash the controller");
     require(bestmoves.size() == 1 && bestmoves[0].starts_with("bestmove "),
-            "accepted options must leave the controller able to search");
+            "the accepted option must leave the controller able to search");
 }
 
-void test_threads_and_speed_changes_suppress_the_active_generation() {
+void test_threads_and_move_overhead_changes_suppress_the_active_generation() {
     const std::string valid_threads = std::to_string(std::min<std::size_t>(2, maximum_threads()));
     const ControllerResult result = run_controller(
         "position startpos\n"
         "go infinite\n"
         "setoption name Threads value " + valid_threads + "\n"
         "go infinite\n"
-        "setoption name Speed value 50\n"
+        "setoption name Move Overhead value 50\n"
         "go infinite\n"
         "stop\n"
         "quit\n");
     const std::vector<std::string> bestmoves =
         lines_starting_with(output_lines(result.output), "bestmove ");
-    require(bestmoves.size() == 1, "changing Threads or Speed must suppress the replaced search result");
+    require(bestmoves.size() == 1, "changing Threads or Move Overhead must suppress the replaced search result");
     require(is_legal_move(Position{}, first_bestmove_move(bestmoves[0])),
             "the surviving search after an option change must return a legal move");
 }
@@ -1693,11 +1697,8 @@ void test_go_limit_parser_uses_a_scaled_bare_go_fallback_and_independent_clocks(
     require(!bare.depth.has_value(), "bare go must not invent a depth limit");
 
     const koi::TimeManager normal(bare, koi::Color::white, 100);
-    const koi::TimeManager slower(bare, koi::Color::white, 50);
     require(normal.time_budget().has_value() && *normal.time_budget() <= 250ms,
             "the bare-go fallback must remain a bounded time budget");
-    require(slower.time_budget().has_value() && *slower.time_budget() < *normal.time_budget(),
-            "Speed must scale the bare-go fallback without exceeding it");
 
     const koi::SearchLimits white_only = koi::uci::parse_go_limits("wtime 1000 winc 25");
     require(white_only.white_clock.has_value() && white_only.white_clock->remaining == 1000ms &&
@@ -1998,7 +1999,7 @@ void test_handshake_option_table_is_unique_and_well_formed() {
             "a handshake-only transcript must stay clean");
     const std::vector<std::string> options =
         lines_starting_with(output_lines(handshake.output), "option name ");
-    require(options.size() == 27, "the handshake must advertise exactly 27 options");
+    require(options.size() == 26, "the handshake must advertise exactly 26 options");
     require(handshake.output.find(
                 "option name GpuNnue type combo default off var auto var on var off") !=
                 std::string::npos,
@@ -2317,8 +2318,9 @@ int main(int argc, char** argv) {
         {"opening-book option generation replacement", test_book_option_changes_suppress_active_search_generations},
         {"Hash and Clear Hash contract", test_hash_options_preserve_the_contract_and_never_advertise_threads},
         {"large Hash safety", test_large_hash_option_is_capped_without_crashing_the_controller},
-        {"Threads and Speed validation", test_threads_and_speed_options_accept_valid_values_and_ignore_invalid_values},
-        {"Threads and Speed generation replacement", test_threads_and_speed_changes_suppress_the_active_generation},
+        {"Threads validation", test_threads_option_accepts_valid_values_and_ignores_invalid_values},
+        {"Threads and Move Overhead generation replacement",
+         test_threads_and_move_overhead_changes_suppress_the_active_generation},
         {"Lucas analysis options and multipv output",
          test_lucas_analysis_options_accept_valid_values_ignore_invalid_values_and_emit_multipv},
         {"Lucas analysis option generation replacement",

@@ -270,7 +270,7 @@ try {
     @{ RandomSeed = '42' } |
         ConvertTo-Json -Compress |
         Set-Content -LiteralPath $koiOptionsJsonPath -Encoding UTF8
-    @{ Speed = '83' } |
+    @{ Contempt = '20' } |
         ConvertTo-Json -Compress |
         Set-Content -LiteralPath $opponentOptionsJsonPath -Encoding UTF8
     $jsonOptionsMatch = Invoke-ScriptedMatch $EnginePath $EnginePath $jsonOptionsMatchDirectory `
@@ -278,7 +278,7 @@ try {
     $jsonKoiEngine = @($jsonOptionsMatch.report.engines | Where-Object { $_.label -eq 'Koi' })[0]
     $jsonOpponentEngine = @($jsonOptionsMatch.report.engines | Where-Object { $_.label -eq 'Opponent' })[0]
     if ($jsonKoiEngine.options -notcontains 'setoption name RandomSeed value 42' -or
-        $jsonOpponentEngine.options -notcontains 'setoption name Speed value 83') {
+        $jsonOpponentEngine.options -notcontains 'setoption name Contempt value 20') {
         throw 'JSON UCI options must be applied to the selected engine role and recorded in match provenance.'
     }
 
@@ -315,7 +315,7 @@ try {
         $candidateEngine = @($sprtReport.engines | Where-Object { $_.label -eq 'Koi' })[0]
         $baselineEngine = @($sprtReport.engines | Where-Object { $_.label -eq 'Opponent' })[0]
         if ($candidateEngine.options -notcontains 'setoption name RandomSeed value 42' -or
-            $baselineEngine.options -notcontains 'setoption name Speed value 83' -or
+            $baselineEngine.options -notcontains 'setoption name Contempt value 20' -or
             $sprtReport.configuration.compact_search_info -ne $true -or
             @($sprtReport.games[0].moves | Where-Object { @($_.infos).Count -gt 1 }).Count -gt 0) {
             throw 'SPRT color runs must apply and record the candidate/baseline UCI option snapshots.'

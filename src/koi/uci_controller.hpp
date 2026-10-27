@@ -126,7 +126,6 @@ private:
     bool active_ponder_ = false;
     std::size_t hash_mb_ = 512;
     std::size_t threads_ = 1;
-    std::uint8_t speed_percent_ = 100;
     bool show_wdl_ = false;
     std::uint32_t move_overhead_ms_ = 30;
     bool dynamic_overhead_ = false;

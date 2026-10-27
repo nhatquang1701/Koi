@@ -42,18 +42,17 @@ SETOPTION_RE = re.compile(r"^setoption\s+name\s+(?P<name>.+?)\s+value\s*(?P<valu
 RELEVANT_OPTION_NAMES = {
     name.casefold(): name
     for name in (
-        "Hash", "Threads", "Speed", "RandomSeed", "OwnBook", "BookFile", "BookDepth",
+        "Hash", "Threads", "RandomSeed", "OwnBook", "BookFile", "BookDepth",
         "BookRandom", "EvalFile", "UCI_LimitStrength", "UCI_Elo",
     )
 }
 BOOLEAN_OPTION_NAMES = frozenset({"OwnBook", "BookRandom", "UCI_LimitStrength"})
-INTEGER_OPTION_NAMES = frozenset({"Hash", "Threads", "Speed", "RandomSeed", "BookDepth", "UCI_Elo"})
+INTEGER_OPTION_NAMES = frozenset({"Hash", "Threads", "RandomSeed", "BookDepth", "UCI_Elo"})
 STRENGTH_OPTION_NAMES = frozenset({"UCI_LimitStrength", "UCI_Elo"})
 OPPONENT_FORBIDDEN_OPTION_NAMES = frozenset({"RandomSeed", "OwnBook", "BookFile", "BookDepth", "BookRandom"})
 CONFIGURATION_OPTION_FIELDS = {
     "Hash": "hash_mb",
     "Threads": "threads",
-    "Speed": "speed",
     "RandomSeed": "koi_random_seed",
     "OwnBook": "koi_own_book",
     "BookFile": "koi_book_file",
@@ -603,7 +602,7 @@ load_schedule = import_schedule
 
 
 def koi_option_set(mode: str, book: Optional[Path]) -> dict[str, Any]:
-    options: dict[str, Any] = {"Hash": 512, "Threads": 4, "Speed": 100, "OwnBook": False}
+    options: dict[str, Any] = {"Hash": 512, "Threads": 4, "OwnBook": False}
     if mode == "no-book":
         if book is not None:
             raise EloEstimateError("--book is only valid with --mode book")
@@ -874,7 +873,7 @@ def validate_match_manifest(report: Mapping[str, Any], expected_openings: Mappin
     forbidden_opponent_options = OPPONENT_FORBIDDEN_OPTION_NAMES & opponent_actual.keys()
     if forbidden_opponent_options:
         raise EloEstimateError(f"Opponent option provenance contains Koi-only setting: {sorted(forbidden_opponent_options)[0]}")
-    opponent_expected: dict[str, Any] = {"Hash": 512, "Threads": 4, "Speed": 100}
+    opponent_expected: dict[str, Any] = {"Hash": 512, "Threads": 4}
     if anchor.stockfish_elo is not None:
         opponent_expected.update({"UCI_LimitStrength": True, "UCI_Elo": anchor.rating})
     elif STRENGTH_OPTION_NAMES & opponent_actual.keys():
@@ -964,7 +963,7 @@ def _harness_command(
     if not script.is_file():
         raise EloEstimateError(f"match harness is missing: {script}")
     batch_id = batch.pair_id if batch is not None else "batch-00"
-    command = [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), "-KoiPath", str(koi), "-OpponentPath", str(anchor.path), "-ReplayPath", str(replay), "-OpeningFile", str(openings), "-OutputDirectory", str(output_directory), "-Games", "1", "-KoiColor", color, "-KoiRandomSeed", "1", "-Hash", "512", "-Threads", "4", "-Speed", "100", "-KoiOwnBook", str(koi_options["OwnBook"]).lower(), "-KoiBookRandom", "false", "-BatchId", batch_id, "-RunLabel", run_label]
+    command = [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), "-KoiPath", str(koi), "-OpponentPath", str(anchor.path), "-ReplayPath", str(replay), "-OpeningFile", str(openings), "-OutputDirectory", str(output_directory), "-Games", "1", "-KoiColor", color, "-KoiRandomSeed", "1", "-Hash", "512", "-Threads", "4", "-KoiOwnBook", str(koi_options["OwnBook"]).lower(), "-KoiBookRandom", "false", "-BatchId", batch_id, "-RunLabel", run_label]
     # Stockfish at 4 threads can exceed the harness's default 5 s per-move
     # timeout under a real clock (1+0), which then aborts the ladder with an
     # opponent-provenance failure.  Give every move a generous wall-clock

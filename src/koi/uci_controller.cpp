@@ -22,6 +22,13 @@
 #include "koi/perft.hpp"
 #include "koi/time_manager.hpp"
 
+#ifndef KOI_ENGINE_BUILD_VERSION
+#define KOI_ENGINE_BUILD_VERSION "unknown"
+#endif
+#ifndef KOI_ENGINE_BUILD_COMMIT
+#define KOI_ENGINE_BUILD_COMMIT "unknown"
+#endif
+
 namespace koi {
 
 namespace {
@@ -29,8 +36,10 @@ namespace {
 constexpr std::uint64_t kMaximumRandomSeed = 2'147'483'647;
 constexpr std::uint64_t kMinimumHashMegabytes = 1;
 constexpr std::uint64_t kMaximumHashMegabytes = 4'096;
-constexpr std::uint64_t kMinimumSpeedPercent = 1;
-constexpr std::uint64_t kMaximumSpeedPercent = 100;
+// The UCI surface no longer exposes a Speed option; internal time management
+// keeps the neutral 100 % factor so the time-manager semantics and the
+// koi-bench `--speed` API stay unchanged.
+constexpr std::uint8_t kFixedSpeedPercent = 100;
 constexpr std::uint64_t kMinimumSlowMoverPercent = 10;
 constexpr std::uint64_t kMaximumSlowMoverPercent = 1'000;
 constexpr std::uint64_t kMaximumMoveOverheadMs = 5'000;
@@ -134,7 +143,6 @@ enum class UciOptionId {
     random_seed,
     hash,
     threads,
-    speed,
     analyse_mode,
     multi_pv,
     ponder,
@@ -180,14 +188,12 @@ struct UciOptionDescriptor {
 // and `handle_setoption` consume this table, so an advertised option can never
 // drift out of sync with the option the controller actually applies. The order
 // of the entries is the order advertised to a GUI and must stay stable.
-constexpr std::array<UciOptionDescriptor, 29> kUciOptions{{
+constexpr std::array<UciOptionDescriptor, 28> kUciOptions{{
     {"RandomSeed", UciOptionKind::spin, UciOptionId::random_seed, "0", 0,
      kMaximumRandomSeed, false, true},
     {"Hash", UciOptionKind::spin, UciOptionId::hash, "512", kMinimumHashMegabytes,
      kMaximumHashMegabytes, false, true},
     {"Threads", UciOptionKind::spin, UciOptionId::threads, "1", 1, 0, true, true},
-    {"Speed", UciOptionKind::spin, UciOptionId::speed, "100", kMinimumSpeedPercent,
-     kMaximumSpeedPercent, false, true},
     {"UCI_AnalyseMode", UciOptionKind::check, UciOptionId::analyse_mode, "false", 0, 0, false,
      true},
     {"MultiPV", UciOptionKind::spin, UciOptionId::multi_pv, "1", kMinimumMultiPv,
@@ -959,12 +965,6 @@ void UciController::handle_setoption(std::istream& command) {
         break;
     }
 
-    case UciOptionId::speed:
-        apply_unsigned(*option, speed_percent_, [this](std::uint64_t speed) {
-            speed_percent_ = static_cast<std::uint8_t>(speed);
-        });
-        break;
-
     case UciOptionId::analyse_mode: {
         bool analyse_mode = false;
         if (parse_boolean(value, analyse_mode) && analyse_mode_ != analyse_mode) {
@@ -1296,7 +1296,7 @@ void UciController::handle_ponderhit() {
         // in-flight iteration cannot flag the engine.
         try {
             koi::TimeManager converted_timing(
-                converted_for_timing, position_.side_to_move(), speed_percent_,
+                converted_for_timing, position_.side_to_move(), kFixedSpeedPercent,
                 effective_move_overhead_ms(), slow_mover_percent_,
                 koi::RootTimingContext{}, {}, dynamic_overhead_);
             if (const auto budget = converted_timing.time_budget();
@@ -1600,7 +1600,6 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
 
     SearchOptions options;
     options.threads = threads_;
-    options.speed_percent = speed_percent_;
     options.multi_pv = multi_pv_;
     options.random_seed = random_seed_;
     options.analyse_mode = analyse_mode_;
@@ -1762,8 +1761,8 @@ std::uint64_t UciController::begin_generation() {
 
 void UciController::write_handshake() {
     std::lock_guard lock(output_mutex_);
-    output_ << "id name Koi\n"
-               "id author Contributors\n";
+    output_ << "id name Koi " << KOI_ENGINE_BUILD_VERSION << '\n'
+               << "id author Contributors\n";
     for (const UciOptionDescriptor& option : kUciOptions) {
         if (!option.advertised) {
             continue;
@@ -1798,7 +1797,8 @@ void UciController::write_handshake() {
         }
         output_ << '\n';
     }
-    output_ << "uciok\n" << std::flush;
+    output_ << "info string build " << KOI_ENGINE_BUILD_COMMIT << '\n'
+               << "uciok\n" << std::flush;
 }
 
 std::filesystem::path UciController::resolved_book_path() const {

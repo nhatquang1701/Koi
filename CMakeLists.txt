@@ -2,6 +2,25 @@ cmake_minimum_required(VERSION 3.31)
 
 project(koi_engine VERSION 1.1.4 LANGUAGES CXX)
 
+# Build identity for the UCI handshake: the version is the single project()
+# pin above, the commit is the checkout HEAD at configure time (best effort so
+# a source tarball without .git still builds).
+set(KOI_ENGINE_GIT_COMMIT "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse --short=12 HEAD
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE KOI_ENGINE_GIT_OUTPUT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE KOI_ENGINE_GIT_RESULT)
+    if(KOI_ENGINE_GIT_RESULT EQUAL 0 AND KOI_ENGINE_GIT_OUTPUT)
+        set(KOI_ENGINE_GIT_COMMIT "${KOI_ENGINE_GIT_OUTPUT}")
+    endif()
+endif()
+message(STATUS "Koi build identity: ${PROJECT_VERSION}+${KOI_ENGINE_GIT_COMMIT}")
+
 # Koi Engine supports Windows x64 with MSVC (the primary development platform),
 # x86-64 Linux with GCC 14+ or Clang 18+, and macOS on Apple Silicon or Intel
 # with AppleClang 18+ or Homebrew LLVM.
@@ -411,6 +430,7 @@ function(koi_add_core_target target arch_option)
     add_dependencies(${target} koi_cpu_features)
     target_compile_definitions(${target} PUBLIC
         KOI_ENGINE_BUILD_VERSION="${PROJECT_VERSION}"
+        KOI_ENGINE_BUILD_COMMIT="${KOI_ENGINE_GIT_COMMIT}"
     )
     if(NOT MSVC)
         target_link_libraries(${target} PUBLIC Threads::Threads)
