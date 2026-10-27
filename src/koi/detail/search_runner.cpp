@@ -3077,7 +3077,11 @@ void SearchRunner::run_impl() {
                 if (!unbounded && depth > maximum_depth) {
                     break;
                 }
-                if (!unbounded && !time_manager.should_start_next_iteration(previous_iteration_elapsed * 2)) {
+                // Let the deadline trim the last iteration instead of a 2x
+                // cost estimate: a partially searched deeper root can already
+                // contain a better move, which is adopted on interruption below.
+                if (!unbounded && !time_manager.should_start_next_iteration(
+                        std::chrono::milliseconds{1})) {
                     break;
                 }
                 if (context.interrupted()) {
@@ -3226,9 +3230,28 @@ void SearchRunner::run_impl() {
                 const bool root_result_publishable = context.root_result_complete(pv);
                 if (!root_result_publishable) {
                     // The recursive search did not return a complete root
-                    // result (missing score coverage or PV). Preserve the
-                    // last completed result and use this work only to pace
-                    // the next attempt.
+                    // result (missing score coverage or PV). If earlier
+                    // iterations did complete, the in-flight deeper root may
+                    // still hold a completed better move; adopt it under the
+                    // same legality/check-exposure guards as the first
+                    // iteration fallback rather than discarding that work.
+                    if (result.completed_depth > 0) {
+                        const auto partial = context.best_completed_root_move(root, true);
+                        const auto partial_metadata = partial.has_value() ?
+                            std::find_if(
+                                legal_moves.begin(), legal_moves.end(),
+                                [&partial](const MoveMetadata& metadata) {
+                                    return metadata.move == partial->move;
+                                }) : legal_moves.end();
+                        if (partial.has_value() && root.is_legal(partial->move) &&
+                            partial_metadata != legal_moves.end() &&
+                            !root_move_is_broad_quiet_check(root, *partial_metadata)) {
+                            result.best_move = partial->move;
+                            result.pv = {partial->move};
+                        }
+                    }
+                    // Preserve the completed result's score provenance and use
+                    // this interrupted work only to improve the move choice.
                     const auto elapsed = std::chrono::duration_cast<
                         std::chrono::milliseconds>(
                             std::chrono::steady_clock::now() - started);
