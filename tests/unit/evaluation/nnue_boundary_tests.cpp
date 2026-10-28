@@ -146,16 +146,15 @@ void test_container_rejects_nonstandard_layer_shape() {
             "NNUE serialization must reject a nonstandard Koi layer shape");
 }
 
-void test_malformed_or_absent_network_uses_classical_fallback() {
+void test_malformed_or_absent_network_requires_a_network() {
     const koi::GameState state = require_state("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
-    const koi::ClassicalEvaluator classical;
     const koi::test::TempDirectory scratch;
 
+    // HCE was removed on 2026-10-28: without a network there is no evaluator,
+    // and the caller must report the failure instead of evaluating classically.
     const koi::EvaluatorSelection absent = koi::make_evaluator(std::nullopt);
-    require(!absent.nnue_enabled && absent.evaluator &&
-                absent.evaluator->evaluate(state, koi::Color::white) ==
-                    classical.evaluate(state, koi::Color::white),
-            "absent NNUE must select the classical evaluator");
+    require(!absent.nnue_enabled && !absent.evaluator && absent.nnue_error.has_value(),
+            "absent NNUE must leave the evaluator unset and report an error");
 
     const std::filesystem::path malformed_path = scratch.file("koi-task4-malformed.nnue");
     {
@@ -164,10 +163,8 @@ void test_malformed_or_absent_network_uses_classical_fallback() {
     }
     const koi::EvaluatorSelection malformed = koi::make_evaluator(malformed_path);
     std::filesystem::remove(malformed_path);
-    require(!malformed.nnue_enabled && malformed.nnue_error.has_value() && malformed.evaluator &&
-                malformed.evaluator->evaluate(state, koi::Color::white) ==
-                    classical.evaluate(state, koi::Color::white),
-            "malformed NNUE must preserve the classical fallback");
+    require(!malformed.nnue_enabled && malformed.nnue_error.has_value() && !malformed.evaluator,
+            "malformed NNUE must be rejected without an evaluator fallback");
 
     const std::filesystem::path valid_path = scratch.file("koi-v2-opt-in.nnue");
     const auto encoded = koi::NnueLoader::serialize(koi::NnueNetwork::synthetic_v2());
@@ -2374,7 +2371,7 @@ int main(int argc, char** argv) {
         {"NNUE v8 halfka container", test_v8_halfka_container_round_trip},
         {"NNUE v8 layout validation", test_v8_container_rejects_layout_mismatch},
         {"NNUE layer shape", test_container_rejects_nonstandard_layer_shape},
-        {"NNUE fallback", test_malformed_or_absent_network_uses_classical_fallback},
+        {"NNUE network required", test_malformed_or_absent_network_requires_a_network},
         {"NNUE worker isolation", test_workers_keep_immutable_weights_and_private_accumulators},
         {"NNUE v2 features", test_v2_feature_vector_has_stable_king_and_pawn_context},
         {"NNUE v2 container", test_v2_container_round_trip_is_deterministic},
