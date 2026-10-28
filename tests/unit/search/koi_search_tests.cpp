@@ -2572,7 +2572,7 @@ void test_threaded_root_in_check_completes_with_safe_evasion() {
         koi::SearchService threaded_service(std::make_shared<koi::ClassicalEvaluator>());
         const koi::SearchResult threaded = search(threaded_service, root, limits, threaded_options);
         // Threads>1 runs Lazy SMP over the shared transposition table, which is intentionally
-        // nondeterministic (see AGENTS.md): helper threads can change TT cutoffs, so a near-tie
+        // nondeterministic (see the private agent guide): helper threads can change TT cutoffs, so a near-tie
         // root can select a different - still safe - evasion or shift the score by a point.
         // Assert the contract instead of byte parity: same fixed depth, a legal evasion, and a
         // score in the serial reference's neighborhood.
