@@ -25,3 +25,6 @@ book.bin
 !tests/data/nnue-discovery/**/*.nnue
 *.pt
 koi-debug.log
+
+# Kept private and untracked; do not commit.
+/AGENTS.md
