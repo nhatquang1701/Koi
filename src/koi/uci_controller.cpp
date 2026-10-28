@@ -16,7 +16,6 @@
 #include <utility>
 #include <vector>
 
-#include "koi/classical_evaluator.hpp"
 #include "koi/gpu/nnue_gpu_evaluator.hpp"
 #include "koi/nnue.hpp"
 #include "koi/perft.hpp"
@@ -233,10 +232,9 @@ constexpr std::array<UciOptionDescriptor, 28> kUciOptions{{
      kMinimumSyzygyInteriorDepth, kMaximumSyzygyInteriorDepth, false, true},
     {"Syzygy50MoveRule", UciOptionKind::check, UciOptionId::syzygy_50_move_rule, "true", 0, 0,
      false, true},
-    // Empty keeps whatever evaluator the engine booted with (the classical
-    // evaluator unless a `koi.nnue` network was found beside the executable or
-    // advertised with KOI_NNUE_PATH).  A non-empty path loads and activates a
-    // Koi NNUE network, with the classical evaluator retained as a fallback.
+    // Empty keeps the boot-time NNUE network. A non-empty path loads and
+    // activates another Koi NNUE network; a rejected file keeps the current
+    // evaluator (a network is mandatory since the HCE removal, 2026-10-28).
     {"EvalFile", UciOptionKind::string, UciOptionId::eval_file, "", 0, 0, false, true},
     // EXPERIMENTAL, OFF BY DEFAULT, and scheduled for removal.  GPU inference for
     // a compatible v5 NNUE network: `auto` uses the GPU when this build has the
@@ -649,10 +647,6 @@ std::uint32_t derive_network_overhead_ms(std::int64_t previous_remaining_ms,
 }
 
 } // namespace uci
-
-UciController::UciController(std::istream& input, std::ostream& output, std::ostream& diagnostics)
-    : UciController(input, output, diagnostics,
-                    SearchService{std::make_shared<ClassicalEvaluator>(), {}, 1}) {}
 
 UciController::UciController(std::istream& input, std::ostream& output,
                              std::ostream& diagnostics, SearchService search_service,
@@ -1417,9 +1411,8 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         write_book_completion(generation, root, limits, *book_choice, ply, completion_once);
         return;
     }
-    // One GPU NNUE diagnostic per search start (never per node).  The line is
-    // empty unless an NNUE network is active, so the classical evaluator keeps
-    // the protocol output unchanged.
+    // One GPU NNUE diagnostic per search start (never per node). The line is
+    // empty unless the GPU adapter is active.
     if (const std::string gpu_line = gpu::gpu_nnue_search_diagnostic(threads_);
         !gpu_line.empty()) {
         std::lock_guard lock(output_mutex_);

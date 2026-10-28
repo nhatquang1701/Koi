@@ -274,8 +274,6 @@ private:
 class NnueEvaluator final : public Evaluator {
 public:
     explicit NnueEvaluator(std::shared_ptr<const NnueNetwork> weights);
-    NnueEvaluator(std::shared_ptr<const NnueNetwork> weights,
-                  std::shared_ptr<const Evaluator> fallback);
 
     [[nodiscard]] int evaluate(const GameState&, Color perspective) const override;
     [[nodiscard]] bool supports_concurrent_evaluation() const noexcept override { return true; }
@@ -285,14 +283,14 @@ public:
 
 private:
     std::shared_ptr<const NnueNetwork> weights_;
-    std::shared_ptr<const Evaluator> fallback_;
 };
 
 // Selection seam used by the engine entry points and by the advertised
 // `EvalFile` option. At boot `main.cpp` resolves `KOI_NNUE_PATH` or `koi.nnue`
 // beside the executable through `make_evaluator`; at runtime
-// `uci_controller.cpp` swaps the evaluator when `EvalFile` is set. The
-// classical evaluator remains the default and the fallback.
+// `uci_controller.cpp` swaps the evaluator when `EvalFile` is set. NNUE is
+// required since the HCE removal (2026-10-28): a null evaluator means the
+// network was missing or rejected, and the caller reports it.
 struct EvaluatorSelection {
     std::shared_ptr<const Evaluator> evaluator;
     bool nnue_enabled = false;

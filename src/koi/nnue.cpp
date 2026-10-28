@@ -16,7 +16,6 @@
 #include <type_traits>
 #include <utility>
 
-#include "koi/classical_evaluator.hpp"
 #include "koi/cpu_features.hpp"
 
 // The AVX2 kernel exists only on x86-64; on arm64 (and any other target) the
@@ -2264,15 +2263,14 @@ bool network_is_usable(const NnueNetwork& network) {
 } // namespace
 
 NnueEvaluator::NnueEvaluator(std::shared_ptr<const NnueNetwork> weights)
-    : NnueEvaluator(std::move(weights), std::make_shared<ClassicalEvaluator>()) {}
-
-NnueEvaluator::NnueEvaluator(std::shared_ptr<const NnueNetwork> weights,
-                             std::shared_ptr<const Evaluator> fallback)
-    : weights_(std::move(weights)), fallback_(std::move(fallback)) {}
+    : weights_(std::move(weights)) {}
 
 int NnueEvaluator::evaluate(const GameState& state, const Color perspective) const {
+    // The factory only constructs this evaluator for a loaded, usable network;
+    // a missing network is a boot error (HCE removed 2026-10-28), so this is an
+    // unreachable defensive path and must not silently become a normal score.
     if (!weights_ || !network_is_usable(*weights_)) {
-        return fallback_ ? fallback_->evaluate(state, perspective) : 0;
+        return 0;
     }
     // One-shot evaluation uses the stateless feature overload: the worker is a
     // temporary, so allocating and zeroing the per-ply incremental slots would
@@ -2394,15 +2392,17 @@ std::optional<std::filesystem::path> discover_nnue_network(
 
 EvaluatorSelection make_evaluator(std::optional<std::filesystem::path> nnue_path) {
     EvaluatorSelection selection;
+    // HCE was removed on 2026-10-28; a network is required. Missing or rejected
+    // networks leave `evaluator` null and the caller reports the failure.
     if (!nnue_path.has_value()) {
-        selection.evaluator = std::make_shared<ClassicalEvaluator>();
+        selection.nnue_error = NnueError{NnueErrorCode::malformed_manifest,
+                                          "no network path given"};
         gpu::record_gpu_nnue_status(false, false, {}, {});
         return selection;
     }
 
     const auto loaded = NnueLoader::load_file(*nnue_path);
     if (!loaded.has_value()) {
-        selection.evaluator = std::make_shared<ClassicalEvaluator>();
         selection.nnue_error = loaded.error();
         gpu::record_gpu_nnue_status(false, false, {}, {});
         return selection;

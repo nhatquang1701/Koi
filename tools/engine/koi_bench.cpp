@@ -17,7 +17,6 @@
 #include <utility>
 #include <vector>
 
-#include "koi/classical_evaluator.hpp"
 #include "koi/game_state.hpp"
 #include "koi/nnue.hpp"
 #include "koi/search_service.hpp"
@@ -190,8 +189,7 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
             continue;
         }
         if (argument == "--nnue") {
-            // Optional trained network for the benchmark suite; the classical
-            // evaluator is used when the flag is absent.
+            // Required since the HCE removal (2026-10-28).
             if (index + 1 >= argc) {
                 return std::nullopt;
             }
@@ -594,7 +592,7 @@ void write_profile_json(const std::string& path, const BenchmarkConfig& config,
            << "  \"hash_mb\": 512,\n"
            << "  \"threads\": " << config.threads << ",\n"
            << "  \"speed\": " << static_cast<unsigned>(config.speed_percent) << ",\n"
-           << "  \"evaluator\": \"" << (config.nnue_active ? "nnue" : "classical") << "\",\n";
+           << "  \"evaluator\": \"" << "nnue" << "\",\n";
     if (config.nnue_path) {
         std::error_code file_error;
         const auto network_bytes = std::filesystem::file_size(*config.nnue_path, file_error);
@@ -701,7 +699,7 @@ void write_speed_json(const std::string& path, const BenchmarkConfig& config,
            << "  \"suite\": \"" << suite_name(config) << "\",\n"
            << "  \"source\": ";
     write_json_string(output, config.fen_file_path ? *config.fen_file_path : std::string("built-in"));
-    output << ",\n  \"evaluator\": \"" << (config.nnue_active ? "nnue" : "classical") << "\",\n"
+    output << ",\n  \"evaluator\": \"" << "nnue" << "\",\n"
            << "  \"threads\": " << config.threads << ",\n"
            << "  \"speed\": " << static_cast<unsigned>(config.speed_percent) << ",\n"
            << "  \"hash_mb\": 512,\n"
@@ -762,6 +760,11 @@ int main(int argc, char** argv) {
         std::cerr << "usage: koi-bench [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path] [--profile-json path] [--report path]\n";
         return 2;
     }
+    if (!config->nnue_path.has_value()) {
+        std::cerr << "koi-bench: --nnue NET is required (the classical evaluator was\n"
+                     "removed; see docs/HCE_REMOVAL_PLAN.md)\n";
+        return 2;
+    }
     if (config->fen_file_path.has_value() && !config->depth_sweep.has_value() &&
         !config->fixed_depth.has_value() && config->node_limit == 0) {
         // External FEN lists carry no per-position depth, so fixed-depth mode
@@ -809,19 +812,16 @@ int main(int argc, char** argv) {
                 position.depth = *config->fixed_depth;
             }
         }
-        koi::EvaluatorSelection selection;
-        if (config->nnue_path.has_value()) {
-            selection = koi::make_evaluator(std::filesystem::path{*config->nnue_path});
-            config->nnue_active = selection.nnue_enabled;
+        koi::EvaluatorSelection selection =
+            koi::make_evaluator(std::filesystem::path{*config->nnue_path});
+        config->nnue_active = selection.nnue_enabled;
+        if (!selection.evaluator) {
             if (selection.nnue_error.has_value()) {
                 config->nnue_error_message = selection.nnue_error->message;
                 std::cerr << "koi-bench: NNUE network rejected ("
-                          << selection.nnue_error->message
-                          << "); using the classical evaluator.\n";
+                          << selection.nnue_error->message << ")\n";
             }
-        }
-        if (!selection.evaluator) {
-            selection.evaluator = std::make_shared<koi::ClassicalEvaluator>();
+            return 2;
         }
         koi::SearchService service(std::move(selection.evaluator));
         const bool sweep = config->depth_sweep.has_value();

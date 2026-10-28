@@ -315,7 +315,6 @@ if(KOI_NVCC)
 endif()
 
 set(KOI_CORE_SOURCES
-    src/koi/classical_evaluator.cpp
     src/koi/detail/compatibility_mirror.cpp
     src/koi/detail/attack_tables.cpp
     src/koi/detail/evaluation_context.cpp
@@ -513,6 +512,16 @@ endif()
 # x64, so the baseline build asks for its software fallback; the standard
 # library's own std::popcount/countr_zero already dispatch on __isa_available.
 koi_add_core_target(koi_core_generic "")
+
+# The classical evaluator (HCE) is no longer part of the engine or any tool.
+# The old implementation is kept ONLY as a private test-support library so the
+# remaining tests that use it as a deterministic eval can migrate; it is never
+# linked into an engine/binary. See docs/HCE_REMOVAL_PLAN.md.
+add_library(koi_hce_test_support STATIC
+    src/koi/classical_evaluator.cpp
+    tests/support/uci_controller_classical_constructor.cpp
+)
+target_link_libraries(koi_hce_test_support PUBLIC koi_core)
 target_compile_definitions(koi_core_generic PRIVATE TB_NO_HW_POP_COUNT)
 
 option(KOI_BUILD_SHADOW_DIFF
@@ -788,14 +797,6 @@ target_link_libraries(koi_soak_tests PRIVATE koi_core)
 add_test(NAME koi_soak_tests COMMAND koi_soak_tests)
 koi_set_timeout(koi_soak_tests 120)
 
-add_executable(classical_evaluator_tests
-    tests/unit/evaluation/classical_evaluator_tests.cpp
-)
-
-target_link_libraries(classical_evaluator_tests PRIVATE koi_core)
-
-add_test(NAME classical_evaluator_tests COMMAND classical_evaluator_tests)
-
 add_executable(evaluation_features_tests
     tests/unit/evaluation/evaluation_features_tests.cpp
 )
@@ -950,7 +951,6 @@ set(KOI_TEST_SUPPORT_TARGETS
     transposition_table_tests
     search_service_tests
     koi_soak_tests
-    classical_evaluator_tests
     evaluation_features_tests
     time_manager_tests
     koi_strength_tests
@@ -1298,10 +1298,6 @@ if(Python3_Interpreter_FOUND)
         COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/nnue/koi_trainer_test.py -v
     )
     add_test(
-        NAME tune_classical_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/tune_classical_test.py -v
-    )
-    add_test(
         NAME bullet_data_python
         COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/nnue/bullet_data_test.py -v
     )
@@ -1323,7 +1319,7 @@ if(Python3_Interpreter_FOUND)
         koi_chess_python koi_chess_pgn_python koi_chess_engine_python
         measurement_phase_python measurement_forensics_python
         uci_benchmark_python
-        strength_report_python tune_classical_python
+        strength_report_python
         bullet_data_python bullet_conversion_python release_candidate_games_python release_strength_openings_python strength_bound_python
         PROPERTIES
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -1352,7 +1348,7 @@ if(TARGET koi_module_tests)
 endif()
 set_tests_properties(
     evaluation_boundary_tests evaluation_architecture_tests nnue_boundary_tests
-    classical_evaluator_tests evaluation_features_tests
+    evaluation_features_tests
     PROPERTIES LABELS "unit;evaluation"
 )
 set_tests_properties(transposition_table_tests PROPERTIES LABELS "unit;runtime")
@@ -1413,7 +1409,7 @@ if(Python3_Interpreter_FOUND)
         koi_chess_python koi_chess_pgn_python koi_chess_engine_python
         measurement_phase_python measurement_forensics_python strength_report_python
         uci_benchmark_python
-        koi_trainer_python tune_classical_python
+        koi_trainer_python
         bullet_data_python bullet_conversion_python release_candidate_games_python release_strength_openings_python strength_bound_python
         PROPERTIES LABELS "python"
     )
@@ -1426,11 +1422,35 @@ if(Python3_Interpreter_FOUND)
     )
 endif()
 
+# Engine-spawning tests need a valid NNUE network now that the classical
+# evaluator is gone. Generate a small fixture network in the build directory and
+# point every test at it explicitly (an explicit KOI_NNUE_PATH keeps the UCI
+# handshake's EvalFile default empty, matching the fixture).
+add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/koi.nnue"
+    COMMAND koi_nnue_fixture --arch v4 --output "${CMAKE_BINARY_DIR}/koi.nnue"
+    DEPENDS koi_nnue_fixture
+    COMMENT "Generating the NNUE test fixture network"
+)
+add_custom_target(koi_test_nnue_fixture ALL DEPENDS "${CMAKE_BINARY_DIR}/koi.nnue")
+
 # Bound every registered test. A pathological search, an unresponsive child
 # process, or a stalled network call must fail the test instead of hanging the
 # whole suite. Tests that need a different budget set an explicit TIMEOUT above;
 # this loop only fills in the ones that would otherwise run unbounded.
 get_property(KOI_REGISTERED_TESTS DIRECTORY PROPERTY TESTS)
+
+# Tests still using the frozen classical evaluator as a deterministic test
+# evaluator link the private support library (never the engine).
+foreach(KOI_HCE_TEST IN ITEMS evaluation_boundary_tests nnue_boundary_tests
+        gpu_nnue_tests koi_soak_tests search_service_tests uci_controller_tests
+        koi_search_tests koi_strength_tests)
+    if(TARGET ${KOI_HCE_TEST})
+        target_link_libraries(${KOI_HCE_TEST} PRIVATE koi_hce_test_support)
+    endif()
+endforeach()
+set_tests_properties(${KOI_REGISTERED_TESTS} PROPERTIES
+    ENVIRONMENT "KOI_NNUE_PATH=${CMAKE_BINARY_DIR}/koi.nnue")
 foreach(KOI_TEST_NAME IN LISTS KOI_REGISTERED_TESTS)
     get_test_property(${KOI_TEST_NAME} TIMEOUT KOI_TEST_TIMEOUT)
     if(KOI_TEST_TIMEOUT STREQUAL "NOTFOUND")

@@ -10,7 +10,6 @@
 #include <pthread.h>
 #endif
 
-#include "koi/classical_evaluator.hpp"
 #include "koi/cpu_features.hpp"
 #include "koi/cpu_variant.hpp"
 #include "koi/executable_path.hpp"
@@ -95,10 +94,9 @@ int main(int argc, char* argv[]) {
     // UciController materializes the configured 512 MB default at isready.
     //
     // Evaluator selection: a network named `koi.nnue` beside the executable
-    // (or the path in KOI_NNUE_PATH) is activated automatically; otherwise the
-    // classical evaluator stays in charge.  `setoption name EvalFile` can load
-    // a different network at runtime, and a rejected file always falls back to
-    // the classical evaluator instead of failing the engine.
+    // (or the path in KOI_NNUE_PATH) is required since the HCE removal
+    // (2026-10-28). `setoption name EvalFile` can load a different network at
+    // runtime; a rejected file keeps the boot network instead of failing.
     const std::filesystem::path engine_directory = executable_directory(argc, argv);
     std::filesystem::path nnue_path;
     bool autodiscovered_network = false;
@@ -127,31 +125,28 @@ int main(int argc, char* argv[]) {
             }
         }
     }
-    // Evaluator selection must never abort the process: a rejected network
-    // (including one too large to allocate) falls back to the classical
-    // evaluator.
+    // HCE removed (2026-10-28): the engine cannot evaluate without a network.
     koi::EvaluatorSelection selection;
     try {
         selection = nnue_path.empty()
             ? koi::make_evaluator()
             : koi::make_evaluator(std::optional<std::filesystem::path>(nnue_path));
-        if (selection.nnue_error.has_value()) {
-            std::cerr << "koi-engine: NNUE network rejected (" << selection.nnue_error->message
-                      << "); using the classical evaluator.\n";
-        }
     } catch (const std::exception& error) {
-        std::cerr << "koi-engine: NNUE network rejected (" << error.what()
-                  << "); using the classical evaluator.\n";
-        selection = {};
+        std::cerr << "koi-engine: unable to load an evaluator network (" << error.what()
+                  << ").\n"
+                  << "koi-engine: the classical evaluator was removed; provide koi.nnue "
+                     "beside the executable or set EvalFile.\n";
+        return 4;
     }
     if (selection.evaluator == nullptr) {
-        try {
-            selection = koi::make_evaluator();
-        } catch (const std::exception& error) {
-            std::cerr << "koi-engine: unable to construct an evaluator (" << error.what()
-                      << ").\n";
-            return 4;
+        std::cerr << "koi-engine: no usable NNUE network";
+        if (selection.nnue_error.has_value()) {
+            std::cerr << " (" << selection.nnue_error->message << ")";
         }
+        std::cerr << ".\n"
+                  << "koi-engine: the classical evaluator was removed; provide koi.nnue "
+                     "beside the executable or set EvalFile.\n";
+        return 4;
     }
     koi::SearchService search_service(selection.evaluator, {}, 1);
     koi::UciController controller(std::cin, std::cout, std::cerr, std::move(search_service),
