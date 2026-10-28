@@ -427,8 +427,9 @@ void test_move_overhead_and_slow_mover_scale_time_in_order() {
     koi::SearchLimits move_time;
     move_time.movetime = 1s;
     const koi::TimeManager configured(move_time, koi::Color::white, 50, 10, 50);
-    require(configured.time_budget().has_value() && *configured.time_budget() == 466ms,
-            "movetime budgets must apply Speed, then Move Overhead and safety margin");
+    require(configured.time_budget().has_value() && *configured.time_budget() == 475ms,
+            "movetime budgets must apply Speed and the safety margin without subtracting "
+            "Move Overhead (a direct request has no game clock to protect)");
 
     // Slow Mover tunes clock allocation, not an explicit movetime request.
     const koi::TimeManager slow_mover_ignored(move_time, koi::Color::white, 50, 10, 300);

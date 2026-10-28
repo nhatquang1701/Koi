@@ -156,10 +156,14 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     if (limits_.movetime.has_value()) {
         // Slow Mover tunes how much of a game clock the engine spends per move;
         // an explicit movetime is a direct request from the GUI, so only Speed
-        // scales it and the final budget never exceeds the request.
+        // scales it and the final budget never exceeds the request.  Move
+        // Overhead exists to keep a late move from flagging a game clock; a
+        // movetime search has no clock to protect, so subtracting it only
+        // wastes the requested analysis time.  Keep the safety margin (it
+        // covers teardown/transmission), not the GUI overhead.
         const auto scaled = scale_duration(*limits_.movetime, speed_percent);
         const auto movetime_budget = std::min(*limits_.movetime,
-                                              with_safety_margin(subtract_overhead(scaled, move_overhead_ms)));
+                                              with_safety_margin(scaled));
         budget_ms_.store(movetime_budget.count(), std::memory_order_relaxed);
         timing_.usable = movetime_budget;
         timing_.soft_budget = movetime_budget;
