@@ -211,46 +211,65 @@ if (-not [string]::IsNullOrWhiteSpace($KoiEvalFile)) {
 
 $koiEvalFileSha256 = $null
 $resolvedKoiEvalFile = $null
+$resolvedOpponentEvalFile = $null
 $reportedKoiEvaluatorMode = $KoiEvaluatorMode
 if ($KoiEvaluatorMode -eq 'classical' -and $koiEvalFileOption.Count -gt 0) {
     # Preserve legacy KoiOptions EvalFile calls without claiming that this
     # optional attestation verified the selected network.
     $reportedKoiEvaluatorMode = 'unattested'
 }
-if ($KoiEvaluatorMode -ne 'classical') {
-    if ($koiEvalFileOption.Count -ne 1 -or
-        [string]::IsNullOrWhiteSpace([string]$KoiOptions[$koiEvalFileOption[0]])) {
-        throw "Koi evaluator mode '$KoiEvaluatorMode' requires -KoiEvalFile or -KoiOptions EvalFile."
-    }
+$evalFileValue = ''
+if ($koiEvalFileOption.Count -eq 1) {
     $evalFileValue = [string]$KoiOptions[$koiEvalFileOption[0]]
+}
+if ($KoiEvaluatorMode -ne 'classical' -and [string]::IsNullOrWhiteSpace($evalFileValue)) {
+    throw "Koi evaluator mode '$KoiEvaluatorMode' requires -KoiEvalFile or -KoiOptions EvalFile."
+}
+if (-not [string]::IsNullOrWhiteSpace($evalFileValue)) {
+    # Resolve and expose the network for the boot environment. This is needed
+    # even in legacy `classical` mode since NNUE became mandatory (HCE removed
+    # 2026-10-28): the engine exits 4 if no network is visible at boot, before
+    # `EvalFile` can be applied over UCI.
     if (-not (Test-Path -LiteralPath $evalFileValue -PathType Leaf)) {
         throw "Koi EvalFile is missing: $evalFileValue"
     }
     $resolvedKoiEvalFile = (Resolve-Path -LiteralPath $evalFileValue).Path
     $KoiOptions['EvalFile'] = $resolvedKoiEvalFile
-    $header = New-Object byte[] 12
-    $stream = [System.IO.File]::OpenRead($resolvedKoiEvalFile)
-    try {
-        $headerBytesRead = $stream.Read($header, 0, $header.Length)
-    } finally {
-        $stream.Dispose()
+    if ($KoiEvaluatorMode -ne 'classical') {
+        $header = New-Object byte[] 12
+        $stream = [System.IO.File]::OpenRead($resolvedKoiEvalFile)
+        try {
+            $headerBytesRead = $stream.Read($header, 0, $header.Length)
+        } finally {
+            $stream.Dispose()
+        }
+        if ($headerBytesRead -lt 12 -or
+            [System.Text.Encoding]::ASCII.GetString($header, 0, 8) -cne 'KOI-NNUE') {
+            throw "Koi EvalFile is not a Koi NNUE container: $resolvedKoiEvalFile"
+        }
+        $networkVersion = [System.BitConverter]::ToUInt32($header, 8)
+        $expectedNetworkVersion = switch ($KoiEvaluatorMode) {
+            'nnue-v4' { 4 }
+            'nnue-v5' { 5 }
+            'nnue-v6' { 6 }
+            'nnue-v8' { 8 }
+            { $_ -in @('gpu-v5') } { 5 }
+        }
+        if ($networkVersion -ne $expectedNetworkVersion) {
+            throw "Koi EvalFile for '$KoiEvaluatorMode' does not contain NNUE v$expectedNetworkVersion."
+        }
+        $koiEvalFileSha256 = (Get-FileHash -LiteralPath $resolvedKoiEvalFile -Algorithm SHA256).Hash.ToLowerInvariant()
     }
-    if ($headerBytesRead -lt 12 -or
-        [System.Text.Encoding]::ASCII.GetString($header, 0, 8) -cne 'KOI-NNUE') {
-        throw "Koi EvalFile is not a Koi NNUE container: $resolvedKoiEvalFile"
+}
+$opponentEvalFileOption = @($OpponentOptions.Keys | Where-Object { ([string]$_) -ieq 'EvalFile' })
+if ($opponentEvalFileOption.Count -gt 0 -and
+    -not [string]::IsNullOrWhiteSpace([string]$OpponentOptions[$opponentEvalFileOption[0]])) {
+    $opponentEvalFileValue = [string]$OpponentOptions[$opponentEvalFileOption[0]]
+    if (-not (Test-Path -LiteralPath $opponentEvalFileValue -PathType Leaf)) {
+        throw "Opponent EvalFile is missing: $opponentEvalFileValue"
     }
-    $networkVersion = [System.BitConverter]::ToUInt32($header, 8)
-    $expectedNetworkVersion = switch ($KoiEvaluatorMode) {
-        'nnue-v4' { 4 }
-        'nnue-v5' { 5 }
-        'nnue-v6' { 6 }
-        'nnue-v8' { 8 }
-        { $_ -in @('gpu-v5') } { 5 }
-    }
-    if ($networkVersion -ne $expectedNetworkVersion) {
-        throw "Koi EvalFile for '$KoiEvaluatorMode' does not contain NNUE v$expectedNetworkVersion."
-    }
-    $koiEvalFileSha256 = (Get-FileHash -LiteralPath $resolvedKoiEvalFile -Algorithm SHA256).Hash.ToLowerInvariant()
+    $resolvedOpponentEvalFile = (Resolve-Path -LiteralPath $opponentEvalFileValue).Path
+    $OpponentOptions[$opponentEvalFileOption[0]] = $resolvedOpponentEvalFile
 }
 
 $koiRandomSeedOption = @($KoiOptions.Keys | Where-Object { ([string]$_) -ieq 'RandomSeed' })
@@ -526,7 +545,7 @@ function Read-OpeningSpecs {
     return @($specs)
 }
 
-function Start-UciEngine([string]$Path, [string]$Label) {
+function Start-UciEngine([string]$Path, [string]$Label, [string]$BootEvalFile = '') {
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $Path
     $startInfo.UseShellExecute = $false
@@ -538,6 +557,11 @@ function Start-UciEngine([string]$Path, [string]$Label) {
         # Keep CPU v4/v5 attestations explicit even when the parent shell asked
         # the engine to prefer GPU inference for unrelated runs.
         $startInfo.EnvironmentVariables['KOI_GPU_NNUE'] = '0'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($BootEvalFile)) {
+        # NNUE is mandatory since the HCE removal (2026-10-28): the engine must
+        # see a network at boot, before `EvalFile` can be applied over UCI.
+        $startInfo.EnvironmentVariables['KOI_NNUE_PATH'] = $BootEvalFile
     }
 
     $process = [System.Diagnostics.Process]::new()
@@ -1187,8 +1211,8 @@ $sprtLosses = 0
 $sprtAborted = 0
 
 try {
-    $koiEngine = Start-UciEngine $koiExecutable 'Koi'
-    $opponentEngine = Start-UciEngine $opponentExecutable 'Opponent'
+    $koiEngine = Start-UciEngine $koiExecutable 'Koi' ([string]$resolvedKoiEvalFile)
+    $opponentEngine = Start-UciEngine $opponentExecutable 'Opponent' ([string]$resolvedOpponentEvalFile)
     Initialize-UciEngine $koiEngine
     Assert-KoiEvalFileAccepted $koiEngine
     Initialize-UciEngine $opponentEngine
