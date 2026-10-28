@@ -75,9 +75,9 @@ public:
         const bool pawn_endgame) noexcept {
         const NullMoveDecision base = null_move(depth, alpha, beta, checked, allowed);
         // Stockfish 19 uses a +365 NNUE-calibrated confidence margin here.
-        // Koi's classical evaluator has a narrower positional-score range;
-        // retain the same depth/improving slope but calibrate the margin to
-        // that scale.  A null fail-high is still re-searched before cutoff,
+        // Koi's pinned NNUE evaluation has a different positional-score range,
+        // so retain the same depth/improving slope but calibrate the margin to
+        // Koi's scale.  A null fail-high is still re-searched before cutoff,
         // while the node-type, repetition, and sparse-material gates provide
         // the Koi-specific safety envelope.
         const int static_eval_floor = beta + kNullMoveStaticMargin - 13 * depth -

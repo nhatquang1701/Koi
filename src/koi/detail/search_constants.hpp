@@ -31,14 +31,15 @@ inline constexpr int kQuiescenceFutilityMoveLimit = 2;
 inline constexpr int kQuiescenceSeeThreshold = -74;
 // Razoring falls back to a quiescence upper-bound probe when the static score
 // is far below alpha.  The reference envelope scales with depth squared; the
-// per-depth coefficient is calibrated to the classical evaluator's narrower
-// score range (the depth-one margin is the historical live value).
+// per-depth coefficient is calibrated against the pinned NNUE evaluation range
+// (the depth-one margin is the historical live value; the classical calibration
+// was retired together with HCE on 2026-10-28).
 inline constexpr int kRazorMarginPerDepthSquared = 120;
 inline constexpr int kRazorMaximumDepth = 1;
 // Child futility removes late quiet moves whose static score is far below
 // alpha.  The reference shape uses the reduced depth (not the nominal node
 // depth) so heavily reduced late moves can be pruned at deeper nodes, and
-// keeps the slope calibrated to the classical evaluator.
+// keeps the slope calibrated against the pinned NNUE evaluation.
 inline constexpr int kChildFutilityMaximumLmrDepth = 12;
 inline constexpr int kChildFutilityBaseMargin = 96;
 inline constexpr int kChildFutilityDepthMargin = 71;
@@ -82,10 +83,10 @@ inline constexpr auto kShortTimedFallbackThreshold = std::chrono::milliseconds{3
 inline constexpr auto kShortTimedSerialThreshold = std::chrono::milliseconds{500};
 inline constexpr std::size_t kNullMoveSparsePieceLimit = 8;
 inline constexpr std::uint16_t kNullMoveRuleSafetyHalfmoves = 90;
-// Koi's classical evaluator has a substantially narrower positional-score
-// distribution than the reference NNUE search.  The null fail-high is still
-// verified before it can cut off, so use a smaller static confidence margin
-// and let depth supply the remaining safety distance.
+// Koi's pinned NNUE evaluation has a different positional-score distribution
+// than the reference search.  The null fail-high is still verified before it
+// can cut off, so use a smaller static confidence margin and let depth supply
+// the remaining safety distance.
 inline constexpr int kNullMoveStaticMargin = 96;
 // Null-move verification is a deep-node safety net.  Below this depth an
 // eligible null fail-high is accepted when the reduced probe itself reached

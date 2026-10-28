@@ -21,10 +21,11 @@ namespace koi::detail {
     std::uint64_t key = state.position_key() ^
         (static_cast<std::uint64_t>(state.halfmove_clock()) +
          0x9E3779B97F4A7C15ULL);
-    // The classical evaluator reads the fullmove counter (opening-development
-    // thresholds at fullmove <= 6 and <= 10), so a stored eval/bound must not be
-    // reused across that threshold.  Mix a bounded band into the private search
-    // key; the public repetition key is unchanged.
+    // The fullmove counter is mixed into the private search key for key
+    // stability across search regimes: the removed classical evaluator read
+    // opening-development thresholds (fullmove <= 6 and <= 10), so a stored
+    // eval/bound must not be reused across them.  The public repetition key is
+    // unchanged.
     key ^= (static_cast<std::uint64_t>(std::min<std::uint32_t>(state.fullmove_number(), 32U)) + 1U) *
         0xD6E8FEB86659FD93ULL;
     // The reversible-history fingerprint deliberately stays out of the key:

@@ -465,12 +465,12 @@ struct SearchContext {
     }
 
     [[nodiscard]] int evaluate(const GameState& state, Color perspective) {
-        // The classical evaluator reads fullmove_number (the opening queen
-        // penalty and the king-ring suppression compare it against fixed
-        // thresholds), while position_key() deliberately covers only the board,
-        // side to move, castling rights, and a capturable en-passant target.
-        // Mix the move counter in so a transposition that changed it can never
-        // reuse an evaluation from the other side of a threshold.
+        // The private evaluation cache key includes the fullmove counter.  The
+        // removed classical evaluator read it for opening-development and
+        // king-ring thresholds, and position_key() deliberately covers only the
+        // board, side to move, castling rights, and a capturable en-passant
+        // target.  Keep mixing the counter so a transposition that changed it
+        // can never reuse an evaluation from a different search regime.
         const std::uint64_t key = state.position_key() ^
             (perspective == Color::black ? 0xD6E8FEB86659FD93ULL : 0ULL) ^
             (static_cast<std::uint64_t>(state.fullmove_number()) * 0x9E3779B97F4A7C15ULL);
@@ -535,7 +535,7 @@ struct SearchContext {
     [[nodiscard]] bool make_observed(GameState& state, const MoveMetadata& metadata,
                                      const int ply) {
         // The parent key is observed only by the notification below, which is
-        // a no-op without a private worker; a serial classical search never
+        // a no-op without a private worker; a serial NNUE search never
         // has one, so skip the key computation there.
         const std::uint64_t parent_key =
             evaluation.has_private_worker() ? state.position_key() : 0;
