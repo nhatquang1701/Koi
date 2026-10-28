@@ -116,6 +116,16 @@ write_config() {
     if [ -x "$ENGINE" ]; then
         engine_handshake="$(printf 'uci\nquit\n' | "$ENGINE" 2>/dev/null || true)"
     fi
+    # The greeting names the deployed build: prefer the engine's UCI build
+    # line (new builds), then the release package's source_commit.
+    local engine_commit=""
+    if [ -n "$engine_handshake" ]; then
+        engine_commit="$(printf '%s\n' "$engine_handshake" | sed -n 's/^info string build //p' | head -n 1)"
+    fi
+    if [ -z "$engine_commit" ] && [ -f "$ENGINE_DIR/package.json" ]; then
+        engine_commit="$(sed -n 's/.*"source_commit": "\([0-9a-f]*\)".*/\1/p' "$ENGINE_DIR/package.json" | head -n 1 | cut -c1-12)"
+    fi
+    [ -n "$engine_commit" ] || engine_commit="unknown"
     if printf '%s' "$engine_handshake" | grep -q 'option name Contempt'; then
         extra_uci="    Contempt: 50"
         if printf '%s' "$engine_handshake" | grep -q 'option name Dynamic Overhead'; then
@@ -175,7 +185,7 @@ challenge:
     - rated
 
 greeting:
-  hello: "Hi! I'm {me}, a Koi engine bot. Good luck!"
+  hello: "Hello! I'm Koi engine commit $engine_commit. Github repo in my profile. Type !help for available commands."
   goodbye: "Good game!"
 
 matchmaking:
