@@ -1347,16 +1347,16 @@ void test_v1_v2_serialization_rejects_nonzero_shifts() {
             "v2 round trips must stay byte-identical");
 }
 
-void test_invalid_in_memory_network_uses_the_classical_fallback() {
+void test_invalid_in_memory_network_is_unusable() {
     koi::NnueNetwork broken = koi::NnueNetwork::synthetic_v4();
     broken.manifest.layer_sizes[1] = 31;
     const auto weights = std::make_shared<const koi::NnueNetwork>(std::move(broken));
     const koi::NnueEvaluator evaluator(weights);
     const koi::GameState state = require_state("4k3/8/8/8/8/8/P7/4K3 w - - 0 1");
-    const koi::ClassicalEvaluator classical;
-    require(evaluator.evaluate(state, state.side_to_move()) ==
-                classical.evaluate(state, state.side_to_move()),
-            "invalid in-memory networks must fall back to classical evaluation");
+    // HCE was removed (2026-10-28): an unusable network must not silently
+    // fabricate a hand-crafted score; the boot path rejects it instead.
+    require(evaluator.evaluate(state, state.side_to_move()) == 0,
+            "an unusable in-memory network must not fall back to a classical score");
     require(evaluator.create_worker() == nullptr,
             "invalid in-memory networks must not create worker state");
 }
@@ -2421,7 +2421,7 @@ int main(int argc, char** argv) {
         {"NNUE v6 diff channel", test_v6_diff_channel_is_applied},
         {"NNUE v6 split head", test_v6_split_diff_shift_matches_independent_reference},
         {"NNUE v2 shifts rejected", test_v1_v2_serialization_rejects_nonzero_shifts},
-        {"NNUE invalid fallback", test_invalid_in_memory_network_uses_the_classical_fallback},
+        {"NNUE invalid network unusable", test_invalid_in_memory_network_is_unusable},
         {"NNUE one-shot stateless", test_one_shot_evaluation_matches_stateless_inference},
         {"external NNUE container", test_external_v2_container},
         {"NNUE auto discovery", test_nnue_auto_discovery_prefers_bundled_layout},

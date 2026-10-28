@@ -237,10 +237,14 @@ std::string gpu_nnue_search_diagnostic(const std::size_t threads) {
     const bool overridden = override_mode.has_value() &&
         *override_mode != gpu_nnue_mode();
     if (effective == GpuNnueMode::disabled) {
+        // Default `off` is silent: since NNUE became mandatory (HCE removed
+        // 2026-10-28) every search would otherwise emit this line, drowning
+        // the protocol stream. Only an explicit environment override is worth
+        // reporting.
         if (override_mode.has_value() && *override_mode == GpuNnueMode::disabled) {
             return "GPU NNUE: off (KOI_GPU_NNUE=0 override)";
         }
-        return "GPU NNUE: off (GpuNnue=off)";
+        return {};
     }
     // The GPU path only serves multi-threaded searches so Threads=1 keeps the
     // deterministic CPU implementation, exactly as before the option existed.
