@@ -1,8 +1,10 @@
 # Koi
 
+> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+
 Koi is a C++26 UCI chess engine for standard chess on Windows x64, Linux
 x86-64, and macOS arm64 (Apple Silicon). It uses iterative-deepening alpha-beta
-search and a persistent transposition table, with a classical evaluator by
+search and a persistent transposition table, with NNUE evaluation by
 default and optional NNUE, GPU NNUE, Polyglot book, and Syzygy support.
 
 ## Start here
@@ -17,7 +19,7 @@ default and optional NNUE, GPU NNUE, Polyglot book, and Syzygy support.
 macOS arm64 (Apple Silicon) is a source-build target: use Homebrew LLVM clang
 19+ (or AppleClang 18+), CMake, and Ninja with `-DKOI_BUILD_MODULES=OFF
 -DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is CUDA-only and unavailable on macOS; the
-CPU NNUE and classical evaluator paths work normally.
+CPU NNUE path works normally.
 
 Koi has no required configuration file. Begin with `Hash=512` and `Threads=1`.
 `Threads=1` provides deterministic search; higher values use

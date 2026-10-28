@@ -11,6 +11,8 @@ param(
     [int]$Threads = 1,
     [ValidateRange(1, 100)]
     [int]$Speed = 100,
+    [Parameter(Mandatory = $true)]
+    [string]$NnuePath,
     [string]$FenFile = '',
     [ValidateRange(0, 255)]
     [int]$Depth = 0,
@@ -77,7 +79,7 @@ function Get-VisitedNps($Totals) {
 
 function Invoke-BenchRun([string]$Label, [string]$Executable, [string]$ReportPath,
                          [string]$StdoutPath, [string]$StderrPath) {
-    $arguments = @('--threads', "$Threads", '--speed', "$Speed", '--timed',
+    $arguments = @('--threads', "$Threads", '--speed', "$Speed", '--timed', '--nnue', $NnuePath,
         '--report', $ReportPath)
     if ($FenFile -ne '') {
         $arguments += @('--fen-file', $resolvedFenFile)

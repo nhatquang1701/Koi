@@ -60,3 +60,19 @@ C. Build-time `KOI_ENABLE_HCE=OFF` default: code stays in the tree unreferenced.
   classical range; after removal those comments should be rewritten for NNUE.
 - Tooling that offers evaluator A/B (`ab_match`, `koi-bench` mode flags) must be
   retargeted or deleted.
+
+## Status (2026-10-28, implemented)
+- HCE sources, parameters, piece-square tables and the classical tuner were deleted.
+- NNUE is required: the factory returns no evaluator without a valid network and
+  `main` exits 4 with a diagnostic. `koi-bench`/`koi-eval-features` require `--nnue`
+  and the build gates (`speed_gate`, `performance_gate`, `release_verify`) take a
+  mandatory `-NnuePath`.
+- Tests use `tests/support/material_evaluator.hpp`; engine-spawning tests use a
+  generated fixture network (`<build>/koi.nnue`, explicit `KOI_NNUE_PATH`).
+  HCE-calibrated tactical fixtures (reviewed moves/scores/pruning counters) were
+  retired and must be re-recorded with the clean rewrite.
+- Docs updated (ENGINE_SPEC §4, README, ARCHITECTURE, USER_GUIDE banner, pipeline,
+  bot/mac-worker, tests/tools READMEs). Some historical measurement sections still
+  mention the old evaluator as past tense/by design.
+- Remaining: the clean HCE rewrite itself (separate cycle). Re-add it behind its own
+  module, explicit score-scale conversion, and re-recorded fixtures.

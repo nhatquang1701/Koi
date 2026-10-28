@@ -1,5 +1,7 @@
 # Koi
 
+> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+
 Koi is a Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon) UCI
 chess engine for standard chess. It is
 written in C++26 and is documented and process-tested against En Croissant as
@@ -36,7 +38,7 @@ diagnostics, and other legacy adapters; `FeatureState` owns cached
 of the public API and is covered by the opt-in `KOI_BUILD_SHADOW_DIFF`
 differential target. Search moves still update the mirror transactionally, while
 interior search skips the expensive mirror comparison; explicit validation and
-diagnostic boundaries retain it. `ClassicalEvaluator`, time management, the
+diagnostic boundaries retain it. the NNUE evaluator, time management, the
 transposition table, and the `SearchService` build on Koi-owned types. The UCI
 controller owns the current position and worker lifecycle, and is the only layer
 that writes protocol output.
@@ -85,7 +87,7 @@ local while immutable network data remains shared. `detail::EvaluationContext`
 selects that worker path or the existing evaluator-plus-mutex fallback, so
 `SearchContext` no longer owns evaluator synchronization or a particular NNUE
 representation. NNUE is the primary evaluator in packaged releases; malformed or
-absent NNUE input still falls back to the deprecated classical evaluator during
+absent NNUE input is now a boot error (the classical fallback was removed on 2026-10-28)
 the transition. `EvaluatorSelection` and `make_evaluator` are the selection seam
 used by the engine entry points: at boot `main.cpp` resolves `KOI_NNUE_PATH` or
 `koi.nnue` beside the executable, and the advertised `EvalFile` option swaps the
@@ -146,7 +148,7 @@ On macOS arm64 (Apple Silicon):
   the Linux static-runtime policy does not apply (`-DKOI_STATIC_RUNTIME=OFF`).
 - GPU NNUE is experimental, disabled by default, and scheduled for removal; it
   is CUDA-only and unavailable on macOS. The engine uses the CPU NNUE
-  network when one is loaded and the classical evaluator otherwise.
+  network when one is loaded; NNUE is required since the 2026-10-28 HCE removal.
 - Optional: `pwsh` for the PowerShell process tests and Python 3 for the
   Python tooling tests.
 
@@ -375,8 +377,8 @@ Release archives bundle the promoted gated network at `nnue/koi.nnue`; when it w
 discovered at boot the UCI handshake advertises `EvalFile` default
 `<autodiscovery>` (informational; echoing it back keeps the boot evaluator).
 Point the `KOI_NNUE_PATH` environment variable at a specific file to override the
-scan, or set `KOI_NNUE_AUTODETECT=0` to keep the classical evaluator; the UCI
-`EvalFile` option still swaps the network at runtime. A missing or rejected file falls back to the classical evaluator and
+scan, or set `KOI_NNUE_AUTODETECT=0` to disable discovery; NNUE is required, and the UCI
+`EvalFile` option still swaps the network at runtime. A missing or rejected file is a boot error (the classical fallback was removed) and
 writes one explanatory line to stderr. Trained networks are local artifacts and are
 not committed. On the local single-thread probe the version 4 `halfka-king-bucket-v1`
 network runs at about 76k nodes/s against about 144k for the classical evaluator, it
@@ -414,7 +416,7 @@ output is a local report, not an Elo claim or a CI threshold.
 
 **GPU NNUE is experimental, disabled by default, and scheduled for removal.**
 It only runs version 5 networks on NVIDIA GPUs with a CUDA 12.x toolkit; the CPU
-NNUE path is the supported default, with the classical evaluator as the deprecated
+NNUE path is required, with the classical evaluator removed on 2026-10-28
 transition fallback.
 The `GpuNnue` UCI option selects the policy:
 
@@ -433,7 +435,7 @@ forces `off`, and any other non-empty `KOI_GPU_NNUE` value forces `on` over the
 option. An explicit `off` from either the option or `KOI_GPU_NNUE=0` always
 wins, so the GPU can never be enabled against a user's explicit request to
 disable it. `EvalFile` semantics are unchanged; a rejected or incompatible
-network still falls back to the classical evaluator.
+network is required to search at all.
 
 At the start of every search with an NNUE network loaded the engine emits one
 diagnostic line, for example:
@@ -458,7 +460,7 @@ CPU scalar evaluation, but this first pass does not promise a speedup and makes
 no strength or Elo claims. GPU NNUE is experimental, off by default, and
 scheduled for removal; it is CUDA-only, and macOS arm64 has no CUDA support, so
 those builds always report the GPU as unavailable and use the CPU NNUE or
-classical evaluator.
+classical evaluator (historical).
 
 For a reproducible local match against Stockfish or another UCI engine, use the
 optional PowerShell harness:
@@ -648,7 +650,7 @@ ctest --test-dir build\release -C Release --output-on-failure
 ```
 
 The optional corpus is retained for local tuning and is deliberately not an Elo or NPS
-CI threshold. NNUE remains opt-in and classical evaluation remains the safe default;
+CI threshold. Historical note: NNUE was once opt-in; since 2026-10-28 it is required;
 Syzygy tablebases are optional, and chess variants remain out of scope. Opening-book
 defaults, placement, fallback, and bypass behavior are documented below. This engine
 continues to evaluate standard FIDE chess.

@@ -24,13 +24,15 @@ Koi is a C++26 chess engine for Windows x64, Linux x86-64, and macOS arm64
 (Apple Silicon). Its default search
 uses iterative-deepening alpha-beta with a persistent transposition table.
 Release packages ship a gated Koi-native NNUE evaluator as the primary evaluator
-(bundled at `nnue/koi.nnue`, auto-discovered at boot); the classical evaluator is
+(bundled at `nnue/koi.nnue`, auto-discovered at boot); the hand-crafted
+classical evaluator was removed in the unreleased 1.1.5 work and a clean rewrite
+is planned, so a network is required to search:
 a deprecated fallback until its staged removal.
 
 | Engine area | What Koi provides |
 | --- | --- |
 | Search | Alpha-beta with Lazy SMP |
-| Evaluation | Gated Koi NNUE primary in release packages (bundled); deprecated classical fallback; experimental GPU NNUE off by default |
+| Evaluation | Gated Koi NNUE required in release packages (bundled); classical HCE removed 2026-10-28 (clean rewrite planned); experimental GPU NNUE off by default |
 | Chess support | Standard chess over the UCI protocol |
 | Optional assets | Bundled CC0 Polyglot opening book; user-supplied Syzygy tablebases |
 

@@ -1,5 +1,7 @@
 # Running Koi as a Lichess bot
 
+> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+
 [lichess-bot](https://github.com/lichess-bot-devs/lichess-bot) is the official
 Python bridge that plays Lichess games with any UCI engine. Koi speaks the UCI
 surface lichess-bot needs: clock-driven `go` commands, `stop`, in-place
@@ -103,7 +105,7 @@ uci_options:
 
 `EvalFile` is an absolute path on purpose: the engine resolves the network
 against its own working directory, and a relative path silently falls back to
-the classical evaluator. `move_overhead: 2000` in the config leaves the engine a
+the required NNUE network (`koi.nnue`). `move_overhead: 2000` in the config leaves the engine a
 buffer on the Lichess clock.
 
 ## Opening book
@@ -148,7 +150,7 @@ the opening, which matters most in short games.
   close-on-exit step uses AppleScript and is silently skipped if macOS denies
   Automation access (the window then shows LICHESS BOT OFFLINE instead).
 - **All time controls.** The generated config accepts bullet, blitz, rapid and
-  classical challenges with `move_overhead: 150` ms, `Contempt: 50` (play for a
+  normal challenges with `move_overhead: 150` ms, `Contempt: 50` (play for a
   win; accept a draw only when forced) and `Dynamic Overhead: true` (the engine
   derives its per-move overhead from the remaining clock). The last two options
   are active from the first engine release that advertises them; older engines

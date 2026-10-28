@@ -516,7 +516,7 @@ koi_add_core_target(koi_core_generic "")
 # Deterministic evaluator + controller shim used only by tests after the HCE
 # removal (the production engine requires NNUE).
 add_library(koi_material_evaluator_test_support STATIC
-    tests/support/uci_controller_classical_constructor.cpp
+    tests/support/uci_controller_test_constructor.cpp
 )
 target_link_libraries(koi_material_evaluator_test_support PUBLIC koi_core)
 

@@ -3,7 +3,9 @@ param(
     [string]$CMakePath = 'cmake',
     [string]$Generator = 'Ninja',
     [string]$CxxCompiler = $(if ($env:OS -eq 'Windows_NT') { 'cl' } else { '' }),
-    [int]$BuildJobs = 2
+    [int]$BuildJobs = 2,
+    [Parameter(Mandatory = $true)]
+    [string]$NnuePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -218,14 +220,14 @@ try {
         $stdoutPath = Join-Path $verificationRoot ("bench-threads-$threads.txt")
         $stderrPath = Join-Path $verificationRoot ("bench-threads-$threads.stderr.txt")
         $profilePath = Join-Path $verificationRoot ("bench-threads-$threads.json")
-        $lines = Invoke-CapturedProcess $benchPath @('--threads', "$threads", '--speed', '100',
+        $lines = Invoke-CapturedProcess $benchPath @('--threads', "$threads", '--speed', '100', '--nnue', $NnuePath,
             '--profile-json', $profilePath) $stdoutPath $stderrPath
         $rows = Assert-BenchmarkRows $lines $threads $false $requireAllMatches
         $profile = Assert-Profile $profilePath $threads $false
         $repeatStdoutPath = Join-Path $verificationRoot ("bench-threads-$threads-repeat.txt")
         $repeatStderrPath = Join-Path $verificationRoot ("bench-threads-$threads-repeat.stderr.txt")
         $repeatProfilePath = Join-Path $verificationRoot ("bench-threads-$threads-repeat.json")
-        $repeatLines = Invoke-CapturedProcess $benchPath @('--threads', "$threads", '--speed', '100',
+        $repeatLines = Invoke-CapturedProcess $benchPath @('--threads', "$threads", '--speed', '100', '--nnue', $NnuePath,
             '--profile-json', $repeatProfilePath) $repeatStdoutPath $repeatStderrPath
         $repeatRows = Assert-BenchmarkRows $repeatLines $threads $false $requireAllMatches
         # Threads > 1 runs Lazy SMP: helper threads race on the shared
@@ -259,7 +261,7 @@ try {
     $timedStdoutPath = Join-Path $verificationRoot 'bench-timed.txt'
     $timedStderrPath = Join-Path $verificationRoot 'bench-timed.stderr.txt'
     $timedProfilePath = Join-Path $verificationRoot 'bench-timed.json'
-    $timedLines = Invoke-CapturedProcess $benchPath @('--threads', "$timedThreads", '--speed', '100', '--timed',
+    $timedLines = Invoke-CapturedProcess $benchPath @('--threads', "$timedThreads", '--speed', '100', '--timed', '--nnue', $NnuePath,
         '--profile-json', $timedProfilePath) $timedStdoutPath $timedStderrPath
     $timedRows = Assert-BenchmarkRows $timedLines $timedThreads $true ($timedThreads -eq 1)
     $timedProfile = Assert-Profile $timedProfilePath $timedThreads $true

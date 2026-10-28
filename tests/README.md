@@ -1,5 +1,7 @@
 # Test layout
 
+> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+
 Tests are grouped by responsibility while preserving their existing CTest
 names and executable target names.
 
@@ -39,7 +41,7 @@ ctest --test-dir build/release -C Release -j 8 --output-on-failure
 On macOS arm64 (Apple Silicon), use Homebrew LLVM clang 19+ (or AppleClang
 18+) with `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`; the CTest
 commands are identical. GPU NNUE is CUDA-only and unavailable on macOS, so the
-CPU NNUE and classical evaluator paths are exercised there.
+The CPU NNUE path and the generated fixture network are exercised there.
 
 The PowerShell process tests are registered only when `pwsh` is found; the C++
 and Python suites are registered on Windows, Linux, and macOS.
@@ -114,7 +116,7 @@ C++ unit / integration executables under `tests/unit/` and `tests/integration/`:
 - Rules and state: `koi_core_tests`, `koi_rules_tests`, `native_rule_state_tests`,
   `perft_tests`, `koi_shadow_diff_tests` (opt-in via `KOI_BUILD_SHADOW_DIFF`).
 - Evaluation: `evaluation_boundary_tests`, `evaluation_architecture_tests`,
-  `nnue_boundary_tests`, `classical_evaluator_tests`, `evaluation_features_tests`.
+  `nnue_boundary_tests`, `evaluation_features_tests`.
 - Search: `koi_search_tests` (four CTest shards), `search_ordering_tests`,
   `search_architecture_tests`, `search_policy_tests`, `search_runtime_tests`,
   `search_service_tests`, `static_exchange_tests`, `time_manager_tests`,
@@ -159,7 +161,7 @@ the repository root as the working directory:
   with four-group records), `gen_training_data_python`,
   `koi_trainer_python` (cross-language v4 and v5 parity against the boundary
   executable),
-  `tune_classical_python` (ridge-fit recovery plus a `koi-eval-features` CSV
+  `nnue_training_python` (NNUE export/training round trips; the old classical tuner was removed)
   round trip when the Release tool is built), and
   `bullet_data_python` (bulletformat conversion, exporter weight layouts for v4
   and v5, and wrapper line parsing).
@@ -274,7 +276,7 @@ timeout, configurable through `KOI_UCI_TIMEOUT_MS`.
 - `data/openings/` — opening corpora (`openings-basic.txt`, `openings-curated-32.txt`).
 - `data/positions/` — evaluation and forensic position sets.
 - `data/endgames/` — endgame regression positions (`endgame-positions.txt`)
-  consumed by `classical_evaluator_tests`, which checks perspective symmetry,
+  consumed by the search test material evaluator, which checks perspective symmetry,
   the bounded endgame scale factors, and dead-position totals.
 - `data/games/` — reference PGNs plus `manifest.json`; the manifest records the
   authoritative SHA-256 and size of each PGN. Most PGNs are reference material

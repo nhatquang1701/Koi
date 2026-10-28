@@ -296,21 +296,22 @@ or future repetition potential. `repetition_history_fingerprint()` is a separate
 search-only key over reversible ancestor keys. `pawn_key()` covers only the two
 pawn bitboards, and `polyglot_key()` is the compatibility-mirror key used by the
 opening book. Search also mixes `fullmove_number` into its evaluation-cache key
-because the classical evaluator reads that counter (`SearchContext::evaluate`).
+for search-key completeness (`SearchContext::evaluate`).
 
 ## 4. Evaluation
 
 ### 4.1 Evaluator selection and snapshot rules
 
-- `make_evaluator()` constructs the classical evaluator unless a network path is
-  supplied (transition fallback only; packaged releases bundle the primary NNUE).
-  At boot `main.cpp` resolves `KOI_NNUE_PATH`, otherwise calls
-  `discover_nnue_network` on the executable directory and then the working
-  directory.
+- **NNUE is required.** The classical evaluator (HCE) was removed on 2026-10-28
+  because its implementation was considered unreliable; a clean rewrite is
+  planned (`docs/HCE_REMOVAL_PLAN.md`). `make_evaluator()` returns no evaluator
+  when the network is missing or rejected, and `main.cpp` exits 4 with a clear
+  diagnostic instead of searching without an evaluation. At boot `main.cpp`
+  resolves `KOI_NNUE_PATH`, otherwise calls `discover_nnue_network` on the
+  executable directory and then the working directory.
 - A loaded network is wrapped by `NnueEvaluator` (and, if the GPU path is active,
-  by `GpuNnueEvaluator`). The classical evaluator remains the fallback at every
-  stage: boot failure, malformed file, rejected dimensions, evaluator
-  installation failure, or GPU unavailability.
+  by `GpuNnueEvaluator`). GPU unavailability falls back to CPU inference for the
+  same network; there is no hand-crafted fallback evaluator.
 - `UCI EvalFile` with a non-empty value stops and joins the active search, loads
   the file relative to the executable directory, and installs it for subsequent
   searches. An empty `EvalFile` is a no-op that keeps the boot-time evaluator.
@@ -319,28 +320,15 @@ because the classical evaluator reads that counter (`SearchContext::evaluate`).
 - A running search never changes evaluator mid-search. `SearchService::start`
   captures the current evaluator; `set_evaluator` affects only later searches.
 
-### 4.2 Classical evaluator (deprecated fallback)
+### 4.2 Classical evaluator (removed 2026-10-28)
 
-> **Deprecation:** NNUE is the primary evaluator in packaged releases. The
-> classical evaluator remains the fallback while the network is absent/rejected,
-> and is scheduled for removal after at least one NNUE-primary release.
-
-The default evaluator is `ClassicalEvaluator` with feature set
-`koi-classical-v1` and parameter version
-`classical-eval-v8-endgame-scaling` (`src/koi/evaluation_parameters.hpp`). It
-builds a `PositionFeatures` snapshot and sums the terms exposed by
-`EvaluationBreakdown` (`src/koi/classical_evaluator.hpp:12-31`):
-
-| Term | Main inputs / weights |
-| --- | --- |
-| Material | P 100, N 320, B 330, R 500, Q 900 (`piece_values.hpp`) |
-| Piece-square | Static tables in `evaluation_piece_squares.hpp` |
-| Mobility | Weight 4; bishop weight 2; queen weight 1 |
-| Pawn structure | Doubled 12, isolated 10, island 4, passed base 20 + 4/rank, connected 6, attacked 6, backward 8; passed-pawn phase/protection/blockade/king-support terms |
-| Activity | Knight outpost 12, rook semi-open 10, rook open 20, seventh rank 15, bishop pair 30, trapped piece 12 |
-| Development | Bonus 10, castling readiness 8, early queen penalty 14 (central 6), scaled by phase |
-| Center control | Weight 7, phase offset 8 |
-| Initiative | Pawn break 12, attacked-piece pressure 2, hanging piece 5 |
+The hand-crafted evaluator (HCE: material, piece-square, mobility, pawn
+structure, activity, development, center control, initiative, king safety,
+king activity, passed pawns, tempo, endgame scaling) was removed on
+2026-10-28 on user instruction because its implementation had accumulated
+odd code. NNUE is now mandatory. A clean HCE rewrite is planned, with its
+own value type and an explicit score-scale conversion; see
+`docs/HCE_REMOVAL_PLAN.md`.
 | King safety | Shield 14, open file 10, king-zone attack 8, attacker weight 6, phase offset 8 / divisor 32 |
 | King activity | Weight 1; fades in above endgame threshold 12 |
 | Passed pawn extras | Promotion weight 8, enemy-king penalty 2, king proximity 3, king support 12 |
@@ -398,8 +386,9 @@ Inference:
   zero selects the legacy combined head.
 - The loader validates magic, version, feature string, layer dimensions,
   hidden-unit parity and range, L1 range, quantization, payload size, and SHA-256
-  before the network is usable. A failed load returns a typed `NnueError`; the
-  engine keeps the previous evaluator.
+  before the network is usable. A failed load returns a typed `NnueError`: at
+  boot that is fatal (exit 4), and a runtime `EvalFile` swap keeps the previous
+  evaluator.
 
 Incremental accumulator (`NnueWorker`):
 
@@ -904,7 +893,7 @@ and `KOI_TEST_SHARD`.
 | Suite group | Examples |
 | --- | --- |
 | Rules and state | `koi_core_tests`, `koi_rules_tests`, `native_rule_state_tests`, `perft_tests`, `koi_shadow_diff_tests` |
-| Evaluation | `evaluation_boundary_tests`, `evaluation_architecture_tests`, `nnue_boundary_tests`, `classical_evaluator_tests`, `evaluation_features_tests` |
+| Evaluation | `evaluation_architecture_tests`, `nnue_boundary_tests`, `evaluation_features_tests` |
 | Search | `koi_search_tests_1of4`..`4of4`, `search_ordering_tests`, `search_architecture_tests`, `search_policy_tests`, `search_runtime_tests`, `search_service_tests`, `static_exchange_tests`, `time_manager_tests`, `transposition_table_tests`, `completion_gate_tests`, `koi_strength_tests`, `koi_soak_tests` |
 | Runtime | `koi_cpu_features_tests`, `koi_cpu_variant_tests`, `gpu_nnue_tests`, `koi_module_tests`, `syzygy_tablebase_tests`, `opening_book_tests`, `uci_controller_tests` |
 | Process (PowerShell) | `koi_engine_process`, `koi_engine_perft_responsiveness`, `koi_engine_variant_process`, `koi_engine_en_croissant_process`, `koi_engine_time_safety_process`, `koi_benchmark_process`, `koi_uci_match_process`, `koi_uci_match_clock`, `koi_stockfish_strength_option`, `cutechess_stability_diagnostics`, `cutechess_stability_smoke`, `hash_memory_stability`, `windows_ci_configuration`, `install_book_script`, `package_release_layout` |
@@ -947,7 +936,7 @@ empty for the 1.1.4 gate.
 | `koi-bench` | 64-position fixed-depth tactical hard gate by default; `--optional` selects the 128-position positional corpus; `--threads`, `--speed`, `--timed`, `--warm-hash`, `--nodes`, `--warmup`, `--repeat`, `--depth`, `--depth-sweep`, `--fen-file`, `--nnue`, `--profile-json`, `--report` |
 | `koi-perft` | Legal-node count from startpos at a non-negative depth |
 | `koi-replay` | Replays coordinate moves from `startpos`/`fen` without exposing the vendored library; reports `legal`, `result`, `termination`, final FEN |
-| `koi-eval-features` | Dump evaluator features; used by the classical tuner round trip |
+| `koi-eval-features` | Dump NNUE evaluations for a position corpus (`--nnue` required) |
 | `koi-nnue-fixture` | Generates NNUE fixtures for boundary/parity tests |
 | `koi-gpu-probe` | CUDA driver/kernel/device report; CPU-only builds report unavailable |
 | `tools/build/speed_gate.ps1` | Repeated `koi-bench --report` baseline/candidate comparison; defaults 5 runs, 2% total NPS regression, 2% row regression, rows under 20 ms excluded as timer-quantized |
@@ -990,8 +979,8 @@ name and version while the tag is the version alone.
 
 ## 10. Known limitations, experimental items, and deferred work
 
-- **The classical evaluator is deprecated.** NNUE is primary in release packages;
-  the classical fallback is removed after at least one NNUE-primary release (see
+- **NNUE is required.** The classical evaluator was removed on 2026-10-28; a
+  clean rewrite is planned (see
   the strength-cycle plan Step 12).
 - **GPU NNUE is experimental, off by default, and scheduled for removal.** It is
   CUDA-only, unavailable on macOS, supports only v5 containers with hidden 1536
@@ -1045,5 +1034,5 @@ name and version while the tag is the version alone.
   printed. The En Croissant transcript grammar accepts an optional
   `currmovenumber`, so both forms are protocol-valid.
 - **GPU NNUE and CPU fallback:** an unsupported GPU network or missing driver
-  leaves the CPU NNUE or classical evaluator active; the engine never fails to
+  leaves the CPU NNUE evaluator active (the engine now exits when no network is usable); the engine never fails to
   start because of the GPU path.

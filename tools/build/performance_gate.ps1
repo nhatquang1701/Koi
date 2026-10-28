@@ -10,7 +10,9 @@ param(
     [ValidateRange(1, 64)]
     [int]$Threads = 2,
     [ValidateRange(1, 100)]
-    [int]$Speed = 100
+    [int]$Speed = 100,
+    [Parameter(Mandatory = $true)]
+    [string]$NnuePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -319,7 +321,7 @@ New-Item -ItemType Directory -Path $candidateDirectory -Force | Out-Null
 
 $baselineTimes = [System.Collections.Generic.List[long]]::new()
 $candidateTimes = [System.Collections.Generic.List[long]]::new()
-$benchmarkArguments = @('--threads', "$Threads", '--speed', "$Speed", '--timed')
+$benchmarkArguments = @('--threads', "$Threads", '--speed', "$Speed", '--timed', '--nnue', $NnuePath)
 
 Write-Output "output_directory=$verificationRoot"
 Write-Output "baseline_executable=$baselinePath"

@@ -1,5 +1,7 @@
 # Koi developer tools
 
+> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+
 The tools are grouped by the job they perform. They resolve the repository root
 from their own location, so commands are safe to run from any working directory.
 Durable reports, match logs, and packages default under `artifacts/`; temporary
@@ -225,11 +227,12 @@ the regression belongs to the use-mode PGO link itself. The option therefore
 stays `OFF` by default; the recipe above is kept so the experiment can be
 repeated with another compiler or training set.
 
-## Classical evaluation term tuning
+## Classical evaluation term tuning (removed 2026-10-28)
 
 `koi-eval-features` (built as `build/release/koi-eval-features.exe`) reads FEN
-lines (optionally `FEN;cp;best_move`) and writes the classical evaluator's term
-breakdown as CSV. `tune_classical.py` fits the twelve term columns to the label
+lines (optionally `FEN;cp;best_move`) and writes the NNUE evaluation as CSV
+(`--nnue NET` is required). The classical term tuner was removed with HCE; see
+`docs/HCE_REMOVAL_PLAN.md`.
 `cp` (or to the evaluator's `total`) with a centered ridge solve, then writes a
 candidate parameter header and a JSON report under `artifacts/`:
 
@@ -570,4 +573,4 @@ and `KOI_GPU_PTX_ARCH=75` forces one embedded module.
 `tests/unit/runtime/gpu_nnue_tests.cpp` checks bit-exact parity against the CPU
 scalar evaluation plus the PTX selection rules. No strength or speed claim is
 attached to this first pass. GPU NNUE is CUDA-only; macOS arm64 has no CUDA
-support, so macOS builds always stay on the CPU NNUE or classical evaluator.
+support, so macOS builds always stay on the CPU NNUE evaluator.

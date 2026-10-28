@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate classical corpora or export a deterministic opt-in Koi NNUE network."""
+"""Export a deterministic opt-in Koi NNUE network (classical tuning removed 2026-10-28)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ if str(MEASUREMENT_DIR) not in sys.path:
     sys.path.insert(0, str(MEASUREMENT_DIR))
 
 RESULTS = {"1-0": "1-0", "0-1": "0-1", "1/2-1/2": "1/2-1/2", "1": "1-0", "-1": "0-1", "0": "1/2-1/2", "win": "1-0", "loss": "0-1", "draw": "1/2-1/2"}
-CANONICAL_HEADER = pathlib.Path(__file__).resolve().parents[2] / "src" / "koi" / "evaluation_parameters.hpp"
 NNUE_MAGIC = b"KOI-NNUE"
 NNUE_FORMAT_VERSION = 2
 NNUE_QUANTIZATION = b"int16/int8"
@@ -31,17 +30,6 @@ NNUE_HYPERPARAMETERS = {
     "learning_rate": 0.01,
     "quantization_scale": 32,
 }
-
-
-def canonical_parameters(header_path: pathlib.Path = CANONICAL_HEADER) -> tuple[str, list[tuple[str, int]]]:
-    source = header_path.read_text(encoding="utf-8")
-    version_match = re.search(r'string_view\s+version\s*=\s*"([^"]+)"', source)
-    fields = [(name, int(value)) for name, value in re.findall(
-        r"\bint\s+(\w+)\s*=\s*(-?\d+);", source
-    )]
-    if version_match is None or not fields:
-        raise ValueError("canonical evaluation header has no versioned integer parameters")
-    return version_match.group(1), fields
 
 
 def valid_fen(fen: str) -> bool:
@@ -541,105 +529,15 @@ def nnue_main(argv: list[str]) -> int:
     return 0
 
 
-def generated_header(
-    rows: Iterable[tuple[str, str]],
-    splits: Mapping[str, list[tuple[str, str]]] | None = None,
-) -> str:
-    train_rows = list(rows)
-    split_rows = {
-        "train": train_rows,
-        "validation": [],
-        "holdout": [],
-    }
-    if splits is not None:
-        split_rows.update({name: list(values) for name, values in splits.items()})
-    parameter_version, parameters = canonical_parameters()
-    lines = [
-        "#pragma once",
-        "",
-        "#include <cstddef>",
-        "#include <string_view>",
-        '#include "koi/evaluation_parameters.hpp"',
-        "",
-        "namespace koi {",
-        "",
-        f'inline constexpr std::string_view kTunedEvaluationParameterVersion = "{parameter_version}";',
-        f'inline constexpr std::string_view kTunedEvaluationCorpusSha256 = "{corpus_sha256(train_rows)}";',
-        'inline constexpr std::string_view kTunedEvaluationMetadataFormatVersion = "koi-evaluation-parameters-v1";',
-        "",
-    ]
-    for name in ("train", "validation", "holdout"):
-        capitalized = name.capitalize()
-        values = split_rows[name]
-        lines.append(
-            f'inline constexpr std::string_view kTunedEvaluation{capitalized}CorpusSha256 = "{corpus_sha256(values)}";'
-        )
-        lines.append(
-            f"inline constexpr std::size_t kTunedEvaluation{capitalized}PositionCount = {len(values)};"
-        )
-    lines.append("")
-    lines.extend([
-        "inline constexpr EvaluationParameterMetadata kTunedEvaluationParameterMetadata{",
-        '    "koi-evaluation-parameters-v1",',
-        f'    "{parameter_version}",',
-        '    kTunedEvaluationTrainCorpusSha256,',
-        '    kTunedEvaluationValidationCorpusSha256,',
-        '    kTunedEvaluationHoldoutCorpusSha256,',
-        '    kTunedEvaluationTrainPositionCount,',
-        '    kTunedEvaluationValidationPositionCount,',
-        '    kTunedEvaluationHoldoutPositionCount,',
-        "};",
-        "",
-    ])
-    for name, value in parameters:
-        lines.append(f"inline constexpr int kTunedEvaluation_{name} = {value};")
-    lines.extend(["", "} // namespace koi", ""])
-    return "\n".join(lines)
-
-
 def main(argv: list[str]) -> int:
     if argv and argv[0] == "nnue":
         return nnue_main(argv[1:])
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("corpus", nargs="?", type=pathlib.Path)
-    parser.add_argument("-i", "--input", dest="input_path", type=pathlib.Path)
-    parser.add_argument("--train", type=pathlib.Path)
-    parser.add_argument("--validation", type=pathlib.Path)
-    parser.add_argument("--holdout", type=pathlib.Path)
-    parser.add_argument("-o", "--output", type=pathlib.Path, default=pathlib.Path("-"))
-    args = parser.parse_args(argv)
-    try:
-        split_paths = {
-            "train": args.train,
-            "validation": args.validation,
-            "holdout": args.holdout,
-        }
-        if any(path is not None for path in split_paths.values()):
-            if not all(path is not None for path in split_paths.values()):
-                parser.error("--train, --validation, and --holdout must be provided together")
-            if args.input_path is not None or args.corpus is not None:
-                parser.error("split corpora cannot be combined with a positional or --input corpus")
-            splits = {
-                name: parse_rows(path.read_text(encoding="utf-8"))
-                for name, path in split_paths.items()
-                if path is not None
-            }
-            output = generated_header(splits["train"], splits)
-        else:
-            input_path = args.input_path or args.corpus
-            if input_path is None:
-                parser.error("a corpus path is required")
-            corpus_text = sys.stdin.read() if str(input_path) == "-" else input_path.read_text(encoding="utf-8")
-            rows = parse_rows(corpus_text)
-            output = generated_header(rows)
-        if str(args.output) == "-":
-            sys.stdout.write(output)
-        else:
-            args.output.write_text(output, encoding="utf-8", newline="\n")
-    except (OSError, ValueError) as error:
-        print(f"tune_eval.py: {error}", file=sys.stderr)
-        return 2
-    return 0
+    print(
+        "tune_eval.py: the classical evaluator was removed (2026-10-28); "
+        "only the 'nnue' subcommand remains (see docs/HCE_REMOVAL_PLAN.md).",
+        file=sys.stderr,
+    )
+    return 2
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 # NNUE training and promotion loop
 
-NNUE is the primary evaluator in release packages (the classical evaluator is a
+> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+
+NNUE is the required evaluator (the classical evaluator was removed 2026-10-28; a
 deprecated fallback, removed after at least one NNUE-primary release). This page
 shows the loop that turns self-play data into a promoted `.nnue` file bundled in
 release packages, with the exact tools in this repository.

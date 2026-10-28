@@ -1,5 +1,7 @@
 # Apple Silicon (macOS arm64) worker setup
 
+> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+
 How to build, test, and measure Koi on an Apple Silicon Mac — the class of
 machine the project uses for its speed gates (benchmarks, node-count
 measurements, and self-play A/B runs).
@@ -59,7 +61,7 @@ ctest --test-dir build/release -j 8 --output-on-failure
   with `-KoiPath` / `-OpponentPath`; install PowerShell 7 on macOS with
   `brew install --cask powershell`.
 
-- Reference numbers (M4, classical evaluator, Threads=1): about 1.05M
+- Reference numbers (M4, historical classical evaluator, Threads=1): about 1.05M
   visited nodes/s at depth 6 from the start position. The visited-node count is
   quiescence-dominated (about 98% at middlegame depth 7), so per-ply costs grow
   quickly with depth: budget minutes per middlegame position at depth 7, and

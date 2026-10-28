@@ -18,7 +18,7 @@ flowchart TD
     CONTEXT --> TT["transposition_table.cpp<br/>24-byte entries<br/>hazard lease · generations"]
     CONTEXT --> SEE["static_exchange.cpp<br/>bitboard SEE"]
     CONTEXT --> ORDER["search_ordering.cpp<br/>history · killers · counters"]
-    CONTEXT --> EVAL["classical_evaluator.cpp<br/>term model (default)"]
+    CONTEXT --> EVAL["nnue.cpp<br/>NNUE evaluator (required)"]
     EVAL --> NNUE["nnue.cpp<br/>int16 accumulators<br/>AVX2 kernels · 8 buckets"]
     UCI --> BOOK["opening_book.cpp<br/>optional Polyglot book"]
     UCI --> TB["syzygy_tablebase.cpp<br/>optional Syzygy probing"]
@@ -159,7 +159,7 @@ flowchart TD
 | `transposition_table.cpp` | Physical storage, locking, generations, clearing, resizing, and mate-score normalization. |
 | `static_exchange.cpp` | Bitboard static-exchange evaluation used by pruning and ordering. |
 | `search_ordering.cpp` | History, killers, and continuation counters for move ordering. |
-| `classical_evaluator.cpp` | Default evaluator: material and positional term model. |
+| `nnue.cpp` | Required evaluator: NNUE container, inference and incremental state (classical HCE removed 2026-10-28; rewrite planned). |
 | `nnue.cpp` | Optional Koi-native NNUE: integer forward pass, AVX2 kernels, king-bucket features. |
 | `opening_book.cpp` | Optional Polyglot opening book; no book is bundled. |
 | `syzygy_tablebase.cpp` | Optional Syzygy root and interior probing; no tablebase data is bundled. |
@@ -181,7 +181,7 @@ flowchart TD
 2. The search service snapshots the request and hands it to the runner.
 3. The runner drives iterative deepening over the shared transposition table
    and, with `Threads > 1`, over Lazy SMP workers.
-4. Every node evaluates through the classical evaluator or a loaded NNUE
+4. Every node evaluates through NNUE (required since the 2026-10-28 HCE removal)
    network, and orders moves through the shared ordering tables.
 5. Completed root iterations are published back through the UCI controller,
    which is the only component that writes protocol output.
