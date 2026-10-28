@@ -6,9 +6,6 @@ repository [README](../README.md) is the concise project entry point; the
 [user guide](USER_GUIDE.md) contains the detailed build, UCI, GUI, optional
 asset, and tooling reference.
 
-- [AGENTS.md](../AGENTS.md) gives contributors and coding agents the stable
-  architecture contracts, source map, test workflow, artifact policy, and
-  release guidance.
 - [lichess-bot.md](lichess-bot.md) covers running Koi as a Lichess bot.
 - [mac-worker.md](mac-worker.md) documents the Apple Silicon build, test, and
   measurement worker setup.

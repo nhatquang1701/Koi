@@ -80,8 +80,6 @@ until its removal.
   UCI options, GUI setup, development guidance, and project archive.
 - [User guide](docs/USER_GUIDE.md) — build instructions, protocol behavior,
   optional assets, and tools.
-- [Developer and agent guide](AGENTS.md) — architecture contracts, source map,
-  testing, and contribution workflow.
 - [Documentation map](docs/README.md) — maintained documentation and history.
 
 ## License

@@ -38,9 +38,9 @@ books, NNUE, GPU NNUE, Syzygy, and release packaging.
 
 ## Developing Koi
 
-The [contributor and agent guide](../AGENTS.md) explains architecture contracts,
-the source map, build commands, testing, artifact handling, and contribution
-workflow. The guide complements these repository references:
+The public contribution workflow lives in CONTRIBUTING.md and the architecture
+contracts in docs/ARCHITECTURE.md; the internal agent guide is kept privately
+outside the repository. These repository references complement them:
 
 - [Test layout](../tests/README.md)
 - [Developer tools](../tools/README.md)

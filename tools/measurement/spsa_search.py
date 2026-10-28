@@ -5,7 +5,7 @@ The tool tunes search-policy margins by staging perturbed copies of the
 the simultaneous-perturbation-stochastic-approximation update. Nothing is edited
 in ``src/``: every variant is written under a caller-provided staging root, and
 adopting a tuned value remains a separate, gated change (the Mac speed gate and
-the strength A/B rules in AGENTS.md still apply).
+the project strength A/B rules still apply).
 
 Builds and matches are delegated to a runner command supplied by the caller so
 the same driver works for the Mac harness and for a local checkout. The runner

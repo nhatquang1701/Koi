@@ -57,7 +57,6 @@ nav:
       - User guide: docs/USER_GUIDE.md
       - Lichess bot: docs/lichess-bot.md
   - Developing Koi:
-      - Agent guide: AGENTS.md
       - Contributing: CONTRIBUTING.md
       - Architecture: docs/ARCHITECTURE.md
       - NNUE pipeline: docs/NNUE_PIPELINE.md
