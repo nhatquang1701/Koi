@@ -17,7 +17,7 @@
 #include <vector>
 
 #include "koi/position.hpp"
-#include "koi/classical_evaluator.hpp"
+#include "../../support/material_evaluator.hpp"
 #include "koi/time_manager.hpp"
 #include "koi/uci_controller.hpp"
 
@@ -91,7 +91,7 @@ ControllerResult run_controller_in_directory(std::string_view transcript,
     std::ostringstream output;
     std::ostringstream diagnostics;
     UciController controller(input, output, diagnostics, koi::SearchService{
-        std::make_shared<koi::ClassicalEvaluator>()}, directory);
+        std::make_shared<koi::test::MaterialEvaluator>()}, directory);
     return {controller.run(), output.str(), diagnostics.str()};
 }
 
@@ -101,7 +101,7 @@ ControllerResult run_controller_with_autodiscovery(std::string_view transcript,
     std::ostringstream output;
     std::ostringstream diagnostics;
     UciController controller(input, output, diagnostics, koi::SearchService{
-        std::make_shared<koi::ClassicalEvaluator>()}, {}, autodiscovered);
+        std::make_shared<koi::test::MaterialEvaluator>()}, {}, autodiscovered);
     return {controller.run(), output.str(), diagnostics.str()};
 }
 koi::GameState position_after(const std::vector<std::string_view>& moves) {
@@ -1389,7 +1389,7 @@ void test_ponderhit_continues_the_ponder_search_in_place() {
     int exit_code = -1;
     std::thread controller_thread([&] {
         UciController controller(input_stream, output, diagnostics,
-                                 koi::SearchService{std::make_shared<koi::ClassicalEvaluator>()},
+                                 koi::SearchService{std::make_shared<koi::test::MaterialEvaluator>()},
                                  files.path());
         exit_code = controller.run();
     });
@@ -1440,7 +1440,7 @@ void test_large_hash_option_is_capped_without_crashing_the_controller() {
     std::ostringstream output;
     std::ostringstream diagnostics;
     UciController controller(input, output, diagnostics,
-                              koi::SearchService{std::make_shared<koi::ClassicalEvaluator>(),
+                              koi::SearchService{std::make_shared<koi::test::MaterialEvaluator>(),
                                                  std::move(policy)});
     require(controller.run() == 0, "a capped large hash request must not crash the controller");
     require(output.str().find("info string hash requested 4096 MB effective ") != std::string::npos,

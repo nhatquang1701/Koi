@@ -513,15 +513,13 @@ endif()
 # library's own std::popcount/countr_zero already dispatch on __isa_available.
 koi_add_core_target(koi_core_generic "")
 
-# The classical evaluator (HCE) is no longer part of the engine or any tool.
-# The old implementation is kept ONLY as a private test-support library so the
-# remaining tests that use it as a deterministic eval can migrate; it is never
-# linked into an engine/binary. See docs/HCE_REMOVAL_PLAN.md.
-add_library(koi_hce_test_support STATIC
-    src/koi/classical_evaluator.cpp
+# Deterministic evaluator + controller shim used only by tests after the HCE
+# removal (the production engine requires NNUE).
+add_library(koi_material_evaluator_test_support STATIC
     tests/support/uci_controller_classical_constructor.cpp
 )
-target_link_libraries(koi_hce_test_support PUBLIC koi_core)
+target_link_libraries(koi_material_evaluator_test_support PUBLIC koi_core)
+
 target_compile_definitions(koi_core_generic PRIVATE TB_NO_HW_POP_COUNT)
 
 option(KOI_BUILD_SHADOW_DIFF
@@ -595,14 +593,6 @@ add_executable(koi_core_tests
 target_link_libraries(koi_core_tests PRIVATE koi_core)
 
 add_test(NAME koi_core_tests COMMAND koi_core_tests)
-
-add_executable(evaluation_boundary_tests
-    tests/unit/evaluation/evaluation_boundary_tests.cpp
-)
-
-target_link_libraries(evaluation_boundary_tests PRIVATE koi_core)
-
-add_test(NAME evaluation_boundary_tests COMMAND evaluation_boundary_tests)
 
 add_executable(evaluation_architecture_tests
     tests/unit/evaluation/evaluation_architecture_tests.cpp
@@ -931,7 +921,6 @@ endif()
 # shadow-diff oracle joins the list only when it is part of the build.
 set(KOI_TEST_SUPPORT_TARGETS
     koi_core_tests
-    evaluation_boundary_tests
     evaluation_architecture_tests
     nnue_boundary_tests
     koi_cpu_features_tests
@@ -1236,10 +1225,6 @@ if(Python3_Interpreter_FOUND)
             ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
     )
     add_test(
-        NAME tune_eval_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/tune_eval_test.py -v
-    )
-    add_test(
         NAME nnue_training_python
         COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/nnue_training_test.py -v
     )
@@ -1314,7 +1299,6 @@ if(Python3_Interpreter_FOUND)
             ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1;KOI_NNUE_BOUNDARY_EXE=$<TARGET_FILE:nnue_boundary_tests>"
     )
     set_tests_properties(
-        tune_eval_python
         nnue_training_python nnue_wrapper_python koi_dataset_python gen_training_data_python
         koi_chess_python koi_chess_pgn_python koi_chess_engine_python
         measurement_phase_python measurement_forensics_python
@@ -1347,7 +1331,7 @@ if(TARGET koi_module_tests)
     set_tests_properties(koi_module_tests PROPERTIES LABELS "unit")
 endif()
 set_tests_properties(
-    evaluation_boundary_tests evaluation_architecture_tests nnue_boundary_tests
+    evaluation_architecture_tests nnue_boundary_tests
     evaluation_features_tests
     PROPERTIES LABELS "unit;evaluation"
 )
@@ -1404,7 +1388,7 @@ endif()
 if(Python3_Interpreter_FOUND)
     set_tests_properties(
         elo_estimate_python stockfish_match_python elo_openings_python
-        tune_eval_python nnue_training_python nnue_wrapper_python
+        nnue_training_python nnue_wrapper_python
         koi_dataset_python gen_training_data_python
         koi_chess_python koi_chess_pgn_python koi_chess_engine_python
         measurement_phase_python measurement_forensics_python strength_report_python
@@ -1440,15 +1424,9 @@ add_custom_target(koi_test_nnue_fixture ALL DEPENDS "${CMAKE_BINARY_DIR}/koi.nnu
 # this loop only fills in the ones that would otherwise run unbounded.
 get_property(KOI_REGISTERED_TESTS DIRECTORY PROPERTY TESTS)
 
-# Tests still using the frozen classical evaluator as a deterministic test
-# evaluator link the private support library (never the engine).
-foreach(KOI_HCE_TEST IN ITEMS evaluation_boundary_tests nnue_boundary_tests
-        gpu_nnue_tests koi_soak_tests search_service_tests uci_controller_tests
-        koi_search_tests koi_strength_tests)
-    if(TARGET ${KOI_HCE_TEST})
-        target_link_libraries(${KOI_HCE_TEST} PRIVATE koi_hce_test_support)
-    endif()
-endforeach()
+# Tests that construct a UciController without an explicit evaluator use the
+# test-only material evaluator shim (see tests/support/).
+target_link_libraries(uci_controller_tests PRIVATE koi_material_evaluator_test_support)
 set_tests_properties(${KOI_REGISTERED_TESTS} PROPERTIES
     ENVIRONMENT "KOI_NNUE_PATH=${CMAKE_BINARY_DIR}/koi.nnue")
 foreach(KOI_TEST_NAME IN LISTS KOI_REGISTERED_TESTS)

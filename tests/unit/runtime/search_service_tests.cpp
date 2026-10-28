@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-#include "koi/classical_evaluator.hpp"
+#include "../../support/material_evaluator.hpp"
 #include "koi/detail/search_constants.hpp"
 #include "koi/search_service.hpp"
 #include "koi/search_types.hpp"
@@ -120,7 +120,7 @@ public:
 }
 
 void test_depth_limited_search_completes_once() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     GameState root = GameState::startpos();
 
     std::atomic<int> completions{0};
@@ -144,7 +144,7 @@ void test_depth_limited_search_completes_once() {
 }
 
 void test_stop_ends_an_infinite_search() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     GameState root = GameState::startpos();
 
     std::atomic<int> info_count{0};
@@ -223,7 +223,7 @@ void test_running_search_keeps_its_evaluator() {
 }
 
 void test_hash_controls_are_observable() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     require(service.hash_size_mb() == 16, "the service must report the configured hash size");
     require(service.hashfull_permill() <= 1000, "hashfull must be a permill value");
 
@@ -236,7 +236,7 @@ void test_hash_controls_are_observable() {
 }
 
 void test_search_without_a_sink_still_completes() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 8);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 8);
     SearchLimits limits;
     limits.depth = 1;
 
@@ -246,7 +246,7 @@ void test_search_without_a_sink_still_completes() {
 }
 
 void test_request_ponderhit_converts_a_running_ponder_search() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     GameState root = GameState::startpos();
 
     std::atomic<int> completions{0};
@@ -312,7 +312,7 @@ void test_search_forwards_advisory_incremental_hooks() {
 }
 
 void test_interior_tablebase_hook_cuts_off_a_decisive_score() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     const GameState root = koi::test::require_value(
         GameState::from_fen("8/8/8/4k3/8/8/4P3/4K3 w - - 0 1"),
         "the interior tablebase hook fixture must parse");
@@ -347,7 +347,7 @@ void test_interior_tablebase_hook_cuts_off_a_decisive_score() {
 }
 
 void test_interior_tablebase_hook_ignores_non_decisive_results() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     const GameState root = koi::test::require_value(
         GameState::from_fen("8/8/8/4k3/8/8/4P3/4K3 w - - 0 1"),
         "the interior tablebase hook fixture must parse");
@@ -378,7 +378,7 @@ void test_interior_tablebase_hook_ignores_non_decisive_results() {
 }
 
 void test_interior_tablebase_hook_ignores_zero_mate_draws() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     const GameState root = koi::test::require_value(
         GameState::from_fen("8/8/8/4k3/8/8/4P3/4K3 w - - 0 1"),
         "the interior tablebase hook fixture must parse");
@@ -409,7 +409,7 @@ void test_interior_tablebase_hook_ignores_zero_mate_draws() {
 }
 
 void test_interior_tablebase_hook_respects_the_fifty_move_rule() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     const GameState root = koi::test::require_value(
         GameState::from_fen("8/8/8/4k3/8/8/8/4K2R w - - 20 40"),
         "the fifty-move hook fixture must parse");
@@ -439,7 +439,7 @@ void test_interior_tablebase_hook_respects_the_fifty_move_rule() {
 }
 
 void test_interior_tablebase_hook_exceptions_are_swallowed() {
-    SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     const GameState root = koi::test::require_value(
         GameState::from_fen("8/8/8/4k3/8/8/4P3/4K3 w - - 0 1"),
         "the interior tablebase hook fixture must parse");
@@ -474,7 +474,7 @@ void test_interior_tablebase_default_off_is_byte_identical() {
     reference_sink.on_complete = [&reference](const SearchResult& completed) {
         reference = completed;
     };
-    SearchService reference_service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService reference_service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     auto reference_handle = reference_service.start(root, limits, reference_sink);
     reference_handle.wait();
     require(reference.has_value(), "the reference search must complete");
@@ -487,7 +487,7 @@ void test_interior_tablebase_default_off_is_byte_identical() {
     std::optional<SearchResult> hooked;
     SearchEventSink hooked_sink;
     hooked_sink.on_complete = [&hooked](const SearchResult& completed) { hooked = completed; };
-    SearchService hooked_service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+    SearchService hooked_service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
     auto hooked_handle = hooked_service.start(root, limits, hooked_sink, options);
     hooked_handle.wait();
     require(hooked.has_value(), "the hooked search must complete");

@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "koi/classical_evaluator.hpp"
+#include "../../support/material_evaluator.hpp"
 #include "koi/detail/search_context.hpp"
 #include "koi/detail/search_ordering.hpp"
 #include "koi/detail/search_policy.hpp"
@@ -28,6 +28,11 @@
 #include "koi/transposition_table.hpp"
 
 #include "koi_test_support.hpp"
+
+// HCE-calibrated fixtures were retired when the classical evaluator was
+// removed (2026-10-28): their reviewed moves, scores, and pruning counters
+// were recorded against that score distribution. Re-record them with the
+// clean HCE rewrite (docs/HCE_REMOVAL_PLAN.md).
 
 namespace {
 
@@ -288,7 +293,7 @@ koi::SearchResult search(koi::SearchService& service, koi::GameState root, koi::
 }
 
 void test_evaluator_returns_material_and_pst_from_requested_perspective() {
-    koi::ClassicalEvaluator evaluator;
+    koi::test::MaterialEvaluator evaluator;
     const koi::GameState queen_up = require_state("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
     const koi::GameState pawn_home = require_state("4k3/8/8/8/8/8/P7/4K3 w - - 0 1");
     const koi::GameState pawn_advanced = require_state("4k3/8/8/8/4P3/8/8/4K3 w - - 0 1");
@@ -301,259 +306,35 @@ void test_evaluator_returns_material_and_pst_from_requested_perspective() {
             "a centrally advanced white pawn must receive a positive PST improvement");
 }
 
-void test_evaluator_breakdown_scores_structure_activity_and_king_safety() {
-    koi::ClassicalEvaluator evaluator;
-    const koi::GameState mobile_knight = require_state("4k3/8/8/3N4/8/8/8/4K3 w - - 0 1");
-    const koi::GameState corner_knight = require_state("4k3/8/8/8/8/8/8/N3K3 w - - 0 1");
-    const koi::GameState passed_pawns = require_state("4k3/8/8/3P4/4P3/8/8/4K3 w - - 0 1");
-    const koi::GameState doubled_pawns = require_state("4k3/8/8/3P4/3P4/8/8/4K3 w - - 0 1");
-    const koi::GameState shielded_king = require_state("4k3/8/8/8/8/8/5PPP/4K3 w - - 0 1");
-    const koi::GameState exposed_king = require_state("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
 
-    const auto mobile = evaluator.breakdown(mobile_knight, koi::Color::white);
-    const auto corner = evaluator.breakdown(corner_knight, koi::Color::white);
-    const auto passed = evaluator.breakdown(passed_pawns, koi::Color::white);
-    const auto doubled = evaluator.breakdown(doubled_pawns, koi::Color::white);
-    const auto shielded = evaluator.breakdown(shielded_king, koi::Color::white);
-    const auto exposed = evaluator.breakdown(exposed_king, koi::Color::white);
 
-    require(mobile.mobility > corner.mobility, "centralized pieces must receive a mobility bonus");
-    require(passed.pawn_structure > doubled.pawn_structure,
-            "passed and connected pawns must score better than doubled pawns");
-    require(shielded.king_safety > exposed.king_safety,
-            "a king pawn shield must improve king-safety scoring");
-    require(mobile.total == evaluator.evaluate(mobile_knight, koi::Color::white),
-            "breakdown total must match the evaluator result");
-}
 
-void test_evaluator_rewards_development_center_control_and_immediate_pressure() {
-    koi::ClassicalEvaluator evaluator;
-    const auto undeveloped = evaluator.breakdown(
-        require_state("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
-        koi::Color::white);
-    const auto developed = evaluator.breakdown(
-        require_state("rnbqkbnr/pppppppp/8/8/8/2N5/PPPPPPPP/R1BQKBNR w KQkq - 0 1"),
-        koi::Color::white);
-    const auto edge = evaluator.breakdown(
-        require_state("4k3/8/8/8/8/8/8/N3K3 w - - 0 1"), koi::Color::white);
-    const auto center = evaluator.breakdown(
-        require_state("4k3/8/8/8/8/2N5/8/4K3 w - - 0 1"), koi::Color::white);
-    const auto quiet_pressure = evaluator.breakdown(
-        require_state("7r/6k1/8/8/Q7/8/8/4K3 w - - 0 1"), koi::Color::white);
-    const auto immediate_pressure = evaluator.breakdown(
-        require_state("4r1k1/8/8/8/Q7/8/8/4K3 w - - 0 1"), koi::Color::white);
-    const auto defended_pressure = evaluator.breakdown(
-        require_state("2k5/2q5/8/8/8/8/2R3B1/4K3 w - - 0 1"), koi::Color::white);
 
-    require(developed.development > undeveloped.development,
-            "developing a minor piece must improve the development term");
-    require(center.center_control > edge.center_control,
-            "a centralized knight must improve the core-center term");
-    require(immediate_pressure.initiative > quiet_pressure.initiative,
-            "attacking an exposed valuable piece must improve initiative pressure");
-    require(defended_pressure.initiative < 0,
-            "initiative pressure must not reward an attacked piece defended by the king: " +
-                std::to_string(defended_pressure.initiative));
-}
 
-void test_evaluator_rewards_a_bishop_pair() {
-    koi::ClassicalEvaluator evaluator;
-    const auto bishop_pair = evaluator.breakdown(
-        require_state("4k3/8/8/8/8/8/8/2B1KB2 w - - 0 1"), koi::Color::white);
-    const auto single_bishop = evaluator.breakdown(
-        require_state("4k3/8/8/8/8/8/8/2B1K3 w - - 0 1"), koi::Color::white);
 
-    require(bishop_pair.activity > single_bishop.activity,
-            "a same-side bishop pair must receive an activity bonus over one bishop");
-}
 
-void test_evaluator_breakdown_is_perspective_symmetric() {
-    koi::ClassicalEvaluator evaluator;
-    const koi::GameState state = require_state("r3k2r/pp2bppp/2p1pn2/8/2B5/2N1PN2/PPPQ1PPP/R3K2R w KQkq - 0 1");
-    const auto white = evaluator.breakdown(state, koi::Color::white);
-    const auto black = evaluator.breakdown(state, koi::Color::black);
 
-    require(white.material == -black.material && white.piece_square == -black.piece_square &&
-                white.mobility == -black.mobility && white.pawn_structure == -black.pawn_structure &&
-                white.activity == -black.activity && white.development == -black.development &&
-                white.center_control == -black.center_control && white.initiative == -black.initiative &&
-                white.king_safety == -black.king_safety &&
-                white.king_activity == -black.king_activity && white.passed_pawn == -black.passed_pawn &&
-                white.tempo == -black.tempo &&
-                white.total == -black.total,
-            "every evaluation component must negate under a perspective flip");
-}
 
-void test_evaluator_scores_backward_pawns_piece_mobility_and_dead_material() {
-    koi::ClassicalEvaluator evaluator;
-    const koi::GameState backward = require_state("k7/1b6/8/8/3P4/4P3/8/K7 w - - 0 1");
-    const koi::GameState healthy = require_state("k7/2b5/8/8/3P4/4P3/8/K7 w - - 0 1");
-    const koi::GameState central_queen = require_state("4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1");
-    const koi::GameState corner_queen = require_state("4k3/8/8/8/8/8/8/4K2Q w - - 0 1");
-    const koi::GameState central_bishop = require_state("4k2r/8/8/8/2B5/8/8/4K3 w - - 0 1");
-    const koi::GameState corner_bishop = require_state("4k2r/8/8/8/8/8/8/B3K3 w - - 0 1");
-    const koi::GameState lone_bishop = require_state("4k3/8/8/8/8/8/2B5/4K3 w - - 0 1");
 
-    const auto backward_score = evaluator.breakdown(backward, koi::Color::white);
-    const auto healthy_score = evaluator.breakdown(healthy, koi::Color::white);
-    const auto central_score = evaluator.breakdown(central_queen, koi::Color::white);
-    const auto corner_score = evaluator.breakdown(corner_queen, koi::Color::white);
-    const auto central_bishop_score = evaluator.breakdown(central_bishop, koi::Color::white);
-    const auto corner_bishop_score = evaluator.breakdown(corner_bishop, koi::Color::white);
 
-    require(backward_score.pawn_structure < healthy_score.pawn_structure,
-            "a backward pawn must score below an otherwise healthy pawn structure");
-    require(central_score.activity > corner_score.activity,
-            "central bishops and queens must receive piece-specific mobility credit");
-    require(central_bishop_score.activity > corner_bishop_score.activity,
-            "bishop mobility must contribute to activity scoring");
-    require(evaluator.evaluate(lone_bishop, koi::Color::white) == 0,
-            "insufficient material must evaluate as a forced draw");
-}
 
-void test_evaluator_increases_advanced_passed_pawn_value_in_the_endgame() {
-    koi::ClassicalEvaluator evaluator;
-    const koi::GameState endgame = require_state("4k3/8/8/3P4/8/8/8/4K3 w - - 0 1");
-    const koi::GameState middlegame = require_state("4q2k/8/8/3P4/8/8/8/4Q2K w - - 0 1");
 
-    const auto endgame_score = evaluator.breakdown(endgame, koi::Color::white);
-    const auto middlegame_score = evaluator.breakdown(middlegame, koi::Color::white);
-    require(endgame_score.pawn_structure > middlegame_score.pawn_structure,
-            "an advanced passed pawn must receive additional weight as material leaves the board");
-}
 
-void test_evaluator_penalizes_a_directly_blockaded_passed_pawn() {
-    koi::ClassicalEvaluator evaluator;
-    const auto advanced = evaluator.breakdown(require_evaluation_fixture("advanced_passed"), koi::Color::white);
-    const auto blockaded = evaluator.breakdown(require_evaluation_fixture("blockaded_passed"), koi::Color::white);
 
-    require(advanced.pawn_structure >= blockaded.pawn_structure + 10,
-            "a directly blockaded passed pawn must lose meaningful structure credit against an unobstructed passer");
-}
 
-void test_evaluator_mirrors_terms_and_black_passed_pawn_blockades() {
-    koi::ClassicalEvaluator evaluator;
-    const auto white_terms = evaluator.breakdown(require_evaluation_fixture("term_mirror_white"), koi::Color::white);
-    const auto black_terms = evaluator.breakdown(require_evaluation_fixture("term_mirror_black"), koi::Color::black);
 
-    require(white_terms.material == black_terms.material &&
-                white_terms.piece_square == black_terms.piece_square &&
-                white_terms.mobility == black_terms.mobility &&
-                white_terms.pawn_structure == black_terms.pawn_structure &&
-                white_terms.activity == black_terms.activity &&
-                white_terms.king_safety == black_terms.king_safety &&
-                white_terms.total == black_terms.total,
-            "a color-and-rank mirrored position must preserve every evaluator term");
-    require(white_terms.mobility != 0 && white_terms.pawn_structure != 0 &&
-                white_terms.activity != 0 && white_terms.king_safety != 0,
-            "the mirrored evaluator fixture must exercise mobility, pawn, activity, and king-safety terms");
 
-    const auto black_advanced =
-        evaluator.breakdown(require_evaluation_fixture("black_advanced_passed"), koi::Color::black);
-    const auto black_blockaded =
-        evaluator.breakdown(require_evaluation_fixture("black_blockaded_passed"), koi::Color::black);
-    require(black_advanced.pawn_structure >= black_blockaded.pawn_structure + 10,
-            "a directly blockaded black passed pawn must lose meaningful structure credit");
-}
 
-void test_evaluator_endgame_passer_scaling_is_color_symmetric() {
-    koi::ClassicalEvaluator evaluator;
-    const auto white_endgame =
-        evaluator.breakdown(require_evaluation_fixture("endgame_passer_white"), koi::Color::white);
-    const auto white_middlegame =
-        evaluator.breakdown(require_evaluation_fixture("middlegame_passer_white"), koi::Color::white);
-    const auto black_endgame =
-        evaluator.breakdown(require_evaluation_fixture("endgame_passer_black"), koi::Color::black);
-    const auto black_middlegame =
-        evaluator.breakdown(require_evaluation_fixture("middlegame_passer_black"), koi::Color::black);
 
-    require(white_endgame.pawn_structure > white_middlegame.pawn_structure &&
-                black_endgame.pawn_structure > black_middlegame.pawn_structure,
-            "advanced passed pawns must gain endgame structure weight for both colors");
-    require(white_endgame.pawn_structure == black_endgame.pawn_structure &&
-                white_middlegame.pawn_structure == black_middlegame.pawn_structure,
-            "endgame passed-pawn scaling must remain color symmetric");
-}
 
-void test_evaluator_exposes_versioned_classical_parameters() {
-    koi::ClassicalEvaluator evaluator;
-    const auto& parameters = evaluator.parameters();
 
-    require(!parameters.version.empty(), "classical evaluator parameters must expose a version");
-    require(parameters.maximum_phase > 0, "classical evaluator parameters must expose the phase scale");
-    require(parameters.tempo_bonus > 0, "classical evaluator parameters must expose the tempo bonus");
-}
 
-void test_evaluator_scores_endgame_king_activity() {
-    koi::ClassicalEvaluator evaluator;
-    const auto active = evaluator.breakdown(
-        require_state("4k3/8/8/3P4/3K4/8/8/8 w - - 0 1"), koi::Color::white);
-    const auto idle = evaluator.breakdown(
-        require_state("4k3/8/8/3P4/8/8/8/K7 w - - 0 1"), koi::Color::white);
 
-    require(active.king_activity > idle.king_activity,
-            "a centralized king must receive more tapered endgame activity credit");
-}
 
-void test_evaluator_scores_passed_pawn_support_and_promotion_race() {
-    koi::ClassicalEvaluator evaluator;
-    const auto supported = evaluator.breakdown(
-        require_state("4k3/8/8/3P4/3K4/8/8/8 w - - 0 1"), koi::Color::white);
-    const auto unsupported = evaluator.breakdown(
-        require_state("4k3/8/8/3P4/8/8/8/K7 w - - 0 1"), koi::Color::white);
-    const auto advanced = evaluator.breakdown(
-        require_state("k7/6P1/8/8/8/8/8/K7 w - - 0 1"), koi::Color::white);
-    const auto unadvanced = evaluator.breakdown(
-        require_state("k7/8/8/3P4/8/8/8/K7 w - - 0 1"), koi::Color::white);
 
-    require(supported.passed_pawn > unsupported.passed_pawn,
-            "a king supporting a passed pawn must improve passed-pawn scoring");
-    require(advanced.passed_pawn > unadvanced.passed_pawn,
-            "a passed pawn closer to promotion must receive race value");
-}
 
-void test_evaluator_applies_tempo_once_for_side_to_move() {
-    koi::ClassicalEvaluator evaluator;
-    const auto white_to_move = evaluator.breakdown(
-        require_state("4k3/8/8/8/8/8/P7/4K3 w - - 0 1"), koi::Color::white);
-    const auto black_to_move = evaluator.breakdown(
-        require_state("4k3/8/8/8/8/8/P7/4K3 b - - 0 1"), koi::Color::white);
 
-    require(white_to_move.tempo == evaluator.parameters().tempo_bonus,
-            "white to move must receive exactly one tempo bonus");
-    require(black_to_move.tempo == -evaluator.parameters().tempo_bonus,
-            "black to move must remove exactly one tempo bonus");
-}
 
-void test_evaluator_keeps_endgame_terms_for_pawnless_rook_endgames() {
-    koi::ClassicalEvaluator evaluator;
-    const auto active = evaluator.breakdown(
-        require_state("4k3/8/8/3R4/3K4/8/8/8 w - - 0 1"), koi::Color::white);
-    const auto idle = evaluator.breakdown(
-        require_state("4k3/8/8/3R4/8/8/8/K7 w - - 0 1"), koi::Color::white);
-    const auto white_to_move = evaluator.breakdown(
-        require_state("4k3/8/8/8/8/8/8/R3K3 w - - 0 1"), koi::Color::white);
-    const auto black_to_move = evaluator.breakdown(
-        require_state("4k3/8/8/8/8/8/8/R3K3 b - - 0 1"), koi::Color::white);
-
-    require(active.king_activity > idle.king_activity,
-            "pawnless rook endgames must receive tapered king activity credit");
-    require(white_to_move.tempo == evaluator.parameters().tempo_bonus &&
-                black_to_move.tempo == -evaluator.parameters().tempo_bonus,
-            "pawnless rook endgames must receive exactly one side-to-move tempo");
-}
-
-void test_evaluator_breakdown_accounts_for_every_component() {
-    koi::ClassicalEvaluator evaluator;
-    const auto score = evaluator.breakdown(
-        require_state("4k3/8/8/3P4/3K4/8/8/8 w - - 0 1"), koi::Color::white);
-
-    require(score.total == score.material + score.piece_square + score.mobility +
-                score.pawn_structure + score.activity + score.development + score.center_control +
-                score.initiative + score.king_safety +
-                score.king_activity + score.passed_pawn + score.tempo,
-            "breakdown total must account for every evaluation component");
-}
 
 void test_time_manager_applies_move_time_and_clock_limits() {
     koi::SearchLimits move_time;
@@ -730,7 +511,7 @@ void test_root_filtering_keeps_only_requested_legal_move() {
     limits.search_moves_specified = true;
     limits.search_moves = {*expected};
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, koi::GameState::startpos(), limits);
 
     require(result.completed_depth == 2, "a filtered root search must complete the requested depth");
@@ -746,7 +527,7 @@ void test_root_filtering_ignores_syntactically_valid_illegal_move() {
     limits.search_moves_specified = true;
     limits.search_moves = {*illegal};
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, koi::GameState::startpos(), limits);
 
     require(!result.best_move.has_value(), "an empty filtered root must not return a best move");
@@ -759,7 +540,7 @@ void test_deterministic_multipv_reports_sorted_distinct_legal_lines() {
         koi::SearchLimits limits;
         limits.depth = 2;
         const koi::SearchOptions options{.multi_pv = 3};
-        koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+        koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
         koi::SearchHandle handle = service.start(
             koi::GameState::startpos(), limits,
             {.on_info = [&infos](const koi::SearchInfo& info) { infos.push_back(info); },
@@ -878,13 +659,13 @@ void test_short_timed_threaded_search_keeps_up_with_serial_reference() {
 
     koi::SearchOptions reference_options;
     reference_options.hash_mb = 16;
-    koi::SearchService reference_service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService reference_service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult reference =
         search(reference_service, root, limits, reference_options);
 
     koi::SearchOptions threaded_options = reference_options;
     threaded_options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService threaded_service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService threaded_service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult threaded =
         search(threaded_service, root, limits, threaded_options);
 
@@ -923,7 +704,7 @@ void test_medium_timed_forcing_root_completes_authoritatively() {
     koi::SearchOptions options;
     options.hash_mb = 64;
     options.threads = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     const auto initial_fallback = koi::Move::parse_uci("b7a8");
@@ -952,7 +733,7 @@ void test_low_clock_forcing_root_avoids_parallel_startup_fallback() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1012,7 +793,7 @@ void test_ultra_short_timed_search_completes_a_root_iteration() {
         koi::test::skip("requires at least two search threads");
     }
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
 #if defined(__SANITIZE_THREAD__)
     // ThreadSanitizer slows the instrumented binary by roughly an order of
@@ -1051,7 +832,7 @@ void test_short_timed_threaded_search_never_returns_unsearched_root_move() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
 
     const koi::SearchResult result = search(service, root, limits, options);
 
@@ -1075,7 +856,7 @@ void test_hard_short_search_does_not_run_past_its_deadline() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
 
     const koi::SearchResult result = search(service, root, limits, options);
 
@@ -1097,7 +878,7 @@ void test_depth_one_quiescence_sees_queen_check_mate_net() {
 
     koi::SearchLimits limits;
     limits.depth = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1115,7 +896,7 @@ void test_single_pv_depth_one_matches_root_forcing_extension() {
 
     koi::SearchLimits limits;
     limits.depth = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits);
 
     require(result.completed_depth == 1 && result.best_move == expected &&
@@ -1144,7 +925,7 @@ void test_short_timed_search_researches_a_poisoned_capture() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1173,7 +954,7 @@ void test_interrupted_root_uses_best_completed_candidate() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1199,7 +980,7 @@ void test_short_tactical_root_does_not_publish_ordering_fallback() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1235,7 +1016,7 @@ void test_short_search_rejects_the_qxa3_poisoned_pawn_capture() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1275,7 +1056,7 @@ void test_short_search_rejects_the_qxa3_poison_at_depth_two() {
     // the depth-two iteration runs, but this fixture stops the search on the
     // first completed depth-two line; disable the cadence to keep it exact.
     options.interim_report_interval = std::chrono::milliseconds{0};
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
 
     std::atomic_bool saw_depth_two{false};
     CompletedSearch completed;
@@ -1330,7 +1111,7 @@ void test_short_search_preserves_the_defensive_rook_lift() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1363,7 +1144,7 @@ void test_short_search_rejects_the_queen_check_trap() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1426,7 +1207,7 @@ void test_short_oracle_positions_reject_catastrophic_fallbacks() {
         koi::SearchOptions options;
         options.hash_mb = 16;
         options.threads = 1;
-        koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+        koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
         const koi::SearchResult result = search(service, root, limits, options);
 
         require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1453,7 +1234,7 @@ void test_short_oracle_rejects_the_b2b1_rook_retreat() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1496,7 +1277,7 @@ void test_short_oracle_rejects_the_b2b4_rook_lift() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1535,7 +1316,7 @@ void test_short_search_rejects_the_b2b4_pawn_lure() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1572,7 +1353,7 @@ void test_short_search_rejects_a_quiet_move_leaving_a_piece_hanging() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1639,7 +1420,7 @@ void test_short_oracle_rejects_the_d5c6_mating_blunder() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1690,7 +1471,7 @@ void test_short_search_keeps_the_forced_king_escape() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1717,7 +1498,7 @@ void test_short_search_avoids_the_d2c1_king_trap() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1744,7 +1525,7 @@ void test_short_search_rejects_the_c5b4_queen_check_trap() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1771,7 +1552,7 @@ void test_short_search_keeps_the_c5f2_forcing_capture() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1798,7 +1579,7 @@ void test_short_search_keeps_the_a5c5_forcing_check() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1838,7 +1619,7 @@ void test_short_search_keeps_a_reviewed_winning_b2b4_lift() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1870,7 +1651,7 @@ void test_short_search_rejects_queen_retreat_over_safe_capture() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1900,7 +1681,7 @@ void test_short_search_rejects_safe_looking_rook_capture_horizon_mate() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1936,7 +1717,7 @@ void test_short_search_checks_recapture_before_material_capture() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -1957,7 +1738,7 @@ void test_short_search_info_pv_matches_final_bestmove() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     std::vector<koi::SearchInfo> infos;
     std::optional<koi::SearchResult> completed;
     koi::SearchHandle handle = service.start(
@@ -1990,7 +1771,7 @@ void test_depth_seven_check_extension_does_not_overflow_stack() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -2011,7 +1792,7 @@ void test_short_search_preserves_completed_forcing_check_choice() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -2040,7 +1821,7 @@ void test_short_search_prefers_safe_forcing_exchange_over_quiet_push() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -2073,7 +1854,7 @@ void test_short_search_preserves_safe_exchange_after_parallel_abort() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move == forcing_exchange && result.best_move != quiet_push,
@@ -2098,7 +1879,7 @@ void test_short_search_rejects_broad_check_horizon() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -2129,7 +1910,7 @@ void test_short_search_prefers_safe_recapture_over_queen_retreat() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move == recapture && result.best_move != queen_retreat,
@@ -2156,7 +1937,7 @@ void test_short_search_avoids_the_second_check_horizon() {
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = 1;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
@@ -2185,7 +1966,7 @@ void test_incomplete_root_prefers_near_tied_forcing_candidate() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, root, limits, options);
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
             "the incomplete-root fixture must retain a legal move");
@@ -2214,7 +1995,7 @@ void test_depth_one_root_researches_near_tied_forcing_check() {
                 root.is_legal(*expected) && root.is_legal(*quiet),
             "the depth-one root fixture must contain both reviewed near-tied moves");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 1;
     const koi::SearchResult result = search(service, root, limits);
@@ -2240,7 +2021,7 @@ void test_threaded_depth_one_root_researches_near_tied_forcing_check() {
                 root.is_legal(*expected) && root.is_legal(*quiet),
             "the threaded depth-one fixture must contain both reviewed near-tied moves");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 1;
     koi::SearchOptions options;
@@ -2269,7 +2050,7 @@ void test_root_king_safety_escape_is_not_hidden_by_a_quiet_horizon() {
     limits.depth = 3;
     koi::SearchOptions options;
     options.hash_mb = 16;
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     CompletedSearch completed;
     koi::SearchEventSink sink = completed.sink();
     std::optional<koi::SearchInfo> depth_three_info;
@@ -2330,7 +2111,7 @@ void test_timed_result_bestmove_matches_its_pv_after_hash_warmup() {
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     (void)search(service, warmup, limits, options);
     const koi::SearchResult result = search(service, root, limits, options);
 
@@ -2475,12 +2256,12 @@ void test_classical_threaded_search_matches_reference_result() {
     koi::SearchLimits limits;
     limits.depth = 3;
 
-    koi::SearchService reference_service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService reference_service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult reference = search(reference_service, root, limits);
 
     koi::SearchOptions options;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-    koi::SearchService threaded_service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService threaded_service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult threaded = search(threaded_service, root, limits, options);
 
     require(reference.best_move.has_value() && threaded.best_move.has_value() &&
@@ -2546,7 +2327,7 @@ void test_threaded_root_in_check_completes_with_safe_evasion() {
     koi::SearchLimits limits;
     limits.depth = 2;
 
-    koi::SearchService serial_service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService serial_service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult serial = search(serial_service, root, limits);
     require(serial.best_move.has_value() &&
                 std::find(accepted.begin(), accepted.end(), serial.best_move->uci()) != accepted.end(),
@@ -2569,7 +2350,7 @@ void test_threaded_root_in_check_completes_with_safe_evasion() {
                     "root-in-check search must still evaluate on a single-thread host");
         }
 
-        koi::SearchService threaded_service(std::make_shared<koi::ClassicalEvaluator>());
+        koi::SearchService threaded_service(std::make_shared<koi::test::MaterialEvaluator>());
         const koi::SearchResult threaded = search(threaded_service, root, limits, threaded_options);
         // Threads>1 runs Lazy SMP over the shared transposition table, which is intentionally
         // nondeterministic (see the private agent guide): helper threads can change TT cutoffs, so a near-tie
@@ -2789,7 +2570,7 @@ void test_threaded_multipv_is_stable_after_warming_the_shared_hash() {
 }
 
 void test_threaded_node_limit_is_global_and_never_exceeded() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.nodes = 37;
@@ -2804,7 +2585,7 @@ void test_threaded_node_limit_is_global_and_never_exceeded() {
 }
 
 void test_threaded_and_reference_node_limits_have_matching_accounting() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchLimits limits;
     limits.depth = 1;
     limits.nodes = 3;
@@ -2812,7 +2593,7 @@ void test_threaded_and_reference_node_limits_have_matching_accounting() {
     koi::SearchService reference_service(evaluator);
     const koi::SearchResult reference = search(reference_service, koi::GameState::startpos(), limits);
 
-    koi::SearchService threaded_service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService threaded_service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchOptions options;
     options.threads = 2;
     const koi::SearchResult threaded = search(threaded_service, koi::GameState::startpos(), limits, options);
@@ -2830,7 +2611,7 @@ void test_depth_zero_leaves_are_counted_as_quiescence_only() {
     limits.depth = 1;
     limits.nodes = 3;
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult result = search(service, koi::GameState::startpos(), limits);
 
     require(result.stats.nodes == 1 && result.stats.qnodes == 2,
@@ -2838,7 +2619,7 @@ void test_depth_zero_leaves_are_counted_as_quiescence_only() {
 }
 
 void test_search_info_nodes_reports_all_visited_nodes() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.depth = 2;
@@ -2855,7 +2636,7 @@ void test_search_info_nodes_reports_all_visited_nodes() {
 }
 
 void test_interim_publication_reports_in_flight_depth() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator, {}, 16);
     koi::SearchLimits limits;
     limits.infinite = true;
@@ -2958,7 +2739,7 @@ void test_interim_publication_reports_in_flight_depth() {
 }
 
 void test_selective_iteration_republishes_the_last_proven_score() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator, {}, 16);
     koi::SearchLimits limits;
     limits.depth = 3;
@@ -3000,7 +2781,7 @@ void test_selective_iteration_republishes_the_last_proven_score() {
 }
 
 void test_interim_publication_reports_the_in_flight_principal_variation() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator, {}, 16);
     koi::SearchLimits limits;
     limits.infinite = true;
@@ -3079,7 +2860,7 @@ void test_interim_publication_reports_the_in_flight_principal_variation() {
 
 void test_interim_publication_preserves_serial_search_results() {
     const auto run = [](std::chrono::milliseconds interval) {
-        koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>(), {}, 16);
+        koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
         koi::SearchLimits limits;
         limits.depth = 5;
         koi::SearchOptions options;
@@ -3218,7 +2999,7 @@ void test_non_concurrent_evaluators_are_serialized_across_simultaneous_handles()
 }
 
 void test_terminal_roots_return_mate_or_stalemate_scores() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.depth = 3;
@@ -3237,7 +3018,7 @@ void test_terminal_roots_return_mate_or_stalemate_scores() {
 }
 
 void test_search_feature_extraction_is_not_needed_at_every_normal_node() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 2;
 
@@ -3281,7 +3062,7 @@ void test_claimable_draw_root_retains_a_legal_best_move() {
     require(root.is_draw_by_rule() && !root.legal_moves().empty(),
             "the claimable-draw fixture must retain legal moves after threefold history");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 1;
     const koi::SearchResult result = search(service, root, limits);
@@ -3292,7 +3073,7 @@ void test_claimable_draw_root_retains_a_legal_best_move() {
 }
 
 void test_fixed_depth_search_is_deterministic_and_legal() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.depth = 3;
@@ -3311,7 +3092,7 @@ void test_fixed_depth_search_is_deterministic_and_legal() {
 }
 
 void test_search_result_carries_root_identity_and_completion_state() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 2;
     const koi::GameState root = require_state(
@@ -3329,7 +3110,7 @@ void test_search_result_carries_root_identity_and_completion_state() {
 }
 
 void test_search_result_carries_a_legal_pv_for_completion_validation() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 2;
     const koi::GameState root = require_state(
@@ -3348,24 +3129,10 @@ void test_search_result_carries_a_legal_pv_for_completion_validation() {
     }
 }
 
-void test_fixed_depth_tactical_reference_output_is_preserved() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
-    koi::SearchLimits limits;
-    limits.depth = 2;
-    const koi::GameState root = require_state("4k3/8/8/3q4/4Q3/8/8/4K3 w - - 0 1");
 
-    const koi::SearchResult result = search(service, root, limits);
-    const auto expected = koi::Move::parse_uci("e4d5");
-    require(expected.has_value(), "fixed-depth tactical reference move must parse");
-    require(result.completed_depth == 2 && result.best_move == expected && result.score_cp == 1033,
-            "single-thread fixed-depth tactical output must retain its reviewed move and updated score " +
-                std::to_string(result.completed_depth) + " " +
-                (result.best_move.has_value() ? result.best_move->uci() : "0000") + " " +
-                std::to_string(result.score_cp));
-}
 
 void test_search_reports_tactical_search_statistics() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.depth = 3;
@@ -3376,7 +3143,7 @@ void test_search_reports_tactical_search_statistics() {
 }
 
 void test_search_extends_checked_positions() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.depth = 2;
@@ -3388,7 +3155,7 @@ void test_search_extends_checked_positions() {
 }
 
 void test_search_keeps_a_forced_quiet_evasion() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 3;
     const koi::GameState root = require_state("k3r3/8/8/8/8/8/3N1N2/2NNKN2 w - - 0 1");
@@ -3409,7 +3176,7 @@ void test_search_keeps_a_forced_quiet_evasion() {
 }
 
 void test_search_reports_mate_in_one_distance() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 3;
     const koi::SearchResult result = search(
@@ -3420,7 +3187,7 @@ void test_search_reports_mate_in_one_distance() {
 }
 
 void test_search_prefers_the_shorter_forced_mate() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 5;
     const koi::GameState root = require_state("k7/8/K7/8/8/8/8/Q7 w - - 0 1");
@@ -3443,7 +3210,7 @@ void test_search_prefers_the_shorter_forced_mate() {
 }
 
 void test_pawn_only_zugzwang_search_skips_null_pruning() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 5;
     const koi::GameState root = require_state("8/8/8/3k4/3P4/3K4/8/8 w - - 0 1");
@@ -3456,7 +3223,7 @@ void test_pawn_only_zugzwang_search_skips_null_pruning() {
 }
 
 void test_low_phase_search_skips_null_pruning() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 5;
     const koi::GameState root = require_state("4kn2/pppp4/8/8/8/8/PPPP4/4K1N1 w - - 0 1");
@@ -3473,7 +3240,7 @@ void test_low_phase_search_skips_null_pruning() {
 }
 
 void test_sparse_phase_rich_position_skips_null_pruning() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 3;
     limits.nodes = 50'000;
@@ -3511,7 +3278,7 @@ void test_repetition_sensitive_history_disables_null_move_pruning() {
     require(!root.is_draw_by_rule() && root.is_repetition_sensitive(),
             "the repetition-sensitive fixture must be a twofold, not yet drawn, position");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 5;
     limits.nodes = 50'000;
@@ -3557,7 +3324,7 @@ void test_lmr_excludes_quiet_moves_that_increase_enemy_king_zone_pressure() {
                     false, false).candidate,
             "the pressure target must be searched second and pass the depth-four LMR gate");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 4;
     limits.nodes = 500'000;
@@ -3661,114 +3428,11 @@ void test_lmr_excludes_high_history_quiet_moves() {
             "LMR must exclude only quiet moves with genuinely high history");
 }
 
-void test_committed_pgn_tactics_retain_reviewed_safe_moves() {
-    struct Fixture {
-        std::string_view source;
-        std::string_view fen;
-        int depth;
-        std::array<std::string_view, 5> reviewed_moves;
-    };
-    // Each FEN was replayed to its named PGN position. These acceptable
-    // moves were independently reviewed at Stockfish 19 depth 14; the old
-    // single-move/centipawn pins were historical Koi outputs, not unique
-    // tactical truths. The first position needs depth five to reject the
-    // shallow e5f4 capture, which the reference rates far below the group.
-    constexpr std::array<Fixture, 4> fixtures{{
-        {"2026-09-05-koi-vs-stockfish-19-2.pgn",
-         "r1bqkb1r/p4ppp/2p2n2/2Ppp3/5P2/2N5/PPP1P1PP/R1BQKB1R b KQkq - 0 7",
-         5, {"f6g4", "f8c5", "d8c7", "a8b8", "d8a5"}},
-        {"2026-09-05-koi-vs-koi.pgn",
-         "r1b1kb1r/1pp1pppp/p1nq1n2/3p4/3P4/P1NQ1N2/1PP1PPPP/R1B1KB1R w KQkq - 1 6",
-         3, {"g2g3", "c1g5", "c1e3", "e2e4", "h2h3"}},
-        {"2026-09-05-koi-vs-stockfish-19.pgn",
-         "rnb1k2r/1pq2ppp/p2bpn2/2ppN1Q1/3P4/2N1P3/PPP2PPP/R1B1KB1R b KQkq - 5 8",
-         3, {"e8g8", "e8f8", "h8g8", "c5d4", "d6f8"}},
-        {"2026-09-06-koi-vs-lc0.pgn",
-         "r1bqkb1r/p4ppp/2p2n2/2Ppp3/8/2N5/PPPQPPPP/R1B1KB1R b KQkq - 1 7",
-         3, {"f8c5", "d5d4", "c8e6", "a8b8", "f8e7"}},
-    }};
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
-    for (const Fixture& fixture : fixtures) {
-        require(std::filesystem::is_regular_file(
-                    koi::test::fixture_path("games/" + std::string(fixture.source))),
-                "the PGN source must exist: " + std::string(fixture.source));
-        const koi::GameState root = require_state(fixture.fen);
-        std::array<koi::Move, 5> acceptable{};
-        for (std::size_t index = 0; index < fixture.reviewed_moves.size(); ++index) {
-            const auto move = koi::Move::parse_uci(fixture.reviewed_moves[index]);
-            require(move.has_value() && root.is_legal(*move),
-                    "each reviewed PGN tactical move must be legal: " +
-                        std::string(fixture.source));
-            acceptable[index] = *move;
-        }
-        service.clear_hash();
-        koi::SearchLimits limits;
-        limits.depth = fixture.depth;
-        const koi::SearchResult result = search(service, root, limits);
-        require(result.completed_depth == fixture.depth && result.best_move.has_value() &&
-                    !result.pv.empty() && result.pv.front() == *result.best_move &&
-                    std::find(acceptable.begin(), acceptable.end(), *result.best_move) !=
-                        acceptable.end(),
-                "PGN tactical choice left the reviewed safe set: " +
-                    std::string(fixture.source) + " (best=" +
-                    (result.best_move.has_value() ? result.best_move->uci() : "none") + ")");
-        koi::GameState replay = root;
-        for (const koi::Move& move : result.pv) {
-            require(replay.is_legal(move) && replay.make_move(move),
-                    "the PGN tactical principal variation must be legal at every ply: " +
-                        std::string(fixture.source));
-        }
-    }
-}
 
-void test_shallow_root_near_tie_research_resolves_knight_choice() {
-    const koi::GameState root = require_state(
-        "r1bqk2r/p4ppp/2p2n2/2bpP3/8/2N5/PPP1P1PP/R1BQKB1R b KQkq - 0 8");
-    const auto expected = koi::Move::parse_uci("f6g4");
-    require(expected.has_value() && root.is_legal(*expected),
-            "the shallow knight-choice fixture must contain the reviewed move");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
-    require(service.set_hash_size_mb(16).effective_mb == 16,
-            "the shallow knight-choice fixture must use a deterministic hash");
-    koi::SearchLimits limits;
-    limits.depth = 3;
-    const koi::SearchResult result = search(service, root, limits);
 
-    require(result.completed_depth == 3 && result.best_move == expected &&
-                !result.pv.empty() && result.pv.front() == *expected,
-            "a shallow near-tied root must re-search the tactical candidate before choosing "
-            "f6e4 (got " +
-                (result.best_move.has_value() ? result.best_move->uci() : std::string("none")) +
-                ", score " + std::to_string(result.score_cp) + ", selective candidates " +
-                std::to_string(result.stats.root_selective_candidates) + ", selective wins " +
-                std::to_string(result.stats.root_selective_researches) + ")");
-}
 
-void test_threaded_shallow_root_near_tie_research_matches_serial() {
-    const koi::GameState root = require_state(
-        "r1bqk2r/p4ppp/2p2n2/2bpP3/8/2N5/PPP1P1PP/R1BQKB1R b KQkq - 0 8");
-    const auto expected = koi::Move::parse_uci("f6g4");
-    require(expected.has_value() && root.is_legal(*expected),
-            "the threaded shallow knight-choice fixture must contain the reviewed move");
-
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
-    require(service.set_hash_size_mb(16).effective_mb == 16,
-            "the threaded shallow knight-choice fixture must use a deterministic hash");
-    koi::SearchLimits limits;
-    limits.depth = 3;
-    koi::SearchOptions options;
-    options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
-
-    const koi::SearchResult result = search(service, root, limits, options);
-
-    require(result.completed_depth == 3 && result.best_move == expected &&
-                !result.pv.empty() && result.pv.front() == *expected,
-            "threaded shallow root research must retain the serial tactical choice (got " +
-                (result.best_move.has_value() ? result.best_move->uci() : std::string("none")) +
-                ", score " + std::to_string(result.score_cp) + ")");
-}
 
 void test_threaded_short_forcing_root_search_finds_knight_move() {
     const koi::GameState root = require_state(
@@ -3777,7 +3441,7 @@ void test_threaded_short_forcing_root_search_finds_knight_move() {
     require(expected.has_value() && root.is_legal(*expected),
             "the short forcing-root fixture must contain the reviewed move");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     require(service.set_hash_size_mb(512).effective_mb == 512,
             "the short forcing-root fixture must use the production hash");
     koi::SearchLimits limits;
@@ -3821,7 +3485,7 @@ void test_clock_short_forcing_root_uses_root_forcing_extension() {
     require(expected.has_value() && root.is_legal(*expected),
             "the clock forcing-root fixture must contain the reviewed move");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     require(service.set_hash_size_mb(16).effective_mb == 16,
             "the clock forcing-root fixture must use a deterministic hash");
     koi::SearchLimits limits;
@@ -3880,7 +3544,7 @@ void test_near_root_quiet_knight_fork_receives_forcing_extension() {
                 !expected_metadata->gives_check && expected_metadata->move.promotion() == koi::Promotion::none,
             "the quiet fork fixture must be a quiet non-checking move");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     require(service.set_hash_size_mb(16).effective_mb == 16,
             "the quiet fork fixture must use a deterministic hash");
     koi::SearchLimits limits;
@@ -3920,7 +3584,7 @@ void test_near_root_pawn_attack_on_king_ring_receives_forcing_extension() {
     require(after.king_zone_attacks[0] > before.king_zone_attacks[0],
             "the quiet bishop move must add pressure around the white king");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     require(service.set_hash_size_mb(16).effective_mb == 16,
             "the pawn king-ring fixture must use a deterministic hash");
     koi::SearchLimits limits;
@@ -3955,7 +3619,7 @@ void test_near_root_central_pawn_break_receives_forcing_extension() {
     require(metadata.has_value() && !metadata->is_capture() && !metadata->gives_check,
             "the central pawn break must be quiet rather than a direct check");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     require(service.set_hash_size_mb(16).effective_mb == 16,
             "the pawn-break fixture must use a deterministic hash");
     koi::SearchLimits limits;
@@ -3971,7 +3635,7 @@ void test_near_root_central_pawn_break_receives_forcing_extension() {
 }
 
 void test_shallow_null_fail_highs_skip_verification() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 7;
     limits.nodes = 50'000;
@@ -3985,7 +3649,7 @@ void test_shallow_null_fail_highs_skip_verification() {
 }
 
 void test_shallow_futility_pruning_is_safe_in_tactical_positions() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 2;
 
@@ -4010,16 +3674,7 @@ void test_shallow_futility_pruning_is_safe_in_tactical_positions() {
             "razoring must stay disabled in tactical positions");
 }
 
-void test_shallow_futility_accounts_for_safe_quiet_prunes() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
-    koi::SearchLimits limits;
-    limits.depth = 3;
-    const koi::SearchResult result = search(service, koi::GameState::startpos(), limits);
-    require(result.best_move.has_value() && koi::GameState::startpos().is_legal(*result.best_move),
-            "shallow futility must preserve a legal root move");
-    require(result.stats.quiet_futility_prunes > 0 || result.stats.razoring_prunes > 0,
-            "a quiet middlegame search must exercise conservative shallow pruning");
-}
+
 
 void test_quiet_history_updates_use_saved_moving_side_after_unmake() {
     const auto quiet_move = koi::Move::parse_uci("e8d7");
@@ -4027,7 +3682,7 @@ void test_quiet_history_updates_use_saved_moving_side_after_unmake() {
     const koi::GameState state = require_state("4k3/8/8/8/8/8/8/4K2R b - - 0 1");
     require(state.is_legal(*quiet_move), "the quiet-history regression move must be legal");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 3;
     std::atomic_int before_move = 0;
@@ -4056,7 +3711,7 @@ void test_quiet_history_updates_use_saved_moving_side_after_unmake() {
 }
 
 void test_throwing_history_diagnostic_hook_cannot_abort_search() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 2;
     koi::SearchOptions options;
@@ -4071,7 +3726,7 @@ void test_throwing_history_diagnostic_hook_cannot_abort_search() {
 }
 
 void test_search_reduces_late_quiet_moves_without_losing_root_legality() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     // Depth four is now fully pruned by null move / reverse futility in the
     // opening, so the LMR contract is exercised at depth six (where the
@@ -4089,7 +3744,7 @@ void test_search_reduces_late_quiet_moves_without_losing_root_legality() {
 }
 
 void test_stop_after_deadline_completes_a_running_search() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.infinite = true;
     std::optional<koi::SearchResult> completed;
@@ -4107,7 +3762,7 @@ void test_stop_after_deadline_completes_a_running_search() {
     require(completed->cancelled, "a stop-after completion must report the cancellation");
 }
 void test_search_reuses_static_evaluations_for_transpositions() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 5;
     limits.nodes = 30'000;
@@ -4120,7 +3775,7 @@ void test_search_reuses_static_evaluations_for_transpositions() {
 }
 
 void test_search_records_static_eval_correction_history() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 5;
 
@@ -4132,7 +3787,7 @@ void test_search_records_static_eval_correction_history() {
 }
 
 void test_search_records_true_internal_iterative_deepening() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     // The probe only fires at depth >= 6 on PV nodes whose transposition
     // entry is missing or too weak to order the node (a failed-low bound, or
@@ -4171,7 +3826,7 @@ void test_opening_central_break_survives_root_search_reduction() {
                 "a late ordered central root pawn must be excluded from LMR");
     }
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     require(service.set_hash_size_mb(16).effective_mb == 16,
             "the opening central-break fixture must use a deterministic hash");
     koi::SearchLimits limits;
@@ -4188,7 +3843,7 @@ void test_opening_central_break_survives_root_search_reduction() {
     koi::SearchLimits central_limits = limits;
     central_limits.search_moves_specified = true;
     central_limits.search_moves = {*e4, *e3};
-    koi::SearchService central_service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService central_service(std::make_shared<koi::test::MaterialEvaluator>());
     const koi::SearchResult central = search(central_service, root, central_limits);
     require(central.completed_depth == 5 && central.best_move.has_value() &&
                 (*central.best_move == *e4 || *central.best_move == *e3) &&
@@ -4202,7 +3857,7 @@ void test_opening_central_break_survives_root_search_reduction() {
 }
 
 void test_generated_move_path_has_bounded_mirror_validation_overhead() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     require(service.set_hash_size_mb(16).effective_mb == 16,
             "the mirror-validation benchmark must use a small deterministic hash");
     const koi::GameState root = require_state(
@@ -4324,7 +3979,7 @@ void test_reduced_late_move_is_verified_at_full_child_depth() {
 }
 
 void test_qsearch_exact_tt_cutoff_precedes_tactical_move_generation() {
-    koi::ClassicalEvaluator evaluator;
+    koi::test::MaterialEvaluator evaluator;
     koi::SearchLimits limits;
     limits.depth = 1;
     koi::GameState state = koi::GameState::startpos();
@@ -4347,7 +4002,7 @@ void test_qsearch_exact_tt_cutoff_precedes_tactical_move_generation() {
 }
 
 void test_qsearch_lower_tt_cutoff_is_limited_to_null_windows() {
-    koi::ClassicalEvaluator evaluator;
+    koi::test::MaterialEvaluator evaluator;
     koi::SearchLimits limits;
     limits.depth = 1;
     koi::GameState narrow_state = koi::GameState::startpos();
@@ -4389,7 +4044,7 @@ void test_qsearch_lower_tt_cutoff_is_limited_to_null_windows() {
 }
 
 void test_qsearch_tt_cutoffs_preserve_forced_draw_and_checkmate_precedence() {
-    koi::ClassicalEvaluator evaluator;
+    koi::test::MaterialEvaluator evaluator;
     koi::SearchLimits limits;
     limits.depth = 1;
 
@@ -4484,7 +4139,7 @@ void test_quiescence_rejects_the_poisoned_knight_capture_at_shallow_depth() {
     require(recapture_metadata != tactical_moves.end() && recapture_metadata->see_score < 0,
             "the immediate bishop recapture must remain visible as a losing exchange candidate");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 1;
     const koi::SearchResult result = search(service, root, limits);
@@ -4503,7 +4158,7 @@ void test_quiescence_rejects_the_poisoned_knight_capture_at_shallow_depth() {
 }
 
 void test_quiescence_keeps_bounded_checking_continuations() {
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 2;
     const koi::SearchResult result = search(
@@ -4519,7 +4174,7 @@ void test_quiescence_reaches_a_third_quiet_checking_layer() {
     require(root_move.has_value() && root.is_legal(*root_move),
             "the deep checking fixture must contain the legal root move");
 
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 1;
     limits.search_moves_specified = true;
@@ -4532,19 +4187,10 @@ void test_quiescence_reaches_a_third_quiet_checking_layer() {
             "quiescence must search the third quiet checking layer before evaluating the line");
 }
 
-void test_iterative_deepening_uses_aspiration_windows() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
-    koi::SearchService service(evaluator);
-    koi::SearchLimits limits;
-    limits.depth = 3;
 
-    const koi::SearchResult result = search(service, koi::GameState::startpos(), limits);
-    require(result.stats.aspiration_researches > 0,
-            "a changed iterative score must trigger an aspiration-window re-search");
-}
 
 void test_infinite_search_runs_until_stopped_and_completes_once() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.infinite = true;
@@ -4581,7 +4227,7 @@ void test_search_worker_converts_exceptions_to_failed_completion() {
 }
 
 void test_ponder_search_runs_until_stopped_and_completes_once() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.depth = 1;
@@ -4603,7 +4249,7 @@ void test_ponder_search_runs_until_stopped_and_completes_once() {
 }
 
 void test_ponder_terminal_and_empty_roots_wait_for_stop() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
 
     const auto require_parked = [&service](koi::GameState root, koi::SearchLimits limits,
@@ -4660,7 +4306,7 @@ void test_ponder_ignores_time_but_honors_node_limits() {
 }
 
 void test_ponderhit_converts_a_running_ponder_search_in_place() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.ponder = true;
@@ -4695,7 +4341,7 @@ void test_ponderhit_converts_a_running_ponder_search_in_place() {
 }
 
 void test_service_hash_configuration_survives_default_start_and_non_default_override() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.depth = 1;
@@ -4715,7 +4361,7 @@ void test_service_hash_configuration_survives_default_start_and_non_default_over
 }
 
 void test_hash_configuration_clamps_to_uci_bounds_and_clear_discards_warmed_entries() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits limits;
     limits.depth = 3;
@@ -4781,7 +4427,7 @@ void test_transposition_table_reports_hashfull_occupancy() {
 }
 
 void test_search_result_reports_root_tt_timing_context() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
     koi::SearchLimits warm_limits;
     warm_limits.depth = 3;
@@ -5032,7 +4678,7 @@ void test_start_position_completes_depth_seven_within_the_extension_budget() {
     // completion contract is verified by the release legs instead.
     koi::test::skip("depth-seven completion exceeds the ThreadSanitizer budget");
 #else
-    koi::SearchService service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits limits;
     limits.depth = 7;
     koi::SearchOptions options;
@@ -5040,7 +4686,7 @@ void test_start_position_completes_depth_seven_within_the_extension_budget() {
     options.threads = 1;
     // Measure the depth-six baseline on a fresh service so the depth-seven
     // growth can be bounded: the pre-fix search exploded across this step.
-    koi::SearchService shallow_service(std::make_shared<koi::ClassicalEvaluator>());
+    koi::SearchService shallow_service(std::make_shared<koi::test::MaterialEvaluator>());
     koi::SearchLimits shallow_limits;
     shallow_limits.depth = 6;
     const koi::SearchResult shallow = search(
@@ -5084,7 +4730,7 @@ void test_contempt_biases_draw_scores_against_the_root_side() {
     // A dead-position draw must be worth -Contempt to the root side and
     // +Contempt to its opponent, so the search only settles for a draw when
     // every alternative is worse.  Zero keeps the historical neutral value.
-    koi::ClassicalEvaluator evaluator;
+    koi::test::MaterialEvaluator evaluator;
     koi::SearchLimits limits;
     limits.depth = 1;
     const std::array<const char*, 2> fixtures{
@@ -5113,21 +4759,6 @@ void test_contempt_biases_draw_scores_against_the_root_side() {
 int main(int argc, char** argv) {
     const std::vector<koi::test::TestCase> tests{
         {"classical evaluator", test_evaluator_returns_material_and_pst_from_requested_perspective},
-        {"classical evaluator breakdown", test_evaluator_breakdown_scores_structure_activity_and_king_safety},
-        {"development center pressure", test_evaluator_rewards_development_center_control_and_immediate_pressure},
-        {"evaluator perspective symmetry", test_evaluator_breakdown_is_perspective_symmetric},
-        {"evaluator endgame and mobility", test_evaluator_scores_backward_pawns_piece_mobility_and_dead_material},
-        {"evaluator passed pawn endgame scaling", test_evaluator_increases_advanced_passed_pawn_value_in_the_endgame},
-        {"evaluator passed pawn blockade", test_evaluator_penalizes_a_directly_blockaded_passed_pawn},
-        {"evaluator mirrored terms and black blockade", test_evaluator_mirrors_terms_and_black_passed_pawn_blockades},
-        {"evaluator color symmetric endgame passer", test_evaluator_endgame_passer_scaling_is_color_symmetric},
-        {"evaluator versioned parameters", test_evaluator_exposes_versioned_classical_parameters},
-        {"evaluator endgame king activity", test_evaluator_scores_endgame_king_activity},
-        {"evaluator passer support and race", test_evaluator_scores_passed_pawn_support_and_promotion_race},
-        {"evaluator tempo", test_evaluator_applies_tempo_once_for_side_to_move},
-        {"evaluator pawnless endgame terms", test_evaluator_keeps_endgame_terms_for_pawnless_rook_endgames},
-        {"evaluator complete breakdown", test_evaluator_breakdown_accounts_for_every_component},
-        {"evaluator bishop pair", test_evaluator_rewards_a_bishop_pair},
         {"time manager", test_time_manager_applies_move_time_and_clock_limits},
         {"start position depth seven completes",
          test_start_position_completes_depth_seven_within_the_extension_budget},
@@ -5214,7 +4845,6 @@ int main(int argc, char** argv) {
         {"deterministic legal search", test_fixed_depth_search_is_deterministic_and_legal},
         {"search result identity", test_search_result_carries_root_identity_and_completion_state},
         {"search result legal PV", test_search_result_carries_a_legal_pv_for_completion_validation},
-        {"fixed-depth tactical reference", test_fixed_depth_tactical_reference_output_is_preserved},
         {"tactical search statistics", test_search_reports_tactical_search_statistics},
         {"check extensions", test_search_extends_checked_positions},
         {"forced quiet evasion", test_search_keeps_a_forced_quiet_evasion},
@@ -5230,7 +4860,6 @@ int main(int argc, char** argv) {
         {"opening central break", test_opening_central_break_survives_root_search_reduction},
         {"shallow null verification off", test_shallow_null_fail_highs_skip_verification},
         {"shallow futility tactical safety", test_shallow_futility_pruning_is_safe_in_tactical_positions},
-        {"shallow futility accounting", test_shallow_futility_accounts_for_safe_quiet_prunes},
         {"quiet history moving side", test_quiet_history_updates_use_saved_moving_side_after_unmake},
         {"quiet history hook exceptions", test_throwing_history_diagnostic_hook_cannot_abort_search},
         {"late quiet move reductions", test_search_reduces_late_quiet_moves_without_losing_root_legality},
@@ -5240,9 +4869,6 @@ int main(int argc, char** argv) {
         {"true internal iterative deepening", test_search_records_true_internal_iterative_deepening},
         {"bounded mirror validation overhead", test_generated_move_path_has_bounded_mirror_validation_overhead},
         {"late move full-depth verification", test_reduced_late_move_is_verified_at_full_child_depth},
-        {"committed PGN tactical fixtures", test_committed_pgn_tactics_retain_reviewed_safe_moves},
-        {"shallow root near-tie research", test_shallow_root_near_tie_research_resolves_knight_choice},
-        {"threaded shallow root near-tie research", test_threaded_shallow_root_near_tie_research_matches_serial},
         {"threaded short forcing root research", test_threaded_short_forcing_root_search_finds_knight_move},
         {"clock short forcing root research", test_clock_short_forcing_root_uses_root_forcing_extension},
         {"near-root quiet forcing extension", test_near_root_quiet_knight_fork_receives_forcing_extension},
@@ -5256,7 +4882,6 @@ int main(int argc, char** argv) {
         {"poisoned capture quiescence", test_quiescence_rejects_the_poisoned_knight_capture_at_shallow_depth},
         {"bounded quiescence checks", test_quiescence_keeps_bounded_checking_continuations},
         {"deep quiescence checks", test_quiescence_reaches_a_third_quiet_checking_layer},
-        {"aspiration windows", test_iterative_deepening_uses_aspiration_windows},
         {"infinite search lifecycle", test_infinite_search_runs_until_stopped_and_completes_once},
         {"search exception lifecycle", test_search_worker_converts_exceptions_to_failed_completion},
         {"ponder search lifecycle", test_ponder_search_runs_until_stopped_and_completes_once},

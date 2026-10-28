@@ -12,11 +12,19 @@
 #include <type_traits>
 #include <vector>
 
-#include "koi/classical_evaluator.hpp"
+#include "../../support/material_evaluator.hpp"
 #include "koi/search_service.hpp"
 #include "koi/strength_suite.hpp"
 
 #include "koi_test_support.hpp"
+
+// HCE-calibrated fixtures were retired when the classical evaluator was
+// removed (2026-10-28): their reviewed moves, scores, and pruning counters
+// were recorded against that score distribution. Re-record them with the
+// clean HCE rewrite (docs/HCE_REMOVAL_PLAN.md).
+
+// HCE-calibrated strength fixtures were retired when the classical evaluator
+// was removed (2026-10-28); re-record them with the clean HCE rewrite.
 
 namespace {
 
@@ -338,36 +346,7 @@ void test_legacy_strength_rows_are_exact() {
     }
 }
 
-void test_strength_positions_are_valid_and_tactical_moves_are_found() {
-    auto evaluator = std::make_shared<koi::ClassicalEvaluator>();
-    koi::SearchService service(evaluator);
-    for (const koi::StrengthPosition& position : koi::strength_positions()) {
-        service.clear_hash();
-        const auto state = koi::GameState::from_fen(position.fen);
-        require(state.has_value(), "every strength fixture must contain valid FEN");
-        koi::SearchLimits limits;
-        limits.depth = position.depth;
-        std::optional<koi::SearchResult> result;
-        koi::SearchHandle handle = service.start(*state, limits,
-            {.on_complete = [&result](const koi::SearchResult& completed) {
-                result = completed;
-            }});
-        handle.wait();
-        require(result.has_value() && result->best_move.has_value(),
-                "every strength fixture must produce a best move");
-        if (position.category == "mate") {
-            require(result->mate.has_value() && *result->mate > 0,
-                    "mate fixtures must solve to a positive mate score");
-        }
-        if (position.category == "evasion") {
-            require(state->in_check(), "evasion fixtures must begin with the side to move in check");
-        }
-        if (!accepts_move(position, result->best_move->uci())) {
-            throw std::runtime_error("unexpected move in " + std::string(position.name) +
-                                     ": got " + result->best_move->uci());
-        }
-    }
-}
+
 
 void test_strength_suite_has_the_required_hard_gate_coverage() {
     const auto positions = koi::strength_positions();
@@ -424,7 +403,6 @@ int main(int argc, char** argv) {
         {"strength corpora cross-distinct and legal", test_strength_corpora_are_cross_distinct_and_standard_legal},
         {"strength position legacy initialization", test_strength_position_preserves_legacy_and_id_first_initialization},
         {"legacy strength rows exact", test_legacy_strength_rows_are_exact},
-        {"strength positions valid and tactical", test_strength_positions_are_valid_and_tactical_moves_are_found},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

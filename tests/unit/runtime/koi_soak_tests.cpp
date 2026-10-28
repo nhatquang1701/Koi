@@ -19,7 +19,7 @@
 #include <thread>
 #include <vector>
 
-#include "koi/classical_evaluator.hpp"
+#include "../../support/material_evaluator.hpp"
 #include "koi/game_state.hpp"
 #include "koi/move.hpp"
 #include "koi/search_service.hpp"
@@ -31,7 +31,7 @@ namespace {
 
 using namespace std::chrono_literals;
 
-using koi::ClassicalEvaluator;
+using koi::test::MaterialEvaluator;
 using koi::GameState;
 using koi::Move;
 using koi::SearchEventSink;
@@ -71,7 +71,7 @@ struct CompletionSpy {
 };
 
 [[nodiscard]] SearchService make_service(const std::size_t hash_mb = 16) {
-    return SearchService(std::make_shared<ClassicalEvaluator>(), {}, hash_mb);
+    return SearchService(std::make_shared<MaterialEvaluator>(), {}, hash_mb);
 }
 
 // The replay stays inside the native snapshot window and then crosses it: the

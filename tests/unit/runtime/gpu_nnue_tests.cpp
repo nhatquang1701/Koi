@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-#include "koi/classical_evaluator.hpp"
+#include "../../support/material_evaluator.hpp"
 #include "koi/game_state.hpp"
 #include "koi/gpu/gpu_nnue_service.hpp"
 #include "koi/gpu/nnue_gpu_evaluator.hpp"
@@ -196,7 +196,7 @@ void test_concurrent_batch_requests_keep_their_own_scores() {
     koi::gpu::set_gpu_nnue_mode(koi::gpu::GpuNnueMode::require);
     std::vector<koi::GameState> states = fixture_states();
     koi::gpu::begin_gpu_nnue_threaded_search();
-    koi::gpu::GpuNnueEvaluator evaluator(std::make_shared<koi::ClassicalEvaluator>(),
+    koi::gpu::GpuNnueEvaluator evaluator(std::make_shared<koi::test::MaterialEvaluator>(),
                                          std::move(service));
 
     // Sequential reference through the same batcher.

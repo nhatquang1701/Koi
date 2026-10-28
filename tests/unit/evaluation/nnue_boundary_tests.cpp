@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-#include "koi/classical_evaluator.hpp"
+#include "../../support/material_evaluator.hpp"
 #include "koi/evaluation_features.hpp"
 #include "koi/nnue.hpp"
 
