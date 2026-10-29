@@ -46,6 +46,7 @@ plus movetime budget). Two headline numbers therefore replace the old +306.3:
 - The Windows gate must not be run on the Windows host again (noisy machine
   policy): future gates run on the Mac. The Windows result is retained as
   historical evidence with verified binary hashes.
-- The new 300-line duplicate-free corpus made the PowerShell match harness hang
-  in its opening-replay validation loop (investigation open); Mac gates therefore
-  used the proven 150-opening corpus. Fix or replace that corpus before using it.
+- The 300-line corpus is valid (every line replays legally); a full gate on it is
+  600 games, i.e. roughly 100 minutes at 200 ms. An earlier attempt was killed
+  after ~60 minutes and misdiagnosed as a harness hang; there is no tooling bug.
+  The reported Mac gate used the 150-opening corpus (300 games, ~50 minutes).
