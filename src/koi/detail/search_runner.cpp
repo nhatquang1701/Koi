@@ -3059,10 +3059,6 @@ void SearchRunner::run_impl() {
                 maximum_depth = kMaximumSearchDepth;
             }
             std::optional<int> previous_score;
-            // Root moves are re-ordered before each iteration by the scores
-            // they earned at the previous completed iteration (see the ordering
-            // block below).  Untested moves keep their current relative order.
-            std::vector<SearchContext::RootMoveScore> previous_root_scores;
             std::chrono::milliseconds previous_iteration_elapsed{1};
             std::chrono::milliseconds previous_report_elapsed{0};
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
@@ -3112,31 +3108,6 @@ void SearchRunner::run_impl() {
                         context.ordering.order(root, legal_moves,
                                                result.best_move, 0);
                     }
-                    if (!previous_root_scores.empty()) {
-                        // Classic root-move ordering: moves that scored better
-                        // at the previous completed iteration are searched
-                        // first, so PVS cutoffs and the aspiration window land
-                        // on the likely-best line earlier.  Moves absent from
-                        // the snapshot keep their relative order after the
-                        // scored ones (stable sort).
-                        const auto previous_root_score = [&previous_root_scores](
-                                                              const Move move) {
-                            for (const SearchContext::RootMoveScore& score :
-                                 previous_root_scores) {
-                                if (score.move == move) {
-                                    return score.score;
-                                }
-                            }
-                            return -kInfinity;
-                        };
-                        std::stable_sort(
-                            legal_moves.begin(), legal_moves.end(),
-                            [&previous_root_score](const MoveMetadata& lhs,
-                                                   const MoveMetadata& rhs) {
-                                return previous_root_score(lhs.move) >
-                                    previous_root_score(rhs.move);
-                            });
-                    }
                 }
 
                 bool root_authoritative = false;
@@ -3176,11 +3147,6 @@ void SearchRunner::run_impl() {
                             kMaximumCheckExtensionsPerPath, Move::no_move(), nullptr,
                             nullptr, &root_authoritative);
                     }
-                }
-                if (!context.aborted && context.root_move_score_count > 0) {
-                    previous_root_scores.assign(
-                        context.root_move_scores.begin(),
-                        context.root_move_scores.begin() + context.root_move_score_count);
                 }
                 const bool helper_failed = lazy_pool != nullptr && lazy_pool->failed();
                 if (context.aborted || helper_failed) {
