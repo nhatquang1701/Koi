@@ -24,6 +24,14 @@ inline constexpr int kMaximumQuiescenceCheckDepth = 3;
 // over 198 games), so the conservative original sat off the optimum.
 inline constexpr int kQuiescenceFutilityMargin = 200;
 inline constexpr int kQuiescenceFutilityMoveLimit = 2;
+// Late-move pruning (LMP) is a separate surface from the static-score quiet
+// futility below: at shallow scout depths, quiet moves far down the ordering
+// list are skipped by move count alone, before any reduced search.  The limit
+// scales with depth squared and grows when the position is improving, so the
+// stage only trims hopeless late candidates.  Conservative by design; the
+// first implementation is intentionally narrower than the reference search's.
+inline constexpr int kLateMovePruningMaximumDepth = 5;
+inline constexpr int kLateMovePruningBaseLimit = 4;
 // Only captures whose static exchange value is worse than this floor are
 // removed from the tactical frontier.  A floor of zero discards the sound
 // defensive captures in the -1..-73 band that perpetual-check and sacrifice

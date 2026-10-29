@@ -1838,6 +1838,31 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     continue;
                 }
             }
+            // Late-move pruning: at shallow scout depths a quiet move far down
+            // the ordering list almost never raises alpha, so skip it without a
+            // reduced search.  The limit grows with depth squared and is larger
+            // while improving; PV nodes, checks, captures, promotions, tactical
+            // positions, TT/killer moves and unproven sacrifices are excluded so
+            // this only trims the hopeless tail of the move list.
+            const bool late_move_pruning_candidate = !claimable_draw &&
+                !excluded_search && ply > 0 && !pv_node && !checked &&
+                !tactical_position() && move_number > 0 &&
+                !metadata.is_capture() && !metadata.gives_check &&
+                move.promotion() == Promotion::none && !is_tt_move &&
+                !is_killer_move && static_eval > -kMateThreshold;
+            const int late_move_pruning_limit = kLateMovePruningBaseLimit +
+                (depth * depth) / (improving ? 2 : 1);
+            if (late_move_pruning_candidate &&
+                depth <= kLateMovePruningMaximumDepth &&
+                move_number >= late_move_pruning_limit) {
+                selective_pruning = true;
+                ++stats.late_move_prunes;
+                unmake_observed(state, ply + 1);
+                ++move_number;
+                frame.move_count = move_number;
+                continue;
+            }
+
             // Child futility is a narrow scout-node optimisation. It is
             // intentionally unavailable to the first move, PV nodes,
             // forcing moves, and TT moves, so a quiet move that is the only

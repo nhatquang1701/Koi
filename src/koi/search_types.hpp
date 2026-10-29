@@ -140,6 +140,7 @@ struct SearchStats {
     std::uint64_t lmr_high_history_exclusions = 0;
     std::uint64_t continuation_history_prunes = 0;
     std::uint64_t quiet_futility_prunes = 0;
+    std::uint64_t late_move_prunes = 0;
     std::uint64_t reverse_futility_prunes = 0;
     std::uint64_t razoring_prunes = 0;
     std::uint64_t probcut_searches = 0;

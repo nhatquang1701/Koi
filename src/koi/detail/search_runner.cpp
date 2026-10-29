@@ -166,6 +166,7 @@ void accumulate_stats(SearchStats& total, const SearchStats& partial) noexcept {
     total.lmr_high_history_exclusions += partial.lmr_high_history_exclusions;
     total.continuation_history_prunes += partial.continuation_history_prunes;
     total.quiet_futility_prunes += partial.quiet_futility_prunes;
+    total.late_move_prunes += partial.late_move_prunes;
     total.reverse_futility_prunes += partial.reverse_futility_prunes;
     total.razoring_prunes += partial.razoring_prunes;
     total.internal_iterative_deepening += partial.internal_iterative_deepening;
