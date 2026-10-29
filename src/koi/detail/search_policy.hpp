@@ -294,7 +294,12 @@ public:
         if (see_score < kQuiescenceSeeThreshold) {
             return QuiescenceCapturePrune::static_exchange;
         }
-        return best + captured_piece_value + 100 < alpha ?
+        // NNUE-era delta margin: the pinned h128's score range is wider than
+        // the retired classical evaluator the original 100 was calibrated for,
+        // so require the material swing plus a 200 cp cushion to reach alpha
+        // before spending a qsearch.  (Reference value; capture SEE and the
+        // checked/forcing guards below still protect real tactics.)
+        return best + captured_piece_value + 200 < alpha ?
             QuiescenceCapturePrune::delta : QuiescenceCapturePrune::none;
     }
 };
