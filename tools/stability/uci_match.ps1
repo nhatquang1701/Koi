@@ -80,8 +80,6 @@ param(
     [ValidateRange(1, 64)]
     [int]$Threads = 1,
 
-    [ValidateRange(1, 100)]
-
     [ValidateRange(1, 4096)]
     [int]$Hash = 16,
 
