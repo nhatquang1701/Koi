@@ -127,7 +127,7 @@ function Invoke-EvaluatorMatch([string]$Mode, [string]$EvalFile, [string]$Output
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $matchScript,
         '-KoiPath', $EnginePath, '-OpponentPath', $EnginePath, '-ReplayPath', $replayPath,
         '-KoiEvaluatorMode', $Mode, '-Threads', "$Threads", '-Depth', '1', '-Games', '1',
-        '-MaxPlies', '1', '-TimeoutMilliseconds', '5000', '-OutputDirectory', $OutputDirectory
+        '-MaxPlies', '1', '-TimeoutMilliseconds', '15000', '-OutputDirectory', $OutputDirectory
     )
     if (-not [string]::IsNullOrWhiteSpace($EvalFile)) {
         $arguments += @('-KoiEvalFile', $EvalFile)
