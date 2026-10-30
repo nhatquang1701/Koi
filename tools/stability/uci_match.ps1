@@ -610,8 +610,15 @@ function Send-UciLine($Engine, [string]$Command) {
         $detail = Get-EngineStderrDetail $Engine
         throw "${Engine.Label} engine exited before '$Command'.${detail}"
     }
-    $Engine.Process.StandardInput.WriteLine($Command)
-    $Engine.Process.StandardInput.Flush()
+    try {
+        $Engine.Process.StandardInput.WriteLine($Command)
+        $Engine.Process.StandardInput.Flush()
+    } catch {
+        # A boot-time rejection can close the pipe between the HasExited check
+        # and the write; surface the engine stderr rather than the pipe error.
+        $detail = Get-EngineStderrDetail $Engine
+        throw "${Engine.Label} engine stopped accepting input for '$Command'.${detail}"
+    }
 }
 
 function Stop-UciEngine($Engine, [bool]$KillImmediately = $false) {

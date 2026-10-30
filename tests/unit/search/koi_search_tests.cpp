@@ -1831,9 +1831,10 @@ void test_short_search_prefers_safe_forcing_exchange_over_quiet_push() {
 
     koi::SearchLimits limits;
 #if defined(__SANITIZE_THREAD__)
-    // ThreadSanitizer grows the search cost by roughly an order of magnitude;
-    // keep the safe-forcing oracle check measurable in the instrumented build.
-    limits.movetime = 3000ms;
+    // ThreadSanitizer runs the search far slower than wall-clock budgets can
+    // absorb reliably; use a deterministic work budget with a safety cap.
+    limits.nodes = 250000;
+    limits.movetime = 60000ms;
 #else
     limits.movetime = 100ms;
 #endif
