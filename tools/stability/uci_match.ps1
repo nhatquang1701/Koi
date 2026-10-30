@@ -582,9 +582,33 @@ function Start-UciEngine([string]$Path, [string]$Label, [string]$BootEvalFile = 
     }
 }
 
+function Get-EngineStderrDetail($Engine) {
+    $stderr = ''
+    try {
+        if (-not $Engine.Process.HasExited) {
+            [void]$Engine.Process.WaitForExit(1000)
+        }
+        if (-not $Engine.Process.HasExited) {
+            $Engine.Process.Kill()
+            [void]$Engine.Process.WaitForExit(2000)
+        }
+        $stderr = $Engine.StderrTask.GetAwaiter().GetResult()
+    } catch {
+    }
+    if ([string]::IsNullOrWhiteSpace($stderr)) {
+        return ''
+    }
+    $lines = @($stderr -split '\r?\n' | Where-Object { $_.Trim().Length -gt 0 })
+    if ($lines.Count -eq 0) {
+        return ''
+    }
+    return ' stderr: ' + ($lines -join ' | ')
+}
+
 function Send-UciLine($Engine, [string]$Command) {
     if ($Engine.Process.HasExited) {
-        throw "${Engine.Label} engine exited before '$Command'."
+        $detail = Get-EngineStderrDetail $Engine
+        throw "${Engine.Label} engine exited before '$Command'.${detail}"
     }
     $Engine.Process.StandardInput.WriteLine($Command)
     $Engine.Process.StandardInput.Flush()
@@ -651,25 +675,7 @@ function Read-UciLine($Engine, [string]$Description, [int]$WaitMilliseconds = $T
         # A boot-time rejection (for example NNUE is mandatory and the network
         # is unusable) exits before the handshake; surface its stderr so the
         # caller can distinguish the cause instead of a generic pipe error.
-        $stderr = ''
-        try {
-            if (-not $Engine.Process.HasExited) {
-                [void]$Engine.Process.WaitForExit(1000)
-            }
-            if (-not $Engine.Process.HasExited) {
-                $Engine.Process.Kill()
-                [void]$Engine.Process.WaitForExit(2000)
-            }
-            $stderr = $Engine.StderrTask.GetAwaiter().GetResult()
-        } catch {
-        }
-        $detail = ''
-        if (-not [string]::IsNullOrWhiteSpace($stderr)) {
-            $lines = @($stderr -split '\r?\n' | Where-Object { $_.Trim().Length -gt 0 })
-            if ($lines.Count -gt 0) {
-                $detail = ' stderr: ' + ($lines -join ' | ')
-            }
-        }
+        $detail = Get-EngineStderrDetail $Engine
         throw "${Engine.Label} closed stdout while waiting for ${Description}.${detail}"
     }
     if ($line -match '^info string(?:\s|$)') {

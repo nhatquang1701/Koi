@@ -530,6 +530,10 @@ jobs:
             test ! -s "/tmp/koi-$label-replay.err"
             grep -q "legal 1" "/tmp/koi-$label-replay.txt"
           }
+          # Releases bundle a network, but the CI-built package intentionally
+          # has none; the packaged engine still requires NNUE at boot, so smoke
+          # it against the build-tree fixture network.
+          export KOI_NNUE_PATH=/work/build/ci-release/koi.nnue
           smoke package-auto "$extracted/koi-engine"
           smoke package-generic env KOI_CPU_VARIANT=generic "$extracted/koi-engine"
           # `stop` is required before `quit`: quitting an active search suppresses
