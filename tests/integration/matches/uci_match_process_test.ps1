@@ -443,7 +443,8 @@ try {
     $rejectedMatch = Invoke-EvaluatorMatch 'nnue-v4' $truncatedPath $rejectedDirectory
     if ($rejectedMatch.exit_code -eq 0 -or
         ($rejectedMatch.output -join ' ') -notmatch 'no usable NNUE network|EvalFile rejected') {
-        throw 'An EvalFile rejection must fail the attested match instead of silently falling back.'
+        throw ("An EvalFile rejection must fail the attested match instead of silently falling back " +
+            "(exit=$($rejectedMatch.exit_code), output=$($rejectedMatch.output -join ' | ')).")
     }
 
     $previousGpuSetting = $env:KOI_GPU_NNUE

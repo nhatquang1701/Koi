@@ -1795,7 +1795,13 @@ void test_short_search_preserves_completed_forcing_check_choice() {
             "the forcing-choice fixture must contain both legal checks");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // same completed root iteration as the release build.
+    limits.movetime = 3000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1827,7 +1833,7 @@ void test_short_search_prefers_safe_forcing_exchange_over_quiet_push() {
 #if defined(__SANITIZE_THREAD__)
     // ThreadSanitizer grows the search cost by roughly an order of magnitude;
     // keep the safe-forcing oracle check measurable in the instrumented build.
-    limits.movetime = 1000ms;
+    limits.movetime = 3000ms;
 #else
     limits.movetime = 100ms;
 #endif
