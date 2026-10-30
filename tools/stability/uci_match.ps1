@@ -648,7 +648,29 @@ function Read-UciLine($Engine, [string]$Description, [int]$WaitMilliseconds = $T
 
     $line = $readTask.GetAwaiter().GetResult()
     if ($null -eq $line) {
-        throw "${Engine.Label} closed stdout while waiting for ${Description}."
+        # A boot-time rejection (for example NNUE is mandatory and the network
+        # is unusable) exits before the handshake; surface its stderr so the
+        # caller can distinguish the cause instead of a generic pipe error.
+        $stderr = ''
+        try {
+            if (-not $Engine.Process.HasExited) {
+                [void]$Engine.Process.WaitForExit(1000)
+            }
+            if (-not $Engine.Process.HasExited) {
+                $Engine.Process.Kill()
+                [void]$Engine.Process.WaitForExit(2000)
+            }
+            $stderr = $Engine.StderrTask.GetAwaiter().GetResult()
+        } catch {
+        }
+        $detail = ''
+        if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+            $lines = @($stderr -split '\r?\n' | Where-Object { $_.Trim().Length -gt 0 })
+            if ($lines.Count -gt 0) {
+                $detail = ' stderr: ' + ($lines -join ' | ')
+            }
+        }
+        throw "${Engine.Label} closed stdout while waiting for ${Description}.${detail}"
     }
     if ($line -match '^info string(?:\s|$)') {
         $Engine.Output.Add($line)
