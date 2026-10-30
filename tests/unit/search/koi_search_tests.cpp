@@ -1274,7 +1274,13 @@ void test_short_oracle_rejects_the_b2b4_rook_lift() {
             "the b2b4 rook lift must expose an immediate forcing reply");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // The instrumented build is roughly an order of magnitude slower; keep the
+    // same oracle contract with a budget it can actually search.
+    limits.movetime = 1000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1818,7 +1824,13 @@ void test_short_search_prefers_safe_forcing_exchange_over_quiet_push() {
             "the reviewed exchange must be a non-losing forcing capture");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer grows the search cost by roughly an order of magnitude;
+    // keep the safe-forcing oracle check measurable in the instrumented build.
+    limits.movetime = 1000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());

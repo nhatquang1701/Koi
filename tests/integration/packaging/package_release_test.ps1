@@ -39,7 +39,8 @@ function Invoke-BoundedProcess {
         [string[]]$Arguments = @(),
         [string[]]$InputLines = @(),
         [string]$CpuVariant = '',
-        [int]$TimeoutMilliseconds = 15000
+        [int]$TimeoutMilliseconds = 15000,
+        [string]$NnuePath = ''
     )
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -54,6 +55,11 @@ function Invoke-BoundedProcess {
     $startInfo.EnvironmentVariables.Remove('KOI_CPU_VARIANT')
     if (-not [string]::IsNullOrWhiteSpace($CpuVariant)) {
         $startInfo.EnvironmentVariables['KOI_CPU_VARIANT'] = $CpuVariant
+    }
+    # NNUE is mandatory since the HCE removal, so a packaged engine without a
+    # bundled network must still be smoked with the build-tree fixture network.
+    if (-not [string]::IsNullOrWhiteSpace($NnuePath)) {
+        $startInfo.EnvironmentVariables['KOI_NNUE_PATH'] = $NnuePath
     }
 
     $process = New-Object System.Diagnostics.Process
@@ -161,10 +167,13 @@ try {
 
     $enginePath = Join-Path $extractionDirectory "koi-engine$binarySuffix"
     $replayPath = Join-Path $extractionDirectory "koi-replay$binarySuffix"
+    $fixtureNetPath = Join-Path $BuildDirectory 'koi.nnue'
+    Assert-True (Test-Path -LiteralPath $fixtureNetPath -PathType Leaf) 'build tree must provide the generated fixture network'
+    $fixtureNet = (Resolve-Path -LiteralPath $fixtureNetPath).Path
     $uciTranscript = @('uci', 'isready', 'position startpos', 'go depth 2', 'stop', 'quit')
     foreach ($variant in @('', 'generic')) {
         $label = if ([string]::IsNullOrWhiteSpace($variant)) { 'automatic' } else { $variant }
-        $smoke = Invoke-BoundedProcess -FilePath $enginePath -InputLines $uciTranscript -CpuVariant $variant
+        $smoke = Invoke-BoundedProcess -FilePath $enginePath -InputLines $uciTranscript -CpuVariant $variant -NnuePath $fixtureNet
         Assert-True ($smoke.ExitCode -eq 0) "$label extracted engine exited with $($smoke.ExitCode)"
         Assert-True ([string]::IsNullOrWhiteSpace($smoke.StandardError)) "$label extracted engine wrote to stderr: $($smoke.StandardError)"
         $smokeLines = @($smoke.StandardOutput -split "`r?`n" | Where-Object { $_ -ne '' })
