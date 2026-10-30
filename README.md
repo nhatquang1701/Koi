@@ -38,7 +38,7 @@ a deprecated fallback until its staged removal.
 
 ## Name
 
-The engine is called **Koi**. Releases up to and including v1.1.4, their package
+The engine is called **Koi**. Releases up to and including v1.1.5, their package
 metadata and archived documentation used the name "Koi Engine"; those historical
 artifacts are left unchanged. New releases, the UCI identity and the current
 documentation use **Koi**. Executable and archive file names keep the
@@ -49,9 +49,9 @@ Get the Windows, Linux x86-64, and macOS arm64 packages and their checksum
 sidecars from
 [GitHub Releases](https://github.com/nhatquang1701/Koi-engine/releases).
 
-- Windows: `koi-engine-v1.1.4.zip`
-- Linux x86-64: `koi-engine-v1.1.4-linux-x86_64.tar.gz`
-- macOS arm64: `koi-engine-v1.1.4-macos-arm64.tar.gz`
+- Windows: `koi-engine-v1.1.5.zip`
+- Linux x86-64: `koi-engine-v1.1.5-linux-x86_64.tar.gz`
+- macOS arm64: `koi-engine-v1.1.5-macos-arm64.tar.gz`
 
 macOS arm64 (Apple Silicon) can also build from source: install Homebrew LLVM
 (clang 19+; AppleClang 18+ also works), CMake, and Ninja, then configure with

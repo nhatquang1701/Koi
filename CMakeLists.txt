@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.31)
 
-project(koi_engine VERSION 1.1.4 LANGUAGES CXX)
+project(koi_engine VERSION 1.1.5 LANGUAGES CXX)
 
 # Build identity for the UCI handshake: the version is the single project()
 # pin above, the commit is the checkout HEAD at configure time (best effort so

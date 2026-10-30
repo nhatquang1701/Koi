@@ -110,7 +110,7 @@ buffer on the Lichess clock.
 
 ## Opening book
 
-Release packages from 1.1.4 carry a Polyglot book generated from Lichess's
+Release packages from 1.1.4 onward carry a Polyglot book generated from Lichess's
 open-source opening data ([lichess-org/chess-openings](https://github.com/lichess-org/chess-openings),
 CC0 1.0). Copy it next to the engine binary as `book.bin`:
 

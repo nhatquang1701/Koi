@@ -2,7 +2,7 @@
 
 This page is the engineering specification for the Koi engine in this repository.
 It describes the code as it stands on branch `koi-engine` at commit `7f2b2ed`
-(the v1.1.4 release plus the unreleased 1.1.5 work in the tree), and it names the
+(the v1.1.5 release in the tree), and it names the
 implementation files and constants that define each behaviour. It is a
 specification of observed behaviour, not a roadmap: where a feature is absent,
 experimental, or deliberately limited, the text says so.
@@ -28,7 +28,7 @@ boot choice. GPU NNUE is experimental, off at runtime, and scheduled for removal
 | Rules variant | Standard chess only; no Chess960 or other variants | `src/koi/position.cpp` |
 | Language | C++26 (`CMAKE_CXX_STANDARD 26`) | `CMakeLists.txt` |
 | License | MIT | `LICENSE` |
-| Current build version pin | `1.1.4` | `project(koi_engine VERSION 1.1.4 ...)`, `CMakeLists.txt:3` |
+| Current build version pin | `1.1.5` | `project(koi_engine VERSION 1.1.5 ...)`, `CMakeLists.txt:3` |
 | Compiled build identity | `KOI_ENGINE_BUILD_VERSION="${PROJECT_VERSION}"` | `CMakeLists.txt:412-414` |
 | UCI version token | none: the handshake emits only `id name` and `id author` | `src/koi/uci_controller.cpp:1631-1664` |
 
@@ -37,14 +37,14 @@ compiled into the core library and is consumed by `koi-bench` for its JSON
 `build` field (`tools/engine/koi_bench.cpp:577` and `:685`). Release provenance
 instead comes from the package manifest written by
 `tools/build/package_release.ps1`: schema `koi-engine-package-v1`, hard-coded
-`version = '1.1.4'`, per-file SHA-256 hashes, and a `provenance` object with
+`version = '1.1.5'`, per-file SHA-256 hashes, and a `provenance` object with
 `source_commit`, `source_dirty`, `source_ref`, and `created_utc`
 (`tools/build/package_release.ps1:254-268`). A package archive also gets a
 `.sha256` sidecar (`tools/build/package_release.ps1:283-284`).
 
-The v1.1.5 work in this tree is unreleased and the version pins still read
-`1.1.4`; the build identity therefore remains 1.1.4 until a release commit
-bumps `CMakeLists.txt`, the packaging script, and the documentation.
+The v1.1.5 release is cut at this commit: the version pins, the packaging
+script, and the documentation read `1.1.5`, so the compiled build identity is
+1.1.5 from here on.
 
 ### 1.2 Supported operating systems and CPUs
 
@@ -927,7 +927,7 @@ Determinism rules: `Threads=1` is the deterministic configuration; threaded test
 assert legality, coverage, completed depth, ranked MultiPV lines, and coherent
 bestmove/PV rather than byte equality. Timing-sensitive cases use the retry
 mechanism (`KOI_TEST_RETRIES`); known-failure and intermittent registries are
-empty for the 1.1.4 gate.
+empty for the 1.1.5 gate.
 
 ### 9.3 Benchmark and verification tools
 
@@ -974,7 +974,7 @@ measurement commands, never CTest thresholds.
 5. Creates `.zip` on Windows or `.tar.gz` elsewhere and a `.sha256` sidecar.
 
 No tablebase data is packaged. Version strings in the packaging script and
-manifest are still `1.1.4` on this tree. Release titles use a readable product
+manifest are `1.1.5` on this tree. Release titles use a readable product
 name and version while the tag is the version alone.
 
 ## 10. Known limitations, experimental items, and deferred work
