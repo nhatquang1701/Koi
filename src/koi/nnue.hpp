@@ -256,6 +256,9 @@ private:
     std::vector<std::uint8_t> slot_pieces_;
     int slot_cursor_ = -1;
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> scratch_values_;
+    // Reused by refresh_slot_perspective: a full refresh used to allocate a
+    // fresh hidden-unit vector on every king-bucket crossing (hot path).
+    std::vector<std::int32_t> refresh_sums_;
     std::array<std::uint8_t, kIncrementalPerspectives> scratch_buckets_{};
     std::uint8_t scratch_pieces_ = 0;
     std::uint64_t scratch_key_ = 0;

@@ -1958,7 +1958,14 @@ void NnueWorker::refresh_slot_perspective(const EvaluationFeatures& features,
                                           const Color perspective,
                                           const std::size_t slot) {
     const std::size_t index = perspective == Color::white ? 0U : 1U;
-    std::vector<std::int32_t> sums(hidden_units_, 0);
+    // Reuse the per-worker buffer: a full refresh runs inside the hot make/unmake
+    // path and must not heap-allocate per king-bucket crossing.
+    if (refresh_sums_.size() != hidden_units_) {
+        refresh_sums_.assign(hidden_units_, 0);
+    } else {
+        std::fill(refresh_sums_.begin(), refresh_sums_.end(), 0);
+    }
+    std::vector<std::int32_t>& sums = refresh_sums_;
     if (uses_halfka_threat_features(weights_->manifest)) {
         const NnueSparseFeaturesV5 sparse =
             EvaluationFeatureExtractor::encode_sparse_v5(features, perspective);
