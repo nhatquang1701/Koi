@@ -1007,6 +1007,15 @@ add_test(
 koi_set_timeout(koi_protocol_option_churn_process 180)
 
 add_test(
+    NAME koi_protocol_broken_pipe_process
+    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/protocol_broken_pipe_test.ps1"
+            -EnginePath "$<TARGET_FILE:koi_engine>"
+)
+
+koi_set_timeout(koi_protocol_broken_pipe_process 60)
+
+add_test(
     NAME koi_engine_perft_responsiveness
     COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/perft_responsiveness_test.ps1"
@@ -1381,7 +1390,8 @@ if(POWERSHELL_EXECUTABLE)
     set(KOI_UCI_PROCESS_TESTS
         koi_engine_process koi_engine_perft_responsiveness
         koi_engine_en_croissant_process koi_protocol_fuzz_process
-        koi_protocol_soak_process koi_protocol_option_churn_process)
+        koi_protocol_soak_process koi_protocol_option_churn_process
+        koi_protocol_broken_pipe_process)
     if(KOI_TARGET_X86_64)
         list(APPEND KOI_UCI_PROCESS_TESTS koi_engine_variant_process)
     endif()
@@ -1394,6 +1404,8 @@ if(POWERSHELL_EXECUTABLE)
     set_tests_properties(koi_protocol_soak_process
         PROPERTIES LABELS "process;uci;heavy;reliability" RUN_SERIAL TRUE)
     set_tests_properties(koi_protocol_option_churn_process
+        PROPERTIES LABELS "process;uci;reliability")
+    set_tests_properties(koi_protocol_broken_pipe_process
         PROPERTIES LABELS "process;uci;reliability")
     set_tests_properties(koi_engine_process koi_engine_perft_responsiveness PROPERTIES RUN_SERIAL TRUE)
     set_tests_properties(koi_engine_time_safety_process

@@ -147,6 +147,8 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   `koi_protocol_soak_process` (60 rounds of Threads/Hash reconfiguration and
   searches with an RSS-growth bound and exactly-one-legal-bestmove assertions;
   `heavy` + `reliability`),
+  `koi_protocol_broken_pipe_process` (a GUI crash closes stdout mid-search:
+  writes fail silently, `stop`/`quit` still shut down cleanly with exit 0),
   `koi_protocol_option_churn_process` (Hash/Threads/MultiPV/EvalFile/BookFile/
   SyzygyPath changes during an active search: the old generation is suppressed
   with no late bestmove, a malformed EvalFile is rejected once, and each
@@ -199,8 +201,8 @@ Every test carries CTest labels; combine them with `-L`/`-LE`, for example
   `matches`, `tools`, `runtime`, `packaging`.
 - `reliability` — adversarial protocol/robustness regression tests
   (`koi_protocol_fuzz_process`, the `koi_protocol_soak_process` resource churn
-  test, and `koi_protocol_option_churn_process`); run with
-  `ctest -L reliability`.
+  test, `koi_protocol_option_churn_process`, and
+  `koi_protocol_broken_pipe_process`); run with `ctest -L reliability`.
 - `python` — Python unittest suites (`elo_oracle_python` is also `measurement`).
 - `heavy` — long-running tests. `koi_search_tests_*of4`, `koi_strength_tests`,
   `koi_engine_time_safety_process`, `koi_benchmark_process`, and

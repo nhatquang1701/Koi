@@ -10,6 +10,10 @@
 #include <pthread.h>
 #endif
 
+#if !defined(_WIN32)
+#include <csignal>
+#endif
+
 #include "koi/cpu_features.hpp"
 #include "koi/cpu_variant.hpp"
 #include "koi/executable_path.hpp"
@@ -60,6 +64,12 @@ std::filesystem::path executable_directory(int argc, char* argv[]) {
 } // namespace
 
 int main(int argc, char* argv[]) {
+#if !defined(_WIN32)
+    // A GUI crash closes our stdout. Without this, the first protocol write
+    // raises SIGPIPE and terminates the engine; ignoring it lets the stream
+    // fail silently while the controller keeps serving until EOF/quit.
+    std::signal(SIGPIPE, SIG_IGN);
+#endif
 #if defined(__linux__) && defined(__GLIBC__)
     configure_worker_stack();
 #endif
