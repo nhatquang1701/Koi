@@ -26,6 +26,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R7 Syzygy auto-discovery | fixed | `discover_syzygy_directory` + lazy load; real 5-man verification |
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
+| R28 stdio/state-machine stress | fixed | closed stderr, 500x handshake flood, seeded 250-command storm |
 | R27 book-option/handshake/limit contracts | fixed | book options during search, repeated handshake, contradictory go limits |
 | R26 currmovenumber | fixed | interim lines emit `currmove ... currmovenumber N`; grammar pairing + process assertion |
 | R25 quit-during-ponder | fixed | clean shutdown, no late bestmove |
