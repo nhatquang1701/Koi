@@ -134,9 +134,18 @@ uci
 position fen bad fen
 position startpos moves e2e5
 position fen 8/8/8/8/8/8/8/8 w - - 0 1
+position fen 8/8/8/4k3/8/4K3/8/8 w - - 999999999 999999999
+position fen 8/8/8/4k3/8/4K3/8/8 w - - -1 0
 go depth -1
+go depth 0
 go movetime abc
 go nodes 999999999999999999999
+go nodes -1
+go wtime -1 btime -1
+go wtime 999999999999 btime 999999999999
+go movestogo 0 wtime 1000 btime 1000
+go mate 0
+go mate 65
 go depth 2147483647
 setoption name Hash value -1
 setoption name Threads value 0
