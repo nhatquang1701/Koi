@@ -136,7 +136,10 @@ C++ unit / integration executables under `tests/unit/` and `tests/integration/`:
 PowerShell process tests (`tests/integration/**/*.ps1`), driven through
 `pwsh` with the built engine path:
 
-- `koi_engine_process`, `koi_engine_perft_responsiveness`,
+- `koi_engine_process`, `koi_protocol_fuzz_process` (deterministic adversarial
+  corpus: malformed commands, oversized lines, EOF/lifecycle, `isready` during
+  search, seeded random sequences; labelled `reliability`),
+  `koi_engine_perft_responsiveness`,
   `koi_engine_variant_process` (three engine binaries,
   automatic selection, and the `KOI_CPU_VARIANT` overrides),
   `koi_engine_en_croissant_process`,
@@ -146,6 +149,13 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   `run_tests_artifact_path`, `hash_memory_stability`, `windows_ci_configuration`,
   `install_book_script`,
   `package_release_layout`.
+
+`koi_protocol_fuzz_process` is the reliability alarm: it runs a fixed seeded
+corpus (no network, no clock dependence) and asserts exit code 0, clean stderr
+except documented `UCI position error:` lines, protocol-valid stdout,
+exactly-one-legal-bestmove for completed searches, bounded oversized-line
+rejection, and `isready` during an infinite search. It takes a few seconds, so it
+runs in every CI leg.
 
 Python tooling tests (`tests/python/**/*.py`), run as `python -m unittest` with
 the repository root as the working directory:
@@ -176,6 +186,8 @@ Every test carries CTest labels; combine them with `-L`/`-LE`, for example
 - `integration` / `tools` — the tool-level tests.
 - `process` — tests that launch engine or tool processes; sub-labels `uci`,
   `matches`, `tools`, `runtime`, `packaging`.
+- `reliability` — adversarial protocol/robustness regression tests (currently
+  `koi_protocol_fuzz_process`); run with `ctest -L reliability`.
 - `python` — Python unittest suites (`elo_oracle_python` is also `measurement`).
 - `heavy` — long-running tests. `koi_search_tests_*of4`, `koi_strength_tests`,
   `koi_engine_time_safety_process`, `koi_benchmark_process`, and
