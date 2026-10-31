@@ -754,5 +754,30 @@ Assert-LegalBestmoveLine $interimBest 'interim-currmovenumber'
 Send-UciCommand $interim 'quit'
 [void](Complete-UciSession $interim $false)
 
+# 20. Repeated handshake and contradictory `go` limits: each must remain
+# protocol-clean with exactly one legal completion when stopped.
+$doubleHandshake = Invoke-UciTranscript "uci`nuci`nisready`nquit`n" 'double-handshake'
+Assert-ProtocolGrammar $doubleHandshake
+Assert-CleanDiagnostics $doubleHandshake
+if ((Count-Lines $doubleHandshake '^uciok$') -ne 2 -or (Count-Lines $doubleHandshake '^readyok$') -ne 1) {
+    throw 'a repeated uci command must re-answer the handshake without extra output'
+}
+
+$limitCases = @(
+    'go depth 2 infinite',
+    'go mate 2 depth 10',
+    'go infinite wtime 1000 btime 1000',
+    'go ponder depth 2',
+    'go depth 3 nodes 5000',
+    'go'
+)
+foreach ($limitCase in $limitCases) {
+    $label = 'limits-' + ($limitCase -replace ' ', '-')
+    $case = Invoke-UciTranscript "uci`nisready`nposition startpos`n$limitCase`nstop`nquit`n" $label
+    Assert-ProtocolGrammar $case
+    Assert-CleanDiagnostics $case
+    Assert-OneLegalBestmove $case
+}
+
 Write-Output 'PASS protocol fuzz corpus'
 

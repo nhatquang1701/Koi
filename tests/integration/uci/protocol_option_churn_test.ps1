@@ -132,10 +132,25 @@ try {
         [void](Search-Expect-Bestmove $session 'startpos moves e2e4 e7e5' 'post-valid-evalfile search')
     }
 
+    # 9. Book/RandomSeed options during an active search.  Whether a given
+    # option stops the search or only takes effect for the next one, no stray
+    # completion is allowed and the replacement search must answer.
+    Start-Search $session
+    foreach ($bookOption in @(
+            'setoption name OwnBook value true',
+            'setoption name BookDepth value 8',
+            'setoption name BookRandom value true',
+            'setoption name BookSafety value false',
+            'setoption name RandomSeed value 42')) {
+        Send-UciCommand $session $bookOption
+        Stop-Expect-Suppressed $session "book-option readiness ($bookOption)"
+    }
+    [void](Search-Expect-Bestmove $session 'startpos moves g1f3 g8f6' 'post-book-option search')
+
     Send-UciCommand $session 'quit'
     $transcript = Complete-UciSession $session $false
 
-    $expectedBestmoves = if (Test-Path -LiteralPath (Join-Path $scratchRoot 'valid-swap.nnue')) { 8 } else { 7 }
+    $expectedBestmoves = if (Test-Path -LiteralPath (Join-Path $scratchRoot 'valid-swap.nnue')) { 9 } else { 8 }
     $bestmoves = @($transcript | Where-Object { $_ -match '^bestmove ' })
     if ($bestmoves.Count -ne $expectedBestmoves) {
         throw "option churn must complete exactly its replacement searches, got $($bestmoves.Count) bestmoves (expected $expectedBestmoves)"
