@@ -101,12 +101,31 @@ try {
     Stop-Expect-Suppressed $session 'hash-burst readiness'
     [void](Search-Expect-Bestmove $session 'startpos moves b1c3' 'post-hash-burst search')
 
+    # 6. Threads=4 with a Hash resize while the search is active (Lazy SMP
+    # helper join + TT reallocation race).
+    Send-UciCommand $session 'setoption name Threads value 4'
+    Stop-Expect-Suppressed $session 'threads4 readiness'
+    Start-Search $session
+    Send-UciCommand $session 'setoption name Hash value 64'
+    Stop-Expect-Suppressed $session 'threads4-hash-change readiness'
+    [void](Search-Expect-Bestmove $session 'startpos moves e2e4 e7e5' 'threads4-hash replacement search')
+
+    # 7. Option change during a ponder search: the pondering generation must be
+    # suppressed and the next real search must answer.
+    Send-UciCommand $session 'setoption name Threads value 1'
+    Stop-Expect-Suppressed $session 'threads1 readiness'
+    Send-UciCommand $session 'position startpos'
+    Send-UciCommand $session 'go ponder depth 1'
+    Send-UciCommand $session 'setoption name Hash value 16'
+    Stop-Expect-Suppressed $session 'ponder-change readiness'
+    [void](Search-Expect-Bestmove $session 'startpos moves d2d4 d7d5' 'post-ponder-change search')
+
     Send-UciCommand $session 'quit'
     $transcript = Complete-UciSession $session $false
 
     $bestmoves = @($transcript | Where-Object { $_ -match '^bestmove ' })
-    if ($bestmoves.Count -ne 5) {
-        throw "option churn must complete exactly its five replacement searches, got $($bestmoves.Count) bestmoves"
+    if ($bestmoves.Count -ne 7) {
+        throw "option churn must complete exactly its seven replacement searches, got $($bestmoves.Count) bestmoves"
     }
     $rejected = @($transcript | Where-Object { $_ -match '^info string EvalFile rejected' })
     if ($rejected.Count -ne 1) {
