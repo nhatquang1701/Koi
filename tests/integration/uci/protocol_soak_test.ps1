@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$EnginePath
+    [string]$EnginePath,
+    [int]$Rounds = 60
 )
 
 # Reliability soak: repeatedly reconfigure resources (Threads/Hash), run short
@@ -62,7 +63,7 @@ try {
     $session.Process.Refresh()
     $baselineBytes = $session.Process.WorkingSet64
     $bestmoves = 1
-    $rounds = 60
+    $rounds = $Rounds
     $started = [DateTime]::UtcNow
 
     for ($round = 0; $round -lt $rounds; $round++) {

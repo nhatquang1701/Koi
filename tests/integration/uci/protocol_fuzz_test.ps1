@@ -57,7 +57,7 @@ function Invoke-UciTranscript([string]$Transcript, [string]$Label,
 function Assert-ProtocolGrammar($Result) {
     foreach ($line in $Result.Lines) {
         $valid = $line -match '^(id [a-z]|option name |uciok$|readyok$|info )' -or
-            $line -match '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$'
+            $line -match '^bestmove ([a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?|0000)$'
         if (-not $valid) {
             throw "fuzz case '$($Result.Label)' wrote a non-protocol stdout line: $line"
         }
@@ -72,6 +72,13 @@ function Assert-CleanDiagnostics($Result) {
 
 function Count-Lines($Result, [string]$Pattern) {
     return @($Result.Lines | Where-Object { $_ -match $Pattern }).Count
+}
+
+function Assert-OnlyBestmove($Result, [string]$Expected) {
+    $bestmoves = @($Result.Lines | Where-Object { $_ -match '^bestmove ' })
+    if ($bestmoves.Count -ne 1 -or $bestmoves[0] -ne $Expected) {
+        throw "fuzz case '$($Result.Label)' must emit exactly '$Expected', got $($bestmoves -join ' | ')"
+    }
 }
 
 function Assert-OneLegalBestmove($Result) {
@@ -428,6 +435,45 @@ try {
 finally {
     Stop-AllUciSessions
     Remove-Item -LiteralPath $assetRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# 10. Terminal and forced-draw roots, plus analysis mode.  Terminal roots
+# must answer `bestmove 0000`; a forced fivefold/locked draw must still produce
+# a legal move; analysis mode must publish a scored line and stay protocol-clean.
+$mateRoot = Invoke-UciTranscript "uci`nisready`nposition fen 7k/6Q1/6K1/8/8/8/8/8 b - - 0 1`ngo depth 3`nstop`nquit`n" 'mate-root'
+Assert-ProtocolGrammar $mateRoot
+Assert-CleanDiagnostics $mateRoot
+Assert-OnlyBestmove $mateRoot 'bestmove 0000'
+
+$stalemateRoot = Invoke-UciTranscript "uci`nisready`nposition fen 7k/5Q2/6K1/8/8/8/8/8 b - - 0 1`ngo depth 3`nstop`nquit`n" 'stalemate-root'
+Assert-ProtocolGrammar $stalemateRoot
+Assert-CleanDiagnostics $stalemateRoot
+Assert-OnlyBestmove $stalemateRoot 'bestmove 0000'
+
+$repetitionMoves = 'g1f3 g8f6 f3g1 f6g8 ' * 4
+$fivefoldRoot = Invoke-UciTranscript "uci`nisready`nposition startpos moves $($repetitionMoves.Trim())`ngo depth 2`nstop`nquit`n" 'fivefold-root'
+Assert-ProtocolGrammar $fivefoldRoot
+Assert-CleanDiagnostics $fivefoldRoot
+Assert-OneLegalBestmove $fivefoldRoot
+
+$analysis = Start-UciSession -Executable $EnginePath
+Send-UciCommand $analysis 'uci'
+[void](Read-UciUntil $analysis { param($line) $line -eq 'uciok' } 'analysis uciok' -ValidateUciOutput)
+Send-UciCommand $analysis 'setoption name UCI_AnalyseMode value true'
+Send-UciCommand $analysis 'isready'
+[void](Read-UciUntil $analysis { param($line) $line -eq 'readyok' } 'analysis readyok' -ValidateUciOutput)
+Send-UciCommand $analysis 'position fen r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3'
+Send-UciCommand $analysis 'go infinite'
+[void](Read-UciUntil $analysis { param($line) $line -match '^info depth [1-9][0-9]* .* score (cp|mate) ' } 'analysis scored depth' -ValidateUciOutput)
+Send-UciCommand $analysis 'stop'
+$analysisBest = Read-UciUntil $analysis { param($line) $line -match '^bestmove ' } 'analysis bestmove' -ValidateUciOutput
+if ($analysisBest -notmatch '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$') {
+    throw "analysis mode produced an invalid bestmove: $analysisBest"
+}
+Send-UciCommand $analysis 'quit'
+$analysisLines = Complete-UciSession $analysis $false
+if (@($analysisLines | Where-Object { $_ -match 'book move|book detected' }).Count -ne 0) {
+    throw 'analysis mode must bypass the opening book'
 }
 
 Write-Output 'PASS protocol fuzz corpus'
