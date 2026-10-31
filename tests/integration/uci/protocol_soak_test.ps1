@@ -78,12 +78,27 @@ try {
             default { 'go nodes 3000' }
         }
         Send-UciCommand $session $search
+        $earlyBestmove = $null
         if (($round % 10) -eq 0) {
-            # Guarantee at least one published depth line reaches the transcript;
-            # an immediate stop can otherwise suppress all `info` output.
-            [void](Read-UciUntil $session { param($candidate) $candidate -match '^info depth [1-9]' } "round $round depth line" -ValidateUciOutput)
+            # Guarantee a published depth line reaches the transcript when the
+            # search runs long enough.  A very short movetime search may legally
+            # complete before any depth line is emitted (observed once in 50k
+            # rounds after Threads/Hash churn), so accept that legal bestmove as
+            # the completion instead of waiting for a line that will not come.
+            $earlyLine = Read-UciUntil $session {
+                param($candidate) ($candidate -match '^info depth [1-9]') -or ($candidate -match '^bestmove ')
+            } "round $round depth line or early completion" -ValidateUciOutput
+            if ($earlyLine -match '^bestmove ') {
+                $earlyBestmove = $earlyLine
+            }
         }
-        [void](Send-Bestmove $session "round $round bestmove")
+        if ($null -ne $earlyBestmove) {
+            if ($earlyBestmove -notmatch '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$') {
+                throw "invalid early bestmove in round $round`: $earlyBestmove"
+            }
+        } else {
+            [void](Send-Bestmove $session "round $round bestmove")
+        }
         $bestmoves++
 
         # isready must stay responsive between every reconfiguration and search.
