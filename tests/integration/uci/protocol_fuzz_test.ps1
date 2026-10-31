@@ -213,4 +213,114 @@ for ($case = 0; $case -lt 60; $case++) {
     Assert-CleanDiagnostics $result
 }
 
+
+# 8. Lifecycle storms: the controller must stay single-writer and exactly-once
+# while searches are replaced, suppressed and stopped.
+function New-InteractiveSession([string]$Label) {
+    $session = Start-UciSession -Executable $EnginePath
+    Send-UciCommand $session 'uci'
+    [void](Read-UciUntil $session { param($line) $line -eq 'uciok' } "$Label uciok" -ValidateUciOutput)
+    Send-UciCommand $session 'isready'
+    [void](Read-UciUntil $session { param($line) $line -eq 'readyok' } "$Label readyok" -ValidateUciOutput)
+    return $session
+}
+
+function Assert-LegalBestmoveLine([string]$Line, [string]$Label) {
+    if ($Line -notmatch '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$') {
+        throw "$Label produced an invalid bestmove line: $Line"
+    }
+}
+
+# Search interruption storm: stop/isready/position/hash changes interleaved with
+# live searches; every emitted bestmove must be legal and the shutdown clean.
+$storm = New-InteractiveSession 'interruption-storm'
+Send-UciCommand $storm 'position startpos'
+Send-UciCommand $storm 'go infinite'
+[void](Read-UciUntil $storm { param($line) $line -match '^info depth ' } 'interruption-storm search' -ValidateUciOutput)
+Send-UciCommand $storm 'isready'
+[void](Read-UciUntil $storm { param($line) $line -eq 'readyok' } 'interruption-storm readyok' -ValidateUciOutput)
+Send-UciCommand $storm 'stop'
+$stormBest = Read-UciUntil $storm { param($line) $line -match '^bestmove ' } 'interruption-storm bestmove' -ValidateUciOutput
+Assert-LegalBestmoveLine $stormBest 'interruption-storm'
+Send-UciCommand $storm 'go infinite'
+[void](Read-UciUntil $storm { param($line) $line -match '^info depth ' } 'interruption-storm second search' -ValidateUciOutput)
+Send-UciCommand $storm 'position startpos'
+Send-UciCommand $storm 'ucinewgame'
+Send-UciCommand $storm 'setoption name Hash value 16'
+Send-UciCommand $storm 'isready'
+[void](Read-UciUntil $storm { param($line) $line -eq 'readyok' } 'interruption-storm second readyok' -ValidateUciOutput)
+Send-UciCommand $storm 'position startpos'
+Send-UciCommand $storm 'go depth 2'
+Send-UciCommand $storm 'stop'
+$stormBest2 = Read-UciUntil $storm { param($line) $line -match '^bestmove ' } 'interruption-storm second bestmove' -ValidateUciOutput
+Assert-LegalBestmoveLine $stormBest2 'interruption-storm'
+Send-UciCommand $storm 'quit'
+$stormLines = Complete-UciSession $storm $false
+$stormBestmoves = @($stormLines | Where-Object { $_ -match '^bestmove ' })
+foreach ($line in $stormBestmoves) { Assert-LegalBestmoveLine $line 'interruption-storm transcript' }
+if ($stormBestmoves.Count -ne 2) {
+    throw "interruption storm must emit exactly its two completed-search bestmoves, got $($stormBestmoves.Count)"
+}
+
+# Ponder -> ponderhit -> stop: exactly one legal bestmove and a clean shutdown.
+$ponder = New-InteractiveSession 'ponder-lifecycle'
+Send-UciCommand $ponder 'position startpos'
+Send-UciCommand $ponder 'go ponder wtime 60000 btime 60000'
+Send-UciCommand $ponder 'isready'
+[void](Read-UciUntil $ponder { param($line) $line -eq 'readyok' } 'ponder readyok' -ValidateUciOutput)
+Send-UciCommand $ponder 'ponderhit'
+[void](Read-UciUntil $ponder { param($line) $line -match '^info depth ' } 'ponderhit converted search' -ValidateUciOutput)
+Send-UciCommand $ponder 'stop'
+$ponderBest = Read-UciUntil $ponder { param($line) $line -match '^bestmove ' } 'ponder bestmove' -ValidateUciOutput
+Assert-LegalBestmoveLine $ponderBest 'ponder-lifecycle'
+Send-UciCommand $ponder 'quit'
+$ponderLines = Complete-UciSession $ponder $false
+$ponderBestmoves = @($ponderLines | Where-Object { $_ -match '^bestmove ' })
+if ($ponderBestmoves.Count -ne 1) {
+    throw "ponder lifecycle must emit exactly one bestmove, got $($ponderBestmoves.Count)"
+}
+
+# Hash resize and ucinewgame during a live search must suppress the old
+# generation without a late bestmove.
+$resize = New-InteractiveSession 'hash-resize-during-search'
+Send-UciCommand $resize 'position startpos'
+Send-UciCommand $resize 'go infinite'
+[void](Read-UciUntil $resize { param($line) $line -match '^info depth ' } 'resize search' -ValidateUciOutput)
+Send-UciCommand $resize 'setoption name Hash value 32'
+Send-UciCommand $resize 'isready'
+[void](Read-UciUntil $resize { param($line) $line -eq 'readyok' } 'resize readyok' -ValidateUciOutput)
+Send-UciCommand $resize 'stop'
+Send-UciCommand $resize 'ucinewgame'
+Send-UciCommand $resize 'position startpos'
+Send-UciCommand $resize 'go depth 2'
+Send-UciCommand $resize 'stop'
+$resizeBest = Read-UciUntil $resize { param($line) $line -match '^bestmove ' } 'resize replacement bestmove' -ValidateUciOutput
+Assert-LegalBestmoveLine $resizeBest 'hash-resize-during-search'
+Send-UciCommand $resize 'quit'
+$resizeLines = Complete-UciSession $resize $false
+$resizeBestmoves = @($resizeLines | Where-Object { $_ -match '^bestmove ' })
+if ($resizeBestmoves.Count -ne 1) {
+    throw "hash-resize scenario must only complete the replacement search, got $($resizeBestmoves.Count) bestmoves"
+}
+
+# Repeated stop without a search stays quiet and does not break isready.
+$stopStorm = Invoke-UciTranscript "uci`nstop`nstop`nstop`nisready`nquit`n" 'stop-storm'
+Assert-ProtocolGrammar $stopStorm
+Assert-CleanDiagnostics $stopStorm
+if ((Count-Lines $stopStorm '^bestmove ') -ne 0) {
+    throw 'an idle stop storm must not emit a bestmove'
+}
+if ((Count-Lines $stopStorm '^readyok$') -ne 1) {
+    throw 'an idle stop storm must still answer isready'
+}
+
+# EOF while pondering: clean shutdown with no late bestmove.
+$ponderEof = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo ponder wtime 60000 btime 60000`n" 'ponder-eof'
+Assert-ProtocolGrammar $ponderEof
+Assert-CleanDiagnostics $ponderEof
+if ((Count-Lines $ponderEof '^bestmove ') -ne 0) {
+    throw 'EOF during a ponder search must suppress the late bestmove'
+}
+
 Write-Output 'PASS protocol fuzz corpus'
+
