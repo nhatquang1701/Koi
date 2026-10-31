@@ -26,6 +26,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R7 Syzygy auto-discovery | fixed | `discover_syzygy_directory` + lazy load; real 5-man verification |
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
+| R21 extreme FEN/go limits | fixed | huge/negative clock fields and absurd go limits rejected/ignored safely |
 | R20 analysis MultiPV scores | fixed | scored multipv 1-3 lines at one depth asserted |
 | R19 option validation/EvalFile swap | fixed | invalid book/spin/movement values ignored; mid-search valid EvalFile swap installs once and next search legal |
 | R18 book hot-swap | fixed | valid -> truncated -> restored -> deleted auto-book in one session |
