@@ -1,0 +1,12 @@
+# Reliability issue triage
+
+Status: `new` -> `reproduced` -> `fixed` (commit + regression test) -> `verified`.
+
+| # | Area | Symptom / risk | Repro | Status | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| R1 | controller input | unbounded `std::getline` line length: a hostile GUI can force an arbitrarily large allocation before any validation | send a multi-GB line (not yet run) | new | `uci_controller.cpp:670` |
+| R2 | contract harness | fuzz/contract coverage exists only ad hoc; no deterministic corpus or fast CI label pins exactly-one-legal-bestmove, isready-during-search, stdout purity, lifecycle storms | n/a | new | `BASELINE.md` |
+| R3 | options | extreme `Hash`/`Threads`/`MultiPV` values: clamping contract, reported value, allocation-failure path and apply latency are not pinned by tests | scripted fuzz accepted values; no assertions | new | `uci_controller.cpp` option paths |
+| R4 | lifecycle | EOF/`quit` during search: exit code observed clean, but exactly-once legal `bestmove` and silence-after-stop are not asserted adversarially (randomized race coverage missing) | fuzz case `eof-during-search` | new | `BASELINE.md` |
+| R5 | sanitizers | no fresh ASan/TSan/UBSan run recorded for the 1.1.5 code | n/a | new | CI legs exist; local evidence pending |
+| R6 | assets | repeated `setoption EvalFile/BookFile/SyzygyPath` churn and malformed files are covered piecemeal; a single fail-closed matrix is missing | n/a | new | asset loader tests |
