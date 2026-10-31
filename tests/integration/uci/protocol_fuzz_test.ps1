@@ -602,6 +602,56 @@ try {
     if ($rejectionLines.Count -ne 3) {
         throw "every invalid EvalFile form must be rejected once, got $($rejectionLines.Count) rejection lines"
     }
+
+    # 9i. Hot-add assets mid-session: a valid book created after boot is
+    # detected and used on the next search; a corrupt Syzygy directory created
+    # after boot is rejected silently and never crashes the search.
+    $assetHotAdd = Join-Path $assetRoot 'engine-hot-add'
+    New-Item -ItemType Directory -Path $assetHotAdd -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetHotAdd $executableName)
+    $hotSession = Start-UciSession -Executable (Join-Path $assetHotAdd $executableName)
+    Send-UciCommand $hotSession 'uci'
+    [void](Read-UciUntil $hotSession { param($line) $line -eq 'uciok' } 'hot-add uciok' -ValidateUciOutput)
+    Send-UciCommand $hotSession 'isready'
+    [void](Read-UciUntil $hotSession { param($line) $line -eq 'readyok' } 'hot-add readyok' -ValidateUciOutput)
+
+    Send-UciCommand $hotSession 'position startpos'
+    Send-UciCommand $hotSession 'go depth 1'
+    [void](Read-UciUntil $hotSession { param($line) $line -match '^bestmove ' } 'hot-add before book' -ValidateUciOutput)
+
+    $hotBook = Join-Path $assetHotAdd 'book.bin'
+    $hotBookBytes = [byte[]]::new(16)
+    [byte[]]$hotKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($hotKey, 0, $hotBookBytes, 0, 8)
+    $hotBookBytes[8] = 0x03
+    $hotBookBytes[9] = 0x1c
+    $hotBookBytes[10] = 0x00
+    $hotBookBytes[11] = 100
+    [System.IO.File]::WriteAllBytes($hotBook, $hotBookBytes)
+
+    Send-UciCommand $hotSession 'position startpos'
+    Send-UciCommand $hotSession 'go depth 1'
+    [void](Read-UciUntil $hotSession { param($line) $line -match '^bestmove ' } 'hot-add with book' -ValidateUciOutput)
+
+    $hotSyzygy = Join-Path $assetHotAdd 'syzygy'
+    New-Item -ItemType Directory -Path $hotSyzygy -Force | Out-Null
+    [System.IO.File]::WriteAllBytes((Join-Path $hotSyzygy 'KQvK.rtbw'), [byte[]]::new(80))
+    Send-UciCommand $hotSession 'isready'
+    [void](Read-UciUntil $hotSession { param($line) $line -eq 'readyok' } 'hot-add syzygy readiness' -ValidateUciOutput)
+    Send-UciCommand $hotSession 'position startpos'
+    Send-UciCommand $hotSession 'go depth 1'
+    [void](Read-UciUntil $hotSession { param($line) $line -match '^bestmove ' } 'hot-add with corrupt syzygy' -ValidateUciOutput)
+    Send-UciCommand $hotSession 'quit'
+    $hotLines = Complete-UciSession $hotSession $false
+    if (@($hotLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+        throw 'a book added mid-session must be detected exactly once'
+    }
+    if (@($hotLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -lt 1) {
+        throw 'a book added mid-session must be used on the next search'
+    }
+    if (@($hotLines | Where-Object { $_ -match '^info string syzygy detected' }).Count -ne 0) {
+        throw 'a corrupt Syzygy directory added mid-session must not be announced as usable'
+    }
 }
 finally {
     Stop-AllUciSessions
