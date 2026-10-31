@@ -61,6 +61,13 @@ function Assert-ProtocolGrammar($Result) {
         if (-not $valid) {
             throw "fuzz case '$($Result.Label)' wrote a non-protocol stdout line: $line"
         }
+        if ($line -match '^info depth ') {
+            $hasCurrmove = $line -match ' currmove '
+            $hasNumber = $line -match ' currmovenumber [1-9][0-9]*'
+            if ($hasCurrmove -ne $hasNumber) {
+                throw "fuzz case '$($Result.Label)' must pair currmove with currmovenumber: $line"
+            }
+        }
     }
 }
 
@@ -731,6 +738,21 @@ $ponderQuitLines = Complete-UciSession $ponderQuit $false
 if (@($ponderQuitLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 0) {
     throw 'quit during ponder must suppress the late bestmove'
 }
+
+# 19. Interim progress lines pair the in-flight root move with its one-based
+# currmovenumber (UCI schema); a long-enough infinite search must publish one.
+$interim = New-InteractiveSession 'interim-currmovenumber'
+Send-UciCommand $interim 'position fen r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3'
+Send-UciCommand $interim 'go infinite'
+$interimLine = Read-UciUntil $interim { param($line) $line -match '^info depth [1-9][0-9]* .* currmove [a-h][1-8][a-h][1-8][nbrq]? currmovenumber [1-9][0-9]* ' } 'interim currmove line' -ValidateUciOutput
+if ($interimLine -notmatch ' currmovenumber [1-9][0-9]* ') {
+    throw 'interim currmove lines must carry a one-based currmovenumber'
+}
+Send-UciCommand $interim 'stop'
+$interimBest = Read-UciUntil $interim { param($line) $line -match '^bestmove ' } 'interim search bestmove' -ValidateUciOutput
+Assert-LegalBestmoveLine $interimBest 'interim-currmovenumber'
+Send-UciCommand $interim 'quit'
+[void](Complete-UciSession $interim $false)
 
 Write-Output 'PASS protocol fuzz corpus'
 

@@ -1941,6 +1941,11 @@ void UciController::write_search_info(std::uint64_t generation, const SearchInfo
             << " multipv " << info.multipv;
     if (!info.currmove.is_no_move()) {
         output_ << " currmove " << info.currmove.uci();
+        if (info.currmovenumber > 0) {
+            // Standard UCI pairs the in-flight root move with its one-based
+            // index; SearchInfo carries both (populated by the runner).
+            output_ << " currmovenumber " << info.currmovenumber;
+        }
     }
     // UCI has no "estimate" marker: an unproven selective-root score is still
     // the engine's best current evaluation, and GUIs (En Croissant analysis,

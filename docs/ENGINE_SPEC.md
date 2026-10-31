@@ -809,10 +809,9 @@ Behaviour details:
   unmarked (UCI has no "estimate" marker) and omits WDL.
 - **Depth/score reporting**: completed iterations emit
   `info depth seldepth multipv [currmove] score ... nodes nps hashfull time pv ...`.
-  Interim lines may report the in-flight root move as a `currmove` token;
-  `SearchInfo::currmovenumber` is populated by the runner but the UCI writer does
-  not emit a `currmovenumber` token (see the inconsistency note in §10). A
-  selective root iteration republishes the most recent proven
+  Interim lines may report the in-flight root move as
+  `currmove <uci> currmovenumber <one-based index>`. A selective root iteration
+  republishes the most recent proven
   score at the current depth while keeping its own PV; before any proven score it
   publishes its own estimate unmarked, because omitting the score makes GUIs
   display 0 cp (En Croissant analysis, Arena, ...).
@@ -1067,11 +1066,6 @@ name and version while the tag is the version alone.
   version-8 container "the only container a GPU backend accepts" while
   `gpu_nnue_service.cpp` accepts version 5 only. The code and the UCI option
   table are authoritative.
-- **Interim `currmovenumber`:** the v1.1.4 release notes say interim `info`
-  lines report a one-based `currmovenumber`, but `write_search_info` emits only
-  `currmove`. `SearchInfo::currmovenumber` is set to 1 by the runner and is not
-  printed. The En Croissant transcript grammar accepts an optional
-  `currmovenumber`, so both forms are protocol-valid.
 - **GPU NNUE and CPU fallback:** an unsupported GPU network or missing driver
   leaves the CPU NNUE evaluator active (the engine now exits when no network is usable); the engine never fails to
   start because of the GPU path.
