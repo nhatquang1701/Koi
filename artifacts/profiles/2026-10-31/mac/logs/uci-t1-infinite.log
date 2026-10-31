@@ -1,0 +1,197 @@
+id name Koi 1.1.5
+id author Contributors
+option name RandomSeed type spin default 0 min 0 max 2147483647
+option name Hash type spin default 512 min 1 max 4096
+option name Threads type spin default 1 min 1 max 10
+option name UCI_AnalyseMode type check default false
+option name MultiPV type spin default 1 min 1 max 16
+option name Ponder type check default false
+option name OwnBook type check default false
+option name BookFile type string default book.bin
+option name BookDepth type spin default 16 min 0 max 40
+option name BookRandom type check default false
+option name BookSafety type check default true
+option name BookSafetyDepth type spin default 2 min 0 max 3
+option name Clear Hash type button
+option name UCI_ShowWDL type check default false
+option name Move Overhead type spin default 30 min 0 max 5000
+option name Dynamic Overhead type check default false
+option name Slow Mover type spin default 100 min 10 max 1000
+option name Contempt type spin default 0 min 0 max 1000
+option name StrengthMode type check default false
+option name SyzygyPath type string default 
+option name SyzygyProbeDepth type spin default 1 min 1 max 100
+option name SyzygyProbeLimit type spin default 7 min 0 max 7
+option name SyzygyInteriorDepth type spin default 0 min 0 max 100
+option name Syzygy50MoveRule type check default true
+option name EvalFile type string default 
+option name GpuNnue type combo default off var auto var on var off
+info string build 1e09504e6569
+uciok
+readyok
+readyok
+info depth 1 seldepth 9 multipv 1 nodes 106 nps 106 hashfull 0 time 0 pv d2d4
+info depth 2 seldepth 14 multipv 1 nodes 899 nps 899000 hashfull 0 time 1 pv d2d4 e5d4
+info depth 3 seldepth 14 multipv 1 nodes 4078 nps 1019500 hashfull 0 time 4 pv d2d4 e5d4 f3d4
+info depth 4 seldepth 17 multipv 1 nodes 36317 nps 885780 hashfull 0 time 41 pv d2d4 e5d4 f3d4 g8f6
+info depth 5 seldepth 17 multipv 1 currmove d2d4 nodes 269458 nps 925972 hashfull 4 time 291 pv d2d4 e5d4 f3d4 f8c5 d4b3
+info depth 5 seldepth 22 multipv 1 nodes 310179 nps 931468 hashfull 5 time 333 pv d2d4 e5d4 f3d4 f8c5 d4b3
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 519569 nps 891198 hashfull 11 time 583 pv d2d4 e5d4 f3d4 f8c5 d4b3
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 714530 nps 857779 hashfull 14 time 833 pv d2d4 e5d4 f3d4 f8c5 d4b3
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 918726 nps 848315 hashfull 21 time 1083 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 1114142 nps 835815 hashfull 27 time 1333 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 1322154 nps 834693 hashfull 34 time 1584 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 1517902 nps 827645 hashfull 38 time 1834 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 1719278 nps 824989 hashfull 41 time 2084 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 1912377 nps 819356 hashfull 44 time 2334 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 2085029 nps 806899 hashfull 45 time 2584 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 2254596 nps 795271 hashfull 50 time 2835 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 2428792 nps 787290 hashfull 50 time 3085 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 2613023 nps 783515 hashfull 52 time 3335 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 2789531 nps 778111 hashfull 52 time 3585 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove d2d4 nodes 2967069 nps 773479 hashfull 52 time 3836 pv d2d4 e5d4 f3d4 g8f6 b1c3 f8b4
+info depth 6 seldepth 22 multipv 1 currmove f1c4 nodes 3158406 nps 772982 hashfull 53 time 4086 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 6 seldepth 22 multipv 1 currmove f1c4 nodes 3357447 nps 774318 hashfull 56 time 4336 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 6 seldepth 22 multipv 1 currmove f1c4 nodes 3543949 nps 772775 hashfull 57 time 4586 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 6 seldepth 22 multipv 1 currmove f1c4 nodes 3736541 nps 772651 hashfull 59 time 4836 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 6 seldepth 24 multipv 1 nodes 3929288 nps 773481 hashfull 59 time 5080 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 4107448 nps 770628 hashfull 63 time 5330 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 4287806 nps 768424 hashfull 66 time 5580 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 4477424 nps 767997 hashfull 69 time 5830 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 4657482 nps 766033 hashfull 70 time 6080 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 4834974 nps 763698 hashfull 75 time 6331 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 5006839 nps 760802 hashfull 81 time 6581 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 5183043 nps 758753 hashfull 87 time 6831 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 5363668 nps 757473 hashfull 89 time 7081 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 5547626 nps 756735 hashfull 93 time 7331 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 5720275 nps 754454 hashfull 93 time 7582 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 5904404 nps 753882 hashfull 96 time 7832 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 6083703 nps 752747 hashfull 99 time 8082 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 6260178 nps 751251 hashfull 100 time 8333 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 6422824 nps 748319 hashfull 102 time 8583 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 6597519 nps 746917 hashfull 104 time 8833 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 6756553 nps 743786 hashfull 110 time 9084 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 6916086 nps 740956 hashfull 111 time 9334 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 7076914 nps 738409 hashfull 114 time 9584 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 7244689 nps 736698 hashfull 118 time 9834 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 7407315 nps 734561 hashfull 122 time 10084 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 7576871 nps 733198 hashfull 126 time 10334 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 7733340 nps 730594 hashfull 130 time 10585 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 7903675 nps 729457 hashfull 133 time 10835 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 8073254 nps 728304 hashfull 137 time 11085 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 8245139 nps 727405 hashfull 139 time 11335 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 8414466 nps 726324 hashfull 141 time 11585 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 8574233 nps 724419 hashfull 143 time 11836 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 8748674 nps 723868 hashfull 146 time 12086 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 8900543 nps 721509 hashfull 149 time 12336 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 9072662 nps 720853 hashfull 150 time 12586 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 9236289 nps 719505 hashfull 152 time 12837 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 9408631 nps 718929 hashfull 153 time 13087 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 9573595 nps 717822 hashfull 157 time 13337 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 9743922 nps 717097 hashfull 160 time 13588 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 9917860 nps 716711 hashfull 162 time 13838 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 10083074 nps 715720 hashfull 163 time 14088 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 10255468 nps 715215 hashfull 164 time 14339 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 10434537 nps 715233 hashfull 166 time 14589 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 10602521 nps 714503 hashfull 168 time 14839 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 10765407 nps 713460 hashfull 171 time 15089 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 10940360 nps 713191 hashfull 174 time 15340 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 11106025 nps 712381 hashfull 176 time 15590 pv f1c4 d7d6 e1g1 f8e7 b1c3 c8g4
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 11288604 nps 712664 hashfull 177 time 15840 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 11490430 nps 714134 hashfull 178 time 16090 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 11684026 nps 715056 hashfull 179 time 16340 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 11879956 nps 716091 hashfull 179 time 16590 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 12078386 nps 717201 hashfull 183 time 16841 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 12275384 nps 718236 hashfull 184 time 17091 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 12470355 nps 719125 hashfull 186 time 17341 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 12649132 nps 719068 hashfull 188 time 17591 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 12830469 nps 719156 hashfull 191 time 17841 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 13020813 nps 719739 hashfull 196 time 18091 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 13208548 nps 720125 hashfull 197 time 18342 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 13406335 nps 721080 hashfull 199 time 18592 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 13604912 nps 722052 hashfull 199 time 18842 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 13811195 nps 723402 hashfull 204 time 19092 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 13993809 nps 723493 hashfull 204 time 19342 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 14168751 nps 723153 hashfull 206 time 19593 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 14341103 nps 722728 hashfull 210 time 19843 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 14526749 nps 722975 hashfull 212 time 20093 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 14721453 nps 723661 hashfull 214 time 20343 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 14908247 nps 723947 hashfull 217 time 20593 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 15095055 nps 724226 hashfull 223 time 20843 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 15271034 nps 723985 hashfull 224 time 21093 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 15461351 nps 724388 hashfull 230 time 21344 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 15655723 nps 725003 hashfull 231 time 21594 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 15837068 nps 725007 hashfull 231 time 21844 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 16018422 nps 725012 hashfull 233 time 22094 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 16187690 nps 724475 hashfull 233 time 22344 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 16349810 nps 723635 hashfull 240 time 22594 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 16515263 nps 722926 hashfull 242 time 22845 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 16692008 nps 722754 hashfull 242 time 23095 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 16870589 nps 722663 hashfull 247 time 23345 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 17059436 nps 723010 hashfull 252 time 23595 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 17240035 nps 723004 hashfull 252 time 23845 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 17420120 nps 722946 hashfull 255 time 24096 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 17612532 nps 723426 hashfull 257 time 24346 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 17794922 nps 723488 hashfull 258 time 24596 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 17979897 nps 723653 hashfull 259 time 24846 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 18165644 nps 723846 hashfull 261 time 25096 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 18359323 nps 724347 hashfull 264 time 25346 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 18551988 nps 724771 hashfull 267 time 25597 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 18754423 nps 725593 hashfull 269 time 25847 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 18944541 nps 725927 hashfull 274 time 26097 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 19131610 nps 726139 hashfull 275 time 26347 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 19340493 nps 727168 hashfull 280 time 26597 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 19525630 nps 727265 hashfull 282 time 26848 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 19701786 nps 727056 hashfull 285 time 27098 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 19875587 nps 726765 hashfull 289 time 27348 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 20053969 nps 726645 hashfull 291 time 27598 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 20224481 nps 726245 hashfull 293 time 27848 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 20390842 nps 725704 hashfull 297 time 28098 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 20552391 nps 724977 hashfull 300 time 28349 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 20720318 nps 724511 hashfull 302 time 28599 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 20889069 nps 724082 hashfull 304 time 28849 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 21052175 nps 723442 hashfull 310 time 29100 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 21197094 nps 722217 hashfull 311 time 29350 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 21338682 nps 720901 hashfull 316 time 29600 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 21509777 nps 720595 hashfull 316 time 29850 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 21697288 nps 720840 hashfull 323 time 30100 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 21895299 nps 721402 hashfull 326 time 30351 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 22095114 nps 722038 hashfull 328 time 30601 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 22277014 nps 722084 hashfull 332 time 30851 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 22477635 nps 722730 hashfull 335 time 31101 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 22689585 nps 723727 hashfull 339 time 31351 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 22891447 nps 724389 hashfull 342 time 31601 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 23077438 nps 724520 hashfull 343 time 31852 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 23259311 nps 724543 hashfull 344 time 32102 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 23436560 nps 724423 hashfull 344 time 32352 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 23621547 nps 724542 hashfull 348 time 32602 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 23810120 nps 724769 hashfull 350 time 32852 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 23997135 nps 724923 hashfull 351 time 33103 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 24184912 nps 725119 hashfull 354 time 33353 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 24380401 nps 725542 hashfull 358 time 33603 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 24579774 nps 726073 hashfull 362 time 33853 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 24774237 nps 726453 hashfull 364 time 34103 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 24978488 nps 727091 hashfull 366 time 34354 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 25158850 nps 727050 hashfull 367 time 34604 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 25334345 nps 726870 hashfull 368 time 34854 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 25521632 nps 727029 hashfull 368 time 35104 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 25715060 nps 727359 hashfull 370 time 35354 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 25925977 nps 728175 hashfull 372 time 35604 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 26130485 nps 728802 hashfull 372 time 35854 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 26328815 nps 729249 hashfull 376 time 36104 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 26534343 nps 729867 hashfull 380 time 36355 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 26720082 nps 729957 hashfull 384 time 36605 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 26925855 nps 730588 hashfull 386 time 36855 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 27142396 nps 731502 hashfull 389 time 37105 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 27367148 nps 732623 hashfull 396 time 37355 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 27564443 nps 732999 hashfull 398 time 37605 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 27776343 nps 733756 hashfull 400 time 37855 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 27973657 nps 734101 hashfull 403 time 38106 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 28182727 nps 734767 hashfull 406 time 38356 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 28378982 nps 735092 hashfull 412 time 38606 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 28572943 nps 735354 hashfull 414 time 38856 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 28762794 nps 735508 hashfull 418 time 39106 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 28969034 nps 736057 hashfull 421 time 39357 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 29152209 nps 736036 hashfull 425 time 39607 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+info depth 7 seldepth 24 multipv 1 currmove f1c4 nodes 29339207 nps 736111 hashfull 432 time 39857 pv f1c4 g8f6 d2d3 d7d5 e4d5 f6d5 d1e2
+bestmove f1c4 ponder g8f6

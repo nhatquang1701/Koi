@@ -1,0 +1,1303 @@
+{
+ "file": "mac\\samples\\uci-t1-infinite.sample.txt",
+ "parse_bad_lines": 1,
+ "threads": [
+  {
+   "name": "Thread_18960074   DispatchQueue_1: com.apple.main-thread  (serial)",
+   "samples": 18981,
+   "root_total": 18981,
+   "search": false,
+   "wait_self": 0
+  },
+  {
+   "name": "Thread_18960077",
+   "samples": 18981,
+   "root_total": 18981,
+   "search": true,
+   "wait_self": 0
+  }
+ ],
+ "search_samples": 18981,
+ "self_top": [
+  {
+   "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::on_make_move(koi::GameState const&, koi::MoveMetadata const&, int, unsigned long long)",
+   "self": 8534,
+   "self_pct": 44.96075022390812
+  },
+  {
+   "sym": "koi::TranspositionTable::probe_exclusive(koi::TranspositionTable::Storage*, unsigned long long, int) const",
+   "self": 856,
+   "self_pct": 4.509772930825562
+  },
+  {
+   "sym": "koi::detail::bishop_attacks(int, unsigned long long)",
+   "self": 801,
+   "self_pct": 4.220009483167378
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::candidate_is_legal(koi::Move const&, koi::Color, unsigned long long, unsigned long long, int)",
+   "self": 781,
+   "self_pct": 4.11464095674622
+  },
+  {
+   "sym": "koi::detail::rook_attacks(int, unsigned long long)",
+   "self": 688,
+   "self_pct": 3.624677308887835
+  },
+  {
+   "sym": "_platform_memmove",
+   "self": 610,
+   "self_pct": 3.213740055845319
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::evaluate(koi::GameState const&, koi::Color)",
+   "self": 591,
+   "self_pct": 3.113639955745219
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)",
+   "self": 577,
+   "self_pct": 3.0398819872504084
+  },
+  {
+   "sym": "koi::(anonymous namespace)::native_move_gives_check(koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool)",
+   "self": 573,
+   "self_pct": 3.0188082819661766
+  },
+  {
+   "sym": "koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)",
+   "self": 365,
+   "self_pct": 1.9229756071861335
+  },
+  {
+   "sym": "koi::detail::SearchMovePicker::prepare_candidates()",
+   "self": 310,
+   "self_pct": 1.633212159527949
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const",
+   "self": 303,
+   "self_pct": 1.5963331752805436
+  },
+  {
+   "sym": "koi::(anonymous namespace)::refresh_king_masks(koi::(anonymous namespace)::NativeState&)",
+   "self": 268,
+   "self_pct": 1.4119382540435172
+  },
+  {
+   "sym": "koi::GameState::legal_tactical_moves_with_metadata(koi::MoveMetadataList&, bool, bool, koi::CheckFlagMode) const",
+   "self": 249,
+   "self_pct": 1.3118381539434172
+  },
+  {
+   "sym": "koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)",
+   "self": 199,
+   "self_pct": 1.048416837890522
+  },
+  {
+   "sym": "std::__introsort<std::_ClassicAlgPolicy, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, koi::detail::SearchMovePicker::Candidate*, false>(koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, std::iterator_traits<koi::detail::SearchMovePicker::Candidate*>::difference_type, bool)",
+   "self": 187,
+   "self_pct": 0.9851957220378273
+  },
+  {
+   "sym": "koi::GameState::legal_moves_with_metadata(koi::MoveMetadataList&, bool, bool, koi::CheckFlagMode) const",
+   "self": 171,
+   "self_pct": 0.9009009009009009
+  },
+  {
+   "sym": "koi::detail::SearchMovePicker::next()",
+   "self": 163,
+   "self_pct": 0.8587534903324378
+  },
+  {
+   "sym": "koi::(anonymous namespace)::fill_move_metadata_from_facts(koi::(anonymous namespace)::NativeMetadataContext const&, koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool, koi::CheckFlagMode, koi::MoveMetadata&)",
+   "self": 162,
+   "self_pct": 0.8534850640113798
+  },
+  {
+   "sym": "koi::detail::for_each_exchange_attacker<koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)>(koi::detail::ExchangeContext const&, int, koi::Color, koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)&&)",
+   "self": 161,
+   "self_pct": 0.8482166376903219
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::apply_unchecked(koi::Move const&)",
+   "self": 154,
+   "self_pct": 0.8113376534429166
+  },
+  {
+   "sym": "koi::detail::SearchOrderingTables::quiet_history_score(koi::Color, koi::MoveMetadata const&, koi::detail::SearchHistoryContext const&) const",
+   "self": 153,
+   "self_pct": 0.8060692271218587
+  },
+  {
+   "sym": "koi::(anonymous namespace)::native_position_features(koi::Position const&, koi::PositionFeatures&)",
+   "self": 152,
+   "self_pct": 0.8008008008008008
+  },
+  {
+   "sym": "koi::(anonymous namespace)::halfka_king_bucket_indices(koi::EvaluationFeatures const&, koi::Color, unsigned short*, unsigned long, std::array<signed char, 9216ul>*)",
+   "self": 146,
+   "self_pct": 0.7691902428744534
+  },
+  {
+   "sym": "std::__introsort<std::_ClassicAlgPolicy, std::ranges::less, unsigned short*, true>(unsigned short*, unsigned short*, std::ranges::less, std::iterator_traits<unsigned short*>::difference_type, bool)",
+   "self": 145,
+   "self_pct": 0.7639218165533955
+  },
+  {
+   "sym": "koi::detail::SearchMoveOrdering::priority(koi::GameState const&, koi::MoveMetadata const&, std::optional<koi::Move>, koi::detail::SearchHistoryContext const&) const",
+   "self": 143,
+   "self_pct": 0.7533849639112797
+  },
+  {
+   "sym": "koi::Position::legal_tactical_moves_into(std::span<koi::Move, 18446744073709551615ul>) const",
+   "self": 133,
+   "self_pct": 0.7007007007007007
+  },
+  {
+   "sym": "koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)",
+   "self": 131,
+   "self_pct": 0.6901638480585849
+  },
+  {
+   "sym": "koi::NnueWorker::prepare_child_slot(int, int, unsigned long long)",
+   "self": 127,
+   "self_pct": 0.6690901427743533
+  },
+  {
+   "sym": "koi::(anonymous namespace)::square_attacked(koi::(anonymous namespace)::NativeState const&, int, koi::Color)",
+   "self": 111,
+   "self_pct": 0.5847953216374269
+  },
+  {
+   "sym": "koi::detail::exchange_recapture_is_legal(koi::detail::ExchangeContext&, koi::Color, int, int, koi::Piece)",
+   "self": 105,
+   "self_pct": 0.5531847637110795
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::unapply()",
+   "self": 78,
+   "self_pct": 0.4109372530425162
+  },
+  {
+   "sym": "koi::(anonymous namespace)::record_undo(koi::(anonymous namespace)::NativeState&, koi::Move const&)",
+   "self": 62,
+   "self_pct": 0.3266424319055898
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<true, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const",
+   "self": 58,
+   "self_pct": 0.3055687266213582
+  },
+  {
+   "sym": "_platform_memset",
+   "self": 55,
+   "self_pct": 0.2897634476581845
+  },
+  {
+   "sym": "koi::detail::queen_attacks(int, unsigned long long)",
+   "self": 55,
+   "self_pct": 0.2897634476581845
+  },
+  {
+   "sym": "koi::GameState::apply_generated_move(koi::MoveMetadata const&, bool, bool)",
+   "self": 54,
+   "self_pct": 0.2844950213371266
+  },
+  {
+   "sym": "koi::TranspositionTable::store_exclusive(koi::TranspositionTable::Storage*, unsigned long long, int, int, koi::TranspositionBound, koi::Move, int, bool, int)",
+   "self": 53,
+   "self_pct": 0.2792265950160687
+  },
+  {
+   "sym": "std::__bitset_partition[abi:nqe220106]<std::_ClassicAlgPolicy, unsigned short*, std::ranges::less>(unsigned short*, unsigned short*, std::ranges::less)",
+   "self": 53,
+   "self_pct": 0.2792265950160687
+  },
+  {
+   "sym": "mach_absolute_time",
+   "self": 45,
+   "self_pct": 0.2370791844476055
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::has_legal_move()",
+   "self": 41,
+   "self_pct": 0.2160054791633739
+  },
+  {
+   "sym": "koi::detail::SearchContext::history_context(int, std::optional<koi::Move>, unsigned long long) const",
+   "self": 26,
+   "self_pct": 0.1369790843475054
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::draw_status(unsigned long) const",
+   "self": 23,
+   "self_pct": 0.1211738053843317
+  },
+  {
+   "sym": "koi::detail::SearchContext::poll_clock()",
+   "self": 22,
+   "self_pct": 0.1159053790632738
+  },
+  {
+   "sym": "koi::detail::SearchMovePicker::materialize(unsigned long)",
+   "self": 21,
+   "self_pct": 0.1106369527422159
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink>(koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const",
+   "self": 19,
+   "self_pct": 0.1001001001001001
+  },
+  {
+   "sym": "DYLD-STUB$$memmove",
+   "self": 18,
+   "self_pct": 0.0948316737790422
+  },
+  {
+   "sym": "koi::GameState::make_search_move(koi::MoveMetadata const&)",
+   "self": 17,
+   "self_pct": 0.0895632474579843
+  },
+  {
+   "sym": "koi::(anonymous namespace)::(anonymous namespace)::has_legal_en_passant_capture_in_place(koi::(anonymous namespace)::NativeState&)",
+   "self": 17,
+   "self_pct": 0.0895632474579843
+  },
+  {
+   "sym": "std::__sort5[abi:nqe220106]<std::_ClassicAlgPolicy, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, koi::detail::SearchMovePicker::Candidate*, 0>(koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&)",
+   "self": 16,
+   "self_pct": 0.0842948211369264
+  },
+  {
+   "sym": "koi::GameState::unmake_move()",
+   "self": 15,
+   "self_pct": 0.0790263948158685
+  },
+  {
+   "sym": "std::__insertion_sort_incomplete[abi:nqe220106]<std::_ClassicAlgPolicy, std::ranges::less, unsigned short*>(unsigned short*, unsigned short*, std::ranges::less)",
+   "self": 14,
+   "self_pct": 0.0737579684948106
+  },
+  {
+   "sym": "koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)::$_0::operator()() const",
+   "self": 14,
+   "self_pct": 0.0737579684948106
+  },
+  {
+   "sym": "_xzm_xzone_malloc_tiny",
+   "self": 13,
+   "self_pct": 0.0684895421737527
+  },
+  {
+   "sym": "___chkstk_darwin",
+   "self": 13,
+   "self_pct": 0.0684895421737527
+  },
+  {
+   "sym": "koi::(anonymous namespace)::native_check_probe(koi::Position const&)",
+   "self": 10,
+   "self_pct": 0.052684263210579
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::push<koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink>(koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink&, int, int, koi::Piece) const",
+   "self": 9,
+   "self_pct": 0.0474158368895211
+  },
+  {
+   "sym": "koi::NnueWorker::ensure_incremental_storage()",
+   "self": 9,
+   "self_pct": 0.0474158368895211
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::on_unmake_move(int)",
+   "self": 8,
+   "self_pct": 0.0421474105684632
+  },
+  {
+   "sym": "koi::detail::SearchTableAccess::store(unsigned long long, int, int, koi::TranspositionBound, koi::Move, int, bool, int)",
+   "self": 7,
+   "self_pct": 0.0368789842474053
+  }
+ ],
+ "incl_top": [
+  {
+   "sym": "thread_start",
+   "incl": 18981,
+   "incl_pct": 100.0
+  },
+  {
+   "sym": "_pthread_start",
+   "incl": 18981,
+   "incl_pct": 100.0
+  },
+  {
+   "sym": "koi::detail::worker_thread_detail::trampoline<koi::detail::SearchSession::launch(std::function<void ()>)::$_0>(void*)",
+   "incl": 18981,
+   "incl_pct": 100.0
+  },
+  {
+   "sym": "std::__function::__func<koi::SearchService::start(koi::GameState, koi::SearchLimits, koi::SearchEventSink, koi::SearchOptions)::$_0, void ()>::operator()()",
+   "incl": 18981,
+   "incl_pct": 100.0
+  },
+  {
+   "sym": "koi::detail::SearchRunner::run_impl()",
+   "incl": 18981,
+   "incl_pct": 100.0
+  },
+  {
+   "sym": "koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)",
+   "incl": 18981,
+   "incl_pct": 100.0
+  },
+  {
+   "sym": "koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)",
+   "incl": 14988,
+   "incl_pct": 78.9631737000158
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::on_make_move(koi::GameState const&, koi::MoveMetadata const&, int, unsigned long long)",
+   "incl": 9921,
+   "incl_pct": 52.268057531215426
+  },
+  {
+   "sym": "koi::GameState::legal_moves_with_metadata(koi::MoveMetadataList&, bool, bool, koi::CheckFlagMode) const",
+   "incl": 2477,
+   "incl_pct": 13.049891997260419
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::candidate_is_legal(koi::Move const&, koi::Color, unsigned long long, unsigned long long, int)",
+   "incl": 1743,
+   "incl_pct": 9.18286707760392
+  },
+  {
+   "sym": "koi::detail::SearchMovePicker::next()",
+   "incl": 1681,
+   "incl_pct": 8.85622464569833
+  },
+  {
+   "sym": "koi::GameState::legal_tactical_moves_with_metadata(koi::MoveMetadataList&, bool, bool, koi::CheckFlagMode) const",
+   "incl": 1516,
+   "incl_pct": 7.9869343027237765
+  },
+  {
+   "sym": "koi::detail::SearchMovePicker::prepare_candidates()",
+   "incl": 1152,
+   "incl_pct": 6.069227121858701
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)",
+   "incl": 947,
+   "incl_pct": 4.989199726041831
+  },
+  {
+   "sym": "koi::TranspositionTable::probe_exclusive(koi::TranspositionTable::Storage*, unsigned long long, int) const",
+   "incl": 856,
+   "incl_pct": 4.509772930825562
+  },
+  {
+   "sym": "koi::(anonymous namespace)::native_move_gives_check(koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool)",
+   "incl": 809,
+   "incl_pct": 4.262156893735841
+  },
+  {
+   "sym": "koi::detail::bishop_attacks(int, unsigned long long)",
+   "incl": 801,
+   "incl_pct": 4.220009483167378
+  },
+  {
+   "sym": "koi::NnueWorker::prepare_child_slot(int, int, unsigned long long)",
+   "incl": 688,
+   "incl_pct": 3.624677308887835
+  },
+  {
+   "sym": "koi::detail::rook_attacks(int, unsigned long long)",
+   "incl": 688,
+   "incl_pct": 3.624677308887835
+  },
+  {
+   "sym": "koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)",
+   "incl": 678,
+   "incl_pct": 3.571993045677256
+  },
+  {
+   "sym": "koi::GameState::apply_generated_move(koi::MoveMetadata const&, bool, bool)",
+   "incl": 646,
+   "incl_pct": 3.4034034034034035
+  },
+  {
+   "sym": "_platform_memmove",
+   "incl": 610,
+   "incl_pct": 3.213740055845319
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::evaluate(koi::GameState const&, koi::Color)",
+   "incl": 594,
+   "incl_pct": 3.1294452347083928
+  },
+  {
+   "sym": "koi::(anonymous namespace)::fill_move_metadata_from_facts(koi::(anonymous namespace)::NativeMetadataContext const&, koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool, koi::CheckFlagMode, koi::MoveMetadata&)",
+   "incl": 508,
+   "incl_pct": 2.676360571097413
+  },
+  {
+   "sym": "koi::detail::for_each_exchange_attacker<koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)>(koi::detail::ExchangeContext const&, int, koi::Color, koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)&&)",
+   "incl": 490,
+   "incl_pct": 2.581528897318371
+  },
+  {
+   "sym": "koi::(anonymous namespace)::refresh_king_masks(koi::(anonymous namespace)::NativeState&)",
+   "incl": 378,
+   "incl_pct": 1.9914651493598863
+  },
+  {
+   "sym": "koi::(anonymous namespace)::halfka_king_bucket_indices(koi::EvaluationFeatures const&, koi::Color, unsigned short*, unsigned long, std::array<signed char, 9216ul>*)",
+   "incl": 358,
+   "incl_pct": 1.8860966229387282
+  },
+  {
+   "sym": "koi::(anonymous namespace)::square_attacked(koi::(anonymous namespace)::NativeState const&, int, koi::Color)",
+   "incl": 354,
+   "incl_pct": 1.8650229176544966
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const",
+   "incl": 303,
+   "incl_pct": 1.5963331752805436
+  },
+  {
+   "sym": "std::__introsort<std::_ClassicAlgPolicy, std::ranges::less, unsigned short*, true>(unsigned short*, unsigned short*, std::ranges::less, std::iterator_traits<unsigned short*>::difference_type, bool)",
+   "incl": 212,
+   "incl_pct": 1.116906380064275
+  },
+  {
+   "sym": "koi::Position::legal_tactical_moves_into(std::span<koi::Move, 18446744073709551615ul>) const",
+   "incl": 200,
+   "incl_pct": 1.05368526421158
+  },
+  {
+   "sym": "std::__introsort<std::_ClassicAlgPolicy, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, koi::detail::SearchMovePicker::Candidate*, false>(koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, std::iterator_traits<koi::detail::SearchMovePicker::Candidate*>::difference_type, bool)",
+   "incl": 190,
+   "incl_pct": 1.001001001001001
+  },
+  {
+   "sym": "koi::detail::narrow_deep_quiet_check_candidate(koi::GameState&, koi::MoveMetadata const&)",
+   "incl": 189,
+   "incl_pct": 0.9957325746799431
+  },
+  {
+   "sym": "koi::detail::exchange_recapture_is_legal(koi::detail::ExchangeContext&, koi::Color, int, int, koi::Piece)",
+   "incl": 185,
+   "incl_pct": 0.9746588693957114
+  },
+  {
+   "sym": "koi::(anonymous namespace)::native_position_features(koi::Position const&, koi::PositionFeatures&)",
+   "incl": 184,
+   "incl_pct": 0.9693904430746536
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::apply_unchecked(koi::Move const&)",
+   "incl": 171,
+   "incl_pct": 0.9009009009009009
+  },
+  {
+   "sym": "koi::detail::SearchMovePicker::materialize(unsigned long)",
+   "incl": 167,
+   "incl_pct": 0.8798271956166693
+  },
+  {
+   "sym": "koi::detail::SearchMoveOrdering::priority(koi::GameState const&, koi::MoveMetadata const&, std::optional<koi::Move>, koi::detail::SearchHistoryContext const&) const",
+   "incl": 158,
+   "incl_pct": 0.8324113587271482
+  },
+  {
+   "sym": "koi::detail::SearchOrderingTables::quiet_history_score(koi::Color, koi::MoveMetadata const&, koi::detail::SearchHistoryContext const&) const",
+   "incl": 153,
+   "incl_pct": 0.8060692271218587
+  },
+  {
+   "sym": "koi::GameState::make_search_move(koi::MoveMetadata const&)",
+   "incl": 85,
+   "incl_pct": 0.4478162372899215
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::has_legal_move()",
+   "incl": 80,
+   "incl_pct": 0.421474105684632
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::unapply()",
+   "incl": 78,
+   "incl_pct": 0.4109372530425162
+  },
+  {
+   "sym": "koi::(anonymous namespace)::record_undo(koi::(anonymous namespace)::NativeState&, koi::Move const&)",
+   "incl": 62,
+   "incl_pct": 0.3266424319055898
+  },
+  {
+   "sym": "koi::detail::SearchTableAccess::store(unsigned long long, int, int, koi::TranspositionBound, koi::Move, int, bool, int)",
+   "incl": 60,
+   "incl_pct": 0.316105579263474
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<true, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const",
+   "incl": 58,
+   "incl_pct": 0.3055687266213582
+  },
+  {
+   "sym": "_platform_memset",
+   "incl": 55,
+   "incl_pct": 0.2897634476581845
+  },
+  {
+   "sym": "koi::detail::queen_attacks(int, unsigned long long)",
+   "incl": 55,
+   "incl_pct": 0.2897634476581845
+  },
+  {
+   "sym": "koi::TranspositionTable::store_exclusive(koi::TranspositionTable::Storage*, unsigned long long, int, int, koi::TranspositionBound, koi::Move, int, bool, int)",
+   "incl": 53,
+   "incl_pct": 0.2792265950160687
+  },
+  {
+   "sym": "std::__bitset_partition[abi:nqe220106]<std::_ClassicAlgPolicy, unsigned short*, std::ranges::less>(unsigned short*, unsigned short*, std::ranges::less)",
+   "incl": 53,
+   "incl_pct": 0.2792265950160687
+  },
+  {
+   "sym": "__xzm_xzone_free_to_freelist_chunk",
+   "incl": 51,
+   "incl_pct": 0.2686897423739529
+  },
+  {
+   "sym": "mach_absolute_time",
+   "incl": 45,
+   "incl_pct": 0.2370791844476055
+  },
+  {
+   "sym": "koi::detail::SearchContext::poll_clock()",
+   "incl": 28,
+   "incl_pct": 0.1475159369896212
+  },
+  {
+   "sym": "koi::detail::SearchContext::evaluate(koi::GameState const&, koi::Color)",
+   "incl": 27,
+   "incl_pct": 0.1422475106685633
+  },
+  {
+   "sym": "koi::detail::SearchContext::history_context(int, std::optional<koi::Move>, unsigned long long) const",
+   "incl": 26,
+   "incl_pct": 0.1369790843475054
+  },
+  {
+   "sym": "koi::GameState::move_gives_check(koi::Move const&) const",
+   "incl": 24,
+   "incl_pct": 0.1264422317053896
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::draw_status(unsigned long) const",
+   "incl": 23,
+   "incl_pct": 0.1211738053843317
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink>(koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const",
+   "incl": 23,
+   "incl_pct": 0.1211738053843317
+  },
+  {
+   "sym": "DYLD-STUB$$memmove",
+   "incl": 18,
+   "incl_pct": 0.0948316737790422
+  },
+  {
+   "sym": "operator new(unsigned long)",
+   "incl": 17,
+   "incl_pct": 0.0895632474579843
+  },
+  {
+   "sym": "koi::(anonymous namespace)::(anonymous namespace)::has_legal_en_passant_capture_in_place(koi::(anonymous namespace)::NativeState&)",
+   "incl": 17,
+   "incl_pct": 0.0895632474579843
+  }
+ ],
+ "qsearch": {
+  "samples": 14988,
+  "pct": 78.9631737000158,
+  "self_top": [
+   {
+    "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::on_make_move(koi::GameState const&, koi::MoveMetadata const&, int, unsigned long long)",
+    "self": 6686,
+    "pct_search": 35.22469838259312,
+    "pct_q": 44.60902054977315
+   },
+   {
+    "sym": "koi::TranspositionTable::probe_exclusive(koi::TranspositionTable::Storage*, unsigned long long, int) const",
+    "self": 842,
+    "pct_search": 4.436014962330752,
+    "pct_q": 5.617827595409661
+   },
+   {
+    "sym": "koi::(anonymous namespace)::NativePosition::candidate_is_legal(koi::Move const&, koi::Color, unsigned long long, unsigned long long, int)",
+    "self": 740,
+    "pct_search": 3.898635477582846,
+    "pct_q": 4.937283159861222
+   },
+   {
+    "sym": "koi::detail::bishop_attacks(int, unsigned long long)",
+    "self": 739,
+    "pct_search": 3.893367051261788,
+    "pct_q": 4.93061115559114
+   },
+   {
+    "sym": "koi::detail::rook_attacks(int, unsigned long long)",
+    "self": 624,
+    "pct_search": 3.2874980243401297,
+    "pct_q": 4.1633306645316255
+   },
+   {
+    "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::evaluate(koi::GameState const&, koi::Color)",
+    "self": 564,
+    "pct_search": 2.971392445076656,
+    "pct_q": 3.7630104083266613
+   },
+   {
+    "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)",
+    "self": 513,
+    "pct_search": 2.7027027027027026,
+    "pct_q": 3.422738190552442
+   },
+   {
+    "sym": "koi::(anonymous namespace)::native_move_gives_check(koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool)",
+    "self": 466,
+    "pct_search": 2.4550866656129813,
+    "pct_q": 3.1091539898585534
+   },
+   {
+    "sym": "koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)",
+    "self": 365,
+    "pct_search": 1.9229756071861335,
+    "pct_q": 2.4352815585801975
+   },
+   {
+    "sym": "_platform_memmove",
+    "self": 361,
+    "pct_search": 1.901901901901902,
+    "pct_q": 2.4085935414998665
+   },
+   {
+    "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const",
+    "self": 271,
+    "pct_search": 1.427743533006691,
+    "pct_q": 1.8081131571924205
+   },
+   {
+    "sym": "koi::GameState::legal_tactical_moves_with_metadata(koi::MoveMetadataList&, bool, bool, koi::CheckFlagMode) const",
+    "self": 249,
+    "pct_search": 1.3118381539434172,
+    "pct_q": 1.6613290632506006
+   },
+   {
+    "sym": "koi::(anonymous namespace)::refresh_king_masks(koi::(anonymous namespace)::NativeState&)",
+    "self": 173,
+    "pct_search": 0.9114377535430167,
+    "pct_q": 1.1542567387243128
+   },
+   {
+    "sym": "koi::detail::SearchMovePicker::prepare_candidates()",
+    "self": 140,
+    "pct_search": 0.737579684948106,
+    "pct_q": 0.9340805978115826
+   },
+   {
+    "sym": "koi::Position::legal_tactical_moves_into(std::span<koi::Move, 18446744073709551615ul>) const",
+    "self": 133,
+    "pct_search": 0.7007007007007007,
+    "pct_q": 0.8873765679210035
+   },
+   {
+    "sym": "koi::(anonymous namespace)::native_position_features(koi::Position const&, koi::PositionFeatures&)",
+    "self": 133,
+    "pct_search": 0.7007007007007007,
+    "pct_q": 0.8873765679210035
+   },
+   {
+    "sym": "koi::detail::for_each_exchange_attacker<koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)>(koi::detail::ExchangeContext const&, int, koi::Color, koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)&&)",
+    "self": 123,
+    "pct_search": 0.6480164374901217,
+    "pct_q": 0.8206565252201762
+   },
+   {
+    "sym": "std::__introsort<std::_ClassicAlgPolicy, std::ranges::less, unsigned short*, true>(unsigned short*, unsigned short*, std::ranges::less, std::iterator_traits<unsigned short*>::difference_type, bool)",
+    "self": 122,
+    "pct_search": 0.6427480111690638,
+    "pct_q": 0.8139845209500934
+   },
+   {
+    "sym": "koi::(anonymous namespace)::halfka_king_bucket_indices(koi::EvaluationFeatures const&, koi::Color, unsigned short*, unsigned long, std::array<signed char, 9216ul>*)",
+    "self": 119,
+    "pct_search": 0.6269427322058901,
+    "pct_q": 0.7939685081398452
+   },
+   {
+    "sym": "koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)",
+    "self": 108,
+    "pct_search": 0.5689900426742532,
+    "pct_q": 0.7205764611689351
+   },
+   {
+    "sym": "koi::detail::SearchMovePicker::next()",
+    "self": 103,
+    "pct_search": 0.5426479110689637,
+    "pct_q": 0.6872164398185214
+   },
+   {
+    "sym": "koi::GameState::legal_moves_with_metadata(koi::MoveMetadataList&, bool, bool, koi::CheckFlagMode) const",
+    "self": 101,
+    "pct_search": 0.5321110584268479,
+    "pct_q": 0.673872431278356
+   },
+   {
+    "sym": "koi::(anonymous namespace)::square_attacked(koi::(anonymous namespace)::NativeState const&, int, koi::Color)",
+    "self": 100,
+    "pct_search": 0.52684263210579,
+    "pct_q": 0.6672004270082733
+   },
+   {
+    "sym": "koi::(anonymous namespace)::NativePosition::apply_unchecked(koi::Move const&)",
+    "self": 96,
+    "pct_search": 0.5057689268215584,
+    "pct_q": 0.6405124099279423
+   },
+   {
+    "sym": "koi::(anonymous namespace)::fill_move_metadata_from_facts(koi::(anonymous namespace)::NativeMetadataContext const&, koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool, koi::CheckFlagMode, koi::MoveMetadata&)",
+    "self": 87,
+    "pct_search": 0.4583530899320373,
+    "pct_q": 0.5804643714971978
+   },
+   {
+    "sym": "koi::detail::SearchMoveOrdering::priority(koi::GameState const&, koi::MoveMetadata const&, std::optional<koi::Move>, koi::detail::SearchHistoryContext const&) const",
+    "self": 80,
+    "pct_search": 0.421474105684632,
+    "pct_q": 0.5337603416066187
+   },
+   {
+    "sym": "koi::detail::exchange_recapture_is_legal(koi::detail::ExchangeContext&, koi::Color, int, int, koi::Piece)",
+    "self": 79,
+    "pct_search": 0.4162056793635741,
+    "pct_q": 0.5270883373365359
+   },
+   {
+    "sym": "koi::NnueWorker::prepare_child_slot(int, int, unsigned long long)",
+    "self": 72,
+    "pct_search": 0.3793266951161688,
+    "pct_q": 0.4803843074459568
+   },
+   {
+    "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<true, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const",
+    "self": 58,
+    "pct_search": 0.3055687266213582,
+    "pct_q": 0.3869762476647985
+   },
+   {
+    "sym": "koi::(anonymous namespace)::NativePosition::unapply()",
+    "self": 58,
+    "pct_search": 0.3055687266213582,
+    "pct_q": 0.3869762476647985
+   },
+   {
+    "sym": "koi::detail::SearchOrderingTables::quiet_history_score(koi::Color, koi::MoveMetadata const&, koi::detail::SearchHistoryContext const&) const",
+    "self": 52,
+    "pct_search": 0.2739581686950108,
+    "pct_q": 0.3469442220443021
+   },
+   {
+    "sym": "koi::TranspositionTable::store_exclusive(koi::TranspositionTable::Storage*, unsigned long long, int, int, koi::TranspositionBound, koi::Move, int, bool, int)",
+    "self": 52,
+    "pct_search": 0.2739581686950108,
+    "pct_q": 0.3469442220443021
+   },
+   {
+    "sym": "std::__introsort<std::_ClassicAlgPolicy, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, koi::detail::SearchMovePicker::Candidate*, false>(koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, std::iterator_traits<koi::detail::SearchMovePicker::Candidate*>::difference_type, bool)",
+    "self": 50,
+    "pct_search": 0.263421316052895,
+    "pct_q": 0.33360021350413666
+   },
+   {
+    "sym": "koi::detail::queen_attacks(int, unsigned long long)",
+    "self": 48,
+    "pct_search": 0.2528844634107792,
+    "pct_q": 0.32025620496397117
+   },
+   {
+    "sym": "_platform_memset",
+    "self": 47,
+    "pct_search": 0.2476160370897213,
+    "pct_q": 0.3135842006938884
+   },
+   {
+    "sym": "mach_absolute_time",
+    "self": 42,
+    "pct_search": 0.2212739054844318,
+    "pct_q": 0.28022417934347477
+   },
+   {
+    "sym": "koi::(anonymous namespace)::NativePosition::has_legal_move()",
+    "self": 40,
+    "pct_search": 0.210737052842316,
+    "pct_q": 0.26688017080330934
+   },
+   {
+    "sym": "std::__bitset_partition[abi:nqe220106]<std::_ClassicAlgPolicy, unsigned short*, std::ranges::less>(unsigned short*, unsigned short*, std::ranges::less)",
+    "self": 40,
+    "pct_search": 0.210737052842316,
+    "pct_q": 0.26688017080330934
+   },
+   {
+    "sym": "koi::detail::SearchContext::history_context(int, std::optional<koi::Move>, unsigned long long) const",
+    "self": 26,
+    "pct_search": 0.1369790843475054,
+    "pct_q": 0.17347211102215104
+   },
+   {
+    "sym": "koi::GameState::apply_generated_move(koi::MoveMetadata const&, bool, bool)",
+    "self": 25,
+    "pct_search": 0.1317106580264475,
+    "pct_q": 0.16680010675206833
+   }
+  ]
+ },
+ "nonq_self": [
+  {
+   "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::on_make_move(koi::GameState const&, koi::MoveMetadata const&, int, unsigned long long)",
+   "self": 1848,
+   "pct": 9.736051841315
+  },
+  {
+   "sym": "_platform_memmove",
+   "self": 249,
+   "pct": 1.3118381539434172
+  },
+  {
+   "sym": "koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)",
+   "self": 199,
+   "pct": 1.048416837890522
+  },
+  {
+   "sym": "koi::detail::SearchMovePicker::prepare_candidates()",
+   "self": 170,
+   "pct": 0.895632474579843
+  },
+  {
+   "sym": "std::__introsort<std::_ClassicAlgPolicy, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, koi::detail::SearchMovePicker::Candidate*, false>(koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, std::iterator_traits<koi::detail::SearchMovePicker::Candidate*>::difference_type, bool)",
+   "self": 137,
+   "pct": 0.7217744059849323
+  },
+  {
+   "sym": "koi::(anonymous namespace)::native_move_gives_check(koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool)",
+   "self": 107,
+   "pct": 0.5637216163531953
+  },
+  {
+   "sym": "koi::detail::SearchOrderingTables::quiet_history_score(koi::Color, koi::MoveMetadata const&, koi::detail::SearchHistoryContext const&) const",
+   "self": 101,
+   "pct": 0.5321110584268479
+  },
+  {
+   "sym": "koi::(anonymous namespace)::refresh_king_masks(koi::(anonymous namespace)::NativeState&)",
+   "self": 95,
+   "pct": 0.5005005005005005
+  },
+  {
+   "sym": "koi::(anonymous namespace)::fill_move_metadata_from_facts(koi::(anonymous namespace)::NativeMetadataContext const&, koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool, koi::CheckFlagMode, koi::MoveMetadata&)",
+   "self": 75,
+   "pct": 0.3951319740793425
+  },
+  {
+   "sym": "koi::GameState::legal_moves_with_metadata(koi::MoveMetadataList&, bool, bool, koi::CheckFlagMode) const",
+   "self": 70,
+   "pct": 0.368789842474053
+  },
+  {
+   "sym": "koi::detail::rook_attacks(int, unsigned long long)",
+   "self": 64,
+   "pct": 0.3371792845477056
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)",
+   "self": 64,
+   "pct": 0.3371792845477056
+  },
+  {
+   "sym": "koi::detail::SearchMoveOrdering::priority(koi::GameState const&, koi::MoveMetadata const&, std::optional<koi::Move>, koi::detail::SearchHistoryContext const&) const",
+   "self": 63,
+   "pct": 0.3319108582266477
+  },
+  {
+   "sym": "koi::detail::bishop_attacks(int, unsigned long long)",
+   "self": 62,
+   "pct": 0.3266424319055898
+  },
+  {
+   "sym": "koi::detail::SearchMovePicker::next()",
+   "self": 60,
+   "pct": 0.316105579263474
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::apply_unchecked(koi::Move const&)",
+   "self": 58,
+   "pct": 0.3055687266213582
+  },
+  {
+   "sym": "koi::NnueWorker::prepare_child_slot(int, int, unsigned long long)",
+   "self": 55,
+   "pct": 0.2897634476581845
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::candidate_is_legal(koi::Move const&, koi::Color, unsigned long long, unsigned long long, int)",
+   "self": 41,
+   "pct": 0.2160054791633739
+  },
+  {
+   "sym": "koi::(anonymous namespace)::record_undo(koi::(anonymous namespace)::NativeState&, koi::Move const&)",
+   "self": 40,
+   "pct": 0.210737052842316
+  },
+  {
+   "sym": "koi::detail::for_each_exchange_attacker<koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)>(koi::detail::ExchangeContext const&, int, koi::Color, koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)&&)",
+   "self": 38,
+   "pct": 0.2002002002002002
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const",
+   "self": 32,
+   "pct": 0.1685896422738528
+  },
+  {
+   "sym": "koi::GameState::apply_generated_move(koi::MoveMetadata const&, bool, bool)",
+   "self": 29,
+   "pct": 0.1527843633106791
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::evaluate(koi::GameState const&, koi::Color)",
+   "self": 27,
+   "pct": 0.1422475106685633
+  },
+  {
+   "sym": "koi::(anonymous namespace)::halfka_king_bucket_indices(koi::EvaluationFeatures const&, koi::Color, unsigned short*, unsigned long, std::array<signed char, 9216ul>*)",
+   "self": 27,
+   "pct": 0.1422475106685633
+  },
+  {
+   "sym": "koi::detail::exchange_recapture_is_legal(koi::detail::ExchangeContext&, koi::Color, int, int, koi::Piece)",
+   "self": 26,
+   "pct": 0.1369790843475054
+  },
+  {
+   "sym": "koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)",
+   "self": 23,
+   "pct": 0.1211738053843317
+  },
+  {
+   "sym": "std::__introsort<std::_ClassicAlgPolicy, std::ranges::less, unsigned short*, true>(unsigned short*, unsigned short*, std::ranges::less, std::iterator_traits<unsigned short*>::difference_type, bool)",
+   "self": 23,
+   "pct": 0.1211738053843317
+  },
+  {
+   "sym": "koi::detail::SearchMovePicker::materialize(unsigned long)",
+   "self": 21,
+   "pct": 0.1106369527422159
+  },
+  {
+   "sym": "koi::(anonymous namespace)::NativePosition::unapply()",
+   "self": 20,
+   "pct": 0.105368526421158
+  },
+  {
+   "sym": "koi::(anonymous namespace)::native_position_features(koi::Position const&, koi::PositionFeatures&)",
+   "self": 19,
+   "pct": 0.1001001001001001
+  }
+ ],
+ "probes": [
+  {
+   "leaf": "on_make_move",
+   "parent": "SearchContext::quiescence",
+   "samples": 7672,
+   "pct": 40.41936673515621
+  },
+  {
+   "leaf": "on_make_move",
+   "parent": "SearchContext::negamax",
+   "samples": 2249,
+   "pct": 11.848690796059216
+  },
+  {
+   "leaf": "legal_moves_with_metadata",
+   "parent": "SearchContext::quiescence",
+   "samples": 2056,
+   "pct": 10.831884516095043
+  },
+  {
+   "leaf": "legal_tactical_moves_with_metadata",
+   "parent": "SearchContext::quiescence",
+   "samples": 1776,
+   "pct": 9.35672514619883
+  },
+  {
+   "leaf": "candidate_is_legal",
+   "parent": "SearchContext::quiescence",
+   "samples": 1677,
+   "pct": 8.835150940414099
+  },
+  {
+   "leaf": "generate_pseudo",
+   "parent": "SearchContext::quiescence",
+   "samples": 1194,
+   "pct": 6.290501027343133
+  },
+  {
+   "leaf": "static_exchange",
+   "parent": "SearchContext::quiescence",
+   "samples": 1057,
+   "pct": 5.5687266213582
+  },
+  {
+   "leaf": "SearchMovePicker::next",
+   "parent": "SearchContext::quiescence",
+   "samples": 980,
+   "pct": 5.163057794636742
+  },
+  {
+   "leaf": "TranspositionTable::probe",
+   "parent": "SearchContext::quiescence",
+   "samples": 842,
+   "pct": 4.436014962330752
+  },
+  {
+   "leaf": "prepare_candidates",
+   "parent": "SearchContext::quiescence",
+   "samples": 818,
+   "pct": 4.309572730625362
+  },
+  {
+   "leaf": "bishop_attacks",
+   "parent": "SearchContext::quiescence",
+   "samples": 739,
+   "pct": 3.893367051261788
+  },
+  {
+   "leaf": "native_move_gives_check",
+   "parent": "SearchContext::quiescence",
+   "samples": 710,
+   "pct": 3.740582687951109
+  },
+  {
+   "leaf": "SearchMovePicker::next",
+   "parent": "SearchContext::negamax",
+   "samples": 701,
+   "pct": 3.693166851061588
+  },
+  {
+   "leaf": "prepare_child_slot",
+   "parent": "on_make_move",
+   "samples": 667,
+   "pct": 3.5140403561456193
+  },
+  {
+   "leaf": "rook_attacks",
+   "parent": "SearchContext::quiescence",
+   "samples": 612,
+   "pct": 3.2242769084874348
+  },
+  {
+   "leaf": "NnueEvaluatorWorker::evaluate",
+   "parent": "SearchContext::quiescence",
+   "samples": 567,
+   "pct": 2.987197724039829
+  },
+  {
+   "leaf": "_platform_memmove",
+   "parent": "prepare_child_slot",
+   "samples": 545,
+   "pct": 2.8712923449765557
+  },
+  {
+   "leaf": "legal_moves_with_metadata",
+   "parent": "SearchContext::negamax",
+   "samples": 422,
+   "pct": 2.2232759074864337
+  },
+  {
+   "leaf": "apply_generated_move",
+   "parent": "SearchContext::quiescence",
+   "samples": 385,
+   "pct": 2.0283441336072916
+  },
+  {
+   "leaf": "halfka_king_bucket",
+   "parent": "on_make_move",
+   "samples": 358,
+   "pct": 1.8860966229387282
+  },
+  {
+   "leaf": "prepare_candidates",
+   "parent": "SearchContext::negamax",
+   "samples": 334,
+   "pct": 1.7596543912333387
+  },
+  {
+   "leaf": "square_attacked",
+   "parent": "SearchContext::quiescence",
+   "samples": 328,
+   "pct": 1.7280438333069912
+  },
+  {
+   "leaf": "apply_generated_move",
+   "parent": "SearchContext::negamax",
+   "samples": 261,
+   "pct": 1.375059269796112
+  },
+  {
+   "leaf": "static_exchange",
+   "parent": "SearchContext::negamax",
+   "samples": 260,
+   "pct": 1.369790843475054
+  },
+  {
+   "leaf": "refresh_king_masks",
+   "parent": "SearchContext::quiescence",
+   "samples": 246,
+   "pct": 1.2960328749802434
+  },
+  {
+   "leaf": "ensure_stage_sorted",
+   "parent": "SearchContext::negamax",
+   "samples": 210,
+   "pct": 1.106369527422159
+  },
+  {
+   "leaf": "native_position_features",
+   "parent": "on_make_move",
+   "samples": 181,
+   "pct": 0.9535851641114799
+  },
+  {
+   "leaf": "native_move_gives_check",
+   "parent": "SearchContext::negamax",
+   "samples": 140,
+   "pct": 0.737579684948106
+  },
+  {
+   "leaf": "generate_pseudo",
+   "parent": "SearchContext::negamax",
+   "samples": 137,
+   "pct": 0.7217744059849323
+  },
+  {
+   "leaf": "refresh_king_masks",
+   "parent": "SearchContext::negamax",
+   "samples": 132,
+   "pct": 0.6954322743796428
+  },
+  {
+   "leaf": "apply_unchecked",
+   "parent": "SearchContext::quiescence",
+   "samples": 106,
+   "pct": 0.5584531900321374
+  },
+  {
+   "leaf": "quiet_history_score",
+   "parent": "SearchContext::negamax",
+   "samples": 101,
+   "pct": 0.5321110584268479
+  },
+  {
+   "leaf": "priority(",
+   "parent": "SearchContext::quiescence",
+   "samples": 91,
+   "pct": 0.4794267952162689
+  },
+  {
+   "leaf": "apply_unchecked",
+   "parent": "SearchContext::negamax",
+   "samples": 70,
+   "pct": 0.368789842474053
+  },
+  {
+   "leaf": "priority(",
+   "parent": "SearchContext::negamax",
+   "samples": 67,
+   "pct": 0.3529845635108793
+  },
+  {
+   "leaf": "candidate_is_legal",
+   "parent": "SearchContext::negamax",
+   "samples": 66,
+   "pct": 0.3477161371898214
+  },
+  {
+   "leaf": "ensure_stage_sorted",
+   "parent": "SearchContext::quiescence",
+   "samples": 63,
+   "pct": 0.3319108582266477
+  },
+  {
+   "leaf": "bishop_attacks",
+   "parent": "SearchContext::negamax",
+   "samples": 62,
+   "pct": 0.3266424319055898
+  },
+  {
+   "leaf": "rook_attacks",
+   "parent": "SearchContext::negamax",
+   "samples": 58,
+   "pct": 0.3055687266213582
+  },
+  {
+   "leaf": "_platform_memset",
+   "parent": "on_make_move",
+   "samples": 55,
+   "pct": 0.2897634476581845
+  }
+ ],
+ "per_thread": [
+  {
+   "name": "Thread_18960077",
+   "samples": 18981,
+   "top": [
+    {
+     "sym": "koi::(anonymous namespace)::NnueEvaluatorWorker::on_make_move(koi::GameState const&, koi::MoveMetadata const&, int, unsigned long long)",
+     "self": 8534,
+     "pct": 44.96075022390812
+    },
+    {
+     "sym": "koi::TranspositionTable::probe_exclusive(koi::TranspositionTable::Storage*, unsigned long long, int) const",
+     "self": 856,
+     "pct": 4.509772930825562
+    },
+    {
+     "sym": "koi::detail::bishop_attacks(int, unsigned long long)",
+     "self": 801,
+     "pct": 4.220009483167378
+    },
+    {
+     "sym": "koi::(anonymous namespace)::NativePosition::candidate_is_legal(koi::Move const&, koi::Color, unsigned long long, unsigned long long, int)",
+     "self": 781,
+     "pct": 4.11464095674622
+    },
+    {
+     "sym": "koi::detail::rook_attacks(int, unsigned long long)",
+     "self": 688,
+     "pct": 3.624677308887835
+    },
+    {
+     "sym": "_platform_memmove",
+     "self": 610,
+     "pct": 3.213740055845319
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,7 @@
+uci
+isready
+setoption name Threads value 4
+setoption name Hash value 512
+isready
+position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+go movetime 1000

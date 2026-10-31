@@ -1,0 +1,37 @@
+id name Koi 1.1.5
+id author Contributors
+option name RandomSeed type spin default 0 min 0 max 2147483647
+option name Hash type spin default 512 min 1 max 4096
+option name Threads type spin default 1 min 1 max 10
+option name UCI_AnalyseMode type check default false
+option name MultiPV type spin default 1 min 1 max 16
+option name Ponder type check default false
+option name OwnBook type check default false
+option name BookFile type string default book.bin
+option name BookDepth type spin default 16 min 0 max 40
+option name BookRandom type check default false
+option name BookSafety type check default true
+option name BookSafetyDepth type spin default 2 min 0 max 3
+option name Clear Hash type button
+option name UCI_ShowWDL type check default false
+option name Move Overhead type spin default 30 min 0 max 5000
+option name Dynamic Overhead type check default false
+option name Slow Mover type spin default 100 min 10 max 1000
+option name Contempt type spin default 0 min 0 max 1000
+option name StrengthMode type check default false
+option name SyzygyPath type string default 
+option name SyzygyProbeDepth type spin default 1 min 1 max 100
+option name SyzygyProbeLimit type spin default 7 min 0 max 7
+option name SyzygyInteriorDepth type spin default 0 min 0 max 100
+option name Syzygy50MoveRule type check default true
+option name EvalFile type string default 
+option name GpuNnue type combo default off var auto var on var off
+info string build 1e09504e6569
+uciok
+readyok
+readyok
+info depth 1 seldepth 8 multipv 1 nodes 97 nps 97 hashfull 0 time 0 pv d2d4
+info depth 2 seldepth 10 multipv 1 nodes 851 nps 851000 hashfull 0 time 1 pv d2d4 e5d4
+info depth 3 seldepth 12 multipv 1 nodes 3882 nps 970500 hashfull 0 time 4 pv d2d4 e5d4 f3d4
+info depth 4 seldepth 17 multipv 1 nodes 36205 nps 905125 hashfull 0 time 40 pv d2d4 e5d4 f3d4 g8f6
+bestmove d2d4 ponder e5d4

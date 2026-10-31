@@ -1,0 +1,5 @@
+Koi benchmark
+config threads 1 speed 100 timed 0 hash cold depth 5 fen-file /Users/quangnn/koi-prof-20261031/fens-small.txt
+position startpos depth 5 nodes 6481 qnodes 33841 tt_hits 3095 score 33 move e2e4
+position italian-middlegame depth 5 nodes 23673 qnodes 330937 tt_hits 28821 score 44 move d2d4
+position kiwipete depth 5 nodes 58405 qnodes 3997757 tt_hits 246820 score -39 move e2a6

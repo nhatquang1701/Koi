@@ -1,0 +1,42 @@
+id name Koi 1.1.5
+id author Contributors
+option name RandomSeed type spin default 0 min 0 max 2147483647
+option name Hash type spin default 512 min 1 max 4096
+option name Threads type spin default 1 min 1 max 10
+option name UCI_AnalyseMode type check default false
+option name MultiPV type spin default 1 min 1 max 16
+option name Ponder type check default false
+option name OwnBook type check default false
+option name BookFile type string default book.bin
+option name BookDepth type spin default 16 min 0 max 40
+option name BookRandom type check default false
+option name BookSafety type check default true
+option name BookSafetyDepth type spin default 2 min 0 max 3
+option name Clear Hash type button
+option name UCI_ShowWDL type check default false
+option name Move Overhead type spin default 30 min 0 max 5000
+option name Dynamic Overhead type check default false
+option name Slow Mover type spin default 100 min 10 max 1000
+option name Contempt type spin default 0 min 0 max 1000
+option name StrengthMode type check default false
+option name SyzygyPath type string default 
+option name SyzygyProbeDepth type spin default 1 min 1 max 100
+option name SyzygyProbeLimit type spin default 7 min 0 max 7
+option name SyzygyInteriorDepth type spin default 0 min 0 max 100
+option name Syzygy50MoveRule type check default true
+option name EvalFile type string default 
+option name GpuNnue type combo default off var auto var on var off
+info string build 1e09504e6569
+uciok
+readyok
+readyok
+info depth 1 seldepth 1 multipv 1 score cp 29 nodes 25 nps 25 hashfull 0 time 0 pv g1f3
+info depth 2 seldepth 8 multipv 1 score cp 29 nodes 358 nps 358 hashfull 0 time 0 pv d2d4 g8f6
+info depth 3 seldepth 8 multipv 1 score cp 29 nodes 884 nps 884000 hashfull 0 time 1 pv d2d4 g8f6 b1c3
+info depth 4 seldepth 12 multipv 1 score cp 29 nodes 8331 nps 1041375 hashfull 0 time 8 pv e2e4 e7e5 b1c3 f8c5
+info depth 5 seldepth 14 multipv 1 score cp 29 nodes 37679 nps 1018351 hashfull 0 time 37 pv e2e4 e7e5 g1f3 d7d5 e4d5
+info depth 6 seldepth 14 multipv 1 currmove g1f3 score cp 29 nodes 275671 nps 960526 hashfull 5 time 287 pv g1f3 g8f6 c2c4 g7g6 b1c3 c7c5
+info depth 6 seldepth 22 multipv 1 score cp 29 nodes 397802 nps 958559 hashfull 6 time 415 pv e2e4 c7c5 g1f3 b8c6 b1c3 a7a6
+info depth 7 seldepth 22 multipv 1 currmove e2e4 score cp 29 nodes 634946 nps 954806 hashfull 8 time 665 pv e2e4 c7c5 g1f3 b8c6 b1c3 a7a6
+info depth 7 seldepth 22 multipv 1 currmove g1f3 score cp 29 nodes 856377 nps 935931 hashfull 12 time 915 pv g1f3 g8f6 d2d4 d7d5 c2c4 c7c6 b1c3
+bestmove e2e4

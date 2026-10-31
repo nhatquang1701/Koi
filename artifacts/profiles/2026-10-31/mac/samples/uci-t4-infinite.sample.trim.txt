@@ -1,0 +1,259 @@
+Analysis of sampling koi-engine (pid 53069) every 1 millisecond
+Process:         koi-engine [53069]
+Path:            /Users/USER/*/koi-engine
+Load Address:    0x104834000
+Identifier:      koi-engine
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  bash [52972]
+Target Type:     live task
+
+Date/Time:       2026-10-31 18:47:16.974 +0700
+Launch Time:     2026-10-31 18:47:10.919 +0700
+OS Version:      macOS 27.0.1 (26A434)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         538.9M
+Physical footprint (peak):  538.9M
+Idle exit:                  untracked
+
+[trimmed: call-graph excerpt below; full file shortened to <=256KiB per artifacts policy]
+
+Call graph (first 45 frames):
+Call graph:
+    16915 Thread_18960300   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 16915 start  (in dyld) + 6688  [0x19293fe80]
+    +   16915 main  (in koi-engine) + 1940  [0x1048357c4]
+    +     16915 koi::UciController::run()  (in koi-engine) + 508  [0x10489a664]
+    +       16915 std::basic_istream<char>::get()  (in libc++.1.dylib) + 156  [0x192c24be8]
+    +         16915 std::__stdinbuf<char>::__getchar(bool)  (in libc++.1.dylib) + 112  [0x192c5a12c]
+    +           16915 getc  (in libsystem_c.dylib) + 72  [0x192bd1144]
+    +             16915 __srget  (in libsystem_c.dylib) + 24  [0x192bc2c38]
+    +               16915 __srefill1  (in libsystem_c.dylib) + 36  [0x192ba949c]
+    +                 16915 _sread  (in libsystem_c.dylib) + 32  [0x192ba9508]
+    +                   16915 __sread  (in libsystem_c.dylib) + 24  [0x192bcce7c]
+    +                     16915 __read_nocancel  (in libsystem_kernel.dylib) + 8  [0x192cd2ca8]
+    16915 Thread_18960302
+    + 16915 thread_start  (in libsystem_pthread.dylib) + 8  [0x192d10cec]
+    +   16915 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x192d15d00]
+    +     16915 koi::detail::worker_thread_detail::trampoline<koi::detail::SearchSession::launch(std::function<void ()>)::$_0>(void*)  (in koi-engine) + 52  [0x10487444c]
+    +       16915 std::__function::__func<koi::SearchService::start(koi::GameState, koi::SearchLimits, koi::SearchEventSink, koi::SearchOptions)::$_0, void ()>::operator()()  (in koi-engine) + 36  [0x10488eba0]
+    +         16915 koi::detail::SearchRunner::run_impl()  (in koi-engine) + 12792  [0x104851b28]
+    +           11067 koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine) + 14700  [0x104848ef4]
+    +           ! 9903 koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine) + 13704  [0x104848b10]
+    +           ! : 8617 koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine) + 13704  [0x104848b10]
+    +           ! : | 6824 koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine) + 13704  [0x104848b10]
+    +           ! : | + 5930 koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine) + 13704  [0x104848b10]
+    +           ! : | + ! 4661 koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine) + 13704  [0x104848b10]
+    +           ! : | + ! : 4060 koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine) + 13704  [0x104848b10]
+    +           ! : | + ! : | 2377 koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine) + 13704  [0x104848b10]
+    +           ! : | + ! : | + 1287 koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine) + 708  [0x10484584c]
+    +           ! : | + ! : | + ! 936 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : 702 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | 481 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | + 264 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | + ! 166 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | + ! : 81 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | + ! : | 48 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | + ! : | + 17 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | + ! : | + ! 7 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | + ! : | + ! : 4 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | + ! : | + ! : | 1 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 1788  [0x104843ef8]
+    +           ! : | + ! : | + ! : | + ! : | + ! : | + 1 koi::TranspositionTable::probe_impl<true>(unsigned long long, int) const  (in koi-engine) + 352  [0x104898dd8]
+    +           ! : | + ! : | + ! : | + ! : | + ! : | 1 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4912  [0x104844b2c]
+    +           ! : | + ! : | + ! : | + ! : | + ! : | + 1 koi::(anonymous namespace)::NnueEvaluatorWorker::on_make_move(koi::GameState const&, koi::MoveMetadata const&, int, unsigned long long)  (in koi-engine) + 2860  [0x1048880c0]
+    +           ! : | + ! : | + ! : | + ! : | + ! : | 1 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4984  [0x104844b74]
+    +           ! : | + ! : | + ! : | + ! : | + ! : | + 1 koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine) + 4912  [0x104844b2c]
+    +           ! : | + ! : | + ! : | + ! : | + ! : | +   1 koi::(anonymous namespace)::NnueEvaluatorWorker::on_make_move(koi::GameState const&, koi::MoveMetadata const&, int, unsigned long long)  (in koi-engine) + 2260  [0x104887e68]
+
+... [call graph trimmed] ...
+
+Sort by top of stack, same collapsed (when >= 5):
+        koi::(anonymous namespace)::NnueEvaluatorWorker::on_make_move(koi::GameState const&, koi::MoveMetadata const&, int, unsigned long long)  (in koi-engine)        29194
+        __read_nocancel  (in libsystem_kernel.dylib)        16915
+        koi::TranspositionTable::probe_impl<true>(unsigned long long, int) const  (in koi-engine)        4019
+        koi::detail::bishop_attacks(int, unsigned long long)  (in koi-engine)        2869
+        koi::(anonymous namespace)::NativePosition::candidate_is_legal(koi::Move const&, koi::Color, unsigned long long, unsigned long long, int)  (in koi-engine)        2843
+        koi::detail::rook_attacks(int, unsigned long long)  (in koi-engine)        2321
+        _platform_memmove  (in libsystem_platform.dylib)        2157
+        koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)  (in koi-engine)        2140
+        koi::(anonymous namespace)::native_move_gives_check(koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool)  (in koi-engine)        2041
+        koi::detail::SearchContext::quiescence(koi::GameState&, int, int, int, int, std::optional<koi::Move>, bool*, bool*, bool*)  (in koi-engine)        1255
+        koi::(anonymous namespace)::NnueEvaluatorWorker::evaluate(koi::GameState const&, koi::Color)  (in koi-engine)        1220
+        koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const  (in koi-engine)        1045
+        koi::detail::SearchMovePicker::prepare_candidates()  (in koi-engine)        1013
+        koi::GameState::legal_tactical_moves_with_metadata(koi::MoveMetadataList&, bool, bool, koi::CheckFlagMode) const  (in koi-engine)        870
+        koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)  (in koi-engine)        827
+        koi::(anonymous namespace)::refresh_king_masks(koi::(anonymous namespace)::NativeState&)  (in koi-engine)        826
+        koi::(anonymous namespace)::halfka_king_bucket_indices(koi::EvaluationFeatures const&, koi::Color, unsigned short*, unsigned long, std::array<signed char, 9216ul>*)  (in koi-engine)        743
+        std::__introsort<std::_ClassicAlgPolicy, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, koi::detail::SearchMovePicker::Candidate*, false>(koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, std::iterator_traits<koi::detail::SearchMovePicker::Candidate*>::difference_type, bool)  (in koi-engine)        678
+        koi::(anonymous namespace)::NativePosition::apply_unchecked(koi::Move const&)  (in koi-engine)        581
+        koi::detail::for_each_exchange_attacker<koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)>(koi::detail::ExchangeContext const&, int, koi::Color, koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)::'lambda'(int)&&)  (in koi-engine)        580
+        koi::(anonymous namespace)::fill_move_metadata_from_facts(koi::(anonymous namespace)::NativeMetadataContext const&, koi::Move const&, koi::Position::MoveFacts const&, koi::(anonymous namespace)::NativeCheckProbe const&, bool, koi::CheckFlagMode, koi::MoveMetadata&)  (in koi-engine)        564
+        std::__introsort<std::_ClassicAlgPolicy, std::ranges::less, unsigned short*, true>(unsigned short*, unsigned short*, std::ranges::less, std::iterator_traits<unsigned short*>::difference_type, bool)  (in libc++.1.dylib)        562
+        koi::detail::SearchOrderingTables::quiet_history_score(koi::Color, koi::MoveMetadata const&, koi::detail::SearchHistoryContext const&) const  (in koi-engine)        555
+        koi::GameState::legal_moves_with_metadata(koi::MoveMetadataList&, bool, bool, koi::CheckFlagMode) const  (in koi-engine)        550
+        koi::detail::SearchMovePicker::next()  (in koi-engine)        538
+        koi::(anonymous namespace)::native_position_features(koi::Position const&, koi::PositionFeatures&)  (in koi-engine)        533
+        koi::detail::static_exchange_gain_from_features(koi::detail::ExchangeContext const&, koi::MoveMetadata const&)  (in koi-engine)        494
+        koi::detail::SearchMoveOrdering::priority(koi::GameState const&, koi::MoveMetadata const&, std::optional<koi::Move>, koi::detail::SearchHistoryContext const&) const  (in koi-engine)        456
+        koi::NnueWorker::prepare_child_slot(int, int, unsigned long long)  (in koi-engine)        443
+        koi::detail::exchange_recapture_is_legal(koi::detail::ExchangeContext&, koi::Color, int, int, koi::Piece)  (in koi-engine)        435
+        koi::Position::legal_tactical_moves_into(std::span<koi::Move, 18446744073709551615ul>) const  (in koi-engine)        415
+        koi::(anonymous namespace)::square_attacked(koi::(anonymous namespace)::NativeState const&, int, koi::Color)  (in koi-engine)        381
+        koi::TranspositionTable::Lease::Lease(koi::TranspositionTable const&)  (in koi-engine)        275
+        _platform_memset  (in libsystem_platform.dylib)        274
+        __psynch_cvwait  (in libsystem_kernel.dylib)        264
+        koi::(anonymous namespace)::NativePosition::unapply()  (in koi-engine)        259
+        koi::detail::queen_attacks(int, unsigned long long)  (in koi-engine)        249
+        koi::detail::SearchMovePicker::materialize(unsigned long)  (in koi-engine)        220
+        koi::(anonymous namespace)::NativePosition::generate_pseudo<true, koi::(anonymous namespace)::AddAllMoves>(koi::(anonymous namespace)::AddAllMoves&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const  (in koi-engine)        209
+        koi::(anonymous namespace)::record_undo(koi::(anonymous namespace)::NativeState&, koi::Move const&)  (in koi-engine)        186
+        pthread_mutex_lock  (in libsystem_pthread.dylib)        175
+        std::__bitset_partition[abi:nqe220106]<std::_ClassicAlgPolicy, unsigned short*, std::ranges::less>(unsigned short*, unsigned short*, std::ranges::less)  (in libc++.1.dylib)        173
+        koi::TranspositionTable::store_impl<true>(unsigned long long, int, int, koi::TranspositionBound, koi::Move, int, bool, int)  (in koi-engine)        155
+        koi::GameState::apply_generated_move(koi::MoveMetadata const&, bool, bool)  (in koi-engine)        148
+        pthread_mutex_unlock  (in libsystem_pthread.dylib)        139
+        koi::(anonymous namespace)::NativePosition::draw_status(unsigned long) const  (in koi-engine)        89
+        koi::detail::SearchContext::history_context(int, std::optional<koi::Move>, unsigned long long) const  (in koi-engine)        84
+        __psynch_mutexwait  (in libsystem_kernel.dylib)        75
+        koi::(anonymous namespace)::NativePosition::has_legal_move()  (in koi-engine)        71
+        __xzm_xzone_free_to_freelist_chunk  (in libsystem_malloc.dylib)        63
+        koi::(anonymous namespace)::(anonymous namespace)::has_legal_en_passant_capture_in_place(koi::(anonymous namespace)::NativeState&)  (in koi-engine)        62
+        DYLD-STUB$$memmove  (in koi-engine)        59
+        _xzm_xzone_malloc_tiny  (in libsystem_malloc.dylib)        58
+        koi::GameState::make_search_move(koi::MoveMetadata const&)  (in koi-engine)        58
+        koi::TranspositionTable::prefetch(unsigned long long) const  (in koi-engine)        54
+        std::__insertion_sort_incomplete[abi:nqe220106]<std::_ClassicAlgPolicy, std::ranges::less, unsigned short*>(unsigned short*, unsigned short*, std::ranges::less)  (in libc++.1.dylib)        48
+        ___chkstk_darwin  (in libsystem_pthread.dylib)        47
+        koi::detail::SearchContext::poll_clock()  (in koi-engine)        45
+        std::__sort5[abi:nqe220106]<std::_ClassicAlgPolicy, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&, koi::detail::SearchMovePicker::Candidate*, 0>(koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::Candidate*, koi::detail::SearchMovePicker::ensure_stage_sorted()::$_0&)  (in koi-engine)        45
+        koi::detail::SearchMoveOrdering::capture_history_score(koi::MoveMetadata const&) const  (in koi-engine)        44
+        ???  (in <unknown binary>)  [0x19a5680dc]        40
+        koi::(anonymous namespace)::NnueEvaluatorWorker::on_unmake_move(int)  (in koi-engine)        39
+        pthread_cond_broadcast  (in libsystem_pthread.dylib)        39
+        std::mutex::lock()  (in libc++.1.dylib)        39
+        koi::NnueWorker::ensure_incremental_storage()  (in koi-engine)        35
+        koi::detail::SearchContext::negamax(koi::GameState&, int, int, int, int, koi::detail::PrincipalVariation&, std::optional<koi::Move>, bool, int, koi::Move, bool*, bool*, bool*, bool*, int)::$_0::operator()() const  (in koi-engine)        35
+        koi::(anonymous namespace)::native_check_probe(koi::Position const&)  (in koi-engine)        33
+        koi::(anonymous namespace)::NativePosition::generate_pseudo<false, koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink>(koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink&)::'lambda'(auto const&)::operator()<std::array<std::array<int, 2ul>, 4ul>>(auto const&) const  (in koi-engine)        31
+        std::mutex::unlock()  (in libc++.1.dylib)        31
+        __psynch_cvsignal  (in libsystem_kernel.dylib)        28
+        koi::detail::king_attacks(int)  (in koi-engine)        28
+        ???  (in <unknown binary>)  [0x19a5680fc]        27
+        _tlv_get_addr  (in libdyld.dylib)        27
+        koi::GameState::unmake_move()  (in koi-engine)        27
+        _free  (in libsystem_malloc.dylib)        24
+        mach_absolute_time  (in libsystem_kernel.dylib)        24
+        DYLD-STUB$$std::__shared_mutex_base::lock_shared()  (in koi-engine)        21
+        _xzm_malloc_tc  (in libsystem_malloc.dylib)        19
+        koi::GameState::move_gives_check(koi::Move const&) const  (in koi-engine)        19
+        koi::detail::piece_value(koi::PieceType)  (in koi-engine)        18
+        _xzm_free_tc  (in libsystem_malloc.dylib)        16
+        std::__shared_mutex_base::lock_shared()  (in libc++.1.dylib)        15
+        _pthread_cond_wait  (in libsystem_pthread.dylib)        14
+        koi::(anonymous namespace)::piece_count_of(koi::EvaluationFeatures const&)  (in koi-engine)        14
+        std::__shared_mutex_base::unlock_shared()  (in libc++.1.dylib)        14
+        ???  (in <unknown binary>)  [0x19a5680f0]        13
+        koi::detail::SearchPolicy::reverse_futility(int, int, int, bool, bool, bool, bool, bool)  (in koi-engine)        13
+        koi::detail::SearchContext::history_side(koi::Color, bool) const  (in koi-engine)        12
+        koi::detail::narrow_deep_quiet_check_candidate(koi::GameState&, koi::MoveMetadata const&)  (in koi-engine)        12
+        DYLD-STUB$$std::__shared_mutex_base::unlock_shared()  (in koi-engine)        11
+        __psynch_cvbroad  (in libsystem_kernel.dylib)        11
+        koi::detail::EvaluationContext::evaluate(koi::GameState const&, koi::Color)  (in koi-engine)        11
+        koi::detail::SearchOrderingTables::update_correction(unsigned long long, unsigned long long, unsigned long long, int)  (in koi-engine)        11
+        koi::(anonymous namespace)::NativePosition::push<koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink>(koi::(anonymous namespace)::NativePosition::FirstLegalMoveSink&, int, int, koi::Piece) const  (in koi-engine)        8
+        koi::detail::SearchContext::correction_keys_for(koi::GameState const&, unsigned long long)  (in koi-engine)        8
+        koi::detail::SearchTableAccess::store(unsigned long long, int, int, koi::TranspositionBound, koi::Move, int, bool, int)  (in koi-engine)        8
+        ???  (in <unknown binary>)  [0x19a5680d8]        7
+        DYLD-STUB$$std::__shared_mutex_base::unlock()  (in koi-engine)        7
+        __psynch_mutexdrop  (in libsystem_kernel.dylib)        7
+        koi::detail::SearchContext::evaluate(koi::GameState const&, koi::Color)  (in koi-engine)        7
+        DYLD-STUB$$memcpy  (in koi-engine)        6
+        koi::detail::SearchOrderingTables::record_capture_cutoff(koi::MoveMetadata const&, int, koi::detail::SearchHistoryContext const&)  (in koi-engine)        5
+
+Binary Images:
+       0x104834000 -        0x1048e4fb7 +koi-engine (0) <8A3BEE55-A036-38D1-BC37-26C1C2398E7D> /Users/*/koi-engine
+       0x19288c000 -        0x1928db5f7  libobjc.A.dylib (973.1) <C0680DF6-9900-3C29-A071-95A031686EF8> /usr/lib/libobjc.A.dylib
+       0x1928dc000 -        0x1928e623f  libsharedcache.dylib (0) <BBF95357-BEBF-3D89-8900-2BBB14A667C5> /usr/lib/libsharedcache.dylib
+       0x1928e7000 -        0x19290dd3b  libdyld.dylib (27062) <62863BCA-DD60-3D32-A9DB-89099BA6F3D7> /usr/lib/system/libdyld.dylib
+       0x19290e000 -        0x1929cd6e3  dyld (1.0.0 - 27062) <D341DDCB-7969-3A9C-8E03-0CF4751398A9> /usr/lib/dyld
+       0x1929ce000 -        0x1929d101f  libsystem_blocks.dylib (98.1) <6F304731-D95D-3501-B4AD-F2934F7F2446> /usr/lib/system/libsystem_blocks.dylib
+       0x1929d2000 -        0x192a270df  libxpc.dylib (3298.1.1) <0791121F-B5FC-3F84-BF04-115E86D2D882> /usr/lib/system/libxpc.dylib
+       0x192a28000 -        0x192a47c13  libsystem_trace.dylib (1966.1.1) <B48A8E3E-A12A-3342-8321-428B555E965E> /usr/lib/system/libsystem_trace.dylib
+       0x192a48000 -        0x192afcf27  libcorecrypto.dylib (2109.0.22) <807AA6C9-5D8A-3CA5-B4CE-FACE5296EF6A> /usr/lib/system/libcorecrypto.dylib
+       0x192afd000 -        0x192b52c5f  libsystem_malloc.dylib (886.0.8) <2339CB57-FE5A-3154-A206-A76059C749EB> /usr/lib/system/libsystem_malloc.dylib
+       0x192b53000 -        0x192b9919f  libdispatch.dylib (1605.0.2) <022BF08F-0B3A-3225-9E65-16D1553CE90D> /usr/lib/system/libdispatch.dylib
+       0x192b9a000 -        0x192b9cd2b  libsystem_featureflags.dylib (108) <20C1CAB2-1F13-3426-8146-9CAE9FF2A33D> /usr/lib/system/libsystem_featureflags.dylib
+       0x192b9d000 -        0x192c1fca3  libsystem_c.dylib (1786.0.3) <FBA7B23E-AA60-3A90-9AA4-A7A2E0AD63EE> /usr/lib/system/libsystem_c.dylib
+       0x192c20000 -        0x192cb5033  libc++.1.dylib (2200.27) <1E9BA4AA-B5DA-3CF3-80AC-4B880049573F> /usr/lib/libc++.1.dylib
+       0x192cb6000 -        0x192ccfeff  libc++abi.dylib (2200.27) <A21743EE-6E1C-3E74-97EA-7AF793DE4BDF> /usr/lib/libc++abi.dylib
+       0x192cd0000 -        0x192d0e9ab  libsystem_kernel.dylib (13432.1.9) <F63BF418-8F75-34A4-AAF1-8CAF2B9B6A05> /usr/lib/system/libsystem_kernel.dylib
+       0x192d0f000 -        0x192d1b91b  libsystem_pthread.dylib (553.0.1) <5A1828C3-CBC2-3B85-BD07-C8ED10021A41> /usr/lib/system/libsystem_pthread.dylib
+       0x192d1c000 -        0x192d254f3  libsystem_platform.dylib (402.0.1.0.1) <080E4444-A0FB-3913-9756-4E470015F32F> /usr/lib/system/libsystem_platform.dylib
+       0x192d26000 -        0x192d54903  libsystem_info.dylib (603) <BC387AEB-1CEF-3513-92D7-D7F913596711> /usr/lib/system/libsystem_info.dylib
+       0x196e7e000 -        0x196e87b13  libsystem_darwin.dylib (1786.0.3) <4E66C888-993C-3E6A-A8DA-A949C01C5B67> /usr/lib/system/libsystem_darwin.dylib
+       0x1972d8000 -        0x1972e9b8b  libsystem_notify.dylib (368) <58FD36D8-37A7-311C-80F2-8E64DD8710CF> /usr/lib/system/libsystem_notify.dylib
+       0x199435000 -        0x19944fd93  libsystem_networkextension.dylib (2340.1.2) <22E1D190-486F-324F-ABA4-F36AB841BFE9> /usr/lib/system/libsystem_networkextension.dylib
+       0x1994dd000 -        0x1994f4247  libsystem_asl.dylib (409) <B4D449B7-A821-3A9A-8019-E917B291F10A> /usr/lib/system/libsystem_asl.dylib
+       0x19a488000 -        0x19a488f2f  libobjcMsgSend.dylib (973.1) <41179EDE-DC97-3BBE-8848-6400D12C1436> /usr/lib/objc/libobjcMsgSend.dylib
+       0x19b5d4000 -        0x19b5dbedf  libsystem_symptoms.dylib (2394.0.4) <60EE7884-9F4E-3184-A6AC-FA40A7A0297D> /usr/lib/system/libsystem_symptoms.dylib
+       0x19f96c000 -        0x19f9a6aeb  libsystem_containermanager.dylib (833.0.8.0.1) <08A57205-555D-3792-8931-9D5B585AF326> /usr/lib/system/libsystem_containermanager.dylib
+       0x1a0fbf000 -        0x1a0fc3317  libsystem_configuration.dylib (1446) <F3EB66A7-7A24-3AE5-B6E8-9A37BB00F119> /usr/lib/system/libsystem_configuration.dylib
+       0x1a0fc4000 -        0x1a0fcae03  libsystem_sandbox.dylib (3051.0.52) <1E892B56-092E-3832-BDE3-DCE356D7A4FA> /usr/lib/system/libsystem_sandbox.dylib
+       0x1a2488000 -        0x1a2488f2f  libobjcMsgSend1.dylib (973.1) <B40D9B2A-E1EE-37ED-8004-711A1F263DE1> /usr/lib/objc/libobjcMsgSend1.dylib
+       0x1a2ba8000 -        0x1a2baaf93  libquarantine.dylib (217.0.4) <7FD4AE22-86EF-382B-83F5-ADF9336C1160> /usr/lib/system/libquarantine.dylib
+       0x1a32ba000 -        0x1a32c01e7  libsystem_coreservices.dylib (203) <57248E07-11A5-3857-918E-4A3A63B69FE8> /usr/lib/system/libsystem_coreservices.dylib
+       0x1a3882000 -        0x1a38bfb27  libsystem_m.dylib (3326.0.1) <A3FB340F-3ED5-30F4-8B64-9D5860F64D35> /usr/lib/system/libsystem_m.dylib
+       0x1a38c1000 -        0x1a38c44f7  libmacho.dylib (27062) <50DEADEC-3E99-3519-AFC3-4A3FEB3F14C3> /usr/lib/system/libmacho.dylib
+       0x1a38de000 -        0x1a38ea707  libcommonCrypto.dylib (600041) <41C99F45-C5E6-39DB-B1F2-A1BEA9D242A4> /usr/lib/system/libcommonCrypto.dylib
+       0x1a38eb000 -        0x1a38f4c87  libunwind.dylib (2200.5) <3070AB81-B082-39E8-8A00-EF88DDE9AC47> /usr/lib/system/libunwind.dylib
+       0x1a38fc000 -        0x1a39067eb  libcopyfile.dylib (260.0.3) <72D95AF9-BF5E-3A84-81A6-BCC5BDB99857> /usr/lib/system/libcopyfile.dylib
+       0x1a3907000 -        0x1a390a8bf  libcompiler_rt.dylib (103.4) <DFB5CE7F-A36E-36AA-BECE-1392D3D43607> /usr/lib/system/libcompiler_rt.dylib
+       0x1a390b000 -        0x1a3910077  libsystem_collections.dylib (1786.0.3) <1E8022D4-5A37-3A7A-8936-603E6FA88358> /usr/lib/system/libsystem_collections.dylib
+       0x1a3911000 -        0x1a3913f1f  libsystem_secinit.dylib (182) <DE037464-4C5D-3E96-A33F-2A4557CC6A20> /usr/lib/system/libsystem_secinit.dylib
+       0x1a3914000 -        0x1a391697f  libremovefile.dylib (96) <E6E6DFCF-6B2C-3F30-A59D-816CAB1190CE> /usr/lib/system/libremovefile.dylib
+       0x1a3917000 -        0x1a3917e27  libkeymgr.dylib (31) <5EC997EF-3ADA-360B-9FCD-5F940C83FA4E> /usr/lib/system/libkeymgr.dylib
+       0x1a3918000 -        0x1a3920af7  libsystem_dnssd.dylib (3111.0.5.0.1) <DE22096F-1E5B-3D6E-8164-771582DD6391> /usr/lib/system/libsystem_dnssd.dylib
+       0x1a3921000 -        0x1a3925f1b  libcache.dylib (95) <80BAE197-E285-3F6E-A1EE-B77FE37D7E5D> /usr/lib/system/libcache.dylib
+       0x1a3926000 -        0x1a39278f3  libSystem.B.dylib (1359) <4FDC9AA6-B344-37FE-B8C6-A4C94A038F57> /usr/lib/libSystem.B.dylib
+       0x1aa488000 -        0x1aa488f2f  libobjcMsgSend2.dylib (973.1) <BD27A84B-C9AE-3282-BBEA-3B6119837B5A> /usr/lib/objc/libobjcMsgSend2.dylib
+       0x1b2488000 -        0x1b2488f2f  libobjcMsgSend3.dylib (973.1) <C0860D68-DDFC-3BD7-8B06-DB0645CBBED4> /usr/lib/objc/libobjcMsgSend3.dylib
+       0x1ba488000 -        0x1ba488f2f  libobjcMsgSend4.dylib (973.1) <A6153BF5-622B-3B01-81B6-F64A365EF613> /usr/lib/objc/libobjcMsgSend4.dylib
+       0x1c2488000 -        0x1c2488f2f  libobjcMsgSend5.dylib (973.1) <3913A71C-B29A-3AEA-820B-BEC40AC1861A> /usr/lib/objc/libobjcMsgSend5.dylib
+       0x1ca488000 -        0x1ca488f2f  libobjcMsgSend6.dylib (973.1) <9BC523A3-E167-3F6C-8CAE-0F3EBA671791> /usr/lib/objc/libobjcMsgSend6.dylib
+       0x1d2488000 -        0x1d2488f2f  libobjcMsgSend7.dylib (973.1) <248B7BCE-5B4C-34C7-A340-43D5228628C5> /usr/lib/objc/libobjcMsgSend7.dylib
+       0x1da488000 -        0x1da488f2f  libobjcMsgSend8.dylib (973.1) <3E041BAD-A8E8-3069-B741-78CD1A45B176> /usr/lib/objc/libobjcMsgSend8.dylib
+       0x1e2488000 -        0x1e2488f2f  libobjcMsgSend9.dylib (973.1) <34A67969-21A0-39D6-BB81-8FDA5A2409DB> /usr/lib/objc/libobjcMsgSend9.dylib
+       0x1ea488000 -        0x1ea488f2f  libobjcMsgSend10.dylib (973.1) <678186C0-8EAD-3B35-8CBB-00285B41E4A0> /usr/lib/objc/libobjcMsgSend10.dylib
+       0x1f2488000 -        0x1f2488f2f  libobjcMsgSend11.dylib (973.1) <E05CB08C-E956-36FA-8967-AE8E346A8D2C> /usr/lib/objc/libobjcMsgSend11.dylib
+       0x21a488000 -        0x21a488f2f  libobjcMsgSend12.dylib (973.1) <10AB03AA-FF1F-3FDC-9DFB-BFC40042C501> /usr/lib/objc/libobjcMsgSend12.dylib
+       0x222488000 -        0x222488f2f  libobjcMsgSend13.dylib (973.1) <ABF53427-FA6F-3D0D-8F9D-7AD795CA5C92> /usr/lib/objc/libobjcMsgSend13.dylib
+       0x22a488000 -        0x22a488f2f  libobjcMsgSend14.dylib (973.1) <9A844C46-A6DA-34D4-8EBF-2AD775C30684> /usr/lib/objc/libobjcMsgSend14.dylib
+       0x232488000 -        0x232488f2f  libobjcMsgSend15.dylib (973.1) <7C995666-2B2D-3284-AA0A-EBF7C922838E> /usr/lib/objc/libobjcMsgSend15.dylib
+       0x23a488000 -        0x23a488f2f  libobjcMsgSend16.dylib (973.1) <B6C0E14B-53AE-3E22-9ED5-1729C49F46F2> /usr/lib/objc/libobjcMsgSend16.dylib
+       0x242488000 -        0x242488f2f  libobjcMsgSend17.dylib (973.1) <07B4CF85-251B-301B-832B-20B315A59E19> /usr/lib/objc/libobjcMsgSend17.dylib
+       0x24a488000 -        0x24a488f2f  libobjcMsgSend18.dylib (973.1) <43E575B7-04DB-3999-A633-1A3B638BA6E3> /usr/lib/objc/libobjcMsgSend18.dylib
+       0x252488000 -        0x252488f2f  libobjcMsgSend19.dylib (973.1) <736F4D85-76F7-3B28-8D87-C07E8F7A0EF4> /usr/lib/objc/libobjcMsgSend19.dylib
+       0x25a488000 -        0x25a488f2f  libobjcMsgSend20.dylib (973.1) <74E67C8B-6BCA-3184-A18E-A97F370052C6> /usr/lib/objc/libobjcMsgSend20.dylib
+       0x262488000 -        0x262488f2f  libobjcMsgSend21.dylib (973.1) <CC0D732F-98E7-3888-9E15-70984DA2FB04> /usr/lib/objc/libobjcMsgSend21.dylib
+       0x26a488000 -        0x26a488f2f  libobjcMsgSend22.dylib (973.1) <85A60286-5DE3-32BA-B18C-2A498B065C88> /usr/lib/objc/libobjcMsgSend22.dylib
+       0x272488000 -        0x272488f2f  libobjcMsgSend23.dylib (973.1) <5452A0D2-6B19-39BE-ADDD-80B7BCDE3A98> /usr/lib/objc/libobjcMsgSend23.dylib
+       0x27a488000 -        0x27a488f2f  libobjcMsgSend24.dylib (973.1) <94BBF2D6-722B-350D-8557-4D25A8E8D53A> /usr/lib/objc/libobjcMsgSend24.dylib
+       0x282488000 -        0x282488f2f  libobjcMsgSend25.dylib (973.1) <35481387-5A8E-3AE4-86A6-94CEB3CC8726> /usr/lib/objc/libobjcMsgSend25.dylib
+       0x29a488000 -        0x29a488f2f  libobjcMsgSend26.dylib (973.1) <9E0C8664-E7F4-39D1-AAFC-BD92B255E4E8> /usr/lib/objc/libobjcMsgSend26.dylib
+       0x2a2488000 -        0x2a2488f2f  libobjcMsgSend27.dylib (973.1) <FD424935-55A9-3650-955A-EED3441A1D19> /usr/lib/objc/libobjcMsgSend27.dylib
+       0x2aa488000 -        0x2aa488f2f  libobjcMsgSend28.dylib (973.1) <09BA7B97-7DF7-3C7F-932A-B6847662FC49> /usr/lib/objc/libobjcMsgSend28.dylib
+       0x2b2488000 -        0x2b2488f2f  libobjcMsgSend29.dylib (973.1) <36D5BA3F-2139-30B0-8558-556764BE9813> /usr/lib/objc/libobjcMsgSend29.dylib
+       0x2ba488000 -        0x2ba488f2f  libobjcMsgSend30.dylib (973.1) <9F05564A-9D12-372C-98FC-E9F0E6BE4F04> /usr/lib/objc/libobjcMsgSend30.dylib
+       0x2bf1a2000 -        0x2bf1a8fe5  libRosetta.dylib (385) <E359944B-D230-33F9-A04E-0C3B17C3326E> /usr/lib/libRosetta.dylib
+       0x2bfb91000 -        0x2bfb9475b  libsystem_darwindirectory.dylib (129.0.1) <61264923-2AA5-3658-B8C4-550C71E9D4B3> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x2bfb95000 -        0x2bfb9fd9b  libsystem_eligibility.dylib (446.1.3) <EDDE8E9C-A2CF-3931-BBB3-321CB852EB30> /usr/lib/system/libsystem_eligibility.dylib
+       0x2bfba0000 -        0x2bfba942b  libsystem_sanitizers.dylib (32) <7138ED99-7AA0-34EA-B35B-20EF6ADB1EED> /usr/lib/system/libsystem_sanitizers.dylib
+       0x2bfbaa000 -        0x2bfbaaa13  libsystem_trial.dylib (511) <6AE48824-EC44-3A8C-B501-BE57DBE892E7> /usr/lib/system/libsystem_trial.dylib
+       0x2c2488000 -        0x2c2488f2f  libobjcMsgSend31.dylib (973.1) <0985E20F-78C3-3466-A2B2-DBB95F7104A3> /usr/lib/objc/libobjcMsgSend31.dylib
+       0x2ca488000 -        0x2ca488f2f  libobjcMsgSend32.dylib (973.1) <0D309D58-D576-3E5D-AD4B-6D55AB491702> /usr/lib/objc/libobjcMsgSend32.dylib
+       0x2d2488000 -        0x2d2488f2f  libobjcMsgSend33.dylib (973.1) <346E0484-48FA-369B-8A64-93B5F5341CFE> /usr/lib/objc/libobjcMsgSend33.dylib
+       0x2da488000 -        0x2da488f2f  libobjcMsgSend34.dylib (973.1) <6A31F809-BCBE-3E01-A367-E91FDACCE324> /usr/lib/objc/libobjcMsgSend34.dylib
