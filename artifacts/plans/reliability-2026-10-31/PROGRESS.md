@@ -1,6 +1,6 @@
 # Reliability program progress
 
-Updated: 2026-10-31 (after the asset workstream landed)
+Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging policy)
 
 ## Commits (signed, local; push deferred until the user says "version bump")
 
@@ -21,10 +21,11 @@ Updated: 2026-10-31 (after the asset workstream landed)
 | R2 deterministic contract harness | fixed | `koi_protocol_fuzz_process` (~8 s, `reliability` label, every CI leg) |
 | R3 extreme option contract | verified-pinned | existing unit tests (hash cap/policy, threads validation, MultiPV) |
 | R4 lifecycle exactly-once races | fixed | lifecycle storms in the fuzz corpus |
-| R5 sanitizer baseline | **open** | ASan tree `build/asan-reliability` configured/built; runs pending |
-| R6 fail-closed asset matrix | **open** | next: malformed/truncated/replaced net/book/syzygy matrix |
+| R5 sanitizer baseline | **partial** | Windows ASan label: 20/24 suites clean, zero ASan reports; 4 suites blocked by local `%TEMP%` sandbox only; Linux TSan still pending |
+| R6 fail-closed asset matrix | fixed | fuzz corpus asset matrix + Syzygy magic validation fail-closed (`c20c3a7`) |
 | R7 Syzygy auto-discovery | fixed | `discover_syzygy_directory` + lazy load; real 5-man verification |
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
+| R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
 
 ## Asset workstream (user requests, done this session)
 
@@ -47,3 +48,14 @@ Updated: 2026-10-31 (after the asset workstream landed)
    including auto-discovery corner cases (R6).
 3. Soak: repeated Hash/Threads changes, book/syzygy reload churn, RSS bound,
    orphan-free shutdown.
+
+## Round 3 actions (2026-10-31)
+
+- Syzygy fail-closed hardening: table magic validation on auto-discovery and
+  explicit single directories; corrupt installs disabled with one diagnostic
+  (`c20c3a7`); real 5-man tables still load; corrupt dir rejected silently.
+- ASan baseline recorded (`build/asan-reliability`): zero sanitizer reports.
+- Release archives now ship engine binaries only (`270b77a`).
+- GitHub Pages fixed after the repository rename: `site_url`/README links moved
+  to https://nhatquang1701.github.io/Koi/ and redeployed from a docs-only
+  branch; sitemap now has 22 `/Koi/` URLs, release notes page returns 200.
