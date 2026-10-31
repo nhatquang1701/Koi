@@ -269,6 +269,9 @@ private:
     std::array<std::vector<std::uint8_t>, kIncrementalPerspectives> slot_threat_counts_;
     std::array<std::vector<std::uint16_t>, kIncrementalPerspectives> scratch_threats_;
     std::array<std::uint8_t, kIncrementalPerspectives> scratch_threat_counts_{};
+    // v4 halfka networks do not carry threat features; allocating or copying
+    // the per-slot threat buffers on the make path is pure overhead there.
+    bool threat_features_ = false;
     bool storage_ready_ = false;
     std::size_t incremental_make_count_ = 0;
     std::size_t incremental_fallback_count_ = 0;

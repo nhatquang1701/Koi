@@ -1924,14 +1924,17 @@ void NnueWorker::ensure_incremental_storage() {
                           sizeof(std::uint16_t),
                   "worker threat list capacity must match the encoder capacity");
     hidden_units_ = weights_->manifest.layer_sizes[1];
+    threat_features_ = uses_halfka_threat_features(weights_->manifest);
     const std::size_t slot_entries = kIncrementalSlotCount * hidden_units_;
     for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
         slot_values_[index].assign(slot_entries, 0);
         slot_buckets_[index].assign(kIncrementalSlotCount, 0);
         scratch_values_[index].assign(hidden_units_, 0);
-        slot_threats_[index].assign(kIncrementalSlotCount * kThreatListCapacity, 0);
-        slot_threat_counts_[index].assign(kIncrementalSlotCount, 0);
-        scratch_threats_[index].assign(kThreatListCapacity, 0);
+        if (threat_features_) {
+            slot_threats_[index].assign(kIncrementalSlotCount * kThreatListCapacity, 0);
+            slot_threat_counts_[index].assign(kIncrementalSlotCount, 0);
+            scratch_threats_[index].assign(kThreatListCapacity, 0);
+        }
     }
     slot_keys_.assign(kIncrementalSlotCount, 0);
     slot_valid_.assign(kIncrementalSlotCount, 0);
@@ -1946,10 +1949,12 @@ void NnueWorker::copy_slot_forward(const std::size_t from_slot,
                     hidden_units_,
                     slot_values_[index].data() + to_slot * hidden_units_);
         slot_buckets_[index][to_slot] = slot_buckets_[index][from_slot];
-        slot_threat_counts_[index][to_slot] = slot_threat_counts_[index][from_slot];
-        std::copy_n(slot_threats_[index].data() + from_slot * kThreatListCapacity,
-                    kThreatListCapacity,
-                    slot_threats_[index].data() + to_slot * kThreatListCapacity);
+        if (threat_features_) {
+            slot_threat_counts_[index][to_slot] = slot_threat_counts_[index][from_slot];
+            std::copy_n(slot_threats_[index].data() + from_slot * kThreatListCapacity,
+                        kThreatListCapacity,
+                        slot_threats_[index].data() + to_slot * kThreatListCapacity);
+        }
     }
     slot_pieces_[to_slot] = slot_pieces_[from_slot];
 }
@@ -1966,7 +1971,7 @@ void NnueWorker::refresh_slot_perspective(const EvaluationFeatures& features,
         std::fill(refresh_sums_.begin(), refresh_sums_.end(), 0);
     }
     std::vector<std::int32_t>& sums = refresh_sums_;
-    if (uses_halfka_threat_features(weights_->manifest)) {
+    if (threat_features_) {
         const NnueSparseFeaturesV5 sparse =
             EvaluationFeatureExtractor::encode_sparse_v5(features, perspective);
         accumulate_hidden_sparse_scalar(
@@ -2127,7 +2132,7 @@ void NnueWorker::apply_move_deltas(const GameState& child,
         slot_pieces_[slot] = static_cast<std::uint8_t>(
             parent_pieces - (metadata.captured_piece != PieceType::none ? 1U : 0U));
     }
-    if (uses_halfka_threat_features(weights_->manifest)) {
+    if (threat_features_) {
         const EvaluationFeatures child_features =
             EvaluationFeatureExtractor::extract(child);
         for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
@@ -2147,9 +2152,11 @@ bool NnueWorker::prepare_child_slot(const int ply, const int child_slot,
             std::copy_n(scratch_values_[index].data(), hidden_units_,
                         slot_values_[index].data() + child * hidden_units_);
             slot_buckets_[index][child] = scratch_buckets_[index];
-            slot_threat_counts_[index][child] = scratch_threat_counts_[index];
-            std::copy_n(scratch_threats_[index].data(), kThreatListCapacity,
-                        slot_threats_[index].data() + child * kThreatListCapacity);
+            if (threat_features_) {
+                slot_threat_counts_[index][child] = scratch_threat_counts_[index];
+                std::copy_n(scratch_threats_[index].data(), kThreatListCapacity,
+                            slot_threats_[index].data() + child * kThreatListCapacity);
+            }
         }
         slot_pieces_[child] = scratch_pieces_;
         return true;
