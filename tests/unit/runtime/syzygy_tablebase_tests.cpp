@@ -320,6 +320,30 @@ void write_dummy_kqvk(const std::filesystem::path& directory) {
     tablebase.write(std::string(80, '\0').data(), 80);
 }
 
+void test_discovery_finds_a_tables_directory_beside_the_executable() {
+    const koi::test::TempDirectory root;
+    const std::filesystem::path engine_directory = root.path() / "engine";
+    std::filesystem::create_directories(engine_directory / "syzygy");
+    write_dummy_kqvk(engine_directory / "syzygy");
+
+    const std::optional<std::filesystem::path> discovered =
+        koi::discover_syzygy_directory(engine_directory);
+    require(discovered.has_value(), "a syzygy/ directory beside the executable must be discovered");
+    require(std::filesystem::is_regular_file(*discovered / "KQvK.rtbw"),
+            "the discovered directory must contain the tables");
+
+    // The convenience aliases work too, and an empty/missing layout is silent.
+    const std::filesystem::path alias_directory = root.path() / "alias-engine";
+    std::filesystem::create_directories(alias_directory / "tablebases");
+    write_dummy_kqvk(alias_directory / "tablebases");
+    require(koi::discover_syzygy_directory(alias_directory).has_value(),
+            "a tablebases/ directory beside the executable must be discovered");
+    require(!koi::discover_syzygy_directory(root.path() / "missing-engine").has_value(),
+            "a missing executable directory must not produce a tablebase path");
+    require(!koi::discover_syzygy_directory({}).has_value(),
+            "an empty executable directory must not produce a tablebase path");
+}
+
 void test_large_table_limit_reflects_the_loaded_directory() {
     const koi::SyzygyTablebase disabled("definitely-missing-syzygy-path", 5, 1, true);
     require(disabled.large_table_limit() == 0,
@@ -406,6 +430,8 @@ int main(int argc, char** argv) {
         {"50-move rule selects clock-aware root probe",
          test_50_move_rule_selects_clock_aware_root_probe},
         {"seven-piece probe limit is preserved", test_seven_piece_probe_limit_is_preserved},
+        {"discovery finds a tables directory beside the executable",
+         test_discovery_finds_a_tables_directory_beside_the_executable},
         {"large table limit reflects the loaded directory",
          test_large_table_limit_reflects_the_loaded_directory},
         {"probe eligibility is a cheap conservative gate",

@@ -1,6 +1,9 @@
 #include "koi/syzygy_tablebase.hpp"
 
 #include <algorithm>
+#include <array>
+#include <filesystem>
+#include <string_view>
 #include <bit>
 #include <limits>
 
@@ -432,6 +435,48 @@ std::optional<SyzygyRootResult> SyzygyTablebase::probe_root(
 
 std::uint64_t SyzygyTablebase::hits() const noexcept {
     return impl_->hits.load(std::memory_order_relaxed);
+}
+
+std::optional<std::filesystem::path> discover_syzygy_directory(
+    const std::filesystem::path& executable_directory) {
+    if (executable_directory.empty()) {
+        return std::nullopt;
+    }
+    static constexpr std::array<std::string_view, 4> kCandidateNames{
+        "syzygy", "syzygy345", "tablebases", "3-4-5"};
+    for (const std::string_view candidate : kCandidateNames) {
+        const std::filesystem::path directory = executable_directory / candidate;
+        std::error_code error;
+        if (!std::filesystem::is_directory(directory, error) || error) {
+            continue;
+        }
+        bool has_table = false;
+        std::filesystem::directory_iterator iterator(directory, error);
+        if (error) {
+            continue;
+        }
+        for (const std::filesystem::directory_entry& entry : iterator) {
+            std::error_code entry_error;
+            if (!entry.is_regular_file(entry_error) || entry_error) {
+                continue;
+            }
+            const std::string extension = entry.path().extension().string();
+            if (extension == ".rtbw" || extension == ".rtbz") {
+                has_table = true;
+                break;
+            }
+        }
+        if (!has_table) {
+            continue;
+        }
+        const std::filesystem::path absolute = std::filesystem::absolute(directory, error);
+        if (error) {
+            return directory;
+        }
+        const std::filesystem::path canonical = std::filesystem::weakly_canonical(absolute, error);
+        return error ? absolute : canonical;
+    }
+    return std::nullopt;
 }
 
 } // namespace koi

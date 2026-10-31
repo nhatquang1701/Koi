@@ -43,6 +43,15 @@ struct SyzygyRootResult {
     std::vector<Move> moves;
 };
 
+// Locates a Syzygy table directory beside the engine executable.  The search
+// checks conventional directory names in order (`syzygy`, `syzygy345`,
+// `tablebases`, `3-4-5`) and requires at least one `.rtbw`/`.rtbz` file.  The
+// returned path is absolute/canonical on success.  This is only a discovery
+// helper: the caller decides whether to load the tables (the UCI layer does so
+// lazily, and an explicit SyzygyPath disables the automatic path).
+[[nodiscard]] std::optional<std::filesystem::path> discover_syzygy_directory(
+    const std::filesystem::path& executable_directory);
+
 class SyzygyTablebase {
 public:
     // Fathom is process-global; instances share one acquired path and release it

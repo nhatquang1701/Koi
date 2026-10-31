@@ -34,7 +34,7 @@ a deprecated fallback until its staged removal.
 | Search | Alpha-beta with Lazy SMP |
 | Evaluation | Gated Koi NNUE required in release packages (bundled); classical HCE removed 2026-10-28 (clean rewrite planned); experimental GPU NNUE off by default |
 | Chess support | Standard chess over the UCI protocol |
-| Optional assets | Bundled CC0 Polyglot opening book; user-supplied Syzygy tablebases |
+| Optional assets | Bundled CC0 Polyglot opening book, used automatically; user-installed Syzygy tablebases are auto-detected from a conventional directory beside the engine and are never packaged |
 
 ## Name
 

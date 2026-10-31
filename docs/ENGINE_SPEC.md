@@ -722,7 +722,7 @@ intentionally not advertised, so 26 of the 28 entries are visible. There is no
 | `Slow Mover` | spin | 100 | 10..1000 | Scales clock-derived budgets; not applied to `movetime` |
 | `Contempt` | spin | 0 | 0..1000 cp | Draw avoidance: a draw is worth `-Contempt` to the root side and `+Contempt` to the opponent; 0 keeps neutral draws |
 | `StrengthMode` | check | false | true/false | Accepted but currently neutral; no strength reduction is wired to it |
-| `SyzygyPath` | string | empty | path/list | Directory or path list of `.rtbw`/`.rtbz` files; relative single paths resolve beside the executable; empty disables |
+| `SyzygyPath` | string | empty | path/list | Directory or path list of `.rtbw`/`.rtbz` files; relative single paths resolve beside the executable; empty disables. When never set, a conventional table directory beside the executable is discovered automatically (see §8.2) |
 | `SyzygyProbeDepth` | spin | 1 | 1..100 | Minimum search depth for the root probe |
 | `SyzygyProbeLimit` | spin | 7 | 0..7 | Maximum pieces probed |
 | `SyzygyInteriorDepth` | spin | 0 | 0..100 | Experimental interior WDL cutoff depth; 0 disables |
@@ -749,7 +749,10 @@ Rules for `setoption`:
   `applied`, `reduced`, `unchanged`, or `disabled`; failures keep the previous
   table and report `info string hash resize failed; previous table preserved`.
 - `SyzygyPath` rebuild emits `info string Syzygy: <n>-man tables at <path>` or
-  `info string Syzygy: no usable tables at <path>`.
+  `info string Syzygy: no usable tables at <path>`. Automatic discovery (no
+  `SyzygyPath` was ever set) first emits
+  `info string syzygy detected: <path> (SyzygyPath not set, using it)` when the
+  tables are loaded.
 - `EvalFile` with a non-empty value reports `info string NNUE enabled from <path>`
   or `info string EvalFile rejected: <reason>`.
 - `Debug` can also be toggled with the standard `debug on` / `debug off` command.
@@ -850,6 +853,15 @@ Behaviour details:
 - `SyzygyPath` accepts a directory or platform path list. A relative single path
   resolves beside the executable. An absent or unusable path disables probing and
   leaves ordinary search intact.
+- **Automatic discovery.** When `SyzygyPath` has never been set, the engine looks
+  beside its executable for a table directory named `syzygy`, `syzygy345`,
+  `tablebases`, or `3-4-5` (in that order) containing at least one `.rtbw`/`.rtbz`
+  file. The tables are loaded lazily at the first `isready`/`go` (never while a
+  search is running, because Fathom is process-global), reported with
+  `info string syzygy detected: ... (SyzygyPath not set, using it)`, and then used
+  exactly like an explicit path. Setting `SyzygyPath` explicitly (including to an
+  empty value) disables automatic discovery for that session. Installed tables
+  are never distributed with Koi and never packaged into release archives.
 - `SyzygyProbeLimit` 0..7 (default 7) and `SyzygyProbeDepth` 1..100 (default 1)
   gate table availability and the minimum search depth for the root probe.
 - `Syzygy50MoveRule` honors the halfmove clock: WDL probes require a zero

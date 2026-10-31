@@ -904,7 +904,8 @@ when Stockfish is the opponent.
 
 Syzygy support is optional and never requires tablebase files for build, startup,
 or ordinary search. Set `SyzygyPath` to a directory containing licensed `.rtbw`
-and `.rtbz` files. `SyzygyProbeLimit` accepts 0..7 pieces (default 7),
+and `.rtbz` files, or drop them into a conventional `syzygy/` directory beside
+the executable and let automatic detection find them. `SyzygyProbeLimit` accepts 0..7 pieces (default 7),
 `SyzygyProbeDepth` accepts 1..100 (default 1) and is a minimum depth: the root
 probe is used once the search reaches that depth, and `Syzygy50MoveRule`
 defaults to true. Root wins are reported with a decisive centipawn score and an
@@ -915,6 +916,15 @@ is used only for eligible single-PV play searches; analysis mode, `MultiPV > 1`,
 ponder, `go infinite`, and `searchmoves` retain their documented search paths.
 Successful probes may be reported as `tbhits` in valid `info` lines. No
 tablebase data is distributed with Koi.
+
+**Automatic detection.** If you place the tables in a directory named `syzygy`
+(or `syzygy345`, `tablebases`, `3-4-5`) next to the engine executable, Koi uses
+them automatically; you do not have to set `SyzygyPath`. The load happens at the
+first `isready`/`go`, and the engine reports
+`info string syzygy detected: <path> (SyzygyPath not set, using it)`. Setting
+`SyzygyPath` explicitly — even to an empty value — turns automatic detection off
+for that session. Tables remain user-installed and are never bundled in release
+archives.
 
 `SyzygyInteriorDepth` accepts 0..100 (default 0, which disables interior
 probing entirely). When set above zero, search nodes at or below that remaining

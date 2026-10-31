@@ -684,7 +684,15 @@ UciController::UciController(std::istream& input, std::ostream& output,
       executable_directory_(std::move(executable_directory)),
       nnue_autodiscovered_(nnue_autodiscovered),
       opening_book_(executable_directory_),
-      search_service_(std::move(search_service)) {}
+      search_service_(std::move(search_service)) {
+    if (!executable_directory_.empty()) {
+        if (const auto discovered = discover_syzygy_directory(executable_directory_);
+            discovered.has_value()) {
+            syzygy_path_ = *discovered;
+            syzygy_auto_detected_ = true;
+        }
+    }
+}
 
 UciController::~UciController() {
     {
@@ -905,7 +913,18 @@ void UciController::handle_setoption(std::istream& command) {
         (option->id == UciOptionId::syzygy_path && value == syzygy_path_.string()) ||
         (option->id == UciOptionId::eval_file && value == eval_file_.string());
     if (unchanged_resource_option) {
-        return;
+        if (option->id == UciOptionId::syzygy_path) {
+            // The GUI re-sent the auto-detected path explicitly: record the
+            // explicit choice so auto-detection can never override it later.
+            syzygy_path_explicit_ = true;
+            // If the auto path was detected but not loaded yet, fall through so
+            // the explicit setoption performs the load now.
+            if (syzygy_configured_ || !syzygy_auto_detected_) {
+                return;
+            }
+        } else {
+            return;
+        }
     }
 
     // Type-aware helpers keep the parse -> ignore-invalid -> stop/suppress ->
@@ -1109,7 +1128,10 @@ void UciController::handle_setoption(std::istream& command) {
     }
 
     case UciOptionId::syzygy_path: {
-        if (value == syzygy_path_.string()) {
+        // Any explicit SyzygyPath (including an empty one) disables automatic
+        // table discovery; the GUI is then the single authority for the path.
+        syzygy_path_explicit_ = true;
+        if (value == syzygy_path_.string() && syzygy_configured_) {
             break;
         }
         stop_and_suppress_active_search();
@@ -1268,6 +1290,7 @@ void UciController::handle_setoption(std::istream& command) {
 }
 
 void UciController::handle_go(std::istream& command) {
+    ensure_auto_syzygy_loaded();
     std::string arguments;
     std::getline(command, arguments);
     SearchLimits limits = uci::parse_go_limits(arguments);
@@ -1853,6 +1876,7 @@ bool UciController::book_is_available() const {
 }
 
 void UciController::write_readyok() {
+    ensure_auto_syzygy_loaded();
     // The production UCI controller starts with a one-megabyte bootstrap table
     // so a large default hash cannot consume a fast game's clock before the
     // GUI has delivered its options. Materialize the requested table while the
@@ -1947,7 +1971,30 @@ void UciController::write_search_info(std::uint64_t generation, const SearchInfo
     output_ << '\n' << std::flush;
 }
 
+void UciController::ensure_auto_syzygy_loaded() {
+    if (!syzygy_auto_detected_ || syzygy_auto_loaded_ || syzygy_path_explicit_) {
+        return;
+    }
+    {
+        // Never re-initialise the process-global Fathom registry while a search
+        // may be probing it; a later isready/go (with no active search) retries.
+        std::lock_guard lock(output_mutex_);
+        if (state_ != ControllerState::Idle) {
+            return;
+        }
+    }
+    syzygy_auto_loaded_ = true;
+    {
+        std::lock_guard lock(output_mutex_);
+        output_ << "info string syzygy detected: " << syzygy_path_.string()
+                << " (SyzygyPath not set, using it)\n"
+                << std::flush;
+    }
+    rebuild_syzygy();
+}
+
 void UciController::rebuild_syzygy() {
+    syzygy_configured_ = true;
     syzygy_.reset();
     syzygy_ = std::make_shared<SyzygyTablebase>(
         syzygy_path_, syzygy_probe_limit_, syzygy_probe_depth_, syzygy_50_move_rule_);

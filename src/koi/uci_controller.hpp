@@ -105,6 +105,7 @@ private:
     void debug_json_event(std::string event, std::string fields) noexcept;
     void configure_debug_file();
     void rebuild_syzygy();
+    void ensure_auto_syzygy_loaded();
     [[nodiscard]] std::filesystem::path debug_path() const;
     void rotate_debug_file_if_needed(std::size_t incoming_bytes);
 
@@ -162,6 +163,12 @@ private:
     std::uint8_t book_depth_ = 16;
     std::uint32_t random_seed_ = 0;
     std::filesystem::path syzygy_path_;
+    // Automatic table discovery: a `syzygy/` directory beside the executable is
+    // loaded lazily at the first isready/go unless the GUI sets SyzygyPath.
+    bool syzygy_path_explicit_ = false;
+    bool syzygy_auto_detected_ = false;
+    bool syzygy_auto_loaded_ = false;
+    bool syzygy_configured_ = false;
     std::filesystem::path eval_file_;
     // Boot-time autodiscovery actually installed a network: advertise that in
     // the EvalFile handshake default.  Explicit KOI_NNUE_PATH/EvalFile are not
