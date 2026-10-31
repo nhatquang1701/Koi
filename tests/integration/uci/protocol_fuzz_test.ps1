@@ -523,11 +523,24 @@ $analysis = Start-UciSession -Executable $EnginePath
 Send-UciCommand $analysis 'uci'
 [void](Read-UciUntil $analysis { param($line) $line -eq 'uciok' } 'analysis uciok' -ValidateUciOutput)
 Send-UciCommand $analysis 'setoption name UCI_AnalyseMode value true'
+Send-UciCommand $analysis 'setoption name MultiPV value 3'
 Send-UciCommand $analysis 'isready'
 [void](Read-UciUntil $analysis { param($line) $line -eq 'readyok' } 'analysis readyok' -ValidateUciOutput)
 Send-UciCommand $analysis 'position fen r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3'
 Send-UciCommand $analysis 'go infinite'
-[void](Read-UciUntil $analysis { param($line) $line -match '^info depth [1-9][0-9]* .* score (cp|mate) ' } 'analysis scored depth' -ValidateUciOutput)
+$analysisDepthLine = Read-UciUntil $analysis { param($line) $line -match '^info depth [1-9][0-9]* .* multipv 3 .* score (cp|mate) ' } 'analysis multipv-3 scored depth' -ValidateUciOutput
+$analysisDepth = if ($analysisDepthLine -match '^info depth (\d+) ') { [int]$Matches[1] } else { 0 }
+if ($analysisDepth -le 0) {
+    throw 'analysis mode must publish a positive depth for the multipv-3 line'
+}
+foreach ($line in 1..3) {
+    $matchesForLine = @($analysis.Lines | Where-Object {
+        $_ -match ("^info depth " + $analysisDepth + " .* multipv " + $line + " .* score (cp|mate) ")
+    })
+    if ($matchesForLine.Count -lt 1) {
+        throw "analysis mode must publish a scored multipv $line line at depth $analysisDepth"
+    }
+}
 Send-UciCommand $analysis 'stop'
 $analysisBest = Read-UciUntil $analysis { param($line) $line -match '^bestmove ' } 'analysis bestmove' -ValidateUciOutput
 if ($analysisBest -notmatch '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$') {
