@@ -174,6 +174,15 @@ setoption name BookFile value C:\Users\koi-ünicode\book.bin
 setoption name DebugFile value C:\nonexistent-dir\koi.log
 setoption name SyzygyPath value ;;;
 setoption name SyzygyPath value :::
+position
+position fen
+position startpos moves
+position fen 8/8/8/4k3/8/4K3/8/8 w - -
+setoption name BookFile value C:\Windows
+setoption name BookFile value
+setoption name BookFile value ""
+setoption name hash value 16
+setoption name HASH value 16
 setoption name NoSuchOption value 1
 setoption
 setoption name
