@@ -673,5 +673,43 @@ if ($hugeBest.Count -ne 1 -or $hugeBest[0] -notmatch '^bestmove e2e4( ponder [a-
     throw "a huge searchmoves list must still answer e2e4, got $($hugeBest -join ' | ')"
 }
 
+# 16. Extreme clock limits and the ponder stop/ponderhit contracts.  All of
+# these must finish with a legal (or suppressed, for the idle ponderhit) answer
+# and a clean shutdown.
+foreach ($clockCommand in @(
+        'go wtime 0 btime 0',
+        'go wtime 1 btime 1',
+        'go wtime 600000000 btime 600000000')) {
+    $clockCase = Invoke-UciTranscript "uci`nisready`nposition startpos`n$clockCommand`nstop`nquit`n" "clock-$($clockCommand -replace ' ','-')"
+    Assert-ProtocolGrammar $clockCase
+    Assert-CleanDiagnostics $clockCase
+    Assert-OneLegalBestmove $clockCase
+}
+
+$ponderStop = New-InteractiveSession 'ponder-stop'
+Send-UciCommand $ponderStop 'position startpos'
+Send-UciCommand $ponderStop 'go ponder wtime 60000 btime 60000'
+Start-Sleep -Milliseconds 300
+Send-UciCommand $ponderStop 'stop'
+$ponderStopBest = Read-UciUntil $ponderStop { param($line) $line -match '^bestmove ' } 'ponder stop bestmove' -ValidateUciOutput
+Assert-LegalBestmoveLine $ponderStopBest 'ponder-stop'
+Send-UciCommand $ponderStop 'quit'
+$ponderStopLines = Complete-UciSession $ponderStop $false
+if (@($ponderStopLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 1) {
+    throw 'stop during a ponder search must emit exactly one bestmove'
+}
+
+$idlePonderhit = New-InteractiveSession 'ponderhit-without-ponder'
+Send-UciCommand $idlePonderhit 'position startpos'
+Send-UciCommand $idlePonderhit 'stop'
+Send-UciCommand $idlePonderhit 'ponderhit'
+Send-UciCommand $idlePonderhit 'isready'
+[void](Read-UciUntil $idlePonderhit { param($line) $line -eq 'readyok' } 'idle ponderhit readyok' -ValidateUciOutput)
+Send-UciCommand $idlePonderhit 'quit'
+$idlePonderhitLines = Complete-UciSession $idlePonderhit $false
+if (@($idlePonderhitLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 0) {
+    throw 'ponderhit without a ponder search must not start or complete a search'
+}
+
 Write-Output 'PASS protocol fuzz corpus'
 

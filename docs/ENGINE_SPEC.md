@@ -771,7 +771,7 @@ Rules for `setoption`:
 | `position [startpos | fen <6 fields>] [moves ...]` | Replaces the root. The old search is cancelled with generation suppression before parsing. Malformed FEN/position/move emits `info string invalid ...` and writes `UCI position error: ...` to stderr; the prior position is retained on a failed parse. Moves are applied only if legal. |
 | `go` | Parses `depth`, `nodes`, `mate`, `perft`, `movetime`, `wtime`, `btime`, `winc`, `binc`, `movestogo`, `infinite`, `ponder`, and `searchmoves`. Malformed values are ignored. Bare or asymmetric clock commands fall back to 250 ms. |
 | `stop` | Cancels and joins the active search and emits exactly one final legal `bestmove` with a `ponder` suffix when the completed PV has a reply. |
-| `ponderhit` | Converts a running ponder search in place and re-arms timing; if no ponder search is running, starts a bounded search of the current position. |
+| `ponderhit` | Converts a running ponder search in place and re-arms timing; if no ponder search is running, the command is ignored (no search starts). |
 | `quit` | Sets shutting-down, cancels/joins, and returns 0 without late protocol output. EOF follows the same cancellation path. |
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
 | Unknown command | Ignored. An exception during command handling is converted to `info string command failed: ...` and the loop continues. A protocol line longer than 1 MiB is consumed and rejected with `info string command rejected: line exceeds 1048576 bytes`; the session continues. |

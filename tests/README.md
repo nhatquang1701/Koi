@@ -141,6 +141,7 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   search, terminal/mate/stalemate/forced-repetition roots, analysis-mode
   scoring, searchmoves filtering (legal subset, impossible filter -> 0000),
   partial-line EOF, stop storms during search, ucinewgame during ponder,
+  extreme clock limits, stop during ponder, idle ponderhit suppression,
   empty input, commands before the `uci` handshake, a 20k-token
   `searchmoves` list, auto-detected book hot-swap (valid -> truncated ->
   restored -> deleted), seeded random sequences; labelled `reliability`),
