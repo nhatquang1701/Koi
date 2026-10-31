@@ -148,7 +148,9 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   empty input, commands before the `uci` handshake, a 20k-token
   `searchmoves` list, auto-detected book hot-swap (valid -> truncated ->
   restored -> deleted, including a mutation while a search is in flight),
-  resource/destructive option churn, seeded random sequences; labelled `reliability`),
+  resource/destructive option churn, book-size boundaries (0/1/15/17 bytes,
+  >16 MiB) and invalid EvalFile forms (empty file, directory, random bytes),
+  seeded random sequences; labelled `reliability`),
   `koi_protocol_soak_process` (60 rounds of Threads/Hash reconfiguration and
   searches with an RSS-growth bound and exactly-one-legal-bestmove assertions;
   `heavy` + `reliability`),

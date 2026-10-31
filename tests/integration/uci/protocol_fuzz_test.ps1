@@ -527,6 +527,72 @@ try {
     if (@($bookChurnLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
         throw 'auto-detected book announcement must appear exactly once'
     }
+
+    # 9h. Fail-closed asset boundaries.  Book files that are too small, not a
+    # multiple of 16 bytes, or over the 16 MiB cap must never be used, and
+    # invalid EvalFile forms must be rejected while the engine stays usable.
+    $assetBoundary = Join-Path $assetRoot 'engine-boundary'
+    New-Item -ItemType Directory -Path $assetBoundary -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetBoundary $executableName)
+    $boundaryBook = Join-Path $assetBoundary 'book.bin'
+    foreach ($boundarySize in @(0, 1, 15, 17, 16777217)) {
+        if ($boundarySize -gt 1048576) {
+            # Sparse file: only the size matters for the fail-closed check.
+            $sparse = [System.IO.File]::Create($boundaryBook)
+            $sparse.SetLength([int64]$boundarySize)
+            $sparse.Dispose()
+        } else {
+            [System.IO.File]::WriteAllBytes($boundaryBook, [byte[]]::new($boundarySize))
+        }
+        $boundarySession = Start-UciSession -Executable (Join-Path $assetBoundary $executableName)
+        Send-UciCommand $boundarySession 'uci'
+        [void](Read-UciUntil $boundarySession { param($line) $line -eq 'uciok' } "boundary $boundarySize uciok" -ValidateUciOutput)
+        Send-UciCommand $boundarySession "setoption name BookFile value $boundaryBook"
+        Send-UciCommand $boundarySession 'isready'
+        [void](Read-UciUntil $boundarySession { param($line) $line -eq 'readyok' } "boundary $boundarySize readyok" -ValidateUciOutput)
+        Send-UciCommand $boundarySession 'position startpos'
+        Send-UciCommand $boundarySession 'go depth 1'
+        $boundaryBest = Read-UciUntil $boundarySession { param($line) $line -match '^bestmove ' } "boundary $boundarySize bestmove" -ValidateUciOutput
+        Assert-LegalBestmoveLine $boundaryBest "book-size-$boundarySize"
+        Send-UciCommand $boundarySession 'quit'
+        $boundaryLines = Complete-UciSession $boundarySession $false
+        if (@($boundaryLines | Where-Object { $_ -match '^info string book move ' }).Count -ne 0) {
+            throw "an unusable $boundarySize-byte book must never produce a book move"
+        }
+    }
+
+    $assetEval = Join-Path $assetRoot 'engine-eval-invalid'
+    New-Item -ItemType Directory -Path $assetEval -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetEval $executableName)
+    $emptyNet = Join-Path $assetEval 'empty.nnue'
+    [System.IO.File]::WriteAllBytes($emptyNet, [byte[]]::new(0))
+    $randomNet = Join-Path $assetEval 'random.nnue'
+    $randomBytes = [byte[]]::new(64)
+    [System.Random]::new(20261031).NextBytes($randomBytes)
+    [System.IO.File]::WriteAllBytes($randomNet, $randomBytes)
+    $netDirectory = Join-Path $assetEval 'net-directory'
+    New-Item -ItemType Directory -Path $netDirectory -Force | Out-Null
+
+    $evalSession = Start-UciSession -Executable (Join-Path $assetEval $executableName)
+    Send-UciCommand $evalSession 'uci'
+    [void](Read-UciUntil $evalSession { param($line) $line -eq 'uciok' } 'invalid EvalFile uciok' -ValidateUciOutput)
+    Send-UciCommand $evalSession 'isready'
+    [void](Read-UciUntil $evalSession { param($line) $line -eq 'readyok' } 'invalid EvalFile readyok' -ValidateUciOutput)
+    foreach ($invalidNet in @($emptyNet, $netDirectory, $randomNet)) {
+        Send-UciCommand $evalSession "setoption name EvalFile value $invalidNet"
+        Send-UciCommand $evalSession 'isready'
+        [void](Read-UciUntil $evalSession { param($line) $line -eq 'readyok' } 'invalid EvalFile readiness' -ValidateUciOutput)
+        Send-UciCommand $evalSession 'position startpos'
+        Send-UciCommand $evalSession 'go depth 1'
+        $evalBest = Read-UciUntil $evalSession { param($line) $line -match '^bestmove ' } 'invalid EvalFile bestmove' -ValidateUciOutput
+        Assert-LegalBestmoveLine $evalBest 'invalid-evalfile'
+    }
+    Send-UciCommand $evalSession 'quit'
+    $evalLines = Complete-UciSession $evalSession $false
+    $rejectionLines = @($evalLines | Where-Object { $_ -match '^info string EvalFile rejected: ' })
+    if ($rejectionLines.Count -ne 3) {
+        throw "every invalid EvalFile form must be rejected once, got $($rejectionLines.Count) rejection lines"
+    }
 }
 finally {
     Stop-AllUciSessions
