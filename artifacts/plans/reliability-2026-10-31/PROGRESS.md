@@ -26,6 +26,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R7 Syzygy auto-discovery | fixed | `discover_syzygy_directory` + lazy load; real 5-man verification |
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
+| R19 option validation/EvalFile swap | fixed | invalid book/spin/movement values ignored; mid-search valid EvalFile swap installs once and next search legal |
 | R18 book hot-swap | fixed | valid -> truncated -> restored -> deleted auto-book in one session |
 | R17 minimal-handshake/input abuse | fixed | empty input, pre-handshake commands and 20k-token searchmoves asserted |
 | R16 EOF/stop-storm/ponder-reset | fixed | fuzz asserts partial-line EOF execution, exactly one bestmove from an active stop storm, and ucinewgame-during-ponder cancellation |
