@@ -142,15 +142,17 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   scoring, searchmoves filtering (legal subset, impossible filter -> 0000),
   partial-line EOF, stop storms during search, ucinewgame during ponder,
   extreme clock limits, stop during ponder, idle ponderhit suppression,
-  repeated handshake, contradictory go limits,
+  repeated handshake, 500x handshake flood, contradictory go limits,
+  seeded 250-command state-machine stress,
   empty input, commands before the `uci` handshake, a 20k-token
   `searchmoves` list, auto-detected book hot-swap (valid -> truncated ->
   restored -> deleted), seeded random sequences; labelled `reliability`),
   `koi_protocol_soak_process` (60 rounds of Threads/Hash reconfiguration and
   searches with an RSS-growth bound and exactly-one-legal-bestmove assertions;
   `heavy` + `reliability`),
-  `koi_protocol_broken_pipe_process` (a GUI crash closes stdout mid-search:
-  writes fail silently, `stop`/`quit` still shut down cleanly with exit 0),
+  `koi_protocol_broken_pipe_process` (a GUI crash closes stdout mid-search or
+  stderr before a diagnostic: writes fail silently, `stop`/`quit` still shut
+  down cleanly with exit 0),
   `koi_protocol_option_churn_process` (Hash/Threads/MultiPV/EvalFile/BookFile/
   SyzygyPath changes during an active search: the old generation is suppressed
   with no late bestmove, a malformed EvalFile is rejected once, and each

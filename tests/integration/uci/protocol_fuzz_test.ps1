@@ -779,5 +779,55 @@ foreach ($limitCase in $limitCases) {
     Assert-OneLegalBestmove $case
 }
 
+# 21. Handshake flood: repeated `uci` commands re-answer every time without
+# drift, duplicate output, or a shutdown failure.
+$handshakeFlood = "uci`n" * 500
+$flood = Invoke-UciTranscript ($handshakeFlood + "isready`nquit`n") 'handshake-flood'
+Assert-ProtocolGrammar $flood
+Assert-CleanDiagnostics $flood
+if ((Count-Lines $flood '^uciok$') -ne 500) {
+    throw '500 uci commands must produce exactly 500 uciok answers'
+}
+
+# 22. Seeded state-machine stress: random interleavings of position changes,
+# go variants, stop, ponderhit, ucinewgame, isready and resource options.  The
+# engine may publish any number of legal bestmoves; it must not crash, hang,
+# emit a malformed line, or leave stderr noise.
+$random = [System.Random]::new(20261031)
+$operations = @(
+    'isready',
+    'stop',
+    'ponderhit',
+    'ucinewgame',
+    'position startpos',
+    'position startpos moves e2e4 e7e5',
+    'go depth 1',
+    'go infinite',
+    'go ponder wtime 1000 btime 1000',
+    'setoption name Hash value 16',
+    'setoption name Threads value 2',
+    'setoption name MultiPV value 2'
+)
+$randomLines = [System.Collections.Generic.List[string]]::new()
+$randomLines.Add('uci')
+$randomLines.Add('isready')
+for ($i = 0; $i -lt 250; $i++) {
+    $randomLines.Add($operations[$random.Next($operations.Count)])
+}
+$randomLines.Add('position startpos')
+$randomLines.Add('go depth 2')
+$randomLines.Add('stop')
+$randomLines.Add('quit')
+$randomTranscript = Invoke-UciTranscript (($randomLines -join "`n") + "`n") 'seeded-state-machine'
+Assert-ProtocolGrammar $randomTranscript
+Assert-CleanDiagnostics $randomTranscript
+$randomBestmoves = @($randomTranscript.Lines | Where-Object { $_ -match '^bestmove ' })
+if ($randomBestmoves.Count -lt 1) {
+    throw 'the seeded state-machine storm must complete at least one search'
+}
+foreach ($bestmove in $randomBestmoves) {
+    Assert-LegalBestmoveLine $bestmove 'seeded-state-machine'
+}
+
 Write-Output 'PASS protocol fuzz corpus'
 

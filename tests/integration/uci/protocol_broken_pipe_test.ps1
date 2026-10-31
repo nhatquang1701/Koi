@@ -78,4 +78,34 @@ $early.StandardInput.Close()
 Complete-BrokenPipeCase $early 'early disconnect'
 $early.Dispose()
 
+# 3. Closed stderr read end: trigger a diagnostic (invalid FEN) and require a
+# clean exit; POSIX SIGPIPE must stay ignored and Windows must fail closed.
+$startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+$startInfo.FileName = $EnginePath
+$startInfo.UseShellExecute = $false
+$startInfo.CreateNoWindow = $true
+$startInfo.RedirectStandardInput = $true
+$startInfo.RedirectStandardOutput = $false
+$startInfo.RedirectStandardError = $true
+$stderrClosed = [System.Diagnostics.Process]::new()
+$stderrClosed.StartInfo = $startInfo
+if (-not $stderrClosed.Start()) {
+    throw "unable to start $EnginePath for the stderr test"
+}
+$script:Processes.Add($stderrClosed)
+$stderrClosed.StandardError.Close()
+$stderrClosed.StandardInput.WriteLine('uci')
+$stderrClosed.StandardInput.WriteLine('position fen definitely-not-a-fen')
+$stderrClosed.StandardInput.WriteLine('quit')
+$stderrClosed.StandardInput.Flush()
+$stderrClosed.StandardInput.Close()
+if (-not $stderrClosed.WaitForExit($TimeoutMilliseconds)) {
+    try { $stderrClosed.Kill() } catch {}
+    throw 'engine hung after a written diagnostic with stderr closed'
+}
+if ($stderrClosed.ExitCode -ne 0) {
+    throw "engine exited with $($stderrClosed.ExitCode) after a written diagnostic with stderr closed"
+}
+$stderrClosed.Dispose()
+
 Write-Output 'PASS protocol broken pipe'
