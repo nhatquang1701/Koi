@@ -169,6 +169,10 @@ setoption name Contempt value 9999
 setoption name Move Overhead value 99999
 setoption name Slow Mover value 5
 setoption name MultiPV value 0
+setoption name BookFile value "C:\Program Files\koi book.bin"
+setoption name BookFile value C:\Users\koi-ünicode\book.bin
+setoption name DebugFile value C:\nonexistent-dir\koi.log
+setoption name SyzygyPath value ;;;
 setoption name NoSuchOption value 1
 setoption
 setoption name
@@ -827,6 +831,33 @@ if ($randomBestmoves.Count -lt 1) {
 }
 foreach ($bestmove in $randomBestmoves) {
     Assert-LegalBestmoveLine $bestmove 'seeded-state-machine'
+}
+
+# 23. Raw-stdin and line-ending edges: CRLF transcripts, a binary-prefixed
+# transcript, and a NUL embedded in a command.  All must stay crash-free and
+# protocol-clean, and a healthy search afterwards must answer.
+$crlfTranscript = Invoke-UciTranscript ("uci`r`nisready`r`nposition startpos`r`ngo depth 1`r`nstop`r`nquit`r`n") 'crlf-transcript'
+Assert-ProtocolGrammar $crlfTranscript
+Assert-CleanDiagnostics $crlfTranscript
+Assert-OneLegalBestmove $crlfTranscript
+if ((Count-Lines $crlfTranscript '^uciok$') -ne 1 -or (Count-Lines $crlfTranscript '^readyok$') -ne 1) {
+    throw 'a CRLF transcript must produce exactly one uciok and one readyok'
+}
+
+$binaryPrefix = ([string][char]0) + ([string][char]1) + ([string][char]127) + " garbage " + ([string][char]0) + "`n"
+$binaryCase = Invoke-UciTranscript ($binaryPrefix + "uci`nisready`nposition startpos`ngo depth 1`nstop`nquit`n") 'binary-prefix'
+Assert-ProtocolGrammar $binaryCase
+Assert-CleanDiagnostics $binaryCase
+Assert-OneLegalBestmove $binaryCase
+if ((Count-Lines $binaryCase '^uciok$') -ne 1) {
+    throw 'commands after a binary-garbage line must still be executed'
+}
+
+$nulCommand = Invoke-UciTranscript ("uci" + ([string][char]0) + "junk`nisready`nquit`n") 'nul-inside-command'
+Assert-ProtocolGrammar $nulCommand
+Assert-CleanDiagnostics $nulCommand
+if ((Count-Lines $nulCommand '^readyok$') -ne 1) {
+    throw 'a NUL inside a command must not stop later commands from being processed'
 }
 
 Write-Output 'PASS protocol fuzz corpus'

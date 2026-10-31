@@ -143,6 +143,7 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   partial-line EOF, stop storms during search, ucinewgame during ponder,
   extreme clock limits, stop during ponder, idle ponderhit suppression,
   repeated handshake, 500x handshake flood, contradictory go limits,
+  CRLF transcripts, binary/NUL stdin edges, quoted/Unicode asset paths,
   seeded 250-command state-machine stress,
   empty input, commands before the `uci` handshake, a 20k-token
   `searchmoves` list, auto-detected book hot-swap (valid -> truncated ->
