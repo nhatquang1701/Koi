@@ -508,5 +508,54 @@ if ((Count-Lines $searchEmpty '^info string no common legal move') -ne 1) {
     throw 'an empty searchmoves filter must explain itself exactly once'
 }
 
+# 12. A final command without a trailing newline must still be executed, and the
+# session must shut down cleanly with exactly its completed search.
+$partialEof = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 2`nstop" 'partial-line-eof'
+Assert-ProtocolGrammar $partialEof
+Assert-CleanDiagnostics $partialEof
+Assert-OneLegalBestmove $partialEof
+
+# 13. A stop storm while a search is running: exactly one bestmove, then idle
+# stops stay quiet (a second bestmove would fail the readyok transcript check).
+$stopStormActive = New-InteractiveSession 'active-stop-storm'
+Send-UciCommand $stopStormActive 'position startpos'
+Send-UciCommand $stopStormActive 'go infinite'
+[void](Read-UciUntil $stopStormActive { param($line) $line -match '^info depth ' } 'active stop storm search' -ValidateUciOutput)
+foreach ($unused in 1..5) {
+    Send-UciCommand $stopStormActive 'stop'
+}
+$stormBest = Read-UciUntil $stopStormActive { param($line) $line -match '^bestmove ' } 'active stop storm bestmove' -ValidateUciOutput
+Assert-LegalBestmoveLine $stormBest 'active-stop-storm'
+Send-UciCommand $stopStormActive 'isready'
+[void](Read-UciUntil $stopStormActive { param($line) $line -eq 'readyok' } 'active stop storm readyok' -ValidateUciOutput)
+Send-UciCommand $stopStormActive 'quit'
+$stormLines = Complete-UciSession $stopStormActive $false
+$stormBestmoves = @($stormLines | Where-Object { $_ -match '^bestmove ' })
+if ($stormBestmoves.Count -ne 1) {
+    throw "a stop storm during search must emit exactly one bestmove, got $($stormBestmoves.Count)"
+}
+
+# 14. ucinewgame during a ponder search cancels the ponder generation; the next
+# real search completes with exactly one bestmove.
+$ponderReset = New-InteractiveSession 'ucinewgame-during-ponder'
+Send-UciCommand $ponderReset 'position startpos'
+Send-UciCommand $ponderReset 'go ponder wtime 60000 btime 60000'
+Send-UciCommand $ponderReset 'isready'
+[void](Read-UciUntil $ponderReset { param($line) $line -eq 'readyok' } 'ponder reset readyok' -ValidateUciOutput)
+Send-UciCommand $ponderReset 'ucinewgame'
+Send-UciCommand $ponderReset 'isready'
+[void](Read-UciUntil $ponderReset { param($line) $line -eq 'readyok' } 'ponder reset post-newgame readyok' -ValidateUciOutput)
+Send-UciCommand $ponderReset 'position startpos moves e2e4'
+Send-UciCommand $ponderReset 'go depth 2'
+Send-UciCommand $ponderReset 'stop'
+$ponderBest = Read-UciUntil $ponderReset { param($line) $line -match '^bestmove ' } 'ponder reset bestmove' -ValidateUciOutput
+Assert-LegalBestmoveLine $ponderBest 'ucinewgame-during-ponder'
+Send-UciCommand $ponderReset 'quit'
+$ponderLines = Complete-UciSession $ponderReset $false
+$ponderBestmoves = @($ponderLines | Where-Object { $_ -match '^bestmove ' })
+if ($ponderBestmoves.Count -ne 1) {
+    throw "ucinewgame during ponder must leave exactly one bestmove, got $($ponderBestmoves.Count)"
+}
+
 Write-Output 'PASS protocol fuzz corpus'
 
