@@ -120,12 +120,28 @@ try {
     Stop-Expect-Suppressed $session 'ponder-change readiness'
     [void](Search-Expect-Bestmove $session 'startpos moves d2d4 d7d5' 'post-ponder-change search')
 
+    # 8. Valid EvalFile swap during an active search: the evaluator installs
+    # (reported once) and the next search answers legally.
+    if (-not [string]::IsNullOrWhiteSpace($env:KOI_NNUE_PATH) -and
+        (Test-Path -LiteralPath $env:KOI_NNUE_PATH -PathType Leaf)) {
+        $validNet = Join-Path $scratchRoot 'valid-swap.nnue'
+        Copy-Item -LiteralPath $env:KOI_NNUE_PATH -Destination $validNet
+        Start-Search $session
+        Send-UciCommand $session "setoption name EvalFile value $validNet"
+        Stop-Expect-Suppressed $session 'valid-evalfile readiness'
+        [void](Search-Expect-Bestmove $session 'startpos moves e2e4 e7e5' 'post-valid-evalfile search')
+    }
+
     Send-UciCommand $session 'quit'
     $transcript = Complete-UciSession $session $false
 
+    $expectedBestmoves = if (Test-Path -LiteralPath (Join-Path $scratchRoot 'valid-swap.nnue')) { 8 } else { 7 }
     $bestmoves = @($transcript | Where-Object { $_ -match '^bestmove ' })
-    if ($bestmoves.Count -ne 7) {
-        throw "option churn must complete exactly its seven replacement searches, got $($bestmoves.Count) bestmoves"
+    if ($bestmoves.Count -ne $expectedBestmoves) {
+        throw "option churn must complete exactly its replacement searches, got $($bestmoves.Count) bestmoves (expected $expectedBestmoves)"
+    }
+    if (@($transcript | Where-Object { $_ -match '^info string NNUE enabled from' }).Count -gt 1) {
+        throw 'a valid EvalFile swap must report NNUE installation at most once'
     }
     $rejected = @($transcript | Where-Object { $_ -match '^info string EvalFile rejected' })
     if ($rejected.Count -ne 1) {

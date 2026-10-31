@@ -144,6 +144,15 @@ setoption name Threads value 9999
 setoption name MultiPV value 0
 setoption name MultiPV value 999
 setoption name EvalFile value /nonexistent/does-not-exist.nnue
+setoption name OwnBook value maybe
+setoption name BookRandom value maybe
+setoption name BookDepth value 999
+setoption name BookSafetyDepth value 9
+setoption name RandomSeed value 999999999999999999999
+setoption name Contempt value 9999
+setoption name Move Overhead value 99999
+setoption name Slow Mover value 5
+setoption name MultiPV value 0
 setoption name NoSuchOption value 1
 setoption
 setoption name
@@ -275,6 +284,9 @@ if ($stormBestmoves.Count -ne 2) {
 $ponder = New-InteractiveSession 'ponder-lifecycle'
 Send-UciCommand $ponder 'position startpos'
 Send-UciCommand $ponder 'go ponder wtime 60000 btime 60000'
+# Observe at least one depth line before converting: the timer/state conversion
+# must work mid-search, not only at the initial boundary.
+[void](Read-UciUntil $ponder { param($line) $line -match '^info depth [1-9]' } 'ponder initial depth' -ValidateUciOutput)
 Send-UciCommand $ponder 'isready'
 [void](Read-UciUntil $ponder { param($line) $line -eq 'readyok' } 'ponder readyok' -ValidateUciOutput)
 Send-UciCommand $ponder 'ponderhit'
