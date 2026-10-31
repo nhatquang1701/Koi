@@ -721,5 +721,16 @@ Assert-ProtocolGrammar $longHistory
 Assert-CleanDiagnostics $longHistory
 Assert-OneLegalBestmove $longHistory
 
+# 18. quit during a ponder search: clean shutdown without a late bestmove.
+$ponderQuit = New-InteractiveSession 'ponder-quit'
+Send-UciCommand $ponderQuit 'position startpos'
+Send-UciCommand $ponderQuit 'go ponder wtime 60000 btime 60000'
+Start-Sleep -Milliseconds 250
+Send-UciCommand $ponderQuit 'quit'
+$ponderQuitLines = Complete-UciSession $ponderQuit $false
+if (@($ponderQuitLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 0) {
+    throw 'quit during ponder must suppress the late bestmove'
+}
+
 Write-Output 'PASS protocol fuzz corpus'
 
