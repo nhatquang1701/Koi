@@ -1007,5 +1007,66 @@ if ((Count-Lines $nulCommand '^readyok$') -ne 1) {
     throw 'a NUL inside a command must not stop later commands from being processed'
 }
 
+# 25. Exhaustive invalid-value pass over every advertised option.  Spin
+# options get non-numeric, below-minimum and (where safe) above-maximum values;
+# checks get non-boolean values; strings get empty/quoted/missing paths; buttons
+# are pressed.  The engine must stay responsive and then finish a legal search.
+$optionSession = Start-UciSession -Executable $EnginePath
+Send-UciCommand $optionSession 'uci'
+[void](Read-UciUntil $optionSession { param($line) $line -eq 'uciok' } 'option-matrix uciok' -ValidateUciOutput)
+$optionLines = @($optionSession.Lines | Where-Object { $_ -match '^option name .+ type ' })
+if ($optionLines.Count -lt 20) {
+    throw "expected the full option table in the handshake, got $($optionLines.Count) options"
+}
+foreach ($optionLine in $optionLines) {
+    if ($optionLine -notmatch '^option name (.+?) type (spin|check|string|button)(?: .*)?$') {
+        continue
+    }
+    $optionName = $Matches[1]
+    $optionType = $Matches[2]
+    switch ($optionType) {
+        'spin' {
+            $invalidValues = [System.Collections.Generic.List[string]]::new()
+            $invalidValues.Add('not-a-number')
+            $invalidValues.Add('-1')
+            if ($optionLine -match ' min (-?[0-9]+)') {
+                $invalidValues.Add(([int64]$Matches[1] - 1).ToString())
+            }
+            if ($optionLine -match ' max ([0-9]+)') {
+                $maximum = [int64]$Matches[1]
+                # Avoid the memory-heavy Hash upper bound and any "auto" max (0),
+                # otherwise this pass could ask for 4 GiB or 256 threads.
+                if ($maximum -gt 0 -and $maximum -le 64 -and $optionName -ne 'Hash') {
+                    $invalidValues.Add(($maximum + 1).ToString())
+                }
+            }
+            foreach ($invalidValue in $invalidValues) {
+                Send-UciCommand $optionSession "setoption name $optionName value $invalidValue"
+            }
+        }
+        'check' {
+            foreach ($invalidValue in @('maybe', '2', '')) {
+                Send-UciCommand $optionSession "setoption name $optionName value $invalidValue"
+            }
+        }
+        'string' {
+            foreach ($invalidValue in @('', '""', '"C:\\definitely missing\\asset.bin"')) {
+                Send-UciCommand $optionSession "setoption name $optionName value $invalidValue"
+            }
+        }
+        'button' {
+            Send-UciCommand $optionSession "setoption name $optionName"
+        }
+    }
+    Send-UciCommand $optionSession 'isready'
+    [void](Read-UciUntil $optionSession { param($line) $line -eq 'readyok' } "option $optionName readiness" -ValidateUciOutput)
+}
+Send-UciCommand $optionSession 'position startpos'
+Send-UciCommand $optionSession 'go depth 1'
+$optionBest = Read-UciUntil $optionSession { param($line) $line -match '^bestmove ' } 'option-matrix bestmove' -ValidateUciOutput
+Assert-LegalBestmoveLine $optionBest 'option-matrix'
+Send-UciCommand $optionSession 'quit'
+[void](Complete-UciSession $optionSession $false)
+
 Write-Output 'PASS protocol fuzz corpus'
 
