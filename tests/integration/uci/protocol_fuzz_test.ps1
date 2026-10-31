@@ -499,17 +499,29 @@ try {
     Search-BookChurn $bookChurnSession 'book-churn truncated search'
     [System.IO.File]::WriteAllBytes($bookPath, $bookBytes)
     Search-BookChurn $bookChurnSession 'book-churn restored search'
+
+    # Mutate the book while a search is in flight: the active search must still
+    # complete cleanly, and the next searches must see the new file state.
+    Send-UciCommand $bookChurnSession 'position startpos'
+    Send-UciCommand $bookChurnSession 'go movetime 2000'
+    Start-Sleep -Milliseconds 400
+    [System.IO.File]::WriteAllBytes($bookPath, [byte[]]::new(8))
+    Send-UciCommand $bookChurnSession 'stop'
+    [void](Read-UciUntil $bookChurnSession { param($line) $line -match '^bestmove ' } 'book-churn active mutation' -ValidateUciOutput)
+    Search-BookChurn $bookChurnSession 'book-churn truncated-after-active search'
+    [System.IO.File]::WriteAllBytes($bookPath, $bookBytes)
+    Search-BookChurn $bookChurnSession 'book-churn restored-after-active search'
     Remove-Item -LiteralPath $bookPath -Force
     Search-BookChurn $bookChurnSession 'book-churn removed search'
     Send-UciCommand $bookChurnSession 'quit'
     $bookChurnLines = Complete-UciSession $bookChurnSession $false
     $bookChurnBestmoves = @($bookChurnLines | Where-Object { $_ -match '^bestmove ' })
-    if ($bookChurnBestmoves.Count -ne 4) {
-        throw "book hot-swap must complete four searches, got $($bookChurnBestmoves.Count) bestmoves"
+    if ($bookChurnBestmoves.Count -ne 7) {
+        throw "book hot-swap must complete seven searches, got $($bookChurnBestmoves.Count) bestmoves"
     }
     $bookMoveLines = @($bookChurnLines | Where-Object { $_ -match '^info string book move e2e4 ' })
-    if ($bookMoveLines.Count -lt 2) {
-        throw "a valid auto-detected book must be used before and after a transient corruption, got $($bookMoveLines.Count) book moves"
+    if ($bookMoveLines.Count -lt 4) {
+        throw "a valid auto-detected book must be used through transient corruption (including a mid-search mutation), got $($bookMoveLines.Count) book moves"
     }
     if (@($bookChurnLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
         throw 'auto-detected book announcement must appear exactly once'
@@ -810,7 +822,16 @@ $operations = @(
     'go ponder wtime 1000 btime 1000',
     'setoption name Hash value 16',
     'setoption name Threads value 2',
-    'setoption name MultiPV value 2'
+    'setoption name MultiPV value 2',
+    'setoption name Hash value 8',
+    'setoption name Hash value 64',
+    'setoption name MultiPV value 1',
+    'setoption name EvalFile value /nonexistent/swap.nnue',
+    'setoption name BookFile value /nonexistent/book.bin',
+    'setoption name SyzygyPath value /nonexistent/tablebases',
+    'setoption name Clear Hash',
+    'setoption name UCI_AnalyseMode value true',
+    'setoption name UCI_AnalyseMode value false'
 )
 $randomLines = [System.Collections.Generic.List[string]]::new()
 $randomLines.Add('uci')
