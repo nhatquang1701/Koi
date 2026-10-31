@@ -77,6 +77,11 @@ try {
             default { 'go nodes 3000' }
         }
         Send-UciCommand $session $search
+        if (($round % 10) -eq 0) {
+            # Guarantee at least one published depth line reaches the transcript;
+            # an immediate stop can otherwise suppress all `info` output.
+            [void](Read-UciUntil $session { param($candidate) $candidate -match '^info depth [1-9]' } "round $round depth line" -ValidateUciOutput)
+        }
         [void](Send-Bestmove $session "round $round bestmove")
         $bestmoves++
 
@@ -101,9 +106,20 @@ try {
     }
 
     Send-UciCommand $session 'quit'
-    [void](Complete-UciSession $session $false)
+    $transcript = Complete-UciSession $session $false
+
+    # GUIs display the score from `info` lines; an analysis/search must publish
+    # at least one scored line (a score-less stream reads as 0 cp in En
+    # Croissant's analysis panel and other UCI GUIs).
+    $scoredLines = @($transcript | Where-Object {
+        $_ -match '^info depth [1-9][0-9]* ' -and
+        $_ -match ' score (cp|mate) -?[0-9]+'
+    })
+    if ($scoredLines.Count -eq 0) {
+        throw 'the soak searches published no scored info lines'
+    }
     $elapsed = ([DateTime]::UtcNow - $started).TotalSeconds
-    Write-Output ("PASS protocol soak: rounds={0} bestmoves={1} elapsed={2:N1}s" -f $rounds, $bestmoves, $elapsed)
+    Write-Output ("PASS protocol soak: rounds={0} bestmoves={1} scored={2} elapsed={3:N1}s" -f $rounds, $bestmoves, $scoredLines.Count, $elapsed)
 }
 finally {
     Stop-AllUciSessions

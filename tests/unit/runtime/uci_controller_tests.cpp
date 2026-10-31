@@ -2115,7 +2115,7 @@ void test_protocol_output_contains_only_valid_uci_responses() {
     require(result.diagnostics.empty(), "a valid transcript must leave stderr clean");
 }
 
-void test_selective_root_score_is_not_published_as_an_exact_value() {
+void test_selective_root_score_is_published_unmarked() {
     GatedInputBuffer input(
         "setoption name UCI_ShowWDL value true\n"
         "position fen r1bqk2r/p4ppp/2p2n2/2bpP3/8/2N5/PPP1P1PP/R1BQKB1R b KQkq - 0 8\n"
@@ -2139,11 +2139,15 @@ void test_selective_root_score_is_not_published_as_an_exact_value() {
     const auto infos = lines_starting_with(output_lines(output_buffer.str()), "info depth 1 ");
     require(depth_seen && exit_code == 0 && diagnostics.str().empty() && !infos.empty(),
             "the selective root fixture must produce a completed UCI depth-one line");
-    require(infos.back().find(" score ") == std::string::npos &&
-                infos.back().find(" wdl ") == std::string::npos &&
+    // GUIs need a score on analysis lines; UCI cannot express "estimate", so
+    // the value is published unmarked and never as a bound.
+    require(infos.back().find(" score cp ") != std::string::npos ||
+                infos.back().find(" score mate ") != std::string::npos,
+            "an unproven selective root estimate must still publish its UCI score");
+    require(infos.back().find(" wdl ") == std::string::npos &&
                 infos.back().find(" lowerbound") == std::string::npos &&
                 infos.back().find(" upperbound") == std::string::npos,
-            "an unproven selective root estimate must publish neither an exact UCI score nor WDL");
+            "an unproven selective root estimate must not publish WDL or a bound marker");
 }
 
 void test_protocol_responses_flush_promptly() {
@@ -2379,7 +2383,7 @@ int main(int argc, char** argv) {
         {"bounded protocol line", test_oversized_protocol_line_is_rejected_and_session_survives},
         {"unknown stop quit", test_unknown_stop_and_blank_commands_are_quiet_and_quit},
         {"protocol-clean output", test_protocol_output_contains_only_valid_uci_responses},
-        {"selective root score provenance", test_selective_root_score_is_not_published_as_an_exact_value},
+        {"selective root score provenance", test_selective_root_score_is_published_unmarked},
         {"promptly flushed responses", test_protocol_responses_flush_promptly},
         {"go mate mapping", test_go_mate_searches_the_proving_depth},
         {"legacy strength node cap", test_legacy_strength_options_do_not_cap_clock_searches},

@@ -1942,18 +1942,21 @@ void UciController::write_search_info(std::uint64_t generation, const SearchInfo
     if (!info.currmove.is_no_move()) {
         output_ << " currmove " << info.currmove.uci();
     }
-    if (info.bound != SearchInfo::Bound::estimate) {
-        output_ << " score ";
-        if (info.mate.has_value()) {
-            output_ << "mate " << *info.mate;
-        } else {
-            output_ << "cp " << info.score_cp;
-        }
-        if (info.bound == SearchInfo::Bound::lower) {
-            output_ << " lowerbound";
-        } else if (info.bound == SearchInfo::Bound::upper) {
-            output_ << " upperbound";
-        }
+    // UCI has no "estimate" marker: an unproven selective-root score is still
+    // the engine's best current evaluation, and GUIs (En Croissant analysis,
+    // Arena, ...) show 0 cp when the token is omitted.  Publish it unmarked;
+    // the internal SearchInfo::Bound::estimate flag remains authoritative for
+    // search code and must never be treated as exact there.
+    output_ << " score ";
+    if (info.mate.has_value()) {
+        output_ << "mate " << *info.mate;
+    } else {
+        output_ << "cp " << info.score_cp;
+    }
+    if (info.bound == SearchInfo::Bound::lower) {
+        output_ << " lowerbound";
+    } else if (info.bound == SearchInfo::Bound::upper) {
+        output_ << " upperbound";
     }
     if (show_wdl_ && info.bound != SearchInfo::Bound::estimate) {
         const Wdl wdl = score_to_wdl(info);

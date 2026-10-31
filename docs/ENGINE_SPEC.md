@@ -805,7 +805,8 @@ Behaviour details:
 - **WDL**: with `UCI_ShowWDL=true`, scored lines append a deterministic triplet.
   `mate` scores map to 1000/0/0 or 0/0/1000; ordinary scores use the heuristic
   `draw = max(0, 300 - |cp|/4)`, with the remaining mass split by score direction.
-  A selective iteration with no proven score omits both score and WDL.
+  A selective iteration with no proven score publishes its estimate score
+  unmarked (UCI has no "estimate" marker) and omits WDL.
 - **Depth/score reporting**: completed iterations emit
   `info depth seldepth multipv [currmove] score ... nodes nps hashfull time pv ...`.
   Interim lines may report the in-flight root move as a `currmove` token;
@@ -813,7 +814,8 @@ Behaviour details:
   not emit a `currmovenumber` token (see the inconsistency note in §10). A
   selective root iteration republishes the most recent proven
   score at the current depth while keeping its own PV; before any proven score it
-  omits the score.
+  publishes its own estimate unmarked, because omitting the score makes GUIs
+  display 0 cp (En Croissant analysis, Arena, ...).
 - **Ponder suffix**: `bestmove` includes `ponder <reply>` whenever the completed
   principal variation contains a reply, independent of the `Ponder` option.
 - **No `UCI_LimitStrength` / `UCI_Elo`**: Koi does not advertise or implement

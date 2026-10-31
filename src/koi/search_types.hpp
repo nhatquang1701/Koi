@@ -172,7 +172,8 @@ struct SearchInfo {
     //              proven alpha-beta bound direction;
     //   lower - the search proved that the value is at least the score;
     //   upper - the search proved that the value is at most the score.
-    // UCI has no estimate marker, so an estimated info line omits the score unless the runner republishes the most recent proven score at the current depth.
+    // UCI has no estimate marker, so an estimated info line publishes its score
+    // unmarked for GUI display (omitting it made analysis GUIs show 0 cp).
     // Estimates must never be treated as exact inside the search.
     enum class Bound : std::uint8_t { exact = 0, lower = 1, upper = 2, estimate = 3 };
 

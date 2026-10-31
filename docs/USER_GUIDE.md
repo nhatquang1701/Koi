@@ -828,9 +828,9 @@ from the starting position (for example, `bestmove e2e4`).
   ... nps ... hashfull ... time ... pv ...` lines, where `hashfull` is the
   approximate transposition-table occupancy in permill (0..1000). An iteration
   whose root verification stayed selective republishes the most recent proven
-  score at the current depth while keeping its own principal variation, so GUIs
-  never receive an unproven score; before any proven iteration exists the line
-  omits the score entirely.
+  score at the current depth while keeping its own principal variation. Before
+  any proven score exists, the line publishes its estimate unmarked: UCI has no
+  "estimate" marker, and omitting the score makes analysis GUIs display 0 cp.
 - During a long search iteration the engine may publish the in-flight depth
   and principal variation with refreshed `nodes`, `nps`, and `time` values
   (interim progress lines), so a GUI readout does not freeze on the last
