@@ -431,6 +431,57 @@ try {
     if ((Count-Lines $plainResult 'book detected|syzygy detected|^info string Syzygy:') -ne 0) {
         throw 'an engine directory without assets must not announce any asset'
     }
+
+    # 9g. Auto-detected book hot-swap: a valid book is used, a truncated book
+    # falls back silently, restoring it reloads (no negative cache), and
+    # deleting it returns to search without crashing.
+    $assetBookChurn = Join-Path $assetRoot 'engine-book-churn'
+    New-Item -ItemType Directory -Path $assetBookChurn -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetBookChurn $executableName)
+    $bookPath = Join-Path $assetBookChurn 'book.bin'
+    # One Polyglot entry: startpos key + e2e4 (raw 0x031C) + weight 100.
+    $bookBytes = [byte[]]::new(16)
+    [byte[]]$startposKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($startposKey, 0, $bookBytes, 0, 8)
+    $bookBytes[8] = 0x03
+    $bookBytes[9] = 0x1c
+    $bookBytes[10] = 0x00
+    $bookBytes[11] = 100
+    [System.IO.File]::WriteAllBytes($bookPath, $bookBytes)
+
+    $bookChurnSession = Start-UciSession -Executable (Join-Path $assetBookChurn $executableName)
+    Send-UciCommand $bookChurnSession 'uci'
+    [void](Read-UciUntil $bookChurnSession { param($line) $line -eq 'uciok' } 'book-churn uciok' -ValidateUciOutput)
+    Send-UciCommand $bookChurnSession 'isready'
+    [void](Read-UciUntil $bookChurnSession { param($line) $line -eq 'readyok' } 'book-churn readyok' -ValidateUciOutput)
+
+    function Search-BookChurn {
+        param($Session, [string]$Description)
+        Send-UciCommand $Session 'position startpos'
+        Send-UciCommand $Session 'go depth 1'
+        [void](Read-UciUntil $Session { param($line) $line -match '^bestmove ' } $Description -ValidateUciOutput)
+    }
+
+    Search-BookChurn $bookChurnSession 'book-churn valid search'
+    [System.IO.File]::WriteAllBytes($bookPath, [byte[]]::new(8))
+    Search-BookChurn $bookChurnSession 'book-churn truncated search'
+    [System.IO.File]::WriteAllBytes($bookPath, $bookBytes)
+    Search-BookChurn $bookChurnSession 'book-churn restored search'
+    Remove-Item -LiteralPath $bookPath -Force
+    Search-BookChurn $bookChurnSession 'book-churn removed search'
+    Send-UciCommand $bookChurnSession 'quit'
+    $bookChurnLines = Complete-UciSession $bookChurnSession $false
+    $bookChurnBestmoves = @($bookChurnLines | Where-Object { $_ -match '^bestmove ' })
+    if ($bookChurnBestmoves.Count -ne 4) {
+        throw "book hot-swap must complete four searches, got $($bookChurnBestmoves.Count) bestmoves"
+    }
+    $bookMoveLines = @($bookChurnLines | Where-Object { $_ -match '^info string book move e2e4 ' })
+    if ($bookMoveLines.Count -lt 2) {
+        throw "a valid auto-detected book must be used before and after a transient corruption, got $($bookMoveLines.Count) book moves"
+    }
+    if (@($bookChurnLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+        throw 'auto-detected book announcement must appear exactly once'
+    }
 }
 finally {
     Stop-AllUciSessions
