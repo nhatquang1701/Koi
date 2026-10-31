@@ -26,6 +26,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R7 Syzygy auto-discovery | fixed | `discover_syzygy_directory` + lazy load; real 5-man verification |
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
+| R24 long legal history | fixed | 64k-ply reversible history parses/searches; 80k plies fail closed |
 | R23 ponder/clock contracts | fixed | stop-during-ponder one bestmove; idle ponderhit ignored (spec corrected); extreme clock limits safe |
 | R22 SIGPIPE/GUI disconnect | fixed | POSIX SIGPIPE ignored; broken-pipe test on Windows and macOS |
 | R21 extreme FEN/go limits | fixed | huge/negative clock fields and absurd go limits rejected/ignored safely |
