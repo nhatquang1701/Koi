@@ -1,0 +1,21 @@
+{
+  "engine": "/Users/quangnn/koi-head/build/release/koi-engine",
+  "games": 1000,
+  "workers": 6,
+  "movetime_ms": 5,
+  "max_plies": 300,
+  "openings_file": "/Users/quangnn/koi-head/tests/data/openings/openings-curated-32.txt",
+  "total_seconds": 90.23,
+  "games_with_errors": 0,
+  "crashes": 0,
+  "timeouts": 0,
+  "illegal_moves": 0,
+  "protocol_violations": 0,
+  "opponent_games_with_errors": 0,
+  "opponent_error_samples": [],
+  "outcomes": {
+    "checkmate": 997,
+    "fivefold": 3
+  },
+  "results_jsonl": "/Users/quangnn/koi-ccrl-20261101/1000-games.jsonl"
+}

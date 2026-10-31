@@ -1,0 +1,8 @@
+{"game": 0, "opening": "italian-game", "plies": 24, "outcome": "fivefold", "errors": [], "exit_codes": [0, 0], "seconds": 0.406, "seed": 20261101}
+{"game": 1, "opening": "ruy-lopez", "plies": 41, "outcome": "fivefold", "errors": [], "exit_codes": [0, 0], "seconds": 0.551, "seed": 20261102}
+{"game": 2, "opening": "scotch-game", "plies": 40, "outcome": "fivefold", "errors": [], "exit_codes": [0, 0], "seconds": 0.49, "seed": 20261103}
+{"game": 3, "opening": "four-knights", "plies": 37, "outcome": "fivefold", "errors": [], "exit_codes": [0, 0], "seconds": 0.514, "seed": 20261104}
+{"game": 5, "opening": "vienna-game", "plies": 22, "outcome": "fivefold", "errors": [], "exit_codes": [0, 0], "seconds": 0.365, "seed": 20261106}
+{"game": 4, "opening": "kings-gambit", "plies": 38, "outcome": "fivefold", "errors": [], "exit_codes": [0, 0], "seconds": 0.542, "seed": 20261105}
+{"game": 7, "opening": "center-game", "plies": 23, "outcome": "fivefold", "errors": [], "exit_codes": [0, 0], "seconds": 0.449, "seed": 20261108}
+{"game": 6, "opening": "ponziani", "plies": 31, "outcome": "fivefold", "errors": [], "exit_codes": [0, 0], "seconds": 0.508, "seed": 20261107}

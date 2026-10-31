@@ -1,0 +1,40 @@
+progress 50/1000 games (3.68 games/s, failures=0)
+progress 100/1000 games (3.76 games/s, failures=0)
+progress 150/1000 games (3.79 games/s, failures=0)
+progress 200/1000 games (3.53 games/s, failures=0)
+progress 250/1000 games (3.42 games/s, failures=0)
+progress 300/1000 games (3.34 games/s, failures=0)
+progress 350/1000 games (3.25 games/s, failures=0)
+progress 400/1000 games (3.00 games/s, failures=0)
+progress 450/1000 games (2.95 games/s, failures=0)
+progress 500/1000 games (2.99 games/s, failures=0)
+progress 550/1000 games (3.07 games/s, failures=0)
+progress 600/1000 games (3.14 games/s, failures=0)
+progress 650/1000 games (3.20 games/s, failures=0)
+progress 700/1000 games (3.24 games/s, failures=0)
+progress 750/1000 games (3.27 games/s, failures=0)
+progress 800/1000 games (3.31 games/s, failures=0)
+progress 850/1000 games (3.34 games/s, failures=0)
+progress 900/1000 games (3.37 games/s, failures=0)
+progress 950/1000 games (3.40 games/s, failures=0)
+progress 1000/1000 games (3.43 games/s, failures=0)
+{
+  "engine": "C:\\Users\\ntATh\\AI test\\Koi engine\\build\\full-release-gpu\\koi-engine.exe",
+  "games": 1000,
+  "workers": 6,
+  "movetime_ms": 5,
+  "max_plies": 300,
+  "openings_file": "C:\\Users\\ntATh\\AI test\\Koi engine\\tests\\data\\openings\\openings-curated-32.txt",
+  "total_seconds": 291.94,
+  "games_with_errors": 0,
+  "crashes": 0,
+  "timeouts": 0,
+  "illegal_moves": 0,
+  "protocol_violations": 0,
+  "opponent_games_with_errors": 0,
+  "opponent_error_samples": [],
+  "outcomes": {
+    "checkmate": 1000
+  },
+  "results_jsonl": "C:\\Users\\ntATh\\AI test\\Koi engine\\artifacts\\plans\\ccrl-eligibility-2026-11-01\\1000-games.jsonl"
+}

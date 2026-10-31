@@ -1,0 +1,8 @@
+{"game": 0, "opening": "italian-game", "koi_white": true, "plies": 20, "outcome": "checkmate", "result": "0-1", "errors": [], "opponent_errors": [], "seconds": 1.13}
+{"game": 1, "opening": "ruy-lopez", "koi_white": false, "plies": 47, "outcome": "checkmate", "result": "1-0", "errors": [], "opponent_errors": [], "seconds": 1.357}
+{"game": 2, "opening": "scotch-game", "koi_white": true, "plies": 46, "outcome": "checkmate", "result": "0-1", "errors": [], "opponent_errors": [], "seconds": 1.171}
+{"game": 3, "opening": "four-knights", "koi_white": false, "plies": 31, "outcome": "checkmate", "result": "1-0", "errors": [], "opponent_errors": [], "seconds": 1.153}
+{"game": 4, "opening": "kings-gambit", "koi_white": true, "plies": 32, "outcome": "checkmate", "result": "0-1", "errors": [], "opponent_errors": [], "seconds": 1.121}
+{"game": 5, "opening": "vienna-game", "koi_white": false, "plies": 34, "outcome": "checkmate", "result": "1-0", "errors": [], "opponent_errors": [], "seconds": 1.166}
+{"game": 6, "opening": "ponziani", "koi_white": true, "plies": 35, "outcome": "checkmate", "result": "0-1", "errors": [], "opponent_errors": [], "seconds": 1.161}
+{"game": 7, "opening": "center-game", "koi_white": false, "plies": 15, "outcome": "checkmate", "result": "1-0", "errors": [], "opponent_errors": [], "seconds": 0.989}

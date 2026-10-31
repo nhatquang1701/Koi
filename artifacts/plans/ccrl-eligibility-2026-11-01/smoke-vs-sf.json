@@ -1,0 +1,20 @@
+{
+  "engine": "C:\\Users\\ntATh\\AI test\\Koi engine\\build\\full-release-gpu\\koi-engine.exe",
+  "games": 8,
+  "workers": 2,
+  "movetime_ms": 5,
+  "max_plies": 300,
+  "openings_file": "C:\\Users\\ntATh\\AI test\\Koi engine\\tests\\data\\openings\\openings-curated-32.txt",
+  "total_seconds": 5.49,
+  "games_with_errors": 0,
+  "crashes": 0,
+  "timeouts": 0,
+  "illegal_moves": 0,
+  "protocol_violations": 0,
+  "opponent_games_with_errors": 0,
+  "opponent_error_samples": [],
+  "outcomes": {
+    "checkmate": 8
+  },
+  "results_jsonl": "artifacts\\plans\\ccrl-eligibility-2026-11-01\\smoke-vs-sf.jsonl"
+}

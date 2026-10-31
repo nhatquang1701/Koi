@@ -1,0 +1,39 @@
+=== CCRL run start Sun Nov  1 06:47:57 +07 2026 ===
+BOT_PAUSED=yes Sun Nov  1 06:47:58 +07 2026
+=== build Sun Nov  1 06:47:58 +07 2026 ===
+563cdde6ccbdae2443461d6276e3c27c39678fe7ea1cefebb58dee0126326ea6  build/release/koi-engine
+3e75e6d84d7b4ac0b0d46574aeb714032ea4ffff1a639c9d541e9663545829da  /Users/quangnn/koi-bot/engines/koi.nnue
+=== harness Sun Nov  1 06:48:01 +07 2026 ===
+HARNESS_EXIT=0
+progress 600/1000 games (10.97 games/s, failures=0)
+progress 650/1000 games (10.98 games/s, failures=0)
+progress 700/1000 games (10.98 games/s, failures=0)
+progress 750/1000 games (11.00 games/s, failures=0)
+progress 800/1000 games (11.04 games/s, failures=0)
+progress 850/1000 games (11.08 games/s, failures=0)
+progress 900/1000 games (11.06 games/s, failures=0)
+progress 950/1000 games (11.08 games/s, failures=0)
+progress 1000/1000 games (11.08 games/s, failures=0)
+{
+  "engine": "/Users/quangnn/koi-head/build/release/koi-engine",
+  "games": 1000,
+  "workers": 6,
+  "movetime_ms": 5,
+  "max_plies": 300,
+  "openings_file": "/Users/quangnn/koi-head/tests/data/openings/openings-curated-32.txt",
+  "total_seconds": 90.23,
+  "games_with_errors": 0,
+  "crashes": 0,
+  "timeouts": 0,
+  "illegal_moves": 0,
+  "protocol_violations": 0,
+  "opponent_games_with_errors": 0,
+  "opponent_error_samples": [],
+  "outcomes": {
+    "checkmate": 997,
+    "fivefold": 3
+  },
+  "results_jsonl": "/Users/quangnn/koi-ccrl-20261101/1000-games.jsonl"
+}
+=== CCRL run done Sun Nov  1 06:49:31 +07 2026 ===
+BOT_RESTORED=yes Sun Nov  1 06:49:48 +07 2026
