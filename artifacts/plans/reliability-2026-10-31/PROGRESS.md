@@ -26,6 +26,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R7 Syzygy auto-discovery | fixed | `discover_syzygy_directory` + lazy load; real 5-man verification |
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
+| R23 ponder/clock contracts | fixed | stop-during-ponder one bestmove; idle ponderhit ignored (spec corrected); extreme clock limits safe |
 | R22 SIGPIPE/GUI disconnect | fixed | POSIX SIGPIPE ignored; broken-pipe test on Windows and macOS |
 | R21 extreme FEN/go limits | fixed | huge/negative clock fields and absurd go limits rejected/ignored safely |
 | R20 analysis MultiPV scores | fixed | scored multipv 1-3 lines at one depth asserted |
@@ -73,6 +74,9 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
   branch; sitemap now has 22 `/Koi/` URLs, release notes page returns 200.
 
 ## Pushed and verified (2026-10-31 afternoon)
+
+- CI at `6089144` is fully green (Windows/Linux incl. TSan/macOS/docs), covering R16-R22 and the SIGPIPE hardening.
+
 
 - Branch `koi-engine` pushed from `bd8f3ec` to `b7ea994` (15 local commits: reliability
   fixes, fuzz+soak corpus, Syzygy auto-discovery + magic validation, custom CC0
