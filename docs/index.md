@@ -9,7 +9,7 @@ default and optional NNUE, GPU NNUE, Polyglot book, and Syzygy support.
 
 ## Start here
 
-- [Download releases](https://github.com/nhatquang1701/Koi-engine/releases)
+- [Download releases](https://github.com/nhatquang1701/Koi/releases)
   for Windows and Linux x86-64 archives and their checksums.
 - [Read the user guide](USER_GUIDE.md) for installation, builds, UCI setup,
   GUI workflows, and optional assets.

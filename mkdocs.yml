@@ -1,8 +1,8 @@
 site_name: Koi Engine
 site_description: Documentation for the Koi UCI chess engine
-site_url: https://nhatquang1701.github.io/Koi-engine/
-repo_url: https://github.com/nhatquang1701/Koi-engine
-repo_name: nhatquang1701/Koi-engine
+site_url: https://nhatquang1701.github.io/Koi/
+repo_url: https://github.com/nhatquang1701/Koi
+repo_name: nhatquang1701/Koi
 docs_dir: build/pages-src
 site_dir: build/pages-site
 

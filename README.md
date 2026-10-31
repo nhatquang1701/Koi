@@ -2,7 +2,7 @@
 
 <p align="center">
   A free, open-source UCI chess engine for standard chess.<br>
-  <a href="https://nhatquang1701.github.io/Koi-engine/"><strong>Explore the documentation »</strong></a>
+  <a href="https://nhatquang1701.github.io/Koi/"><strong>Explore the documentation »</strong></a>
 </p>
 
 <p align="center">
@@ -13,9 +13,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nhatquang1701/Koi-engine/issues/new">Report an issue</a>
+  <a href="https://github.com/nhatquang1701/Koi/issues/new">Report an issue</a>
   ·
-  <a href="https://github.com/nhatquang1701/Koi-engine/releases">Releases</a>
+  <a href="https://github.com/nhatquang1701/Koi/releases">Releases</a>
 </p>
 
 ## About Koi
@@ -47,7 +47,7 @@ documentation use **Koi**. Executable and archive file names keep the
 
 Get the Windows, Linux x86-64, and macOS arm64 packages and their checksum
 sidecars from
-[GitHub Releases](https://github.com/nhatquang1701/Koi-engine/releases).
+[GitHub Releases](https://github.com/nhatquang1701/Koi/releases).
 
 - Windows: `koi-engine-v1.1.5.zip`
 - Linux x86-64: `koi-engine-v1.1.5-linux-x86_64.tar.gz`
@@ -79,7 +79,7 @@ deprecated fallback until its removal.
 
 ## Explore
 
-- [Documentation site](https://nhatquang1701.github.io/Koi-engine/) — installation,
+- [Documentation site](https://nhatquang1701.github.io/Koi/) — installation,
   UCI options, GUI setup, development guidance, and project archive.
 - [User guide](docs/USER_GUIDE.md) — build instructions, protocol behavior,
   optional assets, and tools.
