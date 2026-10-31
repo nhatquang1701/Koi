@@ -141,7 +141,8 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   search, terminal/mate/stalemate/forced-repetition roots, analysis-mode
   scoring, searchmoves filtering (legal subset, impossible filter -> 0000),
   partial-line EOF, stop storms during search, ucinewgame during ponder,
-  seeded random sequences; labelled `reliability`),
+  empty input, commands before the `uci` handshake, a 20k-token
+  `searchmoves` list, seeded random sequences; labelled `reliability`),
   `koi_protocol_soak_process` (60 rounds of Threads/Hash reconfiguration and
   searches with an RSS-growth bound and exactly-one-legal-bestmove assertions;
   `heavy` + `reliability`),

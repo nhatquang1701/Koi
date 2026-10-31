@@ -557,5 +557,36 @@ if ($ponderBestmoves.Count -ne 1) {
     throw "ucinewgame during ponder must leave exactly one bestmove, got $($ponderBestmoves.Count)"
 }
 
+# 15. Missing/minimal handshake and a huge searchmoves token list.  A GUI may
+# send commands before `uci` (or close immediately); the controller must stay
+# quiet, crash-free and still honour the later completion contract.
+$emptyInput = Invoke-UciTranscript "" 'empty-input'
+Assert-CleanDiagnostics $emptyInput
+if ((Count-Lines $emptyInput '^bestmove ') -ne 0) {
+    throw 'empty input must not emit a bestmove'
+}
+
+$noHandshake = Invoke-UciTranscript "isready`nposition startpos`ngo depth 2`nstop`nquit`n" 'no-handshake'
+Assert-ProtocolGrammar $noHandshake
+Assert-CleanDiagnostics $noHandshake
+Assert-OneLegalBestmove $noHandshake
+if ((Count-Lines $noHandshake '^uciok$') -ne 0) {
+    throw 'a transcript without uci must not emit a handshake'
+}
+
+$preHandshake = Invoke-UciTranscript "setoption name Hash value 32`nisready`nposition startpos`ngo depth 1`nstop`nquit`n" 'setoption-before-handshake'
+Assert-ProtocolGrammar $preHandshake
+Assert-CleanDiagnostics $preHandshake
+Assert-OneLegalBestmove $preHandshake
+
+$manyMoves = ('e2e4 ' * 20000).Trim()
+$hugeSearchmoves = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 1 searchmoves $manyMoves`nstop`nquit`n" 'huge-searchmoves'
+Assert-ProtocolGrammar $hugeSearchmoves
+Assert-CleanDiagnostics $hugeSearchmoves
+$hugeBest = @($hugeSearchmoves.Lines | Where-Object { $_ -match '^bestmove ' })
+if ($hugeBest.Count -ne 1 -or $hugeBest[0] -notmatch '^bestmove e2e4( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$') {
+    throw "a huge searchmoves list must still answer e2e4, got $($hugeBest -join ' | ')"
+}
+
 Write-Output 'PASS protocol fuzz corpus'
 
