@@ -139,9 +139,13 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
 - `koi_engine_process`, `koi_protocol_fuzz_process` (deterministic adversarial
   corpus: malformed commands, oversized lines, EOF/lifecycle, `isready` during
   search, seeded random sequences; labelled `reliability`),
-  `koi_protocol_soak_process` (40 rounds of Threads/Hash reconfiguration and
+  `koi_protocol_soak_process` (60 rounds of Threads/Hash reconfiguration and
   searches with an RSS-growth bound and exactly-one-legal-bestmove assertions;
   `heavy` + `reliability`),
+  `koi_protocol_option_churn_process` (Hash/Threads/MultiPV/EvalFile/BookFile/
+  SyzygyPath changes during an active search: the old generation is suppressed
+  with no late bestmove, a malformed EvalFile is rejected once, and each
+  replacement search answers legally),
   `koi_engine_perft_responsiveness`,
   `koi_engine_variant_process` (three engine binaries,
   automatic selection, and the `KOI_CPU_VARIANT` overrides),
@@ -189,8 +193,9 @@ Every test carries CTest labels; combine them with `-L`/`-LE`, for example
 - `process` — tests that launch engine or tool processes; sub-labels `uci`,
   `matches`, `tools`, `runtime`, `packaging`.
 - `reliability` — adversarial protocol/robustness regression tests
-  (`koi_protocol_fuzz_process` and the `koi_protocol_soak_process` resource
-  churn test); run with `ctest -L reliability`.
+  (`koi_protocol_fuzz_process`, the `koi_protocol_soak_process` resource churn
+  test, and `koi_protocol_option_churn_process`); run with
+  `ctest -L reliability`.
 - `python` — Python unittest suites (`elo_oracle_python` is also `measurement`).
 - `heavy` — long-running tests. `koi_search_tests_*of4`, `koi_strength_tests`,
   `koi_engine_time_safety_process`, `koi_benchmark_process`, and
