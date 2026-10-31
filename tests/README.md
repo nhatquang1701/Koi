@@ -139,7 +139,8 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
 - `koi_engine_process`, `koi_protocol_fuzz_process` (deterministic adversarial
   corpus: malformed commands, oversized lines, EOF/lifecycle, `isready` during
   search, terminal/mate/stalemate/forced-repetition roots, analysis-mode
-  scoring, seeded random sequences; labelled `reliability`),
+  scoring, searchmoves filtering (legal subset, impossible filter -> 0000),
+  seeded random sequences; labelled `reliability`),
   `koi_protocol_soak_process` (60 rounds of Threads/Hash reconfiguration and
   searches with an RSS-growth bound and exactly-one-legal-bestmove assertions;
   `heavy` + `reliability`),

@@ -476,5 +476,37 @@ if (@($analysisLines | Where-Object { $_ -match 'book move|book detected' }).Cou
     throw 'analysis mode must bypass the opening book'
 }
 
+# 11. searchmoves filtering: the completion gate must return one of the
+# requested legal moves, and an empty intersection must answer 0000 with one
+# explanatory info string (never a crash or an unrequested move).
+$searchTwo = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 3 searchmoves e2e4 d2d4`nstop`nquit`n" 'searchmoves-two'
+Assert-ProtocolGrammar $searchTwo
+Assert-CleanDiagnostics $searchTwo
+$twoBest = @($searchTwo.Lines | Where-Object { $_ -match '^bestmove ' })
+if ($twoBest.Count -ne 1 -or $twoBest[0] -notmatch '^bestmove (e2e4|d2d4)( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$') {
+    throw "searchmoves-two must answer with one requested legal move, got $($twoBest -join ' | ')"
+}
+
+$searchIllegal = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 2 searchmoves e2e5`nstop`nquit`n" 'searchmoves-illegal'
+Assert-ProtocolGrammar $searchIllegal
+Assert-CleanDiagnostics $searchIllegal
+Assert-OnlyBestmove $searchIllegal 'bestmove 0000'
+if ((Count-Lines $searchIllegal '^info string no common legal move') -ne 1) {
+    throw 'an impossible searchmoves filter must explain itself exactly once'
+}
+
+$searchDuplicate = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 2 searchmoves e2e4 e2e4`nstop`nquit`n" 'searchmoves-duplicate'
+Assert-ProtocolGrammar $searchDuplicate
+Assert-CleanDiagnostics $searchDuplicate
+Assert-OneLegalBestmove $searchDuplicate
+
+$searchEmpty = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 2 searchmoves`nstop`nquit`n" 'searchmoves-empty'
+Assert-ProtocolGrammar $searchEmpty
+Assert-CleanDiagnostics $searchEmpty
+Assert-OnlyBestmove $searchEmpty 'bestmove 0000'
+if ((Count-Lines $searchEmpty '^info string no common legal move') -ne 1) {
+    throw 'an empty searchmoves filter must explain itself exactly once'
+}
+
 Write-Output 'PASS protocol fuzz corpus'
 
