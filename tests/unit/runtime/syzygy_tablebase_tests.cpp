@@ -85,6 +85,25 @@ void test_platform_path_list_is_forwarded_to_fathom() {
     require(tablebase.large_table_limit() > 0, "the list must register the readable component's tables");
 }
 
+void test_empty_path_list_components_are_dropped() {
+    // Regression: a path list made only of separators used to reach Fathom's
+    // tb_init splitter, which read past the end of the path string when no
+    // component followed the separators (ASan heap-buffer-overflow).  It must
+    // be inert instead.
+#if defined(_WIN32)
+    const std::string all_empty = ";;;";
+    const std::string trailing = "C:\\tables;";
+#else
+    const std::string all_empty = ":::";
+    const std::string trailing = "/tmp/tables:";
+#endif
+    const koi::SyzygyTablebase empty_list(all_empty, 7, 1, true);
+    require(!empty_list.enabled(), "an all-empty SyzygyPath list must disable probing");
+    const koi::SyzygyTablebase trailing_list(trailing, 7, 1, true);
+    require(!trailing_list.enabled(),
+            "a missing trailing path-list component must stay inert");
+}
+
 void test_policy_setters_do_not_reload_fathom() {
     const koi::test::TempDirectory root;
     const std::filesystem::path valid = root.file("tables");
@@ -441,6 +460,7 @@ int main(int argc, char** argv) {
         {"snapshot native rule state after pinned double push",
          test_snapshot_uses_native_rule_state_after_a_pinned_double_push},
         {"platform path list reaches Fathom", test_platform_path_list_is_forwarded_to_fathom},
+        {"all-empty path-list components are inert", test_empty_path_list_components_are_dropped},
         {"policy setters do not reload Fathom", test_policy_setters_do_not_reload_fathom},
         {"absent and malformed paths disable probing safely",
          test_absent_and_malformed_paths_disable_probing_safely},

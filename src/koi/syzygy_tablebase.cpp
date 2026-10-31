@@ -35,10 +35,57 @@ std::filesystem::path normalized_path(const std::filesystem::path& path) {
     return error ? path.lexically_normal() : normalized;
 }
 
-bool acquire_fathom(const std::filesystem::path& path) {
+#if defined(_WIN32)
+constexpr char kSyzygyPathSeparator = ';';
+#else
+constexpr char kSyzygyPathSeparator = ':';
+#endif
+
+// Fathom's tb_init has an out-of-bounds read in its path-list splitter when the
+// list ends with a separator (or contains only separators): it allocates
+// strlen+1 bytes, overwrites every separator with NUL, then scans for a
+// non-empty component past the terminator.  A user can send `SyzygyPath ;;;`
+// or a plain trailing separator, so the list is normalised here first: empty
+// components are dropped and a list with no components becomes empty (which
+// Fathom treats as "no tables").  This is fail-closed and does not change the
+// meaning of any valid component.
+std::string sanitized_path_list(std::string_view text) {
+    std::string result;
+    std::size_t begin = 0;
+    while (begin <= text.size()) {
+        const std::size_t end = text.find(kSyzygyPathSeparator, begin);
+        const std::size_t length =
+            (end == std::string_view::npos ? text.size() : end) - begin;
+        if (length != 0) {
+            if (!result.empty()) {
+                result.push_back(kSyzygyPathSeparator);
+            }
+            result.append(text.substr(begin, length));
+        }
+        if (end == std::string_view::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+    return result;
+}
+
+bool is_path_list(std::string_view text) {
+    return text.find(kSyzygyPathSeparator) != std::string_view::npos;
+}
+
+bool acquire_fathom(const std::string& raw_path) {
+    const std::string path_text = sanitized_path_list(raw_path);
+    if (path_text.empty()) {
+        return false;
+    }
     std::lock_guard lock(fathom_mutex());
     FathomOwnership& ownership = fathom_ownership();
-    const std::filesystem::path normalized = normalized_path(path);
+    // A path list is not a directory: canonicalising the whole string would
+    // mangle it before Fathom's own splitter sees it.
+    const bool path_list = is_path_list(path_text);
+    const std::filesystem::path normalized =
+        path_list ? std::filesystem::path(path_text) : normalized_path(path_text);
     if (ownership.users != 0) {
         if (ownership.path != normalized) {
             return false;
@@ -273,7 +320,7 @@ SyzygyTablebase::SyzygyTablebase(std::filesystem::path path, const std::uint8_t 
     if (impl_->path.empty() || impl_->probe_limit == 0 || path_error || !readable_directory) {
         return;
     }
-    impl_->enabled = acquire_fathom(impl_->path);
+    impl_->enabled = acquire_fathom(impl_->path.string());
 }
 
 SyzygyTablebase::~SyzygyTablebase() {

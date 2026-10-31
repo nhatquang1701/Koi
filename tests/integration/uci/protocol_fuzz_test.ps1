@@ -173,6 +173,7 @@ setoption name BookFile value "C:\Program Files\koi book.bin"
 setoption name BookFile value C:\Users\koi-ünicode\book.bin
 setoption name DebugFile value C:\nonexistent-dir\koi.log
 setoption name SyzygyPath value ;;;
+setoption name SyzygyPath value :::
 setoption name NoSuchOption value 1
 setoption
 setoption name
