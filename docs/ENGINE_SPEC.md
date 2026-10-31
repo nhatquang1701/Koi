@@ -829,6 +829,14 @@ Behaviour details:
   `OwnBook` has never been set explicitly. On first use the engine emits
   `info string book detected: <path> (OwnBook not set, using it)`. Setting
   `OwnBook` explicitly (true or false) disables auto-detection.
+- Bundled book provenance: release archives carry a custom CC0 1.0 Polyglot book
+  (`book/koi.bin`) built by `tools/book/build_database_book.py` from the Lichess
+  standard-game database (2013-01..2014-01): 4,084,023 games scanned, 35,606
+  qualifying strong games (both players >= 1800, average >= 2000, base time
+  >= 180 s), 284,030 positions, 47,020 entries, 752,320 bytes, SHA-256
+  `2ee7643d193a285978c0c56b97f7d9d280aef9fd2d12c984a472b56df2d0a923`. The data
+  source is CC0; copying it beside the binary enables the automatic detection
+  above.
 - `BookFile` resolves relative paths beside the executable. Missing, unreadable,
   malformed, allocation-failed, or larger than 16 MiB books are treated as
   unusable; search proceeds normally. A book must be at least 16 bytes to be

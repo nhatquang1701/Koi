@@ -1008,10 +1008,11 @@ Reduce `Hash` or `Threads` if other applications need the memory or CPU.
 
 ### Lucas Chess workflows
 
-Koi disables its Polyglot opening book by default. To use one, place a licensed
-`book.bin` beside `koi-engine.exe`; a relative `BookFile` is resolved from that
-executable directory, not Lucas Chess's working directory. Enable the book
-with `OwnBook=true` using these UCI options:
+Koi's `OwnBook` option defaults to false, but a Polyglot book placed beside the
+executable is auto-detected and used unless `OwnBook` is set explicitly; release
+packages bundle one at `book/koi.bin` (copy it beside the binary as `book.bin`).
+A relative `BookFile` resolves from the engine's executable directory, not Lucas
+Chess's working directory. To force a specific book, set `OwnBook=true` with:
 
 ```text
 setoption name OwnBook value true
@@ -1110,10 +1111,16 @@ For the recommended En Croissant smoke scenario, use `Hash=512` and `Threads=4`,
 then keep the book and Syzygy paths explicitly configured if those
 assets are available.
 
-The release packages carry a CC0 1.0 Polyglot book as `book/koi.bin`, with a
-`book/COPYING.txt` notice and a SHA-256 sidecar; copy it beside the binary as
-`book.bin` to enable automatic detection. User-supplied books remain supported
-through `BookFile`. Never redistribute a book whose license does not permit it.
+The release packages carry a custom built CC0 1.0 Polyglot book as
+`book/koi.bin`, with a `book/COPYING.txt` notice and a SHA-256 sidecar; copy it
+beside the binary as `book.bin` to enable automatic detection. It was built by
+`tools/book/build_database_book.py` from 4,084,023 Lichess standard games
+(2013-01..2014-01), keeping the 35,606 games where both players were rated at
+least 1800 and averaged at least 2000 in rapid-or-longer time controls: 284,030
+positions / 47,020 entries / 752,320 bytes, SHA-256
+`2ee7643d193a285978c0c56b97f7d9d280aef9fd2d12c984a472b56df2d0a923`.
+User-supplied books remain supported through `BookFile`. Never redistribute a
+book whose license does not permit it.
 Retain these repository licenses with the package:
 
 - `third_party/chess-library/LICENSE` for the vendored chess-library code.

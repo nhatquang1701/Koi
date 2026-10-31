@@ -67,14 +67,15 @@ See the [user guide](docs/USER_GUIDE.md#build-prerequisites) for the commands.
    no package matches your platform).
 2. Add `koi-engine.exe` (Windows) or `koi-engine` (Linux and macOS) as a UCI
    engine in En Croissant or another compatible chess GUI.
-3. Start with `Hash=512`, `Threads=1`, and `Speed=100`.
+3. Start with `Hash=512` and `Threads=1`.
 
 Koi needs no configuration file or extra assets. `Threads=1` gives deterministic
 search; multiple threads use Lazy SMP and can produce different valid
-principal variations. Opening books are disabled by default (`OwnBook=false`).
-NNUE is the primary evaluator in release packages; if a network is missing or
-rejected, the classical evaluator keeps the engine usable as a deprecated fallback
-until its removal.
+principal variations. `OwnBook` defaults to false, but a Polyglot book beside
+the executable is auto-detected and used (release packages bundle a custom CC0
+book). NNUE is the primary evaluator in release packages; if a network is
+missing or rejected, the classical evaluator keeps the engine usable as a
+deprecated fallback until its removal.
 
 ## Explore
 
