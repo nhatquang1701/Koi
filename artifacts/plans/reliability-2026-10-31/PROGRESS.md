@@ -21,11 +21,12 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R2 deterministic contract harness | fixed | `koi_protocol_fuzz_process` (~8 s, `reliability` label, every CI leg) |
 | R3 extreme option contract | verified-pinned | existing unit tests (hash cap/policy, threads validation, MultiPV) |
 | R4 lifecycle exactly-once races | fixed | lifecycle storms in the fuzz corpus |
-| R5 sanitizer baseline | **partial** | Windows ASan label: 20/24 suites clean, zero ASan reports; 4 suites blocked by local `%TEMP%` sandbox only; Linux TSan still pending |
+| R5 sanitizer baseline | **verified** | Windows ASan: zero sanitizer reports (4 suites blocked only by local `%TEMP%`); Linux TSan CI job green at `b7ea994` |
 | R6 fail-closed asset matrix | fixed | fuzz corpus asset matrix + Syzygy magic validation fail-closed (`c20c3a7`) |
 | R7 Syzygy auto-discovery | fixed | `discover_syzygy_directory` + lazy load; real 5-man verification |
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
+| R10 resource-churn soak | fixed | `koi_protocol_soak_process`: 60 rounds of Threads/Hash churn, searches, RSS bound, one legal bestmove per search, clean shutdown; heavy + reliability labels |
 
 ## Asset workstream (user requests, done this session)
 
@@ -59,3 +60,15 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 - GitHub Pages fixed after the repository rename: `site_url`/README links moved
   to https://nhatquang1701.github.io/Koi/ and redeployed from a docs-only
   branch; sitemap now has 22 `/Koi/` URLs, release notes page returns 200.
+
+## Pushed and verified (2026-10-31 afternoon)
+
+- Branch `koi-engine` pushed from `bd8f3ec` to `b7ea994` (15 local commits: reliability
+  fixes, fuzz+soak corpus, Syzygy auto-discovery + magic validation, custom CC0
+  book, engine-only release archives, Pages URL fix, documentation audit).
+- Full CI at `b7ea994` **all green**: Windows CTest (41177919078), Linux CTest
+  (41177919034, including the `linux-tsan` job), macOS CTest (41177918926),
+  Deploy documentation (41177918920), Dependency Graph.
+- GitHub Pages now serves the corrected documentation at
+  https://nhatquang1701.github.io/Koi/ (ENGINE_SPEC page shows the 2026-10-29
+  full-budget movetime rule and 76-test count; release notes page 200).
