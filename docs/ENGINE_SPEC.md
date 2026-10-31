@@ -864,12 +864,18 @@ Behaviour details:
 - **Automatic discovery.** When `SyzygyPath` has never been set, the engine looks
   beside its executable for a table directory named `syzygy`, `syzygy345`,
   `tablebases`, or `3-4-5` (in that order) containing at least one `.rtbw`/`.rtbz`
-  file. The tables are loaded lazily at the first `isready`/`go` (never while a
+  file. Every such file must start with the standard Syzygy magic header
+  (`.rtbw` `71 E8 23 5D`, `.rtbz` `D7 66 0C A5`); a directory with any corrupt
+  table file is rejected instead of being handed to Fathom. The tables are loaded lazily at the first `isready`/`go` (never while a
   search is running, because Fathom is process-global), reported with
   `info string syzygy detected: ... (SyzygyPath not set, using it)`, and then used
   exactly like an explicit path. Setting `SyzygyPath` explicitly (including to an
-  empty value) disables automatic discovery for that session. Installed tables
-  are never distributed with Koi and never packaged into release archives.
+  empty value) disables automatic discovery for that session. A single explicit
+  directory is validated the same way: corrupt table files disable probing and
+  emit `info string Syzygy: corrupt tables at <path> (probing disabled)` rather
+  than letting Fathom warn on stderr at probe time. Syzygy path lists are passed
+  to Fathom unchanged. Installed tables are never distributed with Koi and never
+  packaged into release archives.
 - `SyzygyProbeLimit` 0..7 (default 7) and `SyzygyProbeDepth` 1..100 (default 1)
   gate table availability and the minimum search depth for the root probe.
 - `Syzygy50MoveRule` honors the halfmove clock: WDL probes require a zero
@@ -980,9 +986,11 @@ measurement commands, never CTest thresholds.
 
 `tools/build/package_release.ps1`:
 
-1. Requires a Release build directory containing the platform-required
-   executables (`koi-engine`, `koi-bench`, `koi-replay`, `koi-perft`; plus
-   AVX2/AVX-512 siblings on Windows/Linux).
+1. Requires a Release build directory containing the platform-required engine
+   executables (`koi-engine`; plus AVX2/AVX-512 siblings on Windows/Linux).
+   Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`)
+   and the test suite are intentionally **not** copied into release archives;
+   developers build them from source.
 2. Copies README, LICENSE, `licenses/chess-library-MIT.txt`,
    `licenses/fathom-MIT.txt`, and writes `INSTALL.txt`.
 3. Optionally includes `nnue/koi.nnue` + `.sha256` + metadata and

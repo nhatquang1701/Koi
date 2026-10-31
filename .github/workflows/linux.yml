@@ -512,9 +512,13 @@ jobs:
               assert len(data) == item["size_bytes"], item["path"]
               assert hashlib.sha256(data).hexdigest() == item["sha256"], item["path"]
           PY
-          for executable in koi-engine koi-engine-avx2 koi-engine-avx512 koi-bench koi-replay koi-perft; do
+          for executable in koi-engine koi-engine-avx2 koi-engine-avx512; do
             test -x "$extracted/$executable"
           done
+          # Release archives no longer ship developer tools; legality checks use
+          # the build-tree replay binary.
+          replay="$PWD/build/ci-release/koi-replay"
+          test -x "$replay"
           smoke() {
             label="$1"
             shift
@@ -526,7 +530,7 @@ jobs:
             test "$bestmove_count" -eq 1
             bestmove_line=$(grep -E "^bestmove [a-h][1-8][a-h][1-8][nbrq]?$" "/tmp/koi-$label.txt")
             bestmove=${bestmove_line#bestmove }
-            timeout 5 "$extracted/koi-replay" startpos moves "$bestmove" > "/tmp/koi-$label-replay.txt" 2> "/tmp/koi-$label-replay.err"
+            timeout 5 "$replay" startpos moves "$bestmove" > "/tmp/koi-$label-replay.txt" 2> "/tmp/koi-$label-replay.err"
             test ! -s "/tmp/koi-$label-replay.err"
             grep -q "legal 1" "/tmp/koi-$label-replay.txt"
           }

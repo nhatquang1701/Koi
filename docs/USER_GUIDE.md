@@ -1121,6 +1121,10 @@ positions / 47,020 entries / 752,320 bytes, SHA-256
 `2ee7643d193a285978c0c56b97f7d9d280aef9fd2d12c984a472b56df2d0a923`.
 User-supplied books remain supported through `BookFile`. Never redistribute a
 book whose license does not permit it.
+
+Release archives contain only the engine binaries and their runtime assets.
+Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`) and
+the test suite are not included; build them from source when you need them.
 Retain these repository licenses with the package:
 
 - `third_party/chess-library/LICENSE` for the vendored chess-library code.

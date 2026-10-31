@@ -115,7 +115,6 @@ jobs:
           tar -xzf "$archive" -C artifacts/release-candidate/${{ matrix.leg }}/engine
           extracted="$PWD/artifacts/release-candidate/${{ matrix.leg }}/engine"
           test -x "$extracted/koi-engine"
-          test -x "$extracted/koi-replay"
       - name: Record the game cell contract
         env:
           GAMES: ${{ matrix.games }}
@@ -190,7 +189,6 @@ jobs:
             -KoiPath "$engine/koi-engine" \
             -OpponentPath "$stockfish" \
             -CutechessPath "$cutechess" \
-            -ReplayPath "$engine/koi-replay" \
             -OutputDirectory "$output/match" \
             -Games "$GAMES" \
             -MaxMoves "$MAX_MOVES" \

@@ -95,12 +95,10 @@ try {
     $packageDirectory = Join-Path $outputDirectory $packageName
     $archivePath = Join-Path $outputDirectory $archivePathName
     $archiveHashPath = "$archivePath.sha256"
-    $requiredExecutables = @("koi-engine$binarySuffix", "koi-bench$binarySuffix",
-        "koi-replay$binarySuffix", "koi-perft$binarySuffix")
+    $requiredExecutables = @("koi-engine$binarySuffix")
     if (-not $isMacOSHost) {
         $requiredExecutables = @("koi-engine$binarySuffix", "koi-engine-avx2$binarySuffix",
-            "koi-engine-avx512$binarySuffix", "koi-bench$binarySuffix",
-            "koi-replay$binarySuffix", "koi-perft$binarySuffix")
+            "koi-engine-avx512$binarySuffix")
     }
     $requiredFiles = @($requiredExecutables + @('README.md', 'LICENSE', 'INSTALL.txt', 'package.json',
         'licenses\chess-library-MIT.txt', 'licenses\fathom-MIT.txt'))
@@ -108,6 +106,11 @@ try {
         Assert-True (Test-Path -LiteralPath (Join-Path $packageDirectory $required) -PathType Leaf) "package is missing $required"
     }
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $packageDirectory 'book.bin'))) 'package must not embed user-supplied book.bin'
+    $developerTools = @("koi-bench$binarySuffix", "koi-replay$binarySuffix",
+        "koi-perft$binarySuffix", "koi-eval-features$binarySuffix")
+    foreach ($tool in $developerTools) {
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $packageDirectory $tool))) "release package must not ship developer tool $tool"
+    }
     Assert-True (Test-Path -LiteralPath $archivePath -PathType Leaf) 'package archive was not produced'
     Assert-True (Test-Path -LiteralPath $archiveHashPath -PathType Leaf) 'archive SHA-256 sidecar was not produced'
 
@@ -159,14 +162,17 @@ try {
     foreach ($required in $requiredFiles) {
         Assert-True (Test-Path -LiteralPath (Join-Path $extractionDirectory $required) -PathType Leaf) "extracted archive is missing $required"
     }
-    $replayPath = Join-Path $extractionDirectory "koi-replay$binarySuffix"
+    foreach ($tool in $developerTools) {
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $extractionDirectory $tool))) "extracted release archive must not ship developer tool $tool"
+    }
+    $replayPath = Join-Path $BuildDirectory "koi-replay$binarySuffix"
+    Assert-True (Test-Path -LiteralPath $replayPath -PathType Leaf) 'build tree must provide koi-replay for move-legality validation'
     $replayOutput = @(& $replayPath 'startpos' 'moves' 'g1f3' 'g8f6' 'f3g1' 'f6g8' 'g1f3' 'g8f6' 'f3g1' 'f6g8')
     if ($LASTEXITCODE -ne 0) { throw "extracted replay smoke failed with exit code $LASTEXITCODE" }
     Assert-True ($replayOutput -contains 'legal 1') 'extracted replay smoke did not report a legal position'
     Assert-True ($replayOutput -contains 'result 1/2-1/2') 'extracted replay smoke did not report the repetition draw'
 
     $enginePath = Join-Path $extractionDirectory "koi-engine$binarySuffix"
-    $replayPath = Join-Path $extractionDirectory "koi-replay$binarySuffix"
     $fixtureNetPath = Join-Path $BuildDirectory 'koi.nnue'
     Assert-True (Test-Path -LiteralPath $fixtureNetPath -PathType Leaf) 'build tree must provide the generated fixture network'
     $fixtureNet = (Resolve-Path -LiteralPath $fixtureNetPath).Path

@@ -58,12 +58,13 @@ New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 
 # The x86-64 AVX2/AVX-512 sibling builds are only produced on Windows and
 # Linux; the macOS arm64 package ships the single native build.
-$requiredExecutables = @("koi-engine$binarySuffix", "koi-bench$binarySuffix",
-                         "koi-replay$binarySuffix", "koi-perft$binarySuffix")
+# Release archives ship the engine binaries (and their launcher variants) only.
+# Developer tools and the test suite are built from source by developers and are
+# deliberately excluded from release packages.
+$requiredExecutables = @("koi-engine$binarySuffix")
 if (-not $isMacOSHost) {
     $requiredExecutables = @("koi-engine$binarySuffix", "koi-engine-avx2$binarySuffix",
-                             "koi-engine-avx512$binarySuffix", "koi-bench$binarySuffix",
-                             "koi-replay$binarySuffix", "koi-perft$binarySuffix")
+                             "koi-engine-avx512$binarySuffix")
 }
 function Test-RequiredExecutables {
     param(
@@ -229,6 +230,7 @@ instructions, and otherwise runs its own baseline build in place. Set
 KOI_CPU_VARIANT=generic, avx2, or avx512 to force one build.
 "@
 }
+$developerToolsParagraph = 'Release packages ship the engine binaries and their runtime assets only. Developer tools (koi-bench, koi-replay, koi-perft, koi-eval-features) and the test suite are built from source and are not included.'
 $hardwareParagraph = if ($isMacOSHost) {
     'GPU NNUE inference is experimental, disabled by default, scheduled for removal, and CUDA-only; it is not available on macOS.'
 } else {
@@ -251,6 +253,8 @@ tablebase files are also user-supplied; configure SyzygyPath in the GUI when
 they are available.
 $nnueParagraph
 $bookParagraph
+
+$developerToolsParagraph
 
 Recommended starting options:
   Hash=512

@@ -204,7 +204,7 @@ jobs:
               assert len(data) == item["size_bytes"], item["path"]
               assert hashlib.sha256(data).hexdigest() == item["sha256"], item["path"]
           PY
-          for executable in koi-engine koi-bench koi-replay koi-perft; do
+          for executable in koi-engine; do
             test -x "$extracted/$executable"
           done
           # Packages ship the gated network; the CI-built package has none, so
