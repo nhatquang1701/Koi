@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -320,11 +321,21 @@ void write_dummy_kqvk(const std::filesystem::path& directory) {
     tablebase.write(std::string(80, '\0').data(), 80);
 }
 
+void write_syzygy_magic_table(const std::filesystem::path& directory,
+                              std::string_view name = "KQvK.rtbw",
+                              std::array<unsigned char, 4> magic = {0x71, 0xE8, 0x23, 0x5D}) {
+    std::vector<unsigned char> bytes(80, 0);
+    std::copy(magic.begin(), magic.end(), bytes.begin());
+    std::ofstream tablebase(directory / name, std::ios::binary);
+    tablebase.write(reinterpret_cast<const char*>(bytes.data()),
+                    static_cast<std::streamsize>(bytes.size()));
+}
+
 void test_discovery_finds_a_tables_directory_beside_the_executable() {
     const koi::test::TempDirectory root;
     const std::filesystem::path engine_directory = root.path() / "engine";
     std::filesystem::create_directories(engine_directory / "syzygy");
-    write_dummy_kqvk(engine_directory / "syzygy");
+    write_syzygy_magic_table(engine_directory / "syzygy");
 
     const std::optional<std::filesystem::path> discovered =
         koi::discover_syzygy_directory(engine_directory);
@@ -335,13 +346,30 @@ void test_discovery_finds_a_tables_directory_beside_the_executable() {
     // The convenience aliases work too, and an empty/missing layout is silent.
     const std::filesystem::path alias_directory = root.path() / "alias-engine";
     std::filesystem::create_directories(alias_directory / "tablebases");
-    write_dummy_kqvk(alias_directory / "tablebases");
+    write_syzygy_magic_table(alias_directory / "tablebases");
     require(koi::discover_syzygy_directory(alias_directory).has_value(),
             "a tablebases/ directory beside the executable must be discovered");
     require(!koi::discover_syzygy_directory(root.path() / "missing-engine").has_value(),
             "a missing executable directory must not produce a tablebase path");
     require(!koi::discover_syzygy_directory({}).has_value(),
             "an empty executable directory must not produce a tablebase path");
+
+    // Fathom registers files by name, so corrupt data must be rejected here
+    // instead of surfacing later as a probe-time stderr warning.
+    const std::filesystem::path corrupt_directory = root.path() / "corrupt-engine";
+    std::filesystem::create_directories(corrupt_directory / "syzygy");
+    write_dummy_kqvk(corrupt_directory / "syzygy");  // zeros: no magic
+    require(!koi::discover_syzygy_directory(corrupt_directory).has_value(),
+            "a corrupt auto-detected Syzygy directory must be rejected");
+    require(!koi::is_usable_syzygy_directory(corrupt_directory / "syzygy"),
+            "a directory with a corrupt table file must not be usable");
+
+    const std::filesystem::path mixed_directory = root.path() / "mixed-engine";
+    std::filesystem::create_directories(mixed_directory / "syzygy");
+    write_syzygy_magic_table(mixed_directory / "syzygy");
+    write_dummy_kqvk(mixed_directory / "syzygy");
+    require(!koi::is_usable_syzygy_directory(mixed_directory / "syzygy"),
+            "a single corrupt table file must fail the whole directory closed");
 }
 
 void test_large_table_limit_reflects_the_loaded_directory() {

@@ -30,8 +30,10 @@ trap {
 
 $script:LineCount = 0
 
-function Invoke-UciTranscript([string]$Transcript, [string]$Label) {
-    $session = Start-UciSession -Executable $EnginePath
+function Invoke-UciTranscript([string]$Transcript, [string]$Label,
+                              [string]$Executable = '') {
+    $executablePath = if ($Executable) { $Executable } else { $EnginePath }
+    $session = Start-UciSession -Executable $executablePath
     $stdoutTask = $session.Process.StandardOutput.ReadToEndAsync()
     $session.Process.StandardInput.Write($Transcript)
     $session.Process.StandardInput.Close()
@@ -320,6 +322,112 @@ Assert-ProtocolGrammar $ponderEof
 Assert-CleanDiagnostics $ponderEof
 if ((Count-Lines $ponderEof '^bestmove ') -ne 0) {
     throw 'EOF during a ponder search must suppress the late bestmove'
+}
+
+
+# 9. Fail-closed asset matrix: malformed/missing NNUE, book and Syzygy inputs
+# must leave the engine usable, protocol-clean and crash-free.
+$assetRoot = Join-Path (Split-Path -Parent $EnginePath) ("protocol-fuzz-assets-" + $PID)
+$assetEngine = Join-Path $assetRoot 'engine'
+$assetAuto = Join-Path $assetRoot 'engine-auto'
+$assetAutoBadBook = Join-Path $assetRoot 'engine-auto-bad-book'
+$assetAutoBadSyzygy = Join-Path $assetRoot 'engine-auto-bad-syzygy'
+$executableName = [System.IO.Path]::GetFileName($EnginePath)
+try {
+    foreach ($directory in @($assetRoot, $assetEngine, $assetAuto, $assetAutoBadBook,
+                             $assetAutoBadSyzygy)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+    $badBook = Join-Path $assetEngine 'bad-book.bin'
+    [System.IO.File]::WriteAllBytes($badBook, [byte[]]::new(17))
+    $badNet = Join-Path $assetEngine 'bad.nnue'
+    [System.IO.File]::WriteAllBytes($badNet, [byte[]]::new(32))
+    $missingPath = Join-Path $assetRoot 'definitely-missing'
+
+    # 9a. Explicit malformed BookFile: rejected, search still answers.
+    $badBookResult = Invoke-UciTranscript "uci`nsetoption name OwnBook value true`nsetoption name BookFile value $badBook`nisready`nposition startpos`ngo depth 2`nstop`nquit`n" 'bad-book'
+    Assert-ProtocolGrammar $badBookResult
+    Assert-CleanDiagnostics $badBookResult
+    Assert-OneLegalBestmove $badBookResult
+    if ((Count-Lines $badBookResult 'book detected|book move ') -ne 0) {
+        throw 'a malformed explicit book must not be announced or used'
+    }
+
+    # 9b. Malformed EvalFile: rejected with a diagnostic, search continues with
+    # the boot evaluator.
+    $badNetResult = Invoke-UciTranscript "uci`nsetoption name EvalFile value $badNet`nisready`nposition startpos`ngo depth 1`nstop`nquit`n" 'bad-evalfile'
+    Assert-ProtocolGrammar $badNetResult
+    Assert-CleanDiagnostics $badNetResult
+    Assert-OneLegalBestmove $badNetResult
+    if ((Count-Lines $badNetResult '^info string EvalFile rejected') -ne 1) {
+        throw 'a malformed EvalFile must be rejected with exactly one info string'
+    }
+
+    # 9c. Missing Syzygy path: diagnostic, ordinary search intact.
+    $missingSyzygy = Invoke-UciTranscript "uci`nsetoption name SyzygyPath value $missingPath`nisready`nposition startpos`ngo depth 1`nstop`nquit`n" 'missing-syzygy'
+    Assert-ProtocolGrammar $missingSyzygy
+    Assert-CleanDiagnostics $missingSyzygy
+    Assert-OneLegalBestmove $missingSyzygy
+    if ((Count-Lines $missingSyzygy '^info string Syzygy: no usable tables') -ne 1) {
+        throw 'a missing Syzygy path must be reported once and then ignored'
+    }
+
+    # 9d. Auto-detected but malformed book beside a copied engine: not announced,
+    # not used, search still legal.
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetAutoBadBook $executableName)
+    [System.IO.File]::WriteAllBytes((Join-Path $assetAutoBadBook 'book.bin'), [byte[]]::new(17))
+    $autoBadBookResult = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 2`nstop`nquit`n" 'auto-bad-book' (Join-Path $assetAutoBadBook $executableName)
+    Assert-ProtocolGrammar $autoBadBookResult
+    Assert-CleanDiagnostics $autoBadBookResult
+    Assert-OneLegalBestmove $autoBadBookResult
+    if ((Count-Lines $autoBadBookResult 'book detected|book move ') -ne 0) {
+        throw 'an unusable auto-detected book must stay silent and unused'
+    }
+
+    # 9e. Auto-detected malformed Syzygy table: discovery may report the
+    # directory, but the invalid tables must not crash the engine or leak stderr.
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetAutoBadSyzygy $executableName)
+    $fakeSyzygy = Join-Path $assetAutoBadSyzygy 'syzygy'
+    New-Item -ItemType Directory -Path $fakeSyzygy -Force | Out-Null
+    [System.IO.File]::WriteAllBytes((Join-Path $fakeSyzygy 'KQvK.rtbw'), [byte[]]::new(80))
+    $autoBadSyzygyResult = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 1`nstop`nquit`n" 'auto-bad-syzygy' (Join-Path $assetAutoBadSyzygy $executableName)
+    Assert-ProtocolGrammar $autoBadSyzygyResult
+    Assert-CleanDiagnostics $autoBadSyzygyResult
+    Assert-OneLegalBestmove $autoBadSyzygyResult
+    if ((Count-Lines $autoBadSyzygyResult 'syzygy detected|^info string Syzygy:') -ne 0) {
+        throw 'a corrupt auto-detected Syzygy directory must be rejected silently'
+    }
+    # Even though the corrupt directory was rejected, probing an endgame in the
+    # same engine directory must remain safe and silent.
+    $fakeSyzygyProbe = Invoke-UciTranscript "uci`nisready`nposition fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1`ngo depth 2`nstop`nquit`n" 'auto-bad-syzygy-probe' (Join-Path $assetAutoBadSyzygy $executableName)
+    Assert-ProtocolGrammar $fakeSyzygyProbe
+    Assert-CleanDiagnostics $fakeSyzygyProbe
+    Assert-OneLegalBestmove $fakeSyzygyProbe
+
+    # 9f. An explicit corrupt SyzygyPath is disabled with one diagnostic rather
+    # than being handed to Fathom (which would print on stderr at probe time).
+    $explicitBadSyzygy = Invoke-UciTranscript "uci`nsetoption name SyzygyPath value $fakeSyzygy`nisready`nposition fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1`ngo depth 2`nstop`nquit`n" 'explicit-bad-syzygy'
+    Assert-ProtocolGrammar $explicitBadSyzygy
+    Assert-CleanDiagnostics $explicitBadSyzygy
+    Assert-OneLegalBestmove $explicitBadSyzygy
+    if ((Count-Lines $explicitBadSyzygy '^info string Syzygy: corrupt tables at ') -ne 1) {
+        throw 'an explicit corrupt Syzygy directory must be disabled with one diagnostic'
+    }
+
+    # 9f. Assets must not leak into a plain run: no book/Syzygy noise when none is
+    # configured and no conventional directory exists beside this engine copy.
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetAuto $executableName)
+    $plainResult = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 1`nstop`nquit`n" 'plain-assets' (Join-Path $assetAuto $executableName)
+    Assert-ProtocolGrammar $plainResult
+    Assert-CleanDiagnostics $plainResult
+    Assert-OneLegalBestmove $plainResult
+    if ((Count-Lines $plainResult 'book detected|syzygy detected|^info string Syzygy:') -ne 0) {
+        throw 'an engine directory without assets must not announce any asset'
+    }
+}
+finally {
+    Stop-AllUciSessions
+    Remove-Item -LiteralPath $assetRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Output 'PASS protocol fuzz corpus'

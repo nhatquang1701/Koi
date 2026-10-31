@@ -52,6 +52,13 @@ struct SyzygyRootResult {
 [[nodiscard]] std::optional<std::filesystem::path> discover_syzygy_directory(
     const std::filesystem::path& executable_directory);
 
+// True when `directory` contains at least one `.rtbw`/`.rtbz` file and every
+// such file starts with the standard Syzygy magic bytes for its format.  Fathom
+// registers tables by filename alone, so a corrupt zero-filled file would be
+// "enabled" and only fail later (printing `Corrupted table.` to stderr); the
+// UCI layer validates first and fails closed instead.
+[[nodiscard]] bool is_usable_syzygy_directory(const std::filesystem::path& directory);
+
 class SyzygyTablebase {
 public:
     // Fathom is process-global; instances share one acquired path and release it

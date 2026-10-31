@@ -2,10 +2,11 @@
 
 #include <algorithm>
 #include <array>
-#include <filesystem>
-#include <string_view>
 #include <bit>
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <string_view>
 
 #include <tbprobe.h>
 
@@ -437,6 +438,59 @@ std::uint64_t SyzygyTablebase::hits() const noexcept {
     return impl_->hits.load(std::memory_order_relaxed);
 }
 
+namespace {
+
+bool table_magic_matches(const std::filesystem::path& file) {
+    static constexpr std::array<unsigned char, 4> kWdlMagic{0x71, 0xE8, 0x23, 0x5D};
+    static constexpr std::array<unsigned char, 4> kDtzMagic{0xD7, 0x66, 0x0C, 0xA5};
+    const std::string extension = file.extension().string();
+    const auto* expected = [&]() -> const std::array<unsigned char, 4>* {
+        if (extension == ".rtbw") {
+            return &kWdlMagic;
+        }
+        if (extension == ".rtbz") {
+            return &kDtzMagic;
+        }
+        return nullptr;
+    }();
+    if (expected == nullptr) {
+        return false;
+    }
+    std::ifstream stream(file, std::ios::binary);
+    std::array<unsigned char, 4> magic{};
+    stream.read(reinterpret_cast<char*>(magic.data()), magic.size());
+    return stream.gcount() == static_cast<std::streamsize>(magic.size()) && magic == *expected;
+}
+
+} // namespace
+
+bool is_usable_syzygy_directory(const std::filesystem::path& directory) {
+    std::error_code error;
+    if (!std::filesystem::is_directory(directory, error) || error) {
+        return false;
+    }
+    std::filesystem::directory_iterator iterator(directory, error);
+    if (error) {
+        return false;
+    }
+    bool has_table = false;
+    for (const std::filesystem::directory_entry& entry : iterator) {
+        std::error_code entry_error;
+        if (!entry.is_regular_file(entry_error) || entry_error) {
+            continue;
+        }
+        const std::string extension = entry.path().extension().string();
+        if (extension != ".rtbw" && extension != ".rtbz") {
+            continue;
+        }
+        has_table = true;
+        if (!table_magic_matches(entry.path())) {
+            return false;
+        }
+    }
+    return has_table;
+}
+
 std::optional<std::filesystem::path> discover_syzygy_directory(
     const std::filesystem::path& executable_directory) {
     if (executable_directory.empty()) {
@@ -446,29 +500,10 @@ std::optional<std::filesystem::path> discover_syzygy_directory(
         "syzygy", "syzygy345", "tablebases", "3-4-5"};
     for (const std::string_view candidate : kCandidateNames) {
         const std::filesystem::path directory = executable_directory / candidate;
+        if (!is_usable_syzygy_directory(directory)) {
+            continue;
+        }
         std::error_code error;
-        if (!std::filesystem::is_directory(directory, error) || error) {
-            continue;
-        }
-        bool has_table = false;
-        std::filesystem::directory_iterator iterator(directory, error);
-        if (error) {
-            continue;
-        }
-        for (const std::filesystem::directory_entry& entry : iterator) {
-            std::error_code entry_error;
-            if (!entry.is_regular_file(entry_error) || entry_error) {
-                continue;
-            }
-            const std::string extension = entry.path().extension().string();
-            if (extension == ".rtbw" || extension == ".rtbz") {
-                has_table = true;
-                break;
-            }
-        }
-        if (!has_table) {
-            continue;
-        }
         const std::filesystem::path absolute = std::filesystem::absolute(directory, error);
         if (error) {
             return directory;

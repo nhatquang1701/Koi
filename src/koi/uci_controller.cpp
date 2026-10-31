@@ -1996,6 +1996,28 @@ void UciController::ensure_auto_syzygy_loaded() {
 void UciController::rebuild_syzygy() {
     syzygy_configured_ = true;
     syzygy_.reset();
+    // A single directory is validated before Fathom sees it: Fathom registers
+    // tables by filename and would otherwise report a corrupt file only at
+    // probe time (on stderr).  Path lists keep Fathom's own policy.
+    const std::string raw_path = syzygy_path_.string();
+#ifdef _WIN32
+    // Fathom uses ';' on Windows; a drive-letter colon is part of one path.
+    const bool path_list = raw_path.find(';') != std::string::npos;
+#else
+    const bool path_list = raw_path.find(':') != std::string::npos;
+#endif
+    if (!syzygy_path_.empty() && !path_list) {
+        std::error_code error;
+        if (std::filesystem::is_directory(syzygy_path_, error) && !error &&
+            !is_usable_syzygy_directory(syzygy_path_)) {
+            std::lock_guard lock(output_mutex_);
+            output_ << "info string Syzygy: corrupt tables at " << syzygy_path_.string()
+                    << " (probing disabled)\n"
+                    << std::flush;
+            syzygy_ = std::make_shared<SyzygyTablebase>();
+            return;
+        }
+    }
     syzygy_ = std::make_shared<SyzygyTablebase>(
         syzygy_path_, syzygy_probe_limit_, syzygy_probe_depth_, syzygy_50_move_rule_);
     if (syzygy_path_.empty()) {
