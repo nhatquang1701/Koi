@@ -26,6 +26,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R7 Syzygy auto-discovery | fixed | `discover_syzygy_directory` + lazy load; real 5-man verification |
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
+| R15 searchmoves contracts | fixed | process-level legal-subset / impossible-filter / duplicate-filter assertions |
 | R13 terminal/forced-draw roots | fixed | process-level `bestmove 0000` and fivefold/analysis assertions in the fuzz corpus |
 | R14 long soak | verified | 3000-round soak: 3001 bestmoves, bounded RSS, 39.2 s |
 | R12 option churn | fixed | `koi_protocol_option_churn_process`: five option-change-during-search scenarios (Hash, Threads/MultiPV, EvalFile, BookFile/SyzygyPath, Hash burst) |
