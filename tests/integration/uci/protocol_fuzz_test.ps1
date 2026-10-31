@@ -711,5 +711,15 @@ if (@($idlePonderhitLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 0
     throw 'ponderhit without a ponder search must not start or complete a search'
 }
 
+# 17. A very long legal reversible history (16k cycles ~ 320 KB line) must
+# parse and search promptly; halfmove-clock overflow beyond 65535 plies is
+# rejected as an invalid move while the prior position is retained.
+$reversibleCycle = 'g1f3 g8f6 f3g1 f6g8 '
+$longMoves = (($reversibleCycle * 16000).Trim())
+$longHistory = Invoke-UciTranscript "uci`nisready`nposition startpos moves $longMoves`ngo depth 1`nstop`nquit`n" 'long-legal-history'
+Assert-ProtocolGrammar $longHistory
+Assert-CleanDiagnostics $longHistory
+Assert-OneLegalBestmove $longHistory
+
 Write-Output 'PASS protocol fuzz corpus'
 
