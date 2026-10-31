@@ -27,6 +27,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
 | R34 ASan unit label | pass* | 20/24 suites, zero ASan reports; 4 blocked by local %TEMP% quirk |
+| R37 hot-add assets mid-session | fixed | book hot-add detected/used; corrupt Syzygy hot-add silently rejected |
 | R36 malformed option/position forms | fixed | directory/empty/missing-value option forms; Release + ASan green |
 | R35 book-size/EvalFile boundaries | fixed | 0/1/15/17 B and >16 MiB books unused; invalid EvalFile rejected |
 | R34 ASan process legs | pass | fuzz/option-churn/broken-pipe/soak/engine-process/perft green; 2 known ASan timing tests |
