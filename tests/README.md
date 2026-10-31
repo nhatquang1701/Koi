@@ -150,7 +150,8 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   restored -> deleted, including a mutation while a search is in flight),
   resource/destructive option churn, book-size boundaries (0/1/15/17 bytes,
   >16 MiB) and invalid EvalFile forms (empty file, directory, random bytes),
-  exhaustive invalid-value pass over every advertised option, seeded
+  exhaustive invalid-value pass over every advertised option, a CCRL profile
+  (256 MB hash, 1 thread, book/ponder off, clock search), seeded
   random sequences; labelled `reliability`),
   `koi_protocol_soak_process` (60 rounds of Threads/Hash reconfiguration and
   searches with an RSS-growth bound and exactly-one-legal-bestmove assertions;

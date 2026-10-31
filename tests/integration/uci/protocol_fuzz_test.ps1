@@ -633,6 +633,15 @@ try {
     Send-UciCommand $hotSession 'go depth 1'
     [void](Read-UciUntil $hotSession { param($line) $line -match '^bestmove ' } 'hot-add with book' -ValidateUciOutput)
 
+    # CCRL: an explicit OwnBook=false must disable the auto-detected book even
+    # though it was already detected and used once in this session.
+    Send-UciCommand $hotSession 'setoption name OwnBook value false'
+    Send-UciCommand $hotSession 'isready'
+    [void](Read-UciUntil $hotSession { param($line) $line -eq 'readyok' } 'hot-add OwnBook=false readiness' -ValidateUciOutput)
+    Send-UciCommand $hotSession 'position startpos'
+    Send-UciCommand $hotSession 'go depth 1'
+    [void](Read-UciUntil $hotSession { param($line) $line -match '^bestmove ' } 'hot-add OwnBook=false search' -ValidateUciOutput)
+
     $hotSyzygy = Join-Path $assetHotAdd 'syzygy'
     New-Item -ItemType Directory -Path $hotSyzygy -Force | Out-Null
     [System.IO.File]::WriteAllBytes((Join-Path $hotSyzygy 'KQvK.rtbw'), [byte[]]::new(80))
@@ -646,8 +655,8 @@ try {
     if (@($hotLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
         throw 'a book added mid-session must be detected exactly once'
     }
-    if (@($hotLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -lt 1) {
-        throw 'a book added mid-session must be used on the next search'
+    if (@($hotLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
+        throw 'a book added mid-session must be used exactly once before OwnBook=false disables it'
     }
     if (@($hotLines | Where-Object { $_ -match '^info string syzygy detected' }).Count -ne 0) {
         throw 'a corrupt Syzygy directory added mid-session must not be announced as usable'
@@ -1067,6 +1076,14 @@ $optionBest = Read-UciUntil $optionSession { param($line) $line -match '^bestmov
 Assert-LegalBestmoveLine $optionBest 'option-matrix'
 Send-UciCommand $optionSession 'quit'
 [void](Complete-UciSession $optionSession $false)
+
+# 26. CCRL-style profile: Hash 256, one thread, internal book and pondering off,
+# ucinewgame, then a clock-based search (wtime/btime/winc/binc/movestogo).  The
+# engine must answer one legal bestmove and stay protocol-clean.
+$ccrl = Invoke-UciTranscript "uci`nisready`nsetoption name Hash value 256`nsetoption name Threads value 1`nsetoption name OwnBook value false`nsetoption name Ponder value false`nucinewgame`nisready`nposition startpos`ngo wtime 1000 btime 1000 winc 10 binc 10 movestogo 20`nstop`nquit`n" 'ccrl-profile'
+Assert-ProtocolGrammar $ccrl
+Assert-CleanDiagnostics $ccrl
+Assert-OneLegalBestmove $ccrl
 
 Write-Output 'PASS protocol fuzz corpus'
 
