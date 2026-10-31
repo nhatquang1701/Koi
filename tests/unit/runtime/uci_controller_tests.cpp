@@ -2066,6 +2066,29 @@ void test_quit_and_eof_join_without_late_bestmove() {
             "EOF must suppress output while joining the active worker");
 }
 
+void test_oversized_protocol_line_is_rejected_and_session_survives() {
+    // A command line exactly at the limit is still parsed normally.
+    std::string at_limit = "uci";
+    at_limit.resize(koi::uci::kMaximumProtocolLineBytes, ' ');
+    const ControllerResult accepted = run_controller(at_limit + "\nquit\n");
+    require(accepted.exit_code == 0, "a command line at the size limit must be accepted");
+    require(lines_starting_with(output_lines(accepted.output), "uciok").size() == 1,
+            "a line at the size limit must still parse its command");
+    require(accepted.diagnostics.empty(), "an at-limit line must not write stderr");
+
+    // One byte over the limit is consumed and rejected without breaking the
+    // session; the diagnostic is a protocol-valid info string.
+    std::string oversized(koi::uci::kMaximumProtocolLineBytes + 1, 'x');
+    const ControllerResult rejected = run_controller(oversized + "\nisready\nquit\n");
+    require(rejected.exit_code == 0, "an oversized line must not terminate the session");
+    require(lines_starting_with(output_lines(rejected.output),
+                                "info string command rejected: line exceeds").size() == 1,
+            "an oversized line must produce exactly one protocol-valid diagnostic");
+    require(lines_starting_with(output_lines(rejected.output), "readyok").size() == 1,
+            "the session must keep serving after an oversized line");
+    require(rejected.diagnostics.empty(), "an oversized line must not write stderr");
+}
+
 void test_unknown_stop_and_blank_commands_are_quiet_and_quit() {
     const ControllerResult result = run_controller("\nunknown harmless command\nstop\nquit\n");
 
@@ -2353,6 +2376,7 @@ int main(int argc, char** argv) {
         {"handshake option table", test_handshake_option_table_is_unique_and_well_formed},
         {"EvalFile autodiscovery marker", test_evalfile_autodiscovery_marker_is_informational},
         {"quit and EOF cleanup", test_quit_and_eof_join_without_late_bestmove},
+        {"bounded protocol line", test_oversized_protocol_line_is_rejected_and_session_survives},
         {"unknown stop quit", test_unknown_stop_and_blank_commands_are_quiet_and_quit},
         {"protocol-clean output", test_protocol_output_contains_only_valid_uci_responses},
         {"selective root score provenance", test_selective_root_score_is_not_published_as_an_exact_value},

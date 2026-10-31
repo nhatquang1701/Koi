@@ -39,6 +39,13 @@ namespace uci {
     std::int64_t elapsed_ms, std::int64_t current_remaining_ms,
     std::uint32_t previous_estimate_ms) noexcept;
 
+// Upper bound on one protocol command line.  Valid UCI commands are far
+// smaller (a full-game `position ... moves ...` line is a few kilobytes); the
+// cap stops a hostile or broken GUI from forcing an unbounded allocation in the
+// controller's line reader.  Longer lines are consumed and rejected with an
+// `info string` diagnostic while the session keeps serving.
+inline constexpr std::size_t kMaximumProtocolLineBytes = std::size_t{1} << 20;
+
 } // namespace uci
 
 class UciController {

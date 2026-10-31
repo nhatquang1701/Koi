@@ -768,7 +768,7 @@ Rules for `setoption`:
 | `ponderhit` | Converts a running ponder search in place and re-arms timing; if no ponder search is running, starts a bounded search of the current position. |
 | `quit` | Sets shutting-down, cancels/joins, and returns 0 without late protocol output. EOF follows the same cancellation path. |
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
-| Unknown command | Ignored. An exception during command handling is converted to `info string command failed: ...` and the loop continues. |
+| Unknown command | Ignored. An exception during command handling is converted to `info string command failed: ...` and the loop continues. A protocol line longer than 1 MiB is consumed and rejected with `info string command rejected: line exceeds 1048576 bytes`; the session continues. |
 
 Behaviour details:
 
@@ -778,6 +778,11 @@ Behaviour details:
   a legal root move; a duplicate `CompletionOnce` claim is ignored. A nonterminal
   root with no common legal move emits an explanatory `info string` and
   `bestmove 0000`.
+- **Bounded input**: the command loop reads at most
+  `koi::uci::kMaximumProtocolLineBytes` (1 MiB) per line. The remainder of a
+  longer line is consumed to the next newline and the line is rejected with a
+  protocol-valid `info string` diagnostic, so a hostile or broken GUI cannot
+  force an unbounded allocation; the session keeps serving afterwards.
 - **Terminal root**: no legal moves returns `bestmove 0000`.
 - **`searchmoves`**: filters the root move list to the intersection of legal
   moves and the supplied coordinates. It bypasses the book and disables the

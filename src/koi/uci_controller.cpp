@@ -32,6 +32,34 @@ namespace koi {
 
 namespace {
 
+enum class BoundedLineRead : std::uint8_t {
+    eof,
+    line,
+};
+
+// Reads one protocol line while caping the retained size at `limit` bytes.
+// The rest of an oversized line is consumed (so the next command still starts
+// at a line boundary) and `truncated` reports that it must be rejected.
+BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& line,
+                                           const std::size_t limit, bool& truncated) {
+    line.clear();
+    truncated = false;
+    bool any = false;
+    const int eof = std::char_traits<char>::eof();
+    for (int character = input.get(); character != eof; character = input.get()) {
+        any = true;
+        if (character == '\n') {
+            return BoundedLineRead::line;
+        }
+        if (line.size() < limit) {
+            line.push_back(static_cast<char>(character));
+        } else {
+            truncated = true;
+        }
+    }
+    return any ? BoundedLineRead::line : BoundedLineRead::eof;
+}
+
 constexpr std::uint64_t kMaximumRandomSeed = 2'147'483'647;
 constexpr std::uint64_t kMinimumHashMegabytes = 1;
 constexpr std::uint64_t kMaximumHashMegabytes = 4'096;
@@ -667,7 +695,25 @@ UciController::~UciController() {
 }
 
 int UciController::run() {
-    for (std::string line; std::getline(input_, line);) {
+    std::string line;
+    for (;;) {
+        bool oversized = false;
+        if (read_bounded_protocol_line(input_, line, uci::kMaximumProtocolLineBytes, oversized) ==
+            BoundedLineRead::eof) {
+            break;
+        }
+        if (oversized) {
+            // A hostile or broken GUI must not force an unbounded allocation;
+            // report a protocol-valid diagnostic and keep serving.
+            {
+                std::lock_guard lock(output_mutex_);
+                output_ << "info string command rejected: line exceeds "
+                        << uci::kMaximumProtocolLineBytes << " bytes\n"
+                        << std::flush;
+            }
+            debug_event("command rejected: oversized line");
+            continue;
+        }
         // A GUI on Linux may send CRLF line endings; strip the carriage return
         // so the last token of the command parses like it does on Windows.
         if (!line.empty() && line.back() == '\r') {
