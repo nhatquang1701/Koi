@@ -41,7 +41,7 @@ ctest --test-dir build/release -C Release -j 8 --output-on-failure
 On macOS arm64 (Apple Silicon), use Homebrew LLVM clang 19+ (or AppleClang
 18+) with `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`; the CTest
 commands are identical. GPU NNUE is CUDA-only and unavailable on macOS, so the
-The CPU NNUE path and the generated fixture network are exercised there.
+CPU NNUE path and the generated fixture network are exercised there.
 
 The PowerShell process tests are registered only when `pwsh` is found; the C++
 and Python suites are registered on Windows, Linux, and macOS.
@@ -63,7 +63,7 @@ ctest --test-dir build\release -N
 ctest --test-dir build\release -C Release -R koi_strength_tests --output-on-failure
 ```
 
-The current Windows Release configuration with Python 3 registers **75 tests**
+The current Windows Release configuration with Python 3 registers **76 tests**
 (`KOI_BUILD_SHADOW_DIFF=OFF`); `ctest -N` is authoritative for a given build. The count varies
 with optional dependencies:
 `koi_shadow_diff_tests` requires `-DKOI_BUILD_SHADOW_DIFF=ON`, and
@@ -171,8 +171,7 @@ the repository root as the working directory:
   with four-group records), `gen_training_data_python`,
   `koi_trainer_python` (cross-language v4 and v5 parity against the boundary
   executable),
-  `nnue_training_python` (NNUE export/training round trips; the old classical tuner was removed)
-  round trip when the Release tool is built), and
+  `nnue_training_python` (NNUE export/training round trips), and
   `bullet_data_python` (bulletformat conversion, exporter weight layouts for v4
   and v5, and wrapper line parsing).
 ## Labels and scheduling
@@ -200,7 +199,7 @@ Every test carries CTest labels; combine them with `-L`/`-LE`, for example
 ## Search failure reporting
 
 `koi_search_tests` retains `known_failures` and `intermittent` registries for
-explicit triage. Both registries are empty for the 1.0.0 full-release gate, so
+explicit triage. Both registries are empty for the current 1.1.5 full-release gate, so
 every search behavior failure is fatal. The harness reports:
 
 - A listed test that fails prints `XFAIL` and does not fail the run.
@@ -294,12 +293,13 @@ timeout, configurable through `KOI_UCI_TIMEOUT_MS`.
   authoritative SHA-256 and size of each PGN. Most PGNs are reference material
   rather than runtime inputs for a specific test.
 - `data/uci/handshake.txt` — the single-source UCI handshake transcript used by
-  both `uci_controller_tests` and `uci_process_test.ps1`. `{max_threads}` and
-  `{empty}` placeholders are substituted by the consumers.
+  both `uci_controller_tests` and `uci_process_test.ps1`. The `{build_version}`,
+  `{build_commit}`, `{max_threads}`, and `{empty}` placeholders are substituted by
+  the consumers.
 
 ## Continuous integration
 
-`.github/workflows/windows.yml` has five independent jobs (no `fail-fast`
+`.github/workflows/windows.yml` has six independent jobs (no `fail-fast`
 cancellation):
 
 - `release-full` installs the measurement requirements (`numpy`), builds Release, runs the parallel
@@ -330,6 +330,9 @@ cancellation):
   `tools/build/package_release.ps1`, verifies and extracts the archive, then
   runs bounded UCI smokes with the automatic and `KOI_CPU_VARIANT=generic`
   variants.
+- `linux-tsan` builds with GCC 14 and `-fsanitize=thread`, runs the
+  concurrency suites with `TSAN_OPTIONS="halt_on_error=1 detect_deadlocks=0"`,
+  and raises `vm.mmap_rnd_bits` as Ubuntu 24.04 requires.
 
 `.github/workflows/macos.yml` runs two Apple Silicon legs:
 
@@ -347,7 +350,7 @@ cancellation):
 
 An Apple Silicon Mac (for example a Mac mini M4) can run the heavy search and
 process suites, the speed gate, and Elo A/B matches so the Windows machine
-stays free for GPU work (Lc0 labeling, NNUE training). Prerequisites: Xcode
+stays reserved for builds, git and pushes. Prerequisites: Xcode
 command line tools, Homebrew LLVM clang 19+, Ninja, CMake, Python 3, and
 PowerShell 7 (`brew install llvm ninja cmake python pwsh`).
 

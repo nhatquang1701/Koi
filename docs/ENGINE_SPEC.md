@@ -1,8 +1,8 @@
 # Koi engine specification
 
 This page is the engineering specification for the Koi engine in this repository.
-It describes the code as it stands on branch `koi-engine` at commit `7f2b2ed`
-(the v1.1.5 release in the tree), and it names the
+It describes the code as it stands on branch `koi-engine` after the v1.1.5
+release (tag `1.1.5` = commit `1e09504`), and it names the
 implementation files and constants that define each behaviour. It is a
 specification of observed behaviour, not a roadmap: where a feature is absent,
 experimental, or deliberately limited, the text says so.
@@ -11,10 +11,11 @@ The engine is a standard-chess UCI engine written in C++26. `Threads=1` is the
 deterministic configuration; `Threads>1` is intentionally nondeterministic Lazy
 SMP. Release packages ship the gated Koi-native NNUE evaluator as the primary
 evaluator: the network is bundled at `nnue/koi.nnue`, auto-discovered at boot, and
-advertised through the `EvalFile` default `<autodiscovery>`. The classical
-evaluator remains a **deprecated fallback** until the staged removal (after at
-least one NNUE-primary release); `EvalFile`/`KOI_NNUE_PATH` still override the
-boot choice. GPU NNUE is experimental, off at runtime, and scheduled for removal.
+advertised through the `EvalFile` default `<autodiscovery>`. The hand-crafted
+classical evaluator was **removed on 2026-10-28** (`docs/HCE_REMOVAL_PLAN.md`):
+a network is required, and a boot without a usable one exits 4 with a diagnostic.
+`EvalFile`/`KOI_NNUE_PATH` still override the boot choice. GPU NNUE is
+experimental, off at runtime, and scheduled for removal.
 
 ## 1. Identity and platforms
 
@@ -30,10 +31,10 @@ boot choice. GPU NNUE is experimental, off at runtime, and scheduled for removal
 | License | MIT | `LICENSE` |
 | Current build version pin | `1.1.5` | `project(koi_engine VERSION 1.1.5 ...)`, `CMakeLists.txt:3` |
 | Compiled build identity | `KOI_ENGINE_BUILD_VERSION="${PROJECT_VERSION}"` | `CMakeLists.txt:412-414` |
-| UCI version token | none: the handshake emits only `id name` and `id author` | `src/koi/uci_controller.cpp:1631-1664` |
+| UCI identity/version | `id name Koi <version>` (CMake project pin), `id author`, and `info string build <commit>`; there is no separate `uci` version field | `src/koi/uci_controller.cpp` |
 
-The version is not part of the UCI handshake. The CMake project version is
-compiled into the core library and is consumed by `koi-bench` for its JSON
+The version rides in `id name`; the CMake project version is also compiled into
+the core library and is consumed by `koi-bench` for its JSON
 `build` field (`tools/engine/koi_bench.cpp:577` and `:685`). Release provenance
 instead comes from the package manifest written by
 `tools/build/package_release.ps1`: schema `koi-engine-package-v1`, hard-coded
@@ -127,7 +128,7 @@ Other environment variables relevant to operation:
 
 | Layer | Owner / file | Contract |
 | --- | --- | --- |
-| Process entry point | `src/main.cpp` | Resolves the executable directory, boot-time NNUE path, evaluator, and starts the UCI controller. Evaluator selection never aborts the process. |
+| Process entry point | `src/main.cpp` | Resolves the executable directory, boot-time NNUE path, evaluator, and starts the UCI controller. A boot without a usable network exits 4 with a diagnostic; selection never silently substitutes. |
 | UCI controller | `src/koi/uci_controller.cpp/.hpp` | Owns the current `GameState`, the worker/search handle, option state, book and Syzygy instances. It is the only layer that writes UCI protocol output. |
 | Public search boundary | `SearchService`, `SearchHandle` in `src/koi/search_service.cpp/.hpp` | `SearchService` owns the shared evaluator, transposition table, and search lifecycle. `SearchHandle` exposes `stop()`, `wait()`, `running()`, and `request_ponderhit()`. |
 | Request session | `detail::SearchSession` in `src/koi/detail/search_session.hpp` | Owns one immutable request snapshot (root, limits, options), identity (generation + root key + root FEN), cancellation flag, worker thread, and the exactly-once completion claim (`CompletionOnce`). |
@@ -452,8 +453,9 @@ handshake advertises `option name EvalFile type string default <autodiscovery>`
 (informational only); no other boot path and a rejected discovery keep the empty
 default. A GUI echoing `EvalFile=<autodiscovery>` back is a no-op that keeps the
 boot evaluator.
-Missing, malformed, oversized, or rejected files leave the current evaluator
-usable and produce one explanatory stderr line or UCI `info string`.
+Missing, malformed, oversized, or rejected **runtime `EvalFile`** files leave
+the current evaluator usable and produce one explanatory stderr line or UCI
+`info string`. A missing/rejected network at **boot** exits 4.
 
 ## 5. Search
 
@@ -611,10 +613,11 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    still apply.
 2. **Node limit**: stored as the exact requested `nodes` value and checked on
    every node reservation.
-3. **`movetime`**: the request is used directly; then subtract the move
-   overhead; then apply the safety margin `max(1, min(50, duration/20))`. The
-   result is capped at the original request. `Slow Mover` does not extend a
-   `movetime`. Soft and hard budgets are both this value.
+3. **`movetime`**: the request is used directly and only the safety margin
+   `max(1, min(50, duration/20))` is subtracted (no `Move Overhead` subtraction;
+   full-budget rule accepted 2026-10-29). The result is capped at the original
+   request. `Slow Mover` does not extend a `movetime`. Soft and hard budgets are
+   both this value.
 4. **Clock search**:
    - `remaining` is the side-to-move clock, clamped to ≥ 0.
    - Dynamic overhead (if enabled) is `clamp(remaining / 50, 10, 100)` ms;
@@ -717,7 +720,7 @@ intentionally not advertised, so 26 of the 28 entries are visible. There is no
 | `BookSafetyDepth` | spin | 2 | 0..3 | Safety probe horizon; 0 disables the probe while retaining legal-move filtering |
 | `Clear Hash` | button | — | — | Stops and joins the active search, then logically invalidates the table |
 | `UCI_ShowWDL` | check | false | true/false | Appends heuristic `wdl W D L` to scored lines; Syzygy root results use exact WDL |
-| `Move Overhead` | spin | 30 | 0..5000 ms | Base safety margin subtracted from clock/movetime budgets; learned GUI/network overhead is added on top for clock searches |
+| `Move Overhead` | spin | 30 | 0..5000 ms | Base safety margin subtracted from clock budgets (not from an explicit `movetime`); learned GUI/network overhead is added on top for clock searches |
 | `Dynamic Overhead` | check | false | true/false | Derives overhead from the clock: 2% of remaining, clamped to 10..100 ms |
 | `Slow Mover` | spin | 100 | 10..1000 | Scales clock-derived budgets; not applied to `movetime` |
 | `Contempt` | spin | 0 | 0..1000 cp | Draw avoidance: a draw is worth `-Contempt` to the root side and `+Contempt` to the opponent; 0 keeps neutral draws |
@@ -931,7 +934,8 @@ and `KOI_TEST_SHARD`.
 | Python | `elo_*_python`, `release_*_python`, `strength_*_python`, `nnue_*_python`, `koi_*_python`, `measurement_*_python`, `bullet_*_python`, `tune_*_python` |
 
 Labels: `unit`, `evaluation`, `search`, `runtime`, `rules`, `integration`,
-`tools`, `process`, `uci`, `matches`, `packaging`, `python`, `heavy`. `ctest -L
+`tools`, `process`, `reliability`, `uci`, `matches`, `packaging`, `python`,
+`heavy`. `ctest -L
 unit -LE heavy` is the fast unit set. Search shards, `koi_strength_tests`,
 `koi_engine_time_safety_process`, `koi_benchmark_process`, and
 `cutechess_stability_smoke` are heavy; some declare `PROCESSORS 2` and
@@ -939,7 +943,7 @@ unit -LE heavy` is the fast unit set. Search shards, `koi_strength_tests`,
 
 The exact registered count depends on optional dependencies (`pwsh`, Python 3,
 Cute Chess, `KOI_BUILD_SHADOW_DIFF`, modules). The reference Windows Release +
-Python configuration registers 75 tests; always treat `ctest -N` on the actual
+Python configuration registers 76 tests; always treat `ctest -N` on the actual
 build as authoritative.
 
 ### 9.2 Sanitizer and differential legs
@@ -950,7 +954,7 @@ build as authoritative.
 | Linux TSan | GCC 14, `-fsanitize=thread -fno-omit-frame-pointer -g`, `KOI_TSAN=ON`, static runtime off, modules off | Concurrency suites: TT, search service, controller, time manager, search shards; deadlock detection is disabled due to TSan's fixed detector table |
 | Shadow diff | `KOI_BUILD_SHADOW_DIFF=ON` builds `koi_shadow_diff_tests` | Compares native `Position` legality, keys, rule state, and FEN against the vendored chess-library mirror; also enabled at explicit diagnostics boundaries and completion validation |
 | GPU parity | `gpu_nnue_tests`, `koi_gpu_probe` | Bit-exact CPU/GPU parity plus the PTX variant table; parity cases skip without a CUDA device |
-| Windows CI | Release full suite, Debug smoke (`-LE heavy`), ASan, shadow diff, package | Five independent jobs |
+| Windows CI | Release full suite, Debug smoke (`-LE heavy`), ASan, shadow diff, package, flake repetitions | Six independent jobs |
 | Linux CI | GCC 14, Clang 18, modules-off, flake repetitions, Ubuntu 22.04 tarball, TSan | Full CTest suite per compiler; the tarball leg runs bounded UCI smokes with automatic and `KOI_CPU_VARIANT=generic` |
 | macOS CI | Apple Silicon arm64 with Homebrew LLVM, `KOI_BUILD_MODULES=OFF`, GPU off, static runtime off; package leg | Unit/heavy/process/Python groups; x86-only AVX-512 and variant-process tests omitted |
 
@@ -1048,8 +1052,8 @@ name and version while the tag is the version alone.
 - **Sanitizer coverage is partial:** ASan is MSVC-only and runs the fast subset;
   TSan exists only on Linux; macOS has no sanitizer leg.
 - **PGO is MSVC-only.** `KOI_PGO` rejects non-MSVC configurations.
-- **No version in the UCI handshake.** Build identity is only in benchmark JSON
-  and package provenance; a GUI cannot read the engine version from `uci`.
+- **Version readability.** `uci` reports `id name Koi <version>` (CMake pin);
+  commit-level build identity lives in benchmark JSON and package provenance.
 - **NNUE v1 containers are not accepted** by the current loader (versions 2, 3,
   4, 5, 6, and 8 are).
 - **Documentation/test-count drift:** `tests/README.md` and `docs/USER_GUIDE.md`

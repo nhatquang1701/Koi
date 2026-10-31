@@ -4,28 +4,28 @@
 
 Koi is a C++26 UCI chess engine for standard chess on Windows x64, Linux
 x86-64, and macOS arm64 (Apple Silicon). It uses iterative-deepening alpha-beta
-search and a persistent transposition table, with NNUE evaluation by
-default and optional NNUE, GPU NNUE, Polyglot book, and Syzygy support.
+search and a persistent transposition table, with a required NNUE evaluator
+and optional GPU NNUE, Polyglot book, and Syzygy support.
 
 ## Start here
 
 - [Download releases](https://github.com/nhatquang1701/Koi/releases)
-  for Windows and Linux x86-64 archives and their checksums.
+  for Windows, Linux x86-64, and macOS arm64 archives and their checksums.
 - [Read the user guide](USER_GUIDE.md) for installation, builds, UCI setup,
   GUI workflows, and optional assets.
 - [Run a first UCI session](USER_GUIDE.md#uci-smoke-test) after building or
   extracting an engine binary.
 
-macOS arm64 (Apple Silicon) is a source-build target: use Homebrew LLVM clang
-19+ (or AppleClang 18+), CMake, and Ninja with `-DKOI_BUILD_MODULES=OFF
--DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is CUDA-only and unavailable on macOS; the
+macOS arm64 (Apple Silicon) release packages are published; source builds use
+Homebrew LLVM clang 19+ (or AppleClang 18+), CMake, and Ninja with
+`-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is CUDA-only and unavailable on macOS; the
 CPU NNUE path works normally.
 
 Koi has no required configuration file. Begin with `Hash=512` and `Threads=1`.
 `Threads=1` provides deterministic search; higher values use
-Lazy SMP and can publish different valid results. The opening book is disabled
-by default (`OwnBook=false`). Enable it only with a licensed user-supplied
-`book.bin` beside the executable.
+Lazy SMP and can publish different valid results. A Polyglot book beside the
+executable is used automatically (release packages bundle a CC0 book); an
+explicit `OwnBook=false` disables it.
 
 ## Using Koi
 

@@ -98,7 +98,7 @@ C++ and Python suites still run.
 
 - Keep the UCI handshake byte-identical unless a change explicitly modifies it; update the handshake fixture, tests, and README together.
 - stdout must stay protocol-clean: exactly one `bestmove` per search.
-- The classical evaluator stays the default; NNUE remains opt-in with classical fallback.
+- NNUE is the required evaluator; the classical evaluator was removed 2026-10-28.
 - Elo, CPL, and NPS figures are reports, never CI thresholds or claims.
 - Do not commit build trees, generated corpora, trained networks, `book.bin`, tablebase data, or `.opencode/`. Durable reports go under `artifacts/`.
 - Keep third-party licenses intact; the vendored Stockfish oracle (`third_party/stockfish-19`, GPL-3.0) must not be redistributed as part of Koi.

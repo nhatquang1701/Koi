@@ -110,9 +110,11 @@ buffer on the Lichess clock.
 
 ## Opening book
 
-Release packages from 1.1.4 onward carry a Polyglot book generated from Lichess's
-open-source opening data ([lichess-org/chess-openings](https://github.com/lichess-org/chess-openings),
-CC0 1.0). Copy it next to the engine binary as `book.bin`:
+Release packages carry a CC0 1.0 Polyglot book. The post-1.1.5 book is built by
+`tools/book/build_database_book.py` from the Lichess standard-game database dumps
+(2013-01..2014-01), keeping strong rated games; published 1.1.4/1.1.5 archives
+still carry the older book generated from Lichess opening data. Copy it next to
+the engine binary as `book.bin`:
 
 ```bash
 cp book/koi.bin ~/koi-bot/engines/book.bin
@@ -138,8 +140,10 @@ the opening, which matters most in short games.
 - **`unrecognized arguments: -c`** — older/newer lichess-bot versions spell the
   config flag `--config`; the script uses the current spelling.
 - Koi plays standard chess only; leave the variants list at `standard`.
-- Optional assets stay optional: only set `SyzygyPath`, or `OwnBook: true` with
-  `BookFile`, when you have the files. Release packages carry the CC0 opening book `book/koi.bin`; Syzygy tablebase data is never bundled.
+- Optional assets stay optional: a book beside the executable and a conventional
+  Syzygy directory (`syzygy/`, `syzygy345/`, `tablebases/`, `3-4-5/`) are
+  auto-detected; `OwnBook`/`BookFile` and `SyzygyPath` only override that.
+  Release packages carry the CC0 book `book/koi.bin`; Syzygy data is never bundled.
 - For analysis-style use (no clock, infinite search, MultiPV), a GUI is a better
   fit than a bot; see the [user guide](USER_GUIDE.md).
 - **Desktop status window.** While the bot is online, `koi-bot.sh start` opens a

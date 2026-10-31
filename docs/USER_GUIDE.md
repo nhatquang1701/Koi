@@ -18,8 +18,9 @@ equality. The UCI command loop remains responsive in both configurations.
 
 ## Name
 
-The engine is called **Koi**. Releases up to and including v1.1.5 used the name
-"Koi Engine" in the UCI identity, package text and documentation; those
+The engine is called **Koi**. Historical releases through v1.1.4 used the name
+"Koi Engine" in package text and documentation; the v1.1.5 handshake already
+identifies as `Koi 1.1.5`. Those
 historical releases are not renamed. New builds identify themselves as **Koi**
 in the UCI handshake, and this guide uses **Koi** throughout. Binary and archive
 file names keep the `koi-engine` spelling so existing scripts keep working.
@@ -381,13 +382,9 @@ scan, or set `KOI_NNUE_AUTODETECT=0` to disable discovery; NNUE is required, and
 `EvalFile` option still swaps the network at runtime. A missing or rejected file is a boot error (the classical fallback was removed) and
 writes one explanatory line to stderr. Trained networks are local artifacts and are
 not committed. On the local single-thread probe the version 4 `halfka-king-bucket-v1`
-network runs at about 76k nodes/s against about 144k for the classical evaluator, it
-matches 61 of the 64 positions in the tactical gate (the classical evaluator stays at
-64/64), and it lost the color-balanced equal-node A/B against the classical evaluator
-(0 wins, 10 draws, 10 losses); the version 4 versus version 3 net match drew all 20
-games. This official network is not yet strong enough to replace the fallback; this
-cycle retrains and gates a promotion candidate. Once promoted, NNUE becomes the
-primary evaluator and the classical fallback is deprecated for staged removal.
+network runs at about 76k nodes/s. Those fallback-era comparisons are historical:
+the promoted h128 network replaced the classical evaluator, which was removed on
+2026-10-28, and NNUE is now required.
 The version 5 architecture ships with loader, inference, incremental, dataset, and
 trainer support only: no version 5 network has been trained or strength-validated, so
 every probe number above still describes version 4 networks.
@@ -416,8 +413,7 @@ output is a local report, not an Elo claim or a CI threshold.
 
 **GPU NNUE is experimental, disabled by default, and scheduled for removal.**
 It only runs version 5 networks on NVIDIA GPUs with a CUDA 12.x toolkit; the CPU
-NNUE path is required, with the classical evaluator removed on 2026-10-28
-transition fallback.
+NNUE path is required; the classical evaluator was removed on 2026-10-28.
 The `GpuNnue` UCI option selects the policy:
 
 - `off` (default) never uses the GPU, even when a driver and a compatible
@@ -657,7 +653,7 @@ continues to evaluate standard FIDE chess.
 
 ### Test inventory and known gaps
 
-The reference Windows Release configuration with Python 3 registers 75 CTest
+The reference Windows Release configuration with Python 3 registers 76 CTest
 tests (`KOI_BUILD_SHADOW_DIFF=OFF`); enabling the shadow-diff oracle adds
 `koi_shadow_diff_tests`, and a local `cutechess-cli.exe` adds the optional
 stability smoke, so the count varies with those optional pieces. Run `ctest -N`
@@ -727,7 +723,7 @@ The same program added the Stockfish-labeled NNUE pipeline described above:
 1,200,002 depth-10 labels produced a 960-256-32-1 network that round-trips
 through the version 3 container and runs at about 65k nps against about 87k
 for the classical evaluator. It lost the equal-node A/B match that finished,
-so the classical evaluator remains the default and NNUE stays opt-in.
+so at that point the classical evaluator was the default and NNUE was opt-in (both were later superseded: NNUE is now required).
 
 The 2026-09-17/18 NNUE and evaluation overhaul replaced that model with the
 `halfka-king-bucket-v1` feature set (9,216 inputs, 12 king buckets, CReLU pair
@@ -738,8 +734,8 @@ the first v4 candidate reached a quantized round-trip validation MAE of about
 142 cp, scored 61/64 on the 64-position tactical suite, and ran at about 76k
 nps against about 144k for the classical evaluator. It lost the equal-node
 color-balanced A/B to classical and drew every game against the earlier v3
-network, so the classical evaluator remains the default and NNUE stays
-opt-in. The same overhaul deduplicated the classical evaluator's material and
+network, so at that point the classical evaluator was the default and NNUE was
+opt-in (both were later superseded: NNUE is now required). The same overhaul deduplicated the classical evaluator's material and
 attack logic without changing its fixed-depth benchmark rows, and added a
 classical term tuner whose first candidate was not adopted. Version 2 and
 version 3 containers still load. No Elo or CPL claim is made.
@@ -774,7 +770,7 @@ from the starting position (for example, `bestmove e2e4`).
   `Hash` (default 512 MB, range 1–4096 MB), `Threads` (default 1, capped at
   `min(64, hardware_concurrency)`), the opening book options, and the
   `Clear Hash` button. The `Speed` option was removed: time allocation is
-  always the neutral 100 %% factor (use `Slow Mover` for a coarse time tweak).
+  always the neutral 100 % factor (use `Slow Mover` for a coarse time tweak).
 - `isready` responds immediately with `readyok`, including while searching.
 - `ucinewgame` resets the position and clears the persistent search hash
   (equivalent to `Clear Hash`) after cancelling and joining any active search;
@@ -858,8 +854,9 @@ deadline: the search stops at whichever is reached first.
 For clock searches, the requested budget is adjusted in this order:
 `Slow Mover`, then `Move Overhead` is subtracted, followed by the existing
 safety margin and minimum safe budget. An explicit `movetime` is a direct
-request (then `Move Overhead` and the safety margin apply) and the budget never
-exceeds the requested value; `Slow Mover` does not extend a `movetime` search.
+request (only the safety margin applies; `Move Overhead` is not subtracted) and
+the budget never exceeds the requested value; `Slow Mover` does not extend a
+`movetime` search.
 `Move Overhead` defaults to 30 ms and accepts 0..5000; `Slow Mover` defaults to
 100 and accepts 10..1000. These controls affect allocation, not explicit depth
 or node limits, and changing one while searching cancels and joins the old
@@ -934,7 +931,8 @@ draw, cursed-win, and blessed-loss results never override search, and a cutoff
 still requires a zero halfmove clock when `Syzygy50MoveRule` is true. Interior
 probing is experimental and strength-unvalidated (no tablebase assets were
 available to test it against), so leave the option at its default 0 unless you
-are deliberately experimenting. The option is inert unless `SyzygyPath` is set
+are deliberately experimenting. The option is inert unless tables are available
+(explicit `SyzygyPath` or automatic discovery)
 or a test probe hook is installed. The `SyzygyProbeDepth` gate on the root probe
 is unchanged by this option.
 
@@ -1092,7 +1090,7 @@ transcript but cannot automate a locally installed Lucas Chess GUI.
 
 The Koi v1.1.5 Windows package is `koi-engine-v1.1.5.zip`; the portable
 Linux archive is
-`koi-engine-v1.1.5-linux-x86_64.tar.gz`. Each archive retains this README, the
+`koi-engine-v1.1.5-linux-x86_64.tar.gz`. Each archive retains the project README.md, the
 project MIT license, required third-party licenses, and a `package.json` manifest with per-file
 SHA-256 hashes and source commit provenance. A `.sha256` sidecar verifies the
 archive itself. macOS arm64 (Apple Silicon) archives are published as well.
@@ -1104,6 +1102,7 @@ the options at session start; the portable release defaults are `RandomSeed=0`,
 `Contempt=0`, `Dynamic Overhead=false`,
 `BookRandom=false`, `BookSafety=true`, `BookSafetyDepth=2`,
 `UCI_ShowWDL=false`, `Move Overhead=30`, `Slow Mover=100`, `StrengthMode=false`,
+`GpuNnue=off`,
 `SyzygyPath=""`, `SyzygyProbeDepth=1`, `SyzygyProbeLimit=7`,
 `Syzygy50MoveRule=true`, `SyzygyInteriorDepth=0`, and `EvalFile=""`
 (empty keeps the boot-time evaluator).

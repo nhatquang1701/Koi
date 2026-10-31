@@ -229,24 +229,9 @@ repeated with another compiler or training set.
 
 ## Classical evaluation term tuning (removed 2026-10-28)
 
-`koi-eval-features` (built as `build/release/koi-eval-features.exe`) reads FEN
-lines (optionally `FEN;cp;best_move`) and writes the NNUE evaluation as CSV
-(`--nnue NET` is required). The classical term tuner was removed with HCE; see
-`docs/HCE_REMOVAL_PLAN.md`.
-`cp` (or to the evaluator's `total`) with a centered ridge solve, then writes a
-candidate parameter header and a JSON report under `artifacts/`:
-
-```powershell
-Get-Content .\artifacts\training\labels.txt -TotalCount 50000 |
-  .\build\release\koi-eval-features.exe --output .\artifacts\verification\classical-features-sample.csv
-python .\tools\measurement\tune_classical.py --input .\artifacts\verification\classical-features-sample.csv `
-  --header-out .\artifacts\verification\tuned-classical.h `
-  --report-out .\artifacts\verification\tuned-classical-report.json
-```
-
-The emitted header is a report, not an adopted parameter set: the evaluator
-never reads it, and tuned scales are only adopted after the tactical, suite,
-and match gates pass.
+The classical evaluator and its `tune_classical.py` ridge-solve workflow were
+removed with HCE; see `docs/HCE_REMOVAL_PLAN.md`. `koi-eval-features` remains for
+dumping NNUE features (`--nnue NET` is required).
 
 ## PGN extraction and oracle analysis
 
@@ -421,7 +406,7 @@ of Python; the measurement tooling uses the in-tree `koi_chess` package.
 
 `tools/measurement/elo_estimate.py` is standard-library-only and consumes the existing
 `koi-uci-match-v2` JSON/PGN reports. The primary measurement is no-book at 1+0
-with Koi `Hash=512`, `Threads=4`, and `Speed=100`, using
+with Koi `Hash=512` and `Threads=4`, using
 `tests/data/openings/openings-curated-32.txt` once in each Koi color for every anchor. Two
 anchors produce 128 initial games (32 openings x 2 colors x 2 anchors); adaptive
 64-game batches can extend the schedule through 320 games. The fit is Koi's
@@ -545,11 +530,10 @@ python .\tools\nnue\run_bullet.py --help
 ```
 
 Validation runs the 64-position gate (`koi-bench --nnue`) and a node-limited,
-colour-split A/B match (`tools/nnue/ab_match.ps1` versus the classical evaluator,
-schema `koi-nnue-ab-match-v1`; `tools/nnue/net_match.ps1` for network versus
-network). Those results are local
-reports: the classical evaluator remains the engine default and no reported
-number is an Elo claim. `ab_match.ps1` defaults to the 32 curated openings in
+colour-split network-vs-network match (`tools/nnue/net_match.ps1`, schema
+`koi-nnue-net-match-v1`). The classical A/B (`tools/nnue/ab_match.ps1`) is
+historical only: the classical evaluator was removed 2026-10-28. Those results
+are local reports and no reported number is an Elo claim. `ab_match.ps1` defaults to the 32 curated openings in
 `tests/data/openings/openings-curated-32.txt` but still repeats openings across
 its per-position games, so its screens are half-duplicated; use `net_match.ps1`
 (or another deduplicated protocol) for evidence runs. `net_match.ps1` prefers the

@@ -23,11 +23,10 @@
 Koi is a C++26 chess engine for Windows x64, Linux x86-64, and macOS arm64
 (Apple Silicon). Its default search
 uses iterative-deepening alpha-beta with a persistent transposition table.
-Release packages ship a gated Koi-native NNUE evaluator as the primary evaluator
-(bundled at `nnue/koi.nnue`, auto-discovered at boot); the hand-crafted
-classical evaluator was removed in the unreleased 1.1.5 work and a clean rewrite
-is planned, so a network is required to search:
-a deprecated fallback until its staged removal.
+Release packages ship the gated Koi-native NNUE evaluator as the primary evaluator
+(bundled at `nnue/koi.nnue`, auto-discovered at boot). The hand-crafted classical
+evaluator was removed before v1.1.5 (a clean rewrite is planned), so a network is
+required to search: a boot without a usable network exits with a clear diagnostic.
 
 | Engine area | What Koi provides |
 | --- | --- |
@@ -57,8 +56,8 @@ macOS arm64 (Apple Silicon) can also build from source: install Homebrew LLVM
 (clang 19+; AppleClang 18+ also works), CMake, and Ninja, then configure with
 `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is experimental,
 disabled by default, CUDA-only, and
-unavailable on macOS; the CPU NNUE path works normally and the classical evaluator
-remains only as the deprecated fallback.
+unavailable on macOS; the CPU NNUE path works normally. NNUE is required: a boot
+without a usable network exits with a clear diagnostic.
 See the [user guide](docs/USER_GUIDE.md#build-prerequisites) for the commands.
 
 ## Get started
@@ -73,9 +72,9 @@ Koi needs no configuration file or extra assets. `Threads=1` gives deterministic
 search; multiple threads use Lazy SMP and can produce different valid
 principal variations. `OwnBook` defaults to false, but a Polyglot book beside
 the executable is auto-detected and used (release packages bundle a custom CC0
-book). NNUE is the primary evaluator in release packages; if a network is
-missing or rejected, the classical evaluator keeps the engine usable as a
-deprecated fallback until its removal.
+book). The gated NNUE network is bundled too and is required at boot; a missing
+or rejected network is a startup error (exit 4), while a runtime `EvalFile`
+rejection keeps the current evaluator and reports an `info string`.
 
 ## Explore
 

@@ -191,10 +191,10 @@ if (-not [string]::IsNullOrWhiteSpace($BookPath)) {
     Set-Content -LiteralPath (Join-Path $bookDirectory 'koi.bin.sha256') -Value $bookSha -Encoding ASCII
     $bookNotice = Join-Path $packageDirectory 'book/COPYING.txt'
     Set-Content -LiteralPath $bookNotice -Encoding ASCII -Value @(
-        'koi.bin is a Polyglot opening book generated from lichess-org/chess-openings,',
+        'koi.bin is a Polyglot opening book built from Lichess standard-game database dumps,',
         'released under CC0 1.0 Universal (public domain dedication).',
-        'Source: https://github.com/lichess-org/chess-openings',
-        'Generator: tools/book/build_book.py',
+        'Source: https://database.lichess.org',
+        'Generator: tools/book/build_database_book.py',
         "SHA-256: $bookSha"
     )
     $bookIncluded = $true
@@ -211,12 +211,12 @@ $engineName = "koi-engine$binarySuffix"
 $avx2Name = "koi-engine-avx2$binarySuffix"
 $avx512Name = "koi-engine-avx512$binarySuffix"
 $nnueParagraph = if ($nnueIncluded) {
-    "This package includes Koi's gated NNUE network at nnue/koi.nnue (its SHA-256 is in nnue/koi.nnue.sha256). The engine discovers it automatically at startup; set EvalFile only to override it. The classical evaluator remains the fallback."
+    "This package includes Koi's gated NNUE network at nnue/koi.nnue (its SHA-256 is in nnue/koi.nnue.sha256). The engine discovers it automatically at startup; set EvalFile only to override it. NNUE is required: the classical fallback was removed 2026-10-28."
 } else {
     ''
 }
 $bookParagraph = if ($bookIncluded) {
-    "This package includes a Polyglot opening book at book/koi.bin (CC0, generated from lichess-org/chess-openings; SHA-256 in book/koi.bin.sha256). Copy it next to the engine binary as book.bin and Koi uses it automatically: a book beside the executable is used unless the GUI sets OwnBook explicitly."
+    "This package includes a Polyglot opening book at book/koi.bin (CC0, built from Lichess standard-game database dumps by tools/book/build_database_book.py; SHA-256 in book/koi.bin.sha256). Copy it next to the engine binary as book.bin and Koi uses it automatically: a book beside the executable is used unless the GUI sets OwnBook explicitly."
 } else {
     ''
 }
