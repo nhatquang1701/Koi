@@ -1390,6 +1390,39 @@ try {
     if ($maxBookBest -notmatch '^bestmove e2e4') {
         throw 'the 16 MiB book search must complete with bestmove e2e4'
     }
+
+    # 9y. Polyglot entries with malformed move encodings (from == to, invalid
+    # promotion bits) must never be used; the search falls back legally.
+    $assetBadMoves = Join-Path $assetRoot 'engine-malformed-book-moves'
+    New-Item -ItemType Directory -Path $assetBadMoves -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetBadMoves $executableName)
+    [byte[]]$badMoveBook = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x3c, 0x1f, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x3c, 0x1f, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x3c, 0x1f, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x3c, 0x1f, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x3c, 0x1f, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x3c, 0x1f, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x3c, 0x1f, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00
+    [System.IO.File]::WriteAllBytes((Join-Path $assetBadMoves 'book.bin'), $badMoveBook)
+    $badMoveSession = Start-UciSession -Executable (Join-Path $assetBadMoves $executableName)
+    Send-UciCommand $badMoveSession 'uci'
+    [void](Read-UciUntil $badMoveSession { param($line) $line -eq 'uciok' } 'bad-move-book uciok' -ValidateUciOutput)
+    Send-UciCommand $badMoveSession 'isready'
+    [void](Read-UciUntil $badMoveSession { param($line) $line -eq 'readyok' } 'bad-move-book readyok' -ValidateUciOutput)
+    Send-UciCommand $badMoveSession 'position startpos'
+    Send-UciCommand $badMoveSession 'go depth 1'
+    $badMoveBest = Read-UciUntil $badMoveSession { param($line) $line -match '^bestmove ' } 'bad-move-book bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $badMoveBest 'bad-move-book'
+    Send-UciCommand $badMoveSession 'quit'
+    $badMoveLines = Complete-UciSession $badMoveSession $false
+    if (@($badMoveLines | Where-Object { $_ -match '^info string book move ' }).Count -ne 0) {
+        throw 'malformed Polyglot move encodings must never be announced as book moves'
+    }
+    if (@($badMoveLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 1) {
+        throw 'the malformed-book-move case must complete exactly one search'
+    }
 }
 finally {
     Stop-AllUciSessions
