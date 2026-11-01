@@ -1540,6 +1540,16 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                     validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
                 ",\"after_fen\":" + debug_quoted(after_fen) +
                 ",\"source\":" + debug_quoted(source));
+        if (result.failed) {
+            // A setup/internal failure still answers with a legal fallback move,
+            // but it must not be indistinguishable from a real result at the
+            // protocol boundary.
+            std::lock_guard lock(output_mutex_);
+            if (generation == generation_) {
+                output_ << "info string search failed; using a safe fallback move\n"
+                        << std::flush;
+            }
+        }
         write_search_completion(generation, completed);
     };
 
