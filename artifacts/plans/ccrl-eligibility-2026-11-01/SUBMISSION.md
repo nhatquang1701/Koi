@@ -29,7 +29,11 @@ is not auto-loaded from that location. OwnBook=false disables any book,
 including a detected one.
 ```
 
-## Test evidence to attach/link
+## Package / test evidence to attach/link
+
+Package: `artifacts/packages/ccrl-20261101/koi-engine-1.1.5-dev-2708608-win-x86_64-ccrl.zip`
+(SHA-256 `2f3b8c8f1fbe0e287e5daa755401b59abdd0e4d6aaaf70ee2287d2bd6f9edd56`).
+
 
 - 1000 ultra-fast games, Koi vs Stockfish 19, 5 ms/move, Mac arm64:
   **0 crashes, 0 timeouts, 0 illegal moves, 0 protocol violations**,

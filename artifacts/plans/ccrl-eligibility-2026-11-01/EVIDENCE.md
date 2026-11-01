@@ -71,3 +71,15 @@ requested; `1000-games.json`/`.jsonl` in this directory are that run.
 - This is a dev build after the 1.1.5 tag; a new version number requires the
   author's explicit version bump. The 1.1.5 release archives predate the
   reliability fixes.
+
+
+## CCRL testing package
+
+- Archive: `artifacts/packages/ccrl-20261101/koi-engine-1.1.5-dev-2708608-win-x86_64-ccrl.zip`
+- SHA-256: `2f3b8c8f1fbe0e287e5daa755401b59abdd0e4d6aaaf70ee2287d2bd6f9edd56`
+- Handshake: `id name Koi 1.1.5`, `info string build 2708608a7ff4`
+- Contents: three Windows x86-64 engine binaries, `nnue/koi.nnue` (+hash and
+  gate metadata), MIT LICENSE, chess-library/Fathom MIT licenses,
+  `README-CCRL.txt`, `SHA256SUMS` — no book, no tests, no Stockfish.
+- Extracted-package smoke test passed: auto-discovered net, Hash 256 / Threads 1
+  / OwnBook false / Ponder false, legal bestmove, exit 0.

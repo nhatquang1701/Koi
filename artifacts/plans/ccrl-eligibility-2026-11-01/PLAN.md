@@ -20,7 +20,7 @@ and whether it was coded by the author or AI assisted; then exe files
 | Hash 128/256 MB | Tester can set it; CCRL profile uses 256 MB (default is 512 MB) | `ccrl-profile` test; 1000-game harness used 256 MB |
 | Neutral openings, paired colours | Test harness uses neutral curated openings and alternates Koi's colour | `crash_1000.py` |
 | 1000 ultra-fast games without a crash | **PASS: 1000/1000 games, 0 crashes, 0 timeouts, 0 illegal moves, 0 protocol violations** (Mac arm64, Koi vs Stockfish 19, 5 ms/move, 6 workers, 90.2 s) | `EVIDENCE.md`, `mac/1000-games.json/jsonl` |
-| No copied code | Audit: Koi's engine sources are its own implementation (MIT); third-party libraries are vendored dependencies with licenses; the Stockfish 19 binary is a GPL-3.0 test opponent only — not linked into the engine, not in release packages; engine binary contains no "stockfish" string | `PROVENANCE.md` |
+| No copied code | Audit (`PROVENANCE.md`): Koi's engine sources are its own implementation (MIT); third-party libraries are vendored dependencies with licenses; the Stockfish 19 binary is a GPL-3.0 test opponent only — not linked into the engine, not in release packages; engine binary contains no "stockfish" string | `PROVENANCE.md` |
 | Submission metadata | Prepared template; author name/nationality must be filled by the author | `SUBMISSION.md` |
 
 ## Remaining before an actual submission
@@ -30,8 +30,10 @@ and whether it was coded by the author or AI assisted; then exe files
    includes the post-release reliability fixes (SIGPIPE, Syzygy path-list ASan
    fix, book hot-swap, etc.). A new version requires an explicit "version bump"
    from the user; this repository does not bump versions autonomously.
-3. Produce the exe package (engine binaries + NNUE net + licenses; **no book**,
-   no test suite, no Stockfish) and hash it.
+3. ~~Produce the exe package~~ **DONE**: `artifacts/packages/ccrl-20261101/`,
+   archive `koi-engine-1.1.5-dev-2708608-win-x86_64-ccrl.zip` (SHA-256
+   `2f3b8c8f1fbe0e287e5daa755401b59abdd0e4d6aaaf70ee2287d2bd6f9edd56`); see
+   `PACKAGE.md`. No book, no test suite, no Stockfish.
 4. Send the TalkChess PM/email to the CCRL tester with the template details and
    a download link.
 
