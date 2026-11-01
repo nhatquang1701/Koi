@@ -1422,6 +1422,51 @@ try {
         $env:KOI_UCI_TIMEOUT_MS = $savedUciTimeout
     }
 
+    # 9aa. OwnBook toggling with an auto-detected book: auto use, explicit
+    # false disables it, explicit true re-enables it, detection announced once.
+    $assetToggle = Join-Path $assetRoot 'engine-ownbook-toggle'
+    New-Item -ItemType Directory -Path $assetToggle -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetToggle $executableName)
+    $toggleBytes = [byte[]]::new(16)
+    [byte[]]$toggleKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($toggleKey, 0, $toggleBytes, 0, 8)
+    $toggleBytes[8] = 0x03
+    $toggleBytes[9] = 0x1c
+    $toggleBytes[10] = 0x00
+    $toggleBytes[11] = 100
+    [System.IO.File]::WriteAllBytes((Join-Path $assetToggle 'book.bin'), $toggleBytes)
+    $toggleSession = Start-UciSession -Executable (Join-Path $assetToggle $executableName)
+    Send-UciCommand $toggleSession 'uci'
+    [void](Read-UciUntil $toggleSession { param($line) $line -eq 'uciok' } 'ownbook-toggle uciok' -ValidateUciOutput)
+    Send-UciCommand $toggleSession 'isready'
+    [void](Read-UciUntil $toggleSession { param($line) $line -eq 'readyok' } 'ownbook-toggle readyok' -ValidateUciOutput)
+    Send-UciCommand $toggleSession 'position startpos'
+    Send-UciCommand $toggleSession 'go depth 1'
+    [void](Read-UciUntil $toggleSession { param($line) $line -match '^bestmove ' } 'ownbook-toggle auto bestmove' -ValidateUciOutput)
+    Send-UciCommand $toggleSession 'setoption name OwnBook value false'
+    Send-UciCommand $toggleSession 'isready'
+    [void](Read-UciUntil $toggleSession { param($line) $line -eq 'readyok' } 'ownbook-toggle off readyok' -ValidateUciOutput)
+    Send-UciCommand $toggleSession 'position startpos'
+    Send-UciCommand $toggleSession 'go depth 1'
+    [void](Read-UciUntil $toggleSession { param($line) $line -match '^bestmove ' } 'ownbook-toggle off bestmove' -ValidateUciOutput)
+    Send-UciCommand $toggleSession 'setoption name OwnBook value true'
+    Send-UciCommand $toggleSession 'isready'
+    [void](Read-UciUntil $toggleSession { param($line) $line -eq 'readyok' } 'ownbook-toggle on readyok' -ValidateUciOutput)
+    Send-UciCommand $toggleSession 'position startpos'
+    Send-UciCommand $toggleSession 'go depth 1'
+    [void](Read-UciUntil $toggleSession { param($line) $line -match '^bestmove ' } 'ownbook-toggle on bestmove' -ValidateUciOutput)
+    Send-UciCommand $toggleSession 'quit'
+    $toggleLines = Complete-UciSession $toggleSession $false
+    if (@($toggleLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 3) {
+        throw 'the OwnBook toggle case must complete three searches'
+    }
+    if (@($toggleLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+        throw 'the auto-detected book must be announced exactly once across OwnBook toggles'
+    }
+    if (@($toggleLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 2) {
+        throw 'the book must be used auto and after OwnBook=true, but not while OwnBook=false'
+    }
+
     # 9z. Large distinct-key book (65,536 entries, none matching startpos): the
     # loader must bucket many keys without a book move or a crash.
     $assetKeyedBook = Join-Path $assetRoot 'engine-distinct-key-book'
