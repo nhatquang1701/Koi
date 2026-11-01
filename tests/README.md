@@ -218,8 +218,11 @@ Every test carries CTest labels; combine them with `-L`/`-LE`, for example
 - `reliability` — adversarial protocol/robustness regression tests
   (`koi_protocol_fuzz_process`, the `koi_protocol_soak_process` resource churn
   test, `koi_protocol_option_churn_process`,
-  `koi_protocol_broken_pipe_process`, and the four randomized
-  `koi_*_fuzz_process` tests); run with `ctest -L reliability`.
+  `koi_protocol_broken_pipe_process`, the five randomized
+  `koi_*_fuzz_process` tests, and the Linux-only
+  `koi_protocol_memory_limit_process` OS-limit probe); run with
+  `ctest -L reliability`. CI executes this label on Linux and macOS, runs the
+  full Windows suite, and runs the protocol corpus under AddressSanitizer.
 - `python` — Python unittest suites (`elo_oracle_python` is also `measurement`).
 - `heavy` — long-running tests. `koi_search_tests_*of4`, `koi_strength_tests`,
   `koi_engine_time_safety_process`, `koi_benchmark_process`, and
