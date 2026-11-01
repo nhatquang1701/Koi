@@ -22,6 +22,12 @@ function Read-RepositoryFile([string]$RelativePath) {
     return Get-Content -LiteralPath (Join-Path $repositoryRoot $RelativePath) -Raw
 }
 
+# 0. The embedding service header must not pull private detail headers.
+$serviceHeader = Read-RepositoryFile 'src/koi/search_service.hpp'
+if ($serviceHeader -match '#include\s+"koi/detail/') {
+    Fail 'search_service.hpp must not include private detail headers'
+}
+
 # 1. SearchService must not leak the transposition-table definition.
 if ((Read-RepositoryFile 'src/koi/search_service.hpp') -match '#include\s+"koi/transposition_table\.hpp"') {
     Fail 'search_service.hpp must not include transposition_table.hpp (use hash_types.hpp)'

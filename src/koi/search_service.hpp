@@ -6,7 +6,6 @@
 
 #include "koi/evaluator.hpp"
 #include "koi/hash_types.hpp"
-#include "koi/detail/search_constants.hpp"
 #include "koi/search_types.hpp"
 
 namespace koi {
