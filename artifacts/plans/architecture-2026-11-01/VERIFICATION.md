@@ -1,8 +1,8 @@
 # Architecture verification snapshot (1.0.0 baseline)
 
 Branch: `koi-engine`
-Verified heads: `0ac7758` (CI) and `dd5f17a` (local + ASan); later
-move-only/typed-failure changes are covered by focused and ASan runs.
+Verified head: `325c7c1` (final; Windows/Linux/docs green). Earlier CI head
+`0ac7758` and the intermediate refactors were validated locally and under ASan.
 Date: 2026-11-01
 
 ## CI (GitHub Actions)
@@ -60,10 +60,22 @@ Run IDs: Windows `41326510478`, Linux `41326510541`.
 
 - ASan tree rebuilt from the refactored source.
 - ASan unit label: **24/24 pass** (50.6 s).
-- ASan reliability label: **8/8 pass**, **790.9 s wall**, zero
-  AddressSanitizer/SEGV reports.
+- ASan reliability label: **8/8 pass** on the final tree (`325c7c1`),
+  **804.9 s wall**, zero AddressSanitizer/SEGV reports (an earlier 790.9 s run
+  covered the same refactors).
+- ASan unit label on the final tree: **24/24 pass** (71.6 s).
 - This covers the root-fallback extraction, worker pools/stats support,
-  header-seam changes, typed failure paths and protocol diagnostics.
+  header-seam changes, typed failure paths, protocol diagnostics, move-only
+  `SearchService`, and the test-support/API seam moves.
+
+## Review follow-ups completed
+
+The independent re-audit at `8b9cc2b` confirmed all boundaries and found only
+hygiene issues; all were fixed: inline `/` direct includes for header helpers,
+internal linkage restored for moved helper TUs, shared option bounds
+centralized, the start-failure typed diagnostic, the `noexcept` allocation
+window in the fallback scanner, and all test-only declarations removed from
+shipped headers (synthetic NNUE factories, test controller factory).
 
 ## Deliberately deferred (2.0.0 ownership work)
 
