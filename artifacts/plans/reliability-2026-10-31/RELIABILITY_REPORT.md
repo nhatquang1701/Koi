@@ -83,9 +83,9 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
 2. **Symlinked assets** were not exercised; read-permission denial for book,
    Syzygy and EvalFile is now covered (R57/R58/R59), and the transient-lock
    variant is covered (R41).
-3. **Multi-hour soak**: 100k rounds previously, and a 200,000-round asset-churn
-   soak was launched on 2026-11-01 (see `soak-200k-assetchurn.log`); the result
-   will be recorded when it completes.
+3. **Multi-hour soak**: a 200,000-round asset-churn soak completed on
+   2026-11-01 (200,001 bestmoves, 29,922 scored, 2,034.5 s ≈ 34 min, RSS 29-83 MB,
+   exit 0), after the earlier 100k runs. An overnight (8 h+) run remains undone.
 4. **Platform signals** (SIGTERM/SIGHUP on POSIX, console-close on Windows) are
    not part of the UCI contract; engine defaults apply.
 5. **CI backlog**: many pushes queued Windows/Linux CTests; latest green matrix
