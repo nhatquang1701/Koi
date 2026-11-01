@@ -28,6 +28,23 @@ if ($serviceHeader -match '#include\s+"koi/detail/') {
     Fail 'search_service.hpp must not include private detail headers'
 }
 
+# 0b. Single protocol writer: only the UCI controller may contain protocol
+# output literals.  Diagnostics in engine code go through stderr/info strings
+# emitted by the controller, never by formatting bestmove/uciok/readyok.
+$protocolLiterals = @('"bestmove ', '"uciok', '"readyok', '"info string')
+$engineSources = Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src/koi') -Recurse -File |
+    Where-Object { $_.Extension -in '.cpp', '.hpp' }
+foreach ($source in $engineSources) {
+    $relative = [System.IO.Path]::GetRelativePath($repositoryRoot, $source.FullName).Replace('\', '/')
+    if ($relative -eq 'src/koi/uci_controller.cpp') { continue }
+    $content = Get-Content -LiteralPath $source.FullName -Raw
+    foreach ($literal in $protocolLiterals) {
+        if ($content.Contains($literal)) {
+            Fail "protocol literal $literal found outside uci_controller.cpp in $relative"
+        }
+    }
+}
+
 # 1. SearchService must not leak the transposition-table definition.
 if ((Read-RepositoryFile 'src/koi/search_service.hpp') -match '#include\s+"koi/transposition_table\.hpp"') {
     Fail 'search_service.hpp must not include transposition_table.hpp (use hash_types.hpp)'
