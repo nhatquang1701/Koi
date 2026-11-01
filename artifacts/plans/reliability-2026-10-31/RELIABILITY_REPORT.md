@@ -124,6 +124,19 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
    may lag HEAD by a few commits. macOS runs are occasionally cancelled by the
    workflow concurrency policy.
 
+## 4b. Program scale (as of round 87)
+
+- **R1–R101** tracked risks: fixed or verified; every fix has a regression.
+- Local non-heavy suite: **71 tests**, **68/71** pass (3 known local Python
+  measurement failures).
+- Reliability label: **8 tests**, ~140 s release / **919 s ASan**, zero reports.
+- Randomized condition-free fuzzers: **five** (FEN, move lists, setoption,
+  go/state, raw commands), registered in CTest/CI.
+- Long runs: two 200k asset-churn soaks; **1,000,000-round soak in progress**.
+- CI: Windows full/debug/sanitizer/shadow/package/flake, Linux
+  gcc/clang/tsan/modules-off/tarball/flake, macOS, docs; latest fully green
+  heads tracked in the goal reports.
+
 ## 5. How to rerun
 
 ```powershell
