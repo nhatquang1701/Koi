@@ -97,11 +97,12 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
    allocation-failure path is now covered by an injected policy (R60), but no
    process-wide memory-limit/job-object run exists. Large real allocations were
    deliberately not requested to avoid destabilising the host.
-2. **Crafted same-size Syzygy payloads**: the standard 3-4-5 man set is now
-   canonical-size-validated (R65), which catches truncation/oversize. A crafted
-   file of exactly the expected size with a garbage header can still hang Fathom
-   during probing (third-party trust boundary); unknown 6-man names are not
-   size-validated at all. Auto-discovery remains silent for rejected directories.
+2. **Crafted same-size Syzygy payloads**: the standard 3-4-5 man set is
+   canonical-size-validated (R65) and zero-filled bodies are rejected before
+   Fathom maps them (R93/R95). A crafted file of exactly the expected size with
+   **non-zero garbage** header bytes can still reach Fathom and hang a probe
+   (third-party trust boundary); unknown 6-man names are not size-validated.
+   Auto-discovery remains silent for rejected directories.
 3. **Directory junctions/UNC paths** remain untested; file hardlinks/symlinks
    (R62), read-permission denial for book/Syzygy/EvalFile (R57/R58/R59) and the
    transient-lock variant (R41) are covered.
