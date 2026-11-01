@@ -122,8 +122,12 @@ void test_zero_payload_tables_are_corrupt() {
     const koi::test::TempDirectory root;
     const std::filesystem::path zero_body = root.file("zero-body");
     const std::filesystem::path tiny_valid = root.file("tiny-valid");
+    const std::filesystem::path tiny_zero_dtz = root.file("tiny-zero-dtz");
+    const std::filesystem::path tiny_valid_dtz = root.file("tiny-valid-dtz");
     std::filesystem::create_directories(zero_body);
     std::filesystem::create_directories(tiny_valid);
+    std::filesystem::create_directories(tiny_zero_dtz);
+    std::filesystem::create_directories(tiny_valid_dtz);
     {
         std::ofstream table(zero_body / "KQvK.rtbw", std::ios::binary);
         const unsigned char magic[4] = {0x71, 0xE8, 0x23, 0x5D};
@@ -139,10 +143,27 @@ void test_zero_payload_tables_are_corrupt() {
         table.write("\x01", 1);
         table.write(std::string(75, '\0').data(), 75);
     }
+    {
+        std::ofstream table(tiny_zero_dtz / "KNvK.rtbz", std::ios::binary);
+        const unsigned char magic[4] = {0xD7, 0x66, 0x0C, 0xA5};
+        table.write(reinterpret_cast<const char*>(magic), 4);
+        table.write(std::string(76, '\0').data(), 76);
+    }
+    {
+        std::ofstream table(tiny_valid_dtz / "KNvK.rtbz", std::ios::binary);
+        const unsigned char magic[4] = {0xD7, 0x66, 0x0C, 0xA5};
+        table.write(reinterpret_cast<const char*>(magic), 4);
+        table.write("\x01", 1);
+        table.write(std::string(75, '\0').data(), 75);
+    }
     require(koi::syzygy_directory_status(zero_body) == koi::SyzygyDirectoryStatus::corrupt,
-            "a canonically sized zero-filled table body must be corrupt");
+            "a canonically sized zero-filled WDL body must be corrupt");
     require(koi::syzygy_directory_status(tiny_valid) == koi::SyzygyDirectoryStatus::usable,
-            "a tiny real-like table with a non-zero payload must be usable");
+            "a tiny real-like WDL table with a non-zero payload must be usable");
+    require(koi::syzygy_directory_status(tiny_zero_dtz) == koi::SyzygyDirectoryStatus::corrupt,
+            "a canonically sized zero-filled DTZ body must be corrupt");
+    require(koi::syzygy_directory_status(tiny_valid_dtz) == koi::SyzygyDirectoryStatus::usable,
+            "a tiny real-like DTZ table with a non-zero payload must be usable");
 }
 
 void test_standard_syzygy_size_manifest() {
