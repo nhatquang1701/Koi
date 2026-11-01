@@ -1197,5 +1197,33 @@ Assert-ProtocolGrammar $ponderSearchmoves
 Assert-CleanDiagnostics $ponderSearchmoves
 Assert-OnlyBestmove $ponderSearchmoves 'bestmove e2e4'
 
+# 28. Ponder stop/ponderhit races: stopping a just-started ponder search,
+# duplicate stops, duplicate ponderhit and ponderhit-after-stop must each leave
+# exactly one legal bestmove and no protocol noise.
+$ponderImmediate = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo ponder wtime 1000 btime 1000`nstop`nquit`n" 'ponder-immediate-stop'
+Assert-ProtocolGrammar $ponderImmediate
+Assert-CleanDiagnostics $ponderImmediate
+Assert-OneLegalBestmove $ponderImmediate
+
+$ponderStopTwice = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo ponder wtime 1000 btime 1000`nstop`nstop`nquit`n" 'ponder-stop-twice'
+Assert-ProtocolGrammar $ponderStopTwice
+Assert-CleanDiagnostics $ponderStopTwice
+Assert-OneLegalBestmove $ponderStopTwice
+
+$ponderhitTwice = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo ponder wtime 1000 btime 1000`nponderhit`nponderhit`nisready`nstop`nquit`n" 'ponderhit-twice'
+Assert-ProtocolGrammar $ponderhitTwice
+Assert-CleanDiagnostics $ponderhitTwice
+Assert-OneLegalBestmove $ponderhitTwice
+
+$ponderhitAfterStop = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo ponder wtime 1000 btime 1000`nstop`nponderhit`nisready`nquit`n" 'ponderhit-after-stop'
+Assert-ProtocolGrammar $ponderhitAfterStop
+Assert-CleanDiagnostics $ponderhitAfterStop
+Assert-OneLegalBestmove $ponderhitAfterStop
+
+$stopBeforeGo = Invoke-UciTranscript "uci`nisready`nposition startpos`nstop`nstop`ngo depth 1`nstop`nquit`n" 'stop-before-go'
+Assert-ProtocolGrammar $stopBeforeGo
+Assert-CleanDiagnostics $stopBeforeGo
+Assert-OneLegalBestmove $stopBeforeGo
+
 Write-Output 'PASS protocol fuzz corpus'
 
