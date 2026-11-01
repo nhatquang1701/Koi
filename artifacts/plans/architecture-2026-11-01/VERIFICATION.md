@@ -33,7 +33,9 @@ Run IDs: Windows `41326510478`, Linux `41326510541`.
 - `uci_controller_tests`: 66/66.
 - `syzygy_tablebase_tests`: 22/22.
 - `search_service_tests`: 15/15.
-- Module build (`KOI_BUILD_MODULES=ON`): `koi_module_tests` 1/1.
+- Module build (`KOI_BUILD_MODULES=ON`): full non-heavy suite passes; only
+the known local Python environment failures remain, and `koi_module_tests`
+passes in that configuration.
 - `koi_architecture_boundaries`: pass (public-header seams, protocol purity,
   core-source purity, test-tree placement, artifacts-free build, documented
   contract).
