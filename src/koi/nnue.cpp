@@ -1724,6 +1724,13 @@ std::expected<NnueNetwork, NnueError> NnueLoader::load(
 }
 
 std::expected<NnueNetwork, NnueError> NnueLoader::load_file(const std::filesystem::path& path) {
+    // Reject non-regular files before opening: opening a FIFO/named pipe for
+    // reading can block indefinitely and would stall the whole UCI loop.
+    std::error_code type_error;
+    if (!std::filesystem::is_regular_file(path, type_error) || type_error) {
+        return std::unexpected(make_error(NnueErrorCode::io_error,
+                                          "NNUE container path is not a regular file"));
+    }
     std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) {
         return std::unexpected(make_error(NnueErrorCode::io_error, "unable to open NNUE container"));

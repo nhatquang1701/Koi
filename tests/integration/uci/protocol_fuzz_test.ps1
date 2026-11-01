@@ -1265,6 +1265,46 @@ try {
     if (@($truncatedLines | Where-Object { $_ -match '^info string Syzygy: [0-9]+-man tables' }).Count -ne 0) {
         throw 'a truncated standard Syzygy table must not be announced as usable'
     }
+
+    # 9u. Non-regular NNUE path (FIFO on Unix, named pipe on Windows): opening
+    # it for reading could block; load_file must reject it by type, and the
+    # session must keep searching.
+    $assetSpecial = Join-Path $assetRoot 'engine-special-evalfile'
+    New-Item -ItemType Directory -Path $assetSpecial -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetSpecial $executableName)
+    if ($IsWindows) {
+        $specialEval = '\\.\pipe\koi-fuzz-nnue-' + [guid]::NewGuid().ToString('N')
+    } else {
+        $specialEval = Join-Path $assetSpecial 'koi.nnue.fifo'
+        & mkfifo $specialEval
+        if ($LASTEXITCODE -ne 0) {
+            throw 'failed to create the FIFO for the EvalFile test'
+        }
+    }
+    try {
+        $specialSession = Start-UciSession -Executable (Join-Path $assetSpecial $executableName)
+        Send-UciCommand $specialSession 'uci'
+        [void](Read-UciUntil $specialSession { param($line) $line -eq 'uciok' } 'special-eval uciok' -ValidateUciOutput)
+        Send-UciCommand $specialSession "setoption name EvalFile value $specialEval"
+        Send-UciCommand $specialSession 'isready'
+        [void](Read-UciUntil $specialSession { param($line) $line -eq 'readyok' } 'special-eval readyok' -ValidateUciOutput)
+        Send-UciCommand $specialSession 'position startpos'
+        Send-UciCommand $specialSession 'go depth 1'
+        $specialBest = Read-UciUntil $specialSession { param($line) $line -match '^bestmove ' } 'special-eval bestmove' -ValidateUciOutput
+        Assert-LegalBestmoveLine $specialBest 'special-eval'
+        Send-UciCommand $specialSession 'quit'
+        $specialLines = Complete-UciSession $specialSession $false
+        if (@($specialLines | Where-Object { $_ -match '^info string EvalFile rejected: ' }).Count -ne 1) {
+            throw 'a non-regular EvalFile must be rejected exactly once'
+        }
+        if (@($specialLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 1) {
+            throw 'the session must keep searching after a non-regular EvalFile'
+        }
+    } finally {
+        if (-not $IsWindows -and (Test-Path -LiteralPath $specialEval)) {
+            Remove-Item -LiteralPath $specialEval -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 finally {
     Stop-AllUciSessions
