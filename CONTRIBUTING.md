@@ -14,8 +14,8 @@ Koi Engine is a Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon) UCI c
     or the Kitware APT repository) before configuring.
   - On macOS, `brew install llvm ninja` and configure with
     `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is CUDA-only
-    and unavailable on macOS; the CPU NNUE and classical evaluator paths work
-    normally.
+    and unavailable on macOS; the CPU NNUE path works normally (a network is
+    required since the classical evaluator was removed on 2026-10-28).
 - CMake 3.31+
 - Ninja (required for the C++26 named-module build)
 - PowerShell (`pwsh` or `powershell`) for the process tests
@@ -85,12 +85,13 @@ C++ and Python suites still run.
 
 ## Making changes
 
-- Branch from `koi-engine-v1` (for example `codex/my-change`).
+- Branch from `koi-engine` (for example `codex/my-change`).
 - Commit with a descriptive imperative message (for example `Fix mate score off-by-one at root`).
-- Open a PR. CI runs on Windows (`.github/workflows/windows.yml`: Release
-  CTest, a Debug smoke subset, and the shadow-diff job), on Linux
-  (`.github/workflows/linux.yml`: GCC 14 and Clang 18 CTest, a modules-off
-  build, and a portable tarball job), and on macOS arm64
+- Open a PR. CI runs on Windows (`.github/workflows/windows.yml`: Release CTest,
+  a Debug smoke subset, MSVC AddressSanitizer, the shadow-diff job, the release
+  package job, and a flake job), on Linux (`.github/workflows/linux.yml`: GCC 14
+  and Clang 18 CTest, a modules-off build, a portable tarball job, a flake job,
+  and a ThreadSanitizer job), and on macOS arm64
   (`.github/workflows/macos.yml`: the modules-off, CPU-only Release suite with
   Homebrew LLVM clang).
 
