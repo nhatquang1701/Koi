@@ -33,6 +33,18 @@ Run IDs: Windows `41326510478`, Linux `41326510541`.
   contract).
 - Strict documentation build: `mkdocs build --strict` pass.
 
+### macOS local validation (GitHub macOS runner unavailable)
+
+- Fresh clone of `koi-engine` built on the Mac host (Apple clang 21, arm64
+  Darwin 27, `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
+  -DKOI_ENABLE_GPU_NNUE=OFF`, Ninja Release).
+- `koi_engine`, `koi_core_tests`, `search_service_tests`,
+  `nnue_boundary_tests`, `uci_controller_tests` and `koi_nnue_fixture` built.
+- CTest: `koi_core_tests`, `nnue_boundary_tests`, `uci_controller_tests`,
+  `search_service_tests` — **4/4 pass** (2.35 s).
+- This compensates for the GitHub macOS jobs, which are cancelled by the runner
+  infrastructure including on manual `workflow_dispatch`.
+
 ## Architecture changes landed on this branch
 
 - Hash policy/result values separated from the TT definition (`hash_types.hpp`).
