@@ -877,9 +877,13 @@ Behaviour details:
   empty value) disables automatic discovery for that session. A single explicit
   directory is validated the same way: corrupt table files disable probing and
   emit `info string Syzygy: corrupt tables at <path> (probing disabled)` rather
-  than letting Fathom warn on stderr at probe time. Syzygy path lists are passed
-  to Fathom unchanged. Installed tables are never distributed with Koi and never
-  packaged into release archives.
+  than letting Fathom warn on stderr at probe time. An empty directory is
+  reported as `info string Syzygy: no usable tables at <path>`, not as corrupt.
+  Syzygy path lists are sanitized first (empty components are dropped) and every
+  component that contains table files is magic-validated: a corrupt component
+  disables probing with the same diagnostic, while ordinary search keeps
+  running. Installed tables are never distributed with Koi and never packaged
+  into release archives.
 - `SyzygyProbeLimit` 0..7 (default 7) and `SyzygyProbeDepth` 1..100 (default 1)
   gate table availability and the minimum search depth for the root probe.
 - `Syzygy50MoveRule` honors the halfmove clock: WDL probes require a zero
