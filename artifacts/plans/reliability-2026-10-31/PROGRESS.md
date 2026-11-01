@@ -27,6 +27,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
 | R34 ASan unit label | pass* | 20/24 suites, zero ASan reports; 4 blocked by local %TEMP% quirk |
+| R47 book eligibility matrix | fixed | MultiPV>1/infinite/ponder/searchmoves bypass; normal restores |
 | R46 analysis-mode book bypass/restore | fixed | analysis bypasses book; leaving analysis restores detection/use |
 | R45 ready floods + extreme limits | fixed | 101 readyok during search; weird winc/binc/movestogo; max valid Threads/Hash/MultiPV |
 | R44 ponder lifecycle races | fixed | immediate ponder stop, duplicate stop/ponderhit, stop-before-go |
