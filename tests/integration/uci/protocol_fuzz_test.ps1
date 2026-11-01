@@ -1164,5 +1164,38 @@ Assert-ProtocolGrammar $ccrl
 Assert-CleanDiagnostics $ccrl
 Assert-OneLegalBestmove $ccrl
 
+# 27. Raw control bytes and whitespace variants: NUL/control bytes inside
+# option values, tab-separated commands, and ponder combined with searchmoves.
+$nulBook = "uci`nisready`nsetoption name BookFile value C:\\koi" + ([string][char]0) + "book.bin`nposition startpos`ngo depth 1`nstop`nquit`n"
+$nulBookCase = Invoke-UciTranscript $nulBook 'nul-in-bookfile'
+Assert-ProtocolGrammar $nulBookCase
+Assert-CleanDiagnostics $nulBookCase
+Assert-OneLegalBestmove $nulBookCase
+
+$nulEval = "uci`nisready`nsetoption name EvalFile value C:\\koi" + ([string][char]0) + "net.nnue`nposition startpos`ngo depth 1`nstop`nquit`n"
+$nulEvalCase = Invoke-UciTranscript $nulEval 'nul-in-evalfile'
+Assert-ProtocolGrammar $nulEvalCase
+Assert-CleanDiagnostics $nulEvalCase
+Assert-OneLegalBestmove $nulEvalCase
+if ((Count-Lines $nulEvalCase '^info string EvalFile rejected: ') -ne 1) {
+    throw 'a NUL-containing EvalFile must be rejected exactly once'
+}
+
+$controlValue = "a" + ([string][char]1) + ([string][char]2) + ([string][char]127) + "b"
+$controlCase = Invoke-UciTranscript ("uci`nisready`nsetoption name BookFile value " + $controlValue + "`nposition startpos`ngo depth 1`nstop`nquit`n") 'control-bytes-option'
+Assert-ProtocolGrammar $controlCase
+Assert-CleanDiagnostics $controlCase
+Assert-OneLegalBestmove $controlCase
+
+$tabbed = Invoke-UciTranscript "uci`nisready`nposition`tfen`t8/8/8/4k3/8/4K3/8/8`tw`t-`t-`t0`t1`ngo`tdepth`t1`nstop`nquit`n" 'tab-separated-commands'
+Assert-ProtocolGrammar $tabbed
+Assert-CleanDiagnostics $tabbed
+Assert-OneLegalBestmove $tabbed
+
+$ponderSearchmoves = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo ponder wtime 1000 btime 1000 searchmoves e2e4`nisready`nponderhit`nstop`nquit`n" 'ponder-searchmoves'
+Assert-ProtocolGrammar $ponderSearchmoves
+Assert-CleanDiagnostics $ponderSearchmoves
+Assert-OnlyBestmove $ponderSearchmoves 'bestmove e2e4'
+
 Write-Output 'PASS protocol fuzz corpus'
 
