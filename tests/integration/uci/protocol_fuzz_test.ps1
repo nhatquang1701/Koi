@@ -661,6 +661,60 @@ try {
     if (@($hotLines | Where-Object { $_ -match '^info string syzygy detected' }).Count -ne 0) {
         throw 'a corrupt Syzygy directory added mid-session must not be announced as usable'
     }
+
+    # 9j. Transiently locked book (AV scanner / another process): the search
+    # must fall back without a crash or a permanent negative cache, and the book
+    # must be detected and used again once the lock is released.
+    $assetLock = Join-Path $assetRoot 'engine-locked-book'
+    New-Item -ItemType Directory -Path $assetLock -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetLock $executableName)
+    $lockBook = Join-Path $assetLock 'book.bin'
+    $lockBytes = [byte[]]::new(16)
+    [byte[]]$lockKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($lockKey, 0, $lockBytes, 0, 8)
+    $lockBytes[8] = 0x03
+    $lockBytes[9] = 0x1c
+    $lockBytes[10] = 0x00
+    $lockBytes[11] = 100
+    [System.IO.File]::WriteAllBytes($lockBook, $lockBytes)
+
+    $bookLock = $null
+    try {
+        $bookLock = [System.IO.File]::Open($lockBook, [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        $lockSession = Start-UciSession -Executable (Join-Path $assetLock $executableName)
+        Send-UciCommand $lockSession 'uci'
+        [void](Read-UciUntil $lockSession { param($line) $line -eq 'uciok' } 'locked-book uciok' -ValidateUciOutput)
+        Send-UciCommand $lockSession 'isready'
+        [void](Read-UciUntil $lockSession { param($line) $line -eq 'readyok' } 'locked-book readyok' -ValidateUciOutput)
+        Send-UciCommand $lockSession 'position startpos'
+        Send-UciCommand $lockSession 'go depth 1'
+        [void](Read-UciUntil $lockSession { param($line) $line -match '^bestmove ' } 'locked-book first bestmove' -ValidateUciOutput)
+
+        $bookLock.Dispose()
+        $bookLock = $null
+
+        Send-UciCommand $lockSession 'isready'
+        [void](Read-UciUntil $lockSession { param($line) $line -eq 'readyok' } 'released-book readyok' -ValidateUciOutput)
+        Send-UciCommand $lockSession 'position startpos'
+        Send-UciCommand $lockSession 'go depth 1'
+        [void](Read-UciUntil $lockSession { param($line) $line -match '^bestmove ' } 'locked-book second bestmove' -ValidateUciOutput)
+        Send-UciCommand $lockSession 'quit'
+        $lockLines = Complete-UciSession $lockSession $false
+    } finally {
+        if ($null -ne $bookLock) {
+            $bookLock.Dispose()
+        }
+    }
+    if (@($lockLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 2) {
+        throw 'a transiently locked book must still complete both searches'
+    }
+    if (@($lockLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+        throw 'a transiently locked book must be detected exactly once after the lock is released'
+    }
+    if (@($lockLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
+        throw 'the released book must be used on the next search (no negative cache)'
+    }
 }
 finally {
     Stop-AllUciSessions

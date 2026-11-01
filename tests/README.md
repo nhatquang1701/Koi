@@ -149,7 +149,8 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   `searchmoves` list, auto-detected book hot-swap (valid -> truncated ->
   restored -> deleted, including a mutation while a search is in flight),
   resource/destructive option churn, book-size boundaries (0/1/15/17 bytes,
-  >16 MiB) and invalid EvalFile forms (empty file, directory, random bytes),
+  >16 MiB), invalid EvalFile forms (empty file, directory, random bytes), and a
+  transiently locked book (no negative cache),
   exhaustive invalid-value pass over every advertised option, a CCRL profile
   (256 MB hash, 1 thread, book/ponder off, clock search), seeded
   random sequences; labelled `reliability`),
