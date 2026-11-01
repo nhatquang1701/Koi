@@ -87,6 +87,13 @@ jobs:
             -R "koi_engine_time_safety_process|koi_benchmark_process" \
             --repeat until-pass:2 \
             --output-on-failure --output-junit build/ci-release/ctest-heavy-process-junit.xml
+      - name: Reliability suite
+        env:
+          KOI_TEST_RETRIES: "2"
+        timeout-minutes: 15
+        run: |
+          ctest --test-dir build/ci-release -C Release -j 2 -L reliability -LE heavy \
+            --output-on-failure --output-junit build/ci-release/ctest-reliability-junit.xml
       # Every process test gets its own step with a hard step timeout so a hung
       # test names itself in the job summary instead of stalling the whole job,
       # and the diagnostics upload below still runs.
