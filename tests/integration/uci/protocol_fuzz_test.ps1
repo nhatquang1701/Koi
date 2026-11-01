@@ -1422,6 +1422,51 @@ try {
         $env:KOI_UCI_TIMEOUT_MS = $savedUciTimeout
     }
 
+    # 9ae. Explicit OwnBook=false before the first search suppresses even the
+    # detection announcement; switching it on later detects/uses the book once.
+    $assetEarlyOff = Join-Path $assetRoot 'engine-ownbook-early-off'
+    New-Item -ItemType Directory -Path $assetEarlyOff -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetEarlyOff $executableName)
+    $earlyBytes = [byte[]]::new(16)
+    [byte[]]$earlyKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($earlyKey, 0, $earlyBytes, 0, 8)
+    $earlyBytes[8] = 0x03
+    $earlyBytes[9] = 0x1c
+    $earlyBytes[10] = 0x00
+    $earlyBytes[11] = 100
+    [System.IO.File]::WriteAllBytes((Join-Path $assetEarlyOff 'book.bin'), $earlyBytes)
+    $earlySession = Start-UciSession -Executable (Join-Path $assetEarlyOff $executableName)
+    Send-UciCommand $earlySession 'uci'
+    [void](Read-UciUntil $earlySession { param($line) $line -eq 'uciok' } 'early-off uciok' -ValidateUciOutput)
+    Send-UciCommand $earlySession 'setoption name OwnBook value false'
+    Send-UciCommand $earlySession 'isready'
+    [void](Read-UciUntil $earlySession { param($line) $line -eq 'readyok' } 'early-off readyok' -ValidateUciOutput)
+    Send-UciCommand $earlySession 'position startpos'
+    Send-UciCommand $earlySession 'go depth 1'
+    [void](Read-UciUntil $earlySession { param($line) $line -match '^bestmove ' } 'early-off bestmove' -ValidateUciOutput)
+    if (@($earlySession.Lines | Where-Object { $_ -match '^info string book' }).Count -ne 0) {
+        throw 'an explicit OwnBook=false before the first search must be silent about the book'
+    }
+    Send-UciCommand $earlySession 'setoption name OwnBook value true'
+    Send-UciCommand $earlySession 'isready'
+    [void](Read-UciUntil $earlySession { param($line) $line -eq 'readyok' } 'early-on readyok' -ValidateUciOutput)
+    Send-UciCommand $earlySession 'position startpos'
+    Send-UciCommand $earlySession 'go depth 1'
+    [void](Read-UciUntil $earlySession { param($line) $line -match '^bestmove ' } 'early-on bestmove' -ValidateUciOutput)
+    Send-UciCommand $earlySession 'quit'
+    $earlyLines = Complete-UciSession $earlySession $false
+    if (@($earlyLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 2) {
+        throw 'the early OwnBook=false case must complete two searches'
+    }
+    # The user explicitly enabled the book, so there is no auto-detection
+    # announcement (that is reserved for the OwnBook-unset path).
+    if (@($earlyLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 0) {
+        throw 'explicit OwnBook=true must not emit an auto-detection announcement'
+    }
+    if (@($earlyLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
+        throw 'the book must be used only after OwnBook=true'
+    }
+
     # 9ad. Mixed directory: a valid tiny table plus a canonical-size zero-filled
     # table must reject the whole directory before Fathom.
     $assetMixedTb = Join-Path $assetRoot 'engine-mixed-syzygy'
