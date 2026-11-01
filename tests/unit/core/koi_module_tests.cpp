@@ -11,32 +11,27 @@ namespace {
 
 using koi::test::require;
 
-// The optional module layer mirrors native value contracts.  Keep the
-// SearchOptions defaults in lock-step at compile time so a native default
-// change cannot silently drift away from the module contract.
-static_assert(koi::module_api::SearchOptionsContract{}.hash_mb == koi::SearchOptions{}.hash_mb,
-              "module SearchOptionsContract.hash_mb default drifted");
-static_assert(koi::module_api::SearchOptionsContract{}.threads == koi::SearchOptions{}.threads,
-              "module SearchOptionsContract.threads default drifted");
-static_assert(koi::module_api::SearchOptionsContract{}.speed_percent ==
-                  koi::SearchOptions{}.speed_percent,
-              "module SearchOptionsContract.speed_percent default drifted");
-static_assert(koi::module_api::SearchOptionsContract{}.multi_pv == koi::SearchOptions{}.multi_pv,
-              "module SearchOptionsContract.multi_pv default drifted");
-static_assert(koi::module_api::SearchOptionsContract{}.analyse_mode ==
-                  koi::SearchOptions{}.analyse_mode,
-              "module SearchOptionsContract.analyse_mode default drifted");
-static_assert(koi::module_api::SearchOptionsContract{}.show_wdl == koi::SearchOptions{}.show_wdl,
-              "module SearchOptionsContract.show_wdl default drifted");
-static_assert(koi::module_api::SearchOptionsContract{}.move_overhead_ms ==
-                  koi::SearchOptions{}.move_overhead_ms,
-              "module SearchOptionsContract.move_overhead_ms default drifted");
-static_assert(koi::module_api::SearchOptionsContract{}.slow_mover_percent ==
-                  koi::SearchOptions{}.slow_mover_percent,
-              "module SearchOptionsContract.slow_mover_percent default drifted");
-
-
 void test_module_contracts() {
+    // The optional module layer mirrors native value contracts.  Keep the
+    // SearchOptions defaults in lock-step so a native default change cannot
+    // silently drift away from the module contract.  (SearchOptions owns
+    // std::function seams, so this comparison is a runtime assertion.)
+    {
+        const koi::SearchOptions native{};
+        const koi::module_api::SearchOptionsContract contract{};
+        require(contract.hash_mb == native.hash_mb, "module hash_mb default drifted");
+        require(contract.threads == native.threads, "module threads default drifted");
+        require(contract.speed_percent == native.speed_percent,
+                "module speed_percent default drifted");
+        require(contract.multi_pv == native.multi_pv, "module multi_pv default drifted");
+        require(contract.analyse_mode == native.analyse_mode,
+                "module analyse_mode default drifted");
+        require(contract.show_wdl == native.show_wdl, "module show_wdl default drifted");
+        require(contract.move_overhead_ms == native.move_overhead_ms,
+                "module move_overhead_ms default drifted");
+        require(contract.slow_mover_percent == native.slow_mover_percent,
+                "module slow_mover_percent default drifted");
+    }
     require(koi::module_api::architecture_version == 1,
             "module architecture version must be stable");
     koi::module_api::PositionContract position{};
