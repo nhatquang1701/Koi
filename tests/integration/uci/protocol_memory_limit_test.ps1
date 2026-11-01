@@ -21,7 +21,7 @@ $info.RedirectStandardInput = $true
 $info.RedirectStandardOutput = $true
 $info.RedirectStandardError = $true
 $info.ArgumentList.Add('-c')
-$info.ArgumentList.Add('ulimit -v 300000; exec "$1"')
+$info.ArgumentList.Add('ulimit -v 300000; echo "KOI_RLIMIT_AS=$(ulimit -v)" >&2; exec "$1"')
 $info.ArgumentList.Add('bash')
 $info.ArgumentList.Add($EnginePath)
 $proc = [System.Diagnostics.Process]::Start($info)
@@ -52,6 +52,13 @@ $err = $errTask.GetAwaiter().GetResult()
 $exitCode = $proc.ExitCode
 $proc.Dispose()
 
+Write-Output '--- engine stdout ---'
+Write-Output $out
+Write-Output '--- engine stderr ---'
+Write-Output $err
+if ($err -match 'cannot modify limit|Operation not permitted|ulimit:') {
+    throw "could not apply the virtual memory limit: $err"
+}
 $bestmoves = @($out -split "`n" | Where-Object { $_ -match '^bestmove ' })
 $hashLines = @($out -split "`n" | Where-Object { $_ -match '^info string hash requested 512 MB' })
 $allocationFailed = @($hashLines | Where-Object { $_ -match 'reason allocation_failed' })
