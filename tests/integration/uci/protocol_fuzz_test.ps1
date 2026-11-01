@@ -1422,6 +1422,42 @@ try {
         $env:KOI_UCI_TIMEOUT_MS = $savedUciTimeout
     }
 
+    # 9ac. `ucinewgame` must not disturb auto book detection/use: two searches
+    # across the reset both use the book, with one detection announcement.
+    $assetNewGame = Join-Path $assetRoot 'engine-book-ucinewgame'
+    New-Item -ItemType Directory -Path $assetNewGame -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetNewGame $executableName)
+    $newGameBytes = [byte[]]::new(16)
+    [byte[]]$newGameKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($newGameKey, 0, $newGameBytes, 0, 8)
+    $newGameBytes[8] = 0x03
+    $newGameBytes[9] = 0x1c
+    $newGameBytes[10] = 0x00
+    $newGameBytes[11] = 100
+    [System.IO.File]::WriteAllBytes((Join-Path $assetNewGame 'book.bin'), $newGameBytes)
+    $newGameSession = Start-UciSession -Executable (Join-Path $assetNewGame $executableName)
+    Send-UciCommand $newGameSession 'uci'
+    [void](Read-UciUntil $newGameSession { param($line) $line -eq 'uciok' } 'book-ucinewgame uciok' -ValidateUciOutput)
+    Send-UciCommand $newGameSession 'isready'
+    [void](Read-UciUntil $newGameSession { param($line) $line -eq 'readyok' } 'book-ucinewgame readyok' -ValidateUciOutput)
+    Send-UciCommand $newGameSession 'position startpos'
+    Send-UciCommand $newGameSession 'go depth 1'
+    [void](Read-UciUntil $newGameSession { param($line) $line -match '^bestmove ' } 'book-ucinewgame first bestmove' -ValidateUciOutput)
+    Send-UciCommand $newGameSession 'ucinewgame'
+    Send-UciCommand $newGameSession 'isready'
+    [void](Read-UciUntil $newGameSession { param($line) $line -eq 'readyok' } 'book-ucinewgame reset readyok' -ValidateUciOutput)
+    Send-UciCommand $newGameSession 'position startpos'
+    Send-UciCommand $newGameSession 'go depth 1'
+    [void](Read-UciUntil $newGameSession { param($line) $line -match '^bestmove ' } 'book-ucinewgame second bestmove' -ValidateUciOutput)
+    Send-UciCommand $newGameSession 'quit'
+    $newGameLines = Complete-UciSession $newGameSession $false
+    if (@($newGameLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+        throw 'ucinewgame must not repeat the book detection announcement'
+    }
+    if (@($newGameLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 2) {
+        throw 'both searches across ucinewgame must use the book'
+    }
+
     # 9ab. Canonically sized but zero-filled table body: must be rejected as
     # corrupt before Fathom maps it (this used to hang a probe).
     $assetZeroTb = Join-Path $assetRoot 'engine-zero-body-syzygy'
