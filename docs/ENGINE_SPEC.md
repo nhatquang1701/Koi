@@ -877,8 +877,10 @@ Behaviour details:
   empty value) disables automatic discovery for that session. A single explicit
   directory is validated the same way: corrupt table files disable probing and
   emit `info string Syzygy: corrupt tables at <path> (probing disabled)` rather
-  than letting Fathom warn on stderr at probe time. An empty directory is
-  reported as `info string Syzygy: no usable tables at <path>`, not as corrupt.
+  than letting Fathom warn on stderr at probe time. An unreadable table file is
+  reported as `info string Syzygy: unreadable tables at <path> (probing
+  disabled)`; an empty directory is reported as `info string Syzygy: no usable
+  tables at <path>`, not as corrupt.
   Syzygy path lists are sanitized first (empty components are dropped) and every
   component that contains table files is magic-validated: a corrupt component
   disables probing with the same diagnostic, while ordinary search keeps

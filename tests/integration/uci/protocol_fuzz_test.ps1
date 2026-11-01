@@ -1011,6 +1011,77 @@ try {
             }
         }
     }
+
+    # 9p. Unreadable Syzygy table file: reported as unreadable (not corrupt),
+    # probing disabled, search legal.
+    $assetSyzygyPerm = Join-Path $assetRoot 'engine-unreadable-syzygy'
+    New-Item -ItemType Directory -Path $assetSyzygyPerm -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetSyzygyPerm $executableName)
+    $syzygyPermDir = Join-Path $assetSyzygyPerm 'tables'
+    New-Item -ItemType Directory -Path $syzygyPermDir -Force | Out-Null
+    $syzygyPermTable = Join-Path $syzygyPermDir 'KQvK.rtbw'
+    [byte[]]$syzygyTableBytes = [byte[]]::new(80)
+    [byte[]]$syzygyMagic = 0x71, 0xE8, 0x23, 0x5D
+    [Array]::Copy($syzygyMagic, 0, $syzygyTableBytes, 0, 4)
+    [System.IO.File]::WriteAllBytes($syzygyPermTable, $syzygyTableBytes)
+    $syzygyDenied = $false
+    try {
+        if ($IsWindows) {
+            & icacls $syzygyPermTable /deny "${env:USERNAME}:R" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw 'failed to apply the read-deny ACL to the Syzygy table'
+            }
+        } else {
+            & chmod 000 $syzygyPermTable
+            if ($LASTEXITCODE -ne 0) {
+                throw 'failed to chmod the Syzygy table to 000'
+            }
+        }
+        $readable = $true
+        try {
+            $probeStream = [System.IO.File]::OpenRead($syzygyPermTable)
+            $probeStream.Dispose()
+        } catch {
+            $readable = $false
+        }
+        if ($readable) {
+            throw 'the Syzygy table was still readable after the permission change'
+        }
+        $syzygyDenied = $true
+
+        $syzygyPermSession = Start-UciSession -Executable (Join-Path $assetSyzygyPerm $executableName)
+        Send-UciCommand $syzygyPermSession 'uci'
+        [void](Read-UciUntil $syzygyPermSession { param($line) $line -eq 'uciok' } 'unreadable-syzygy uciok' -ValidateUciOutput)
+        Send-UciCommand $syzygyPermSession "setoption name SyzygyPath value $syzygyPermDir"
+        Send-UciCommand $syzygyPermSession 'isready'
+        [void](Read-UciUntil $syzygyPermSession { param($line) $line -eq 'readyok' } 'unreadable-syzygy readyok' -ValidateUciOutput)
+        Send-UciCommand $syzygyPermSession 'position startpos'
+        Send-UciCommand $syzygyPermSession 'go depth 1'
+        $syzygyPermBest = Read-UciUntil $syzygyPermSession { param($line) $line -match '^bestmove ' } 'unreadable-syzygy bestmove' -ValidateUciOutput
+        Assert-LegalBestmoveLine $syzygyPermBest 'unreadable-syzygy'
+        Send-UciCommand $syzygyPermSession 'quit'
+        $syzygyPermLines = Complete-UciSession $syzygyPermSession $false
+        $unreadableLines = @($syzygyPermLines | Where-Object {
+            $_ -match '^info string Syzygy: unreadable tables at .+ \(probing disabled\)$'
+        })
+        if ($unreadableLines.Count -ne 1) {
+            throw 'an unreadable Syzygy table must be reported as unreadable exactly once'
+        }
+        if (@($syzygyPermLines | Where-Object { $_ -match '^info string Syzygy: corrupt tables at ' }).Count -ne 0) {
+            throw 'an unreadable Syzygy table must not be reported as corrupt'
+        }
+    } finally {
+        if ($syzygyDenied) {
+            try {
+                if ($IsWindows) {
+                    [System.IO.File]::Delete($syzygyPermTable)
+                } else {
+                    Remove-Item -LiteralPath $syzygyPermTable -Force -ErrorAction SilentlyContinue
+                }
+            } catch {
+            }
+        }
+    }
 }
 finally {
     Stop-AllUciSessions

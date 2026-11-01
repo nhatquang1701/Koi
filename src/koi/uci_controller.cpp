@@ -2027,16 +2027,24 @@ void UciController::rebuild_syzygy() {
 #endif
     const bool path_list = raw_path.find(kSyzygyPathSeparator) != std::string::npos;
     if (!syzygy_path_.empty()) {
-        const auto reject_corrupt = [this](const std::filesystem::path& corrupt) {
+        const auto reject_unusable = [this](const std::filesystem::path& bad,
+                                            SyzygyDirectoryStatus status) {
             std::lock_guard lock(output_mutex_);
-            output_ << "info string Syzygy: corrupt tables at " << corrupt.string()
-                    << " (probing disabled)\n"
+            output_ << "info string Syzygy: "
+                    << (status == SyzygyDirectoryStatus::unreadable ? "unreadable"
+                                                                    : "corrupt")
+                    << " tables at " << bad.string() << " (probing disabled)\n"
                     << std::flush;
             syzygy_ = std::make_shared<SyzygyTablebase>();
         };
+        const auto unusable = [](SyzygyDirectoryStatus status) {
+            return status == SyzygyDirectoryStatus::corrupt ||
+                   status == SyzygyDirectoryStatus::unreadable;
+        };
         if (!path_list) {
-            if (syzygy_directory_status(syzygy_path_) == SyzygyDirectoryStatus::corrupt) {
-                reject_corrupt(syzygy_path_);
+            const SyzygyDirectoryStatus status = syzygy_directory_status(syzygy_path_);
+            if (unusable(status)) {
+                reject_unusable(syzygy_path_, status);
                 return;
             }
         } else {
@@ -2048,8 +2056,9 @@ void UciController::rebuild_syzygy() {
                 if (length != 0) {
                     const std::filesystem::path component =
                         std::filesystem::path(raw_path.substr(begin, length));
-                    if (syzygy_directory_status(component) == SyzygyDirectoryStatus::corrupt) {
-                        reject_corrupt(component);
+                    const SyzygyDirectoryStatus status = syzygy_directory_status(component);
+                    if (unusable(status)) {
+                        reject_unusable(component, status);
                         return;
                     }
                 }

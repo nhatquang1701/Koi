@@ -532,7 +532,9 @@ SyzygyDirectoryStatus syzygy_directory_status(const std::filesystem::path& direc
         }
         has_table = true;
         if (!table_magic_matches(entry.path())) {
-            return SyzygyDirectoryStatus::corrupt;
+            std::ifstream probe(entry.path(), std::ios::binary);
+            return probe ? SyzygyDirectoryStatus::corrupt
+                         : SyzygyDirectoryStatus::unreadable;
         }
     }
     return has_table ? SyzygyDirectoryStatus::usable : SyzygyDirectoryStatus::empty;

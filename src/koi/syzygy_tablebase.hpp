@@ -60,6 +60,7 @@ enum class SyzygyDirectoryStatus : std::uint8_t {
     empty,
     usable,
     corrupt,
+    unreadable,
 };
 
 [[nodiscard]] SyzygyDirectoryStatus syzygy_directory_status(
