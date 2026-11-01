@@ -125,7 +125,7 @@ ctest --test-dir build/full-release-gpu -C Release -R koi_protocol_ --repeat unt
 ctest --test-dir build/asan-reliability -C Debug -R koi_protocol_fuzz_process --output-on-failure
 # long soak:
 pwsh -File tests/integration/uci/protocol_soak_test.ps1 -EnginePath <exe> -Rounds 30000
-# fuzzers (python-chess required):
+# fuzzers (fixture-driven, no third-party runtime dependency):
 python artifacts/plans/reliability-2026-10-31/fen_fuzz.py --engine <exe> --cases 2000 --out out.json
 ```
 
@@ -135,4 +135,10 @@ python artifacts/plans/reliability-2026-10-31/fen_fuzz.py --engine <exe> --cases
 - Release tag remains `1.1.5` at `1e09504`; post-release reliability work is
   **not** released and no version bump has been requested.
 - Worktree is kept clean with signed local commits; pushes are made as work
-  completes. Latest fully verified green CI head is reported in the goal report.
+  completes. `edbbde1` was the latest head with **all four CI matrices green**
+  (Windows, Linux, macOS, docs); later heads are being checked as they finish.
+- The expanded reliability label (8 CTest entries) passed locally under
+  AddressSanitizer: 8/8, 715.8 s wall, zero sanitizer reports.
+- The Windows Debug helper now scopes a 120 s UCI wait to the 16 MiB book case
+  and reserves four processors for the fuzz entries, so slow Debug runs do not
+  time out or disturb match tests.
