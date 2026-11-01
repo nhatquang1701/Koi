@@ -1954,5 +1954,91 @@ Assert-ProtocolGrammar $longPathCase
 Assert-CleanDiagnostics $longPathCase
 Assert-OneLegalBestmove $longPathCase
 
+# 31. Boot fail-closed matrix: a missing, directory, corrupt or unreadable
+# KOI_NNUE_PATH must exit 4 before any UCI output, with a clear diagnostic.
+$bootRoot = Join-Path (Split-Path -Parent $EnginePath) ('protocol-boot-assets-' + $PID)
+New-Item -ItemType Directory -Path $bootRoot -Force | Out-Null
+$bootEngine = Join-Path $bootRoot $executableName
+Copy-Item -LiteralPath $EnginePath -Destination $bootEngine
+$bootMissing = Join-Path $bootRoot 'missing.nnue'
+$bootDirectory = Join-Path $bootRoot 'network-directory'
+New-Item -ItemType Directory -Path $bootDirectory -Force | Out-Null
+$bootCorrupt = Join-Path $bootRoot 'corrupt.nnue'
+[System.IO.File]::WriteAllBytes($bootCorrupt, [byte[]]::new(64))
+$bootUnreadable = Join-Path $bootRoot 'unreadable.nnue'
+$bootHasUnreadable = $false
+if (-not [string]::IsNullOrWhiteSpace($env:KOI_NNUE_PATH) -and
+    (Test-Path -LiteralPath $env:KOI_NNUE_PATH -PathType Leaf)) {
+    Copy-Item -LiteralPath $env:KOI_NNUE_PATH -Destination $bootUnreadable
+    if ($IsWindows) {
+        & icacls $bootUnreadable /deny "${env:USERNAME}:R" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw 'failed to apply the read-deny ACL to the boot network'
+        }
+    } else {
+        & chmod 000 $bootUnreadable
+        if ($LASTEXITCODE -ne 0) {
+            throw 'failed to chmod the boot network to 000'
+        }
+    }
+    $bootHasUnreadable = $true
+}
+
+function Invoke-BootFailureProbe([string]$Label, [string]$NetworkPath) {
+    $info = [System.Diagnostics.ProcessStartInfo]::new()
+    $info.FileName = $bootEngine
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardInput = $true
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    foreach ($key in [System.Environment]::GetEnvironmentVariables().Keys) {
+        $info.Environment[[string]$key] = [System.Environment]::GetEnvironmentVariable([string]$key)
+    }
+    $info.Environment['KOI_NNUE_PATH'] = $NetworkPath
+    $info.Environment['KOI_NNUE_AUTODETECT'] = '0'
+    $probe = [System.Diagnostics.Process]::Start($info)
+    $outTask = $probe.StandardOutput.ReadToEndAsync()
+    $errTask = $probe.StandardError.ReadToEndAsync()
+    $probe.StandardInput.Close()
+    if (-not $probe.WaitForExit(10000)) {
+        try { $probe.Kill() } catch {}
+        throw "boot probe '$Label' hung instead of exiting"
+    }
+    $out = $outTask.GetAwaiter().GetResult()
+    $err = $errTask.GetAwaiter().GetResult()
+    $exitCode = $probe.ExitCode
+    $probe.Dispose()
+    if ($exitCode -ne 4) {
+        throw "boot probe '$Label' exited $exitCode instead of 4"
+    }
+    if ($err -notmatch 'no usable NNUE network') {
+        throw "boot probe '$Label' stderr is missing the NNUE diagnostic: $err"
+    }
+    if ($out -match 'uciok|bestmove') {
+        throw "boot probe '$Label' emitted protocol output before failing"
+    }
+}
+
+try {
+    Invoke-BootFailureProbe 'missing' $bootMissing
+    Invoke-BootFailureProbe 'directory' $bootDirectory
+    Invoke-BootFailureProbe 'corrupt' $bootCorrupt
+    if ($bootHasUnreadable) {
+        Invoke-BootFailureProbe 'unreadable' $bootUnreadable
+    }
+} finally {
+    if ($bootHasUnreadable) {
+        try {
+            if ($IsWindows) {
+                [System.IO.File]::Delete($bootUnreadable)
+            } else {
+                Remove-Item -LiteralPath $bootUnreadable -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
+    }
+    Remove-Item -LiteralPath $bootRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-Output 'PASS protocol fuzz corpus'
 
