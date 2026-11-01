@@ -173,6 +173,12 @@ if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot 'src/koi/move_choose
     Fail 'src/koi/move_chooser.hpp should not exist (dead code)'
 }
 
+# 4b. The build/test graph must never reference the evidence tree.
+$cmakeForArtifacts = Read-RepositoryFile 'CMakeLists.txt'
+if ($cmakeForArtifacts -match 'artifacts/') {
+    Fail 'CMakeLists.txt must not reference artifacts/ (evidence is not a build input)'
+}
+
 # 5. Reliability fuzzers live in the test tree, not under artifacts.
 $fuzzers = @('fen_fuzz.py', 'move_fuzz.py', 'option_fuzz.py', 'go_fuzz.py', 'command_fuzz.py')
 foreach ($fuzzer in $fuzzers) {
