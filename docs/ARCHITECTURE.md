@@ -239,9 +239,12 @@ header surface and the test tree, not by a future redesign.
   would silently alias mutable service state.
 - A `SearchHandle` owns one `detail::SearchSession`: cancellation, ponderhit
   conversion, worker join and exactly-once completion live there.
-- The transposition table is shared per `SearchService`; resize waits for
-  hazard-lease readers outside the maintenance lock. Search accesses it only
-  through `detail::SearchTableAccess`.
+- The transposition table is shared per `SearchService`; the blocking resize
+  waits for hazard-lease readers outside the maintenance lock, while the
+  start-time path uses `try_set_size_mb`: it publishes the new storage
+  immediately and retains a pinned retired storage for safe deferred
+  reclamation (`HashResizeResult::reclamation_deferred`). Search accesses the
+  table only through `detail::SearchTableAccess`.
 - Fathom/Syzygy is process-global and initialized/freed by the
   `SyzygyTablebase` adapter on the controller thread; no probe runs while a
   search is active. A second adapter with a different path reports an explicit

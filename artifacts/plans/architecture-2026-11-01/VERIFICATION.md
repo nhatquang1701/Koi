@@ -100,13 +100,15 @@ centralized, the start-failure typed diagnostic, the `noexcept` allocation
 window in the fallback scanner, and all test-only declarations removed from
 shipped headers (synthetic NNUE factories, test controller factory).
 
-## Deliberately deferred (2.0.0 ownership work)
+## TT resize follow-up (implemented)
 
-Deferred/non-blocking TT-resize semantics. The current `set_size_mb` waits for
-retired-storage readers, which is correct and only reachable by an embedder that
-violates the one-live-search contract or resizes mid-search. A safe fix needs a
-queued-resize design tied to session teardown and is out of scope for the
-1.0.0-stability pass.
+Non-blocking TT resizing is implemented: `TranspositionTable::try_set_size_mb`
+publishes new storage immediately and, when a hazard slot still pins the retired
+storage, retains it in a deferred list for later reclamation
+(`HashResizeResult::reclamation_deferred`). `SearchService::start` uses this
+path; the blocking `set_size_mb` and the UCI stop/join behavior are unchanged.
+Covered by `transposition_table_tests` (12/12, also under ASan) and
+`search_service_tests` (15/15).
 
 ## Release state
 

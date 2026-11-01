@@ -117,4 +117,9 @@ Verification after the refactors (Windows Release):
 - Primary-module build (or removal) of `src/koi/modules`.
 - Any evaluator/search architecture redesign; GPU NNUE remains experimental and
   scheduled for removal.
+
+Non-blocking TT resizing was **implemented** during the program:
+`try_set_size_mb` publishes new storage immediately and keeps a pinned retired
+storage in a deferred list for later reclamation; the blocking API and session
+pin contracts are unchanged.
 - No version bump/tag/release is part of this baseline.
