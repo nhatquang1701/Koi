@@ -1872,7 +1872,17 @@ std::filesystem::path UciController::resolved_book_path() const {
 }
 
 bool UciController::book_is_available() const {
-    return OpeningBook::is_usable_file(resolved_book_path());
+    const std::filesystem::path path = resolved_book_path();
+    if (!OpeningBook::is_usable_file(path)) {
+        return false;
+    }
+    // A file can be present and correctly sized but unreadable (ACL deny,
+    // permissions, another process); opening here keeps the auto-detection
+    // announcement truthful instead of claiming a book that `choose()` cannot
+    // read. No negative cache: a later readable book is detected on the next
+    // search.
+    std::ifstream stream(path, std::ios::binary);
+    return static_cast<bool>(stream);
 }
 
 void UciController::write_readyok() {

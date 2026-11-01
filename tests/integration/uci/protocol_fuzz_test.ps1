@@ -917,6 +917,100 @@ try {
     if (@($syzygyLines | Where-Object { $_ -match '^info string Syzygy: no usable tables at ' }).Count -lt 1) {
         throw 'an empty Syzygy directory must be reported as unusable, not corrupt'
     }
+
+    # 9o. Unreadable book (ACL deny on Windows, chmod 000 on Unix): detection
+    # must stay truthful (no "book detected") and the search must fall back;
+    # replacing the file with a readable one is detected on the next search.
+    $assetPerm = Join-Path $assetRoot 'engine-unreadable-book'
+    New-Item -ItemType Directory -Path $assetPerm -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetPerm $executableName)
+    $permBook = Join-Path $assetPerm 'book.bin'
+    $permBytes = [byte[]]::new(16)
+    [byte[]]$permKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($permKey, 0, $permBytes, 0, 8)
+    $permBytes[8] = 0x03
+    $permBytes[9] = 0x1c
+    $permBytes[10] = 0x00
+    $permBytes[11] = 100
+    [System.IO.File]::WriteAllBytes($permBook, $permBytes)
+    $permissionDenied = $false
+    try {
+        if ($IsWindows) {
+            & icacls $permBook /deny "${env:USERNAME}:R" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw 'failed to apply the read-deny ACL to the book'
+            }
+        } else {
+            & chmod 000 $permBook
+            if ($LASTEXITCODE -ne 0) {
+                throw 'failed to chmod the book to 000'
+            }
+        }
+        $readable = $true
+        try {
+            $probeStream = [System.IO.File]::OpenRead($permBook)
+            $probeStream.Dispose()
+        } catch {
+            $readable = $false
+        }
+        if ($readable) {
+            throw 'the book was still readable after the permission change'
+        }
+        $permissionDenied = $true
+
+        $permSession = Start-UciSession -Executable (Join-Path $assetPerm $executableName)
+        Send-UciCommand $permSession 'uci'
+        [void](Read-UciUntil $permSession { param($line) $line -eq 'uciok' } 'unreadable-book uciok' -ValidateUciOutput)
+        Send-UciCommand $permSession 'isready'
+        [void](Read-UciUntil $permSession { param($line) $line -eq 'readyok' } 'unreadable-book readyok' -ValidateUciOutput)
+        Send-UciCommand $permSession 'position startpos'
+        Send-UciCommand $permSession 'go depth 1'
+        [void](Read-UciUntil $permSession { param($line) $line -match '^bestmove ' } 'unreadable-book bestmove' -ValidateUciOutput)
+        $afterDenied = @($permSession.Lines | Where-Object { $_ -match '^info string book detected' })
+        if ($afterDenied.Count -ne 0) {
+            throw 'an unreadable book must not be announced as detected'
+        }
+
+        # Replace the unreadable file with a readable one (no negative cache).
+        if ($IsWindows) {
+            [System.IO.File]::Delete($permBook)
+        } else {
+            Remove-Item -LiteralPath $permBook -Force
+        }
+        [System.IO.File]::WriteAllBytes($permBook, $permBytes)
+        if (-not $IsWindows) {
+            & chmod 644 $permBook
+        }
+        $permissionDenied = $false
+
+        Send-UciCommand $permSession 'isready'
+        [void](Read-UciUntil $permSession { param($line) $line -eq 'readyok' } 'readable-book readyok' -ValidateUciOutput)
+        Send-UciCommand $permSession 'position startpos'
+        Send-UciCommand $permSession 'go depth 1'
+        [void](Read-UciUntil $permSession { param($line) $line -match '^bestmove ' } 'readable-book bestmove' -ValidateUciOutput)
+        Send-UciCommand $permSession 'quit'
+        $permLines = Complete-UciSession $permSession $false
+        if (@($permLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 2) {
+            throw 'the unreadable-book case must complete two searches'
+        }
+        if (@($permLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+            throw 'a readable replacement book must be detected exactly once'
+        }
+        if (@($permLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
+            throw 'the readable replacement book must be used on the next search'
+        }
+    } finally {
+        if ($permissionDenied) {
+            try {
+                if ($IsWindows) {
+                    [System.IO.File]::Delete($permBook)
+                } else {
+                    Remove-Item -LiteralPath $permBook -Force -ErrorAction SilentlyContinue
+                }
+            } catch {
+            }
+        }
+    }
 }
 finally {
     Stop-AllUciSessions
