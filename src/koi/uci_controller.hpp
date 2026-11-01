@@ -56,7 +56,6 @@ inline constexpr std::size_t kMaximumProtocolLineBytes = std::size_t{1} << 20;
 
 class UciController {
 public:
-    UciController(std::istream& input, std::ostream& output, std::ostream& diagnostics);
     UciController(std::istream& input, std::ostream& output, std::ostream& diagnostics,
                   SearchService search_service,
                   std::filesystem::path executable_directory = {},

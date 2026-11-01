@@ -21,6 +21,8 @@
 #include "koi/time_manager.hpp"
 #include "koi/uci_controller.hpp"
 
+#include "../../support/uci_controller_test_support.hpp"
+
 #include "koi_test_support.hpp"
 #include "polyglot_book_support.hpp"
 
@@ -81,7 +83,8 @@ ControllerResult run_controller(std::string_view transcript) {
     std::istringstream input{std::string(transcript)};
     std::ostringstream output;
     std::ostringstream diagnostics;
-    UciController controller(input, output, diagnostics);
+    auto controller_holder = koi::test::make_uci_controller(input, output, diagnostics);
+    UciController& controller = *controller_holder;
     return {controller.run(), output.str(), diagnostics.str()};
 }
 
@@ -702,7 +705,8 @@ void test_task1_wdl_output_is_optional_and_mate_scores_are_converted() {
     std::ostringstream shown_diagnostics;
     int shown_exit_code = -1;
     std::thread shown_controller_thread([&] {
-        UciController controller(shown_input_stream, shown_output_stream, shown_diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(shown_input_stream, shown_output_stream, shown_diagnostics);
+        UciController& controller = *controller_holder;
         shown_exit_code = controller.run();
     });
     const bool shown_marker = shown_input.wait_for_marker(std::chrono::seconds(5));
@@ -803,7 +807,8 @@ void test_task6_strength_mode_is_case_insensitive_and_cancels_active_search() {
     std::ostringstream diagnostics;
     int exit_code = -1;
     std::thread controller_thread([&] {
-        UciController controller(input_stream, output, diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(input_stream, output, diagnostics);
+        UciController& controller = *controller_holder;
         exit_code = controller.run();
     });
     const bool marker_seen = input.wait_for_marker(std::chrono::seconds(5));
@@ -1071,7 +1076,8 @@ void test_multipv_search_bypasses_a_matching_book_without_analysis_mode() {
     std::ostringstream diagnostics;
     int exit_code = -1;
     std::thread controller_thread([&] {
-        UciController controller(input_stream, output, diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(input_stream, output, diagnostics);
+        UciController& controller = *controller_holder;
         exit_code = controller.run();
     });
     const bool marker_seen = input.wait_for_marker(std::chrono::seconds(5));
@@ -1123,7 +1129,8 @@ void test_ponderhit_keeps_the_entire_ponder_workflow_out_of_the_book() {
     std::ostringstream diagnostics;
     int exit_code = -1;
     std::thread controller_thread([&] {
-        UciController controller(input_stream, output, diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(input_stream, output, diagnostics);
+        UciController& controller = *controller_holder;
         exit_code = controller.run();
     });
     const bool marker_seen = input.wait_for_marker(std::chrono::seconds(5));
@@ -1319,7 +1326,8 @@ void test_lucas_analysis_options_accept_valid_values_ignore_invalid_values_and_e
     std::ostringstream diagnostics;
     int exit_code = -1;
     std::thread controller_thread([&] {
-        UciController controller(input_stream, output, diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(input_stream, output, diagnostics);
+        UciController& controller = *controller_holder;
         exit_code = controller.run();
     });
     const bool marker_seen = input.wait_for_marker(std::chrono::seconds(5));
@@ -1607,7 +1615,8 @@ void test_deterministic_search_repeats_the_best_move_with_compatibility_seed() {
     std::ostringstream diagnostics;
     int exit_code = -1;
     std::thread controller_thread([&] {
-        UciController controller(input_stream, output, diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(input_stream, output, diagnostics);
+        UciController& controller = *controller_holder;
         exit_code = controller.run();
     });
     const bool both_searches_completed =
@@ -1821,7 +1830,8 @@ void test_ponder_option_emits_a_legal_second_pv_move() {
     std::ostringstream diagnostics;
     int exit_code = -1;
     std::thread controller_thread([&] {
-        UciController controller(input_stream, output, diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(input_stream, output, diagnostics);
+        UciController& controller = *controller_holder;
         exit_code = controller.run();
     });
     const bool marker_seen = input.wait_for_marker(std::chrono::seconds(5));
@@ -2161,7 +2171,8 @@ void test_selective_root_score_is_published_unmarked() {
     std::ostringstream diagnostics;
     int exit_code = -1;
     std::thread controller_thread([&] {
-        UciController controller(input_stream, output, diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(input_stream, output, diagnostics);
+        UciController& controller = *controller_holder;
         exit_code = controller.run();
     });
     const bool depth_seen = input.wait_for_marker(std::chrono::seconds(5));
@@ -2195,7 +2206,8 @@ void test_protocol_responses_flush_promptly() {
     FlushTrackingBuffer output_buffer;
     std::ostream output(&output_buffer);
     std::ostringstream diagnostics;
-    UciController controller(input, output, diagnostics);
+    auto controller_holder = koi::test::make_uci_controller(input, output, diagnostics);
+    UciController& controller = *controller_holder;
 
     require(controller.run() == 0, "flush test transcript must shut down normally");
     require(output_buffer.sync_count() >= 4,
@@ -2287,7 +2299,8 @@ void test_reapplying_the_current_option_value_keeps_the_search_alive() {
     std::ostringstream diagnostics;
     int exit_code = -1;
     std::thread controller_thread([&] {
-        UciController controller(input_stream, output, diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(input_stream, output, diagnostics);
+        UciController& controller = *controller_holder;
         exit_code = controller.run();
     });
     const bool marker_seen = input.wait_for_marker(std::chrono::seconds(5));
@@ -2317,7 +2330,8 @@ void test_bestmove_reports_the_ponder_move_without_the_option() {
     std::ostringstream diagnostics;
     int exit_code = -1;
     std::thread controller_thread([&] {
-        UciController controller(input_stream, output, diagnostics);
+        auto controller_holder = koi::test::make_uci_controller(input_stream, output, diagnostics);
+        UciController& controller = *controller_holder;
         exit_code = controller.run();
     });
     const bool marker_seen = input.wait_for_marker(std::chrono::seconds(5));

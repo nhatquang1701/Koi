@@ -153,6 +153,18 @@ if (-not (Test-Path -LiteralPath $optionTablePath)) {
     }
 }
 
+# 3c2. Test-only controller construction stays out of the shipped header.
+$controllerHeader = Read-RepositoryFile 'src/koi/uci_controller.hpp'
+if ($controllerHeader -match 'UciController\(std::istream& input, std::ostream& output,\s*std::ostream& diagnostics\);') {
+    Fail 'uci_controller.hpp must not declare the test-only three-argument constructor'
+}
+foreach ($required in @('tests/support/uci_controller_test_support.hpp',
+                        'tests/support/uci_controller_test_constructor.cpp')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
+        Fail "$required is missing"
+    }
+}
+
 # 3d. Synthetic NNUE fixtures are test support, not engine code.
 $nnueSource = Read-RepositoryFile 'src/koi/nnue.cpp'
 if ($nnueSource -match 'NnueNetwork::synthetic') {

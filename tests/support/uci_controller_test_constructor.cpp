@@ -1,14 +1,25 @@
-// Test-only definition of the historical three-argument UciController
-// constructor. The engine no longer ships the classical evaluator (HCE removed
-// 2026-10-28); this translation unit is built only into the test-support
-// library so tests that construct a controller without an explicit evaluator
-// keep working during the migration.
+// Test-only factory for a UciController backed by the in-repo material
+// evaluator.  The engine no longer ships a classical evaluator (HCE removed
+// 2026-10-28), so the historical three-argument constructor cannot live in the
+// production class; tests go through this factory instead.
+
+#include "uci_controller_test_support.hpp"
+
+#include <istream>
+#include <memory>
+#include <ostream>
 
 #include "koi/uci_controller.hpp"
 
 #include "material_evaluator.hpp"
 
-koi::UciController::UciController(std::istream& input, std::ostream& output,
-                                  std::ostream& diagnostics)
-    : UciController(input, output, diagnostics,
-                    SearchService{std::make_shared<koi::test::MaterialEvaluator>(), {}, 1}) {}
+namespace koi::test {
+
+std::unique_ptr<UciController> make_uci_controller(std::istream& input, std::ostream& output,
+                                                    std::ostream& diagnostics) {
+    return std::make_unique<UciController>(
+        input, output, diagnostics,
+        SearchService{std::make_shared<MaterialEvaluator>(), {}, 1});
+}
+
+} // namespace koi::test
