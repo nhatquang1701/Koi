@@ -27,6 +27,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
 | R34 ASan unit label | pass* | 20/24 suites, zero ASan reports; 4 blocked by local %TEMP% quirk |
+| R82 raw command fuzzer | pass | 150 release + 300 ASan cases; command tokenizer inert |
 | R81 OS-level allocation failure (Linux) | pending CI | ulimit -v + forced Hash resize failure |
 | R80 boot NNUE fail-closed matrix | pass | exit 4 + diagnostic + no protocol for 4 bad paths; release+ASan |
 | R79 ASan flake triage | not reproducible | 6 consecutive ASan passes, 0 reports |
