@@ -1202,6 +1202,37 @@ try {
     if (@($linkLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
         throw 'a linked book must be used exactly once'
     }
+
+    # 9s. Crafted book entry whose move is illegal for the keyed position
+    # (startpos key -> a1a8). The book may be announced as a readable file, but
+    # the engine must never emit the illegal book move; it must fall back to a
+    # legal search answer with no protocol noise.
+    $assetIllegal = Join-Path $assetRoot 'engine-illegal-book-move'
+    New-Item -ItemType Directory -Path $assetIllegal -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetIllegal $executableName)
+    [byte[]]$illegalBookBytes = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c,
+        0x00, 0x38, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00
+    [System.IO.File]::WriteAllBytes((Join-Path $assetIllegal 'book.bin'), $illegalBookBytes)
+    $illegalSession = Start-UciSession -Executable (Join-Path $assetIllegal $executableName)
+    Send-UciCommand $illegalSession 'uci'
+    [void](Read-UciUntil $illegalSession { param($line) $line -eq 'uciok' } 'illegal-book uciok' -ValidateUciOutput)
+    Send-UciCommand $illegalSession 'isready'
+    [void](Read-UciUntil $illegalSession { param($line) $line -eq 'readyok' } 'illegal-book readyok' -ValidateUciOutput)
+    Send-UciCommand $illegalSession 'position startpos'
+    Send-UciCommand $illegalSession 'go depth 1'
+    $illegalBest = Read-UciUntil $illegalSession { param($line) $line -match '^bestmove ' } 'illegal-book bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $illegalBest 'illegal-book'
+    if ($illegalBest -match '^bestmove a1a8') {
+        throw 'an illegal crafted book move must never be returned'
+    }
+    Send-UciCommand $illegalSession 'quit'
+    $illegalLines = Complete-UciSession $illegalSession $false
+    if (@($illegalLines | Where-Object { $_ -match '^info string book move ' }).Count -ne 0) {
+        throw 'an illegal crafted book move must not be announced as a book move'
+    }
+    if (@($illegalLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 1) {
+        throw 'the illegal-book case must complete exactly one search'
+    }
 }
 finally {
     Stop-AllUciSessions
