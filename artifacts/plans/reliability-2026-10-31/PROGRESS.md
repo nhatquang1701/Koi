@@ -27,7 +27,8 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
 | R34 ASan unit label | pass* | 20/24 suites, zero ASan reports; 4 blocked by local %TEMP% quirk |
-| R72 fuzzers in CTest/CI | pass | four randomized fuzzers registered; local 4/4 in 53.1 s |
+| R73 fixture-driven CI fuzzers | fixed | no python-chess dependency; policy test green; 4/4 in 56.3 s |
+| R72 fuzzers in CTest/CI | pass (superseded by R73) | four randomized fuzzers registered; local 4/4 in 53.1 s |
 | R71 max-size book load | pass | 16 MiB all-same-key book; book move e2e4; release+ASan |
 | R70 non-regular DebugFile | fixed | FIFO/pipe DebugFile ignored; UCI responsive |
 | R69 non-regular EvalFile | fixed | FIFO/named pipe rejected by type before open |
