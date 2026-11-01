@@ -151,6 +151,7 @@ go nodes -1
 go wtime -1 btime -1
 go wtime 999999999999 btime 999999999999
 go movestogo 0 wtime 1000 btime 1000
+go wtime 1000 btime 1000 winc 2147483647 binc -1 movestogo 2147483647
 go mate 0
 go mate 65
 go depth 2147483647
@@ -184,6 +185,9 @@ setoption name BookFile value ""
 setoption name hash value 16
 setoption name HASH value 16
 setoption name NoSuchOption value 1
+setoption name Threads value 8
+setoption name Hash value 128
+setoption name MultiPV value 256
 setoption
 setoption name
 unknown command here
@@ -1224,6 +1228,16 @@ $stopBeforeGo = Invoke-UciTranscript "uci`nisready`nposition startpos`nstop`nsto
 Assert-ProtocolGrammar $stopBeforeGo
 Assert-CleanDiagnostics $stopBeforeGo
 Assert-OneLegalBestmove $stopBeforeGo
+
+# 29. Ready-flood during an infinite search: 100 isready commands must each be
+# answered while the search runs, with exactly one bestmove after stop.
+$readyFlood = Invoke-UciTranscript ("uci`nisready`nposition startpos`ngo infinite`n" + ("isready`n" * 100) + "stop`nquit`n") 'isready-flood'
+Assert-ProtocolGrammar $readyFlood
+Assert-CleanDiagnostics $readyFlood
+Assert-OneLegalBestmove $readyFlood
+if ((Count-Lines $readyFlood '^readyok$') -ne 101) {
+    throw '100 isready commands during a search must produce 101 readyok answers'
+}
 
 Write-Output 'PASS protocol fuzz corpus'
 
