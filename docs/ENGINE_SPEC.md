@@ -884,8 +884,12 @@ Behaviour details:
   Syzygy path lists are sanitized first (empty components are dropped) and every
   component that contains table files is magic-validated: a corrupt component
   disables probing with the same diagnostic, while ordinary search keeps
-  running. Installed tables are never distributed with Koi and never packaged
-  into release archives.
+  running. Files belonging to the standard 3-4-5 man set are additionally checked
+  against a canonical size manifest; truncated or oversized tables are rejected
+  as corrupt before Fathom maps them (an 80-byte stand-in for the 272-byte
+  `KQvK.rtbw` previously hung the probe). Unknown table names (for example 6-man
+  tables) are not size-validated. Installed tables are never distributed with
+  Koi and never packaged into release archives.
 - `SyzygyProbeLimit` 0..7 (default 7) and `SyzygyProbeDepth` 1..100 (default 1)
   gate table availability and the minimum search depth for the root probe.
 - `Syzygy50MoveRule` honors the halfmove clock: WDL probes require a zero

@@ -1233,6 +1233,38 @@ try {
     if (@($illegalLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 1) {
         throw 'the illegal-book case must complete exactly one search'
     }
+
+    # 9t. Truncated standard Syzygy table (KQvK.rtbw is canonically 272 bytes,
+    # here only magic + zeros in 80 bytes): the size manifest must reject the
+    # directory before Fathom maps it.  Without the gate this used to hang the
+    # search with no bestmove.
+    $assetTruncatedTb = Join-Path $assetRoot 'engine-truncated-syzygy'
+    New-Item -ItemType Directory -Path $assetTruncatedTb -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetTruncatedTb $executableName)
+    $truncatedTables = Join-Path $assetTruncatedTb 'tables'
+    New-Item -ItemType Directory -Path $truncatedTables -Force | Out-Null
+    [byte[]]$truncatedWdl = [byte[]]::new(80)
+    [byte[]]$wdlMagic = 0x71, 0xE8, 0x23, 0x5D
+    [Array]::Copy($wdlMagic, 0, $truncatedWdl, 0, 4)
+    [System.IO.File]::WriteAllBytes((Join-Path $truncatedTables 'KQvK.rtbw'), $truncatedWdl)
+    $truncatedSession = Start-UciSession -Executable (Join-Path $assetTruncatedTb $executableName)
+    Send-UciCommand $truncatedSession 'uci'
+    [void](Read-UciUntil $truncatedSession { param($line) $line -eq 'uciok' } 'truncated-syzygy uciok' -ValidateUciOutput)
+    Send-UciCommand $truncatedSession "setoption name SyzygyPath value $truncatedTables"
+    Send-UciCommand $truncatedSession 'isready'
+    [void](Read-UciUntil $truncatedSession { param($line) $line -eq 'readyok' } 'truncated-syzygy readyok' -ValidateUciOutput)
+    Send-UciCommand $truncatedSession 'position startpos'
+    Send-UciCommand $truncatedSession 'go depth 1'
+    $truncatedBest = Read-UciUntil $truncatedSession { param($line) $line -match '^bestmove ' } 'truncated-syzygy bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $truncatedBest 'truncated-syzygy'
+    Send-UciCommand $truncatedSession 'quit'
+    $truncatedLines = Complete-UciSession $truncatedSession $false
+    if (@($truncatedLines | Where-Object { $_ -match '^info string Syzygy: corrupt tables at .+ \(probing disabled\)$' }).Count -ne 1) {
+        throw 'a truncated standard Syzygy table must be rejected as corrupt exactly once'
+    }
+    if (@($truncatedLines | Where-Object { $_ -match '^info string Syzygy: [0-9]+-man tables' }).Count -ne 0) {
+        throw 'a truncated standard Syzygy table must not be announced as usable'
+    }
 }
 finally {
     Stop-AllUciSessions

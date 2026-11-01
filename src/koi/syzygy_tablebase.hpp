@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <string_view>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -62,6 +63,12 @@ enum class SyzygyDirectoryStatus : std::uint8_t {
     corrupt,
     unreadable,
 };
+
+// Expected canonical size for a standard 3-4-5 man Syzygy table file name
+// (for example "KQvK.rtbw"); std::nullopt for unknown names such as 6-man
+// tables.  Used to reject truncated/oversized files before Fathom maps them.
+[[nodiscard]] std::optional<std::uint64_t> expected_standard_syzygy_size(
+    std::string_view filename);
 
 [[nodiscard]] SyzygyDirectoryStatus syzygy_directory_status(
     const std::filesystem::path& directory);

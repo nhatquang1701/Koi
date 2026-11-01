@@ -114,6 +114,22 @@ void test_syzygy_directory_status_classification() {
             "a directory with wrong-magic tables must be classified as corrupt");
 }
 
+void test_standard_syzygy_size_manifest() {
+    const auto expect = [](std::string_view name, std::uint64_t size) {
+        const auto found = koi::expected_standard_syzygy_size(name);
+        require(found.has_value() && *found == size,
+                "standard Syzygy size manifest mismatch");
+    };
+    expect("KQvK.rtbw", 272);
+    expect("KNvK.rtbw", 80);
+    expect("KBvK.rtbz", 80);
+    expect("KBBBvK.rtbz", 1938576);
+    require(!koi::expected_standard_syzygy_size("KQvK.bin").has_value(),
+            "non-tablebase suffixes must not be size-validated");
+    require(!koi::expected_standard_syzygy_size("KQQQQQvK.rtbw").has_value(),
+            "unknown (e.g. 6-man) tables must not be size-validated");
+}
+
 void test_empty_path_list_components_are_dropped() {
     // Regression: a path list made only of separators used to reach Fathom's
     // tb_init splitter, which read past the end of the path string when no
@@ -490,6 +506,7 @@ int main(int argc, char** argv) {
          test_snapshot_uses_native_rule_state_after_a_pinned_double_push},
         {"platform path list reaches Fathom", test_platform_path_list_is_forwarded_to_fathom},
         {"Syzygy directory status classification", test_syzygy_directory_status_classification},
+        {"standard Syzygy size manifest", test_standard_syzygy_size_manifest},
         {"all-empty path-list components are inert", test_empty_path_list_components_are_dropped},
         {"policy setters do not reload Fathom", test_policy_setters_do_not_reload_fathom},
         {"absent and malformed paths disable probing safely",
