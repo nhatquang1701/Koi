@@ -893,7 +893,9 @@ Behaviour details:
   against a canonical size manifest; truncated or oversized tables are rejected
   as corrupt before Fathom maps them (an 80-byte stand-in for the 272-byte
   `KQvK.rtbw` previously hung the probe). Unknown table names (for example 6-man
-  tables) are not size-validated. Installed tables are never distributed with
+  tables) are not size-validated. A canonically sized but zero-filled body is also
+  rejected (real tables always have non-zero header/data bytes immediately
+  after the magic). Installed tables are never distributed with
   Koi and never packaged into release archives.
 - `SyzygyProbeLimit` 0..7 (default 7) and `SyzygyProbeDepth` 1..100 (default 1)
   gate table availability and the minimum search depth for the root probe.
