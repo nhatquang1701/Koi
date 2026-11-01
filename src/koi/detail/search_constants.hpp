@@ -35,7 +35,6 @@ inline constexpr int kQuiescenceSeeThreshold = -74;
 // (the depth-one margin is the historical live value; the classical calibration
 // was retired together with HCE on 2026-10-28).
 inline constexpr int kRazorMarginPerDepthSquared = 120;
-inline constexpr int kRazorMaximumDepth = 1;
 // Child futility removes late quiet moves whose static score is far below
 // alpha.  The reference shape uses the reduced depth (not the nominal node
 // depth) so heavily reduced late moves can be pruned at deeper nodes, and

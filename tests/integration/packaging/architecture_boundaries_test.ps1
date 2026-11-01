@@ -71,6 +71,25 @@ if ($uciHeader -notmatch 'class DebugLog;') {
     Fail 'uci_controller.hpp must forward-declare detail::DebugLog'
 }
 
+# 3c. The UCI option catalog is private detail data; the controller consumes it
+# instead of defining its own copy.
+$optionTablePath = Join-Path $repositoryRoot 'src/koi/detail/uci_option_table.hpp'
+if (-not (Test-Path -LiteralPath $optionTablePath)) {
+    Fail 'src/koi/detail/uci_option_table.hpp is missing'
+} else {
+    $optionTable = Get-Content -LiteralPath $optionTablePath -Raw
+    if ($optionTable -notmatch 'array<UciOptionDescriptor, 28>') {
+        Fail 'the option catalog must declare the 28-entry table'
+    }
+    $controllerSource = Read-RepositoryFile 'src/koi/uci_controller.cpp'
+    if ($controllerSource -match 'enum class UciOptionKind') {
+        Fail 'uci_controller.cpp must not redefine the option catalog enums'
+    }
+    if ($controllerSource -match 'kUciOptions\s*\{\{') {
+        Fail 'uci_controller.cpp must not define the option table itself'
+    }
+}
+
 # 4. Engine core sources must not contain dead/tooling translation units.
 $cmake = Read-RepositoryFile 'CMakeLists.txt'
 $coreMatch = [regex]::Match($cmake, '(?s)set\(KOI_CORE_SOURCES(.*?)\n\)')
