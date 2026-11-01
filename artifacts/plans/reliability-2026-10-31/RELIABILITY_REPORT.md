@@ -46,6 +46,9 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
 | go/state fuzzer | `artifacts/.../go_fuzz.py` | registered as `koi_go_fuzz_process` |
 | CCRL game harness | `artifacts/plans/ccrl-eligibility-2026-11-01/crash_1000.py` | 1000 games vs SF19, Mac: 0 crashes/illegal/protocol |
 | Permission matrix | fuzz sections 9o/9p/9q | unreadable book/Syzygy/EvalFile (Windows ACL, Unix chmod) |
+| Boot fail-closed matrix | fuzz section 31 | missing/directory/corrupt/unreadable `KOI_NNUE_PATH`: exit 4, no protocol output |
+| Raw-command fuzzer | `command_fuzz.py` | random/unknown command lines; registered as `koi_command_fuzz_process` |
+| OS memory-limit test | `protocol_memory_limit_test.ps1` | Linux-only `ulimit -v` forced Hash allocation failure |
 | ASan tree | `build/asan-reliability` | reliability legs + 20/24 unit suites clean (4 local `%TEMP%` quirks) |
 | TSan | Linux CI `linux-tsan` job | 64 TT mutexes require `detect_deadlocks=0` |
 
