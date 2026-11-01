@@ -1461,6 +1461,9 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         const bool book_auto = !own_book_explicit_ && book_is_available();
         if (book_auto && !book_auto_reported_) {
             book_auto_reported_ = true;
+            // UciController is the single protocol writer; every output write
+            // goes through output_mutex_, including this lazy detection line.
+            std::lock_guard lock(output_mutex_);
             output_ << "info string book detected: " << resolved_book_path().string()
                     << " (OwnBook not set, using it)\n" << std::flush;
         }
