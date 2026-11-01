@@ -317,7 +317,9 @@ for search-key completeness (`SearchContext::evaluate`).
   the file relative to the executable directory, and installs it for subsequent
   searches. An empty `EvalFile` is a no-op that keeps the boot-time evaluator.
   A rejected file emits `info string EvalFile rejected: ...` and leaves the
-  current evaluator usable.
+  current evaluator usable. Non-regular paths (FIFOs/named pipes, directories,
+  devices) are rejected by type before opening, so a blocking special file
+  cannot stall the UCI loop.
 - A running search never changes evaluator mid-search. `SearchService::start`
   captures the current evaluator; `set_evaluator` affects only later searches.
 
