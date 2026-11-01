@@ -4240,6 +4240,8 @@ void test_search_worker_converts_exceptions_to_failed_completion() {
 
     require(result.completed && result.failed && !result.cancelled,
             "an evaluator exception must become one controlled failed completion");
+    require(result.failure_reason == koi::SearchFailureReason::internal_error,
+            "an evaluator exception must be reported as an internal error");
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
             "a failed search must retain a legal root fallback");
 }

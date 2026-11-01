@@ -235,6 +235,27 @@ struct SearchRequestIdentity {
                                                     const std::uint64_t generation);
 };
 
+// Why a search result was produced by a failure fallback rather than normal
+// search.  Kept alongside the legacy `failed` flag so existing consumers keep
+// working while the protocol boundary can report a typed diagnostic.
+enum class SearchFailureReason : std::uint8_t {
+    none,
+    setup_failed,
+    helper_failed,
+    internal_error,
+};
+
+[[nodiscard]] inline const char* search_failure_reason_name(
+    const SearchFailureReason reason) noexcept {
+    switch (reason) {
+    case SearchFailureReason::none: return "none";
+    case SearchFailureReason::setup_failed: return "setup_failed";
+    case SearchFailureReason::helper_failed: return "helper_failed";
+    case SearchFailureReason::internal_error: return "internal_error";
+    }
+    return "unknown";
+}
+
 struct SearchResult {
     std::optional<Move> best_move;
     std::vector<Move> pv;
@@ -248,6 +269,7 @@ struct SearchResult {
     bool completed = false;
     bool cancelled = false;
     bool failed = false;
+    SearchFailureReason failure_reason = SearchFailureReason::none;
 };
 
 struct SearchEventSink {

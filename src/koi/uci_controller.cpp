@@ -1546,7 +1546,9 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
             // protocol boundary.
             std::lock_guard lock(output_mutex_);
             if (generation == generation_) {
-                output_ << "info string search failed; using a safe fallback move\n"
+                output_ << "info string search failed ("
+                        << search_failure_reason_name(result.failure_reason)
+                        << "); using a safe fallback move\n"
                         << std::flush;
             }
         }
@@ -1574,6 +1576,7 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
     start_failure_fallback.identity = SearchRequestIdentity::from(search_root, generation);
     start_failure_fallback.completed = true;
     start_failure_fallback.failed = true;
+    start_failure_fallback.failure_reason = SearchFailureReason::setup_failed;
     for (const Move& move : search_root.legal_moves()) {
         if (!limits.search_moves_specified ||
             std::find(limits.search_moves.begin(), limits.search_moves.end(), move) !=

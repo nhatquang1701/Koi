@@ -143,6 +143,7 @@ void SearchRunner::run() {
         // would silently swallow the only bestmove the GUI will ever get.
         failed.identity = session_->identity();
         failed.failed = true;
+        failed.failure_reason = SearchFailureReason::setup_failed;
         failed.completed = true;
         try {
             (void)session_->publish_completion(sink_, failed);
@@ -576,6 +577,7 @@ void SearchRunner::run_impl() {
                         // path below instead of letting the failure kill the
                         // process or leave the search running.
                         result.failed = true;
+                        result.failure_reason = SearchFailureReason::helper_failed;
                     }
                     if (result.completed_depth == 0 && !used_short_fallback &&
                         defer_nonchecking_short_fallback) {
@@ -2681,11 +2683,13 @@ void SearchRunner::run_impl() {
                 // The main iteration may have finished before the flag was
                 // observed; keep the diagnostic honest either way.
                 result.failed = true;
+                result.failure_reason = SearchFailureReason::helper_failed;
             }
         }
         result.timing = time_manager.diagnostics();
     } catch (...) {
         result.failed = true;
+        result.failure_reason = SearchFailureReason::internal_error;
         try {
                     if (!result.best_move.has_value()) {
                         const std::vector<Move> legal = root.legal_moves();
