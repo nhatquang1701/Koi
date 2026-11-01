@@ -71,6 +71,16 @@ try {
         $hash = $hashSizes[$round % $hashSizes.Count]
         Send-UciCommand $session "setoption name Threads value $threads"
         Send-UciCommand $session "setoption name Hash value $hash"
+        # Reconfigure optional assets periodically: repeated Syzygy path parsing
+        # and book-file resolution must not leak or crash under churn.
+        if (($round % 50) -eq 0) {
+            $syzygyValues = @('', ';;;', '/nonexistent/tablebases', ':::')
+            Send-UciCommand $session ("setoption name SyzygyPath value " +
+                $syzygyValues[($round / 50) % $syzygyValues.Count])
+        }
+        if (($round % 70) -eq 0) {
+            Send-UciCommand $session 'setoption name BookFile value /nonexistent/book.bin'
+        }
         Send-UciCommand $session $positions[$round % $positions.Count]
         $search = switch ($round % 3) {
             0 { 'go depth 3' }
