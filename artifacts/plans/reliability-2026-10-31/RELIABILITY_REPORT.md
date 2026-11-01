@@ -67,6 +67,10 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
 - Controller-level Hash allocation failure: policy failing every allocation
   yields `reason allocation_failed`, `readyok`, one legal bestmove, exit 0
   (release + ASan filtered runs).
+- Linked book assets: hardlink (Windows) and symlink (Unix) resolve for
+  detection/use; a broken Unix symlink falls back silently with a legal search.
+- Crafted Polyglot entry with an illegal move for the keyed position is never
+  returned as `book move`; the engine falls back to a legal search answer.
 - CCRL package built (engines + NNUE + licenses, no book/tests/Stockfish);
   provenance audit in `artifacts/plans/ccrl-eligibility-2026-11-01/`.
 
