@@ -180,6 +180,12 @@ jobs:
           if errorlevel 1 exit /b 1
           ctest --test-dir build/ci-asan -C Debug -j 2 -L unit -LE heavy --output-on-failure --output-junit build/ci-asan/ctest-junit.xml
           if errorlevel 1 exit /b 1
+          rem The deterministic protocol corpus (and the churn/broken-pipe legs) is
+          rem the fastest adversarial alarm; run it under ASan as well.  Debug
+          rem builds scale the test timeouts by KOI_TIMEOUT_SCALE, so the 176 s
+          rem local ASan run has ample headroom on CI.
+          ctest --test-dir build/ci-asan -C Debug -j 1 -R "koi_protocol_fuzz_process|koi_protocol_option_churn_process|koi_protocol_broken_pipe_process" --output-on-failure --output-junit build/ci-asan/ctest-reliability-junit.xml
+          if errorlevel 1 exit /b 1
       - name: Upload sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v5
@@ -187,6 +193,7 @@ jobs:
           name: sanitizer-test-diagnostics
           path: |
             build/ci-asan/ctest-junit.xml
+            build/ci-asan/ctest-reliability-junit.xml
             build/ci-asan/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
           retention-days: 7
