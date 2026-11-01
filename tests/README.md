@@ -164,6 +164,10 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   SyzygyPath changes during an active search: the old generation is suppressed
   with no late bestmove, a malformed EvalFile is rejected once, and each
   replacement search answers legally),
+  `koi_fen_fuzz_process`, `koi_move_fuzz_process`, `koi_option_fuzz_process`,
+  `koi_go_fuzz_process` (seeded randomized adversarial FEN/move-list/setoption/
+  go-state inputs, 150/150/100/100 cases; fixture-driven, no third-party Python
+  runtime dependency),
   `koi_engine_perft_responsiveness`,
   `koi_engine_variant_process` (three engine binaries,
   automatic selection, and the `KOI_CPU_VARIANT` overrides),
@@ -212,8 +216,9 @@ Every test carries CTest labels; combine them with `-L`/`-LE`, for example
   `matches`, `tools`, `runtime`, `packaging`.
 - `reliability` — adversarial protocol/robustness regression tests
   (`koi_protocol_fuzz_process`, the `koi_protocol_soak_process` resource churn
-  test, `koi_protocol_option_churn_process`, and
-  `koi_protocol_broken_pipe_process`); run with `ctest -L reliability`.
+  test, `koi_protocol_option_churn_process`,
+  `koi_protocol_broken_pipe_process`, and the four randomized
+  `koi_*_fuzz_process` tests); run with `ctest -L reliability`.
 - `python` — Python unittest suites (`elo_oracle_python` is also `measurement`).
 - `heavy` — long-running tests. `koi_search_tests_*of4`, `koi_strength_tests`,
   `koi_engine_time_safety_process`, `koi_benchmark_process`, and

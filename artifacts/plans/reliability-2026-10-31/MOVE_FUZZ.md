@@ -8,7 +8,7 @@ wrong promotions, Chess960-style castling `e1h1`, control bytes), and very long
 token lists (up to ~1500 tokens).
 
 Script: `artifacts/plans/reliability-2026-10-31/move_fuzz.py`
-(deterministic: `random.Random(20261101 + case)`; python-chess supplies legal
+(deterministic: `random.Random(20261101 + case)`; committed fixtures (generated once with python-chess) supply legal
 random games; malformed tokens are generated from a constrained alphabet).
 
 Per case the engine receives:

@@ -1459,14 +1459,7 @@ endif()
 # module is unavailable (for example in a source-tarball build without the
 # measurement requirements) the tests are simply not registered.
 if(Python3_Interpreter_FOUND)
-    execute_process(
-        COMMAND "${Python3_EXECUTABLE}" -c "import chess"
-        RESULT_VARIABLE KOI_PYTHON_CHESS_RESULT
-        OUTPUT_QUIET
-        ERROR_QUIET
-    )
-    if(KOI_PYTHON_CHESS_RESULT EQUAL 0)
-        file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/reliability")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/reliability")
         set(KOI_RELIABILITY_FUZZ_DIR
             "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/plans/reliability-2026-10-31")
         foreach(KOI_FUZZ_SPEC IN ITEMS "fen:150" "move:150" "option:100" "go:100")
@@ -1486,9 +1479,6 @@ if(Python3_Interpreter_FOUND)
             set_tests_properties("koi_${KOI_FUZZ_NAME}_fuzz_process"
                 PROPERTIES LABELS "process;reliability")
         endforeach()
-    else()
-        message(STATUS "python-chess unavailable: randomized reliability fuzzers not registered")
-    endif()
 endif()
 
 # Engine-spawning tests need a valid NNUE network now that the classical

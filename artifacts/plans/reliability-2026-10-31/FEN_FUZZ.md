@@ -7,8 +7,8 @@ half valid random legal positions) through a real UCI session and checks crash,
 hang, stderr and bestmove invariants.
 
 Script: `artifacts/plans/reliability-2026-10-31/fen_fuzz.py`
-(deterministic: `random.Random(20261101 + case)`; python-chess generates valid
-positions by random legal playouts; invalid boards/fields are generated from
+(deterministic: `random.Random(20261101 + case)`; committed fixtures (generated once with python-chess) supply valid
+positions; invalid boards/fields are generated from
 random piece strings, mutated startpos, random ASCII and invalid field values).
 
 Per case the engine receives:

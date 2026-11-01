@@ -20,9 +20,8 @@ import os
 import random
 import re
 import subprocess
+import pathlib
 import sys
-
-import chess
 
 PIECES = "pnbrqkPNBRQK"
 BOARD_CHARS = PIECES + "12345678"
@@ -84,14 +83,20 @@ def string_guard() -> str:
     return PIECES + "12345678/- wKQkqabcdefgh0"
 
 
+FIXTURE_FENS: list[str] = []
+
+
+def _load_fixture_lines(path: pathlib.Path) -> list[str]:
+    try:
+        return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except OSError:
+        return []
+
+
 def make_valid_fen(rng: random.Random) -> str:
-    board = chess.Board()
-    for _ in range(rng.randint(0, 90)):
-        moves = list(board.legal_moves)
-        if not moves:
-            break
-        board.push(rng.choice(moves))
-    return board.fen()
+    if not FIXTURE_FENS:
+        return "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    return rng.choice(FIXTURE_FENS)
 
 
 def make_fen(rng: random.Random) -> str:
@@ -210,4 +215,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    FIXTURE_FENS = _load_fixture_lines(
+        pathlib.Path(__file__).resolve().parents[3] / "tests/data/reliability/valid-fens.txt"
+    )
     sys.exit(main())

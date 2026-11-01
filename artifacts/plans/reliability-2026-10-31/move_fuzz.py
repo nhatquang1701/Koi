@@ -19,9 +19,8 @@ import os
 import random
 import re
 import subprocess
+import pathlib
 import sys
-
-import chess
 
 TOKEN_CHARS = "abcdefgh12345678nbrqk"
 
@@ -43,17 +42,20 @@ def random_token(rng: random.Random) -> str:
     return rng.choice(["", " ", "\t"])
 
 
+FIXTURE_MOVE_LISTS: list[list[str]] = []
+
+
+def _load_fixture_lines(path: pathlib.Path) -> list[str]:
+    try:
+        return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except OSError:
+        return []
+
+
 def random_game_moves(rng: random.Random) -> list[str]:
-    board = chess.Board()
-    moves: list[str] = []
-    for _ in range(rng.randint(1, 140)):
-        legal = list(board.legal_moves)
-        if not legal:
-            break
-        move = rng.choice(legal)
-        moves.append(move.uci())
-        board.push(move)
-    return moves
+    if not FIXTURE_MOVE_LISTS:
+        return [random_token(rng) for _ in range(rng.randint(1, 20))]
+    return list(rng.choice(FIXTURE_MOVE_LISTS))
 
 
 def make_moves(rng: random.Random) -> list[str]:
@@ -185,4 +187,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    FIXTURE_MOVE_LISTS = [
+        line.split()
+        for line in _load_fixture_lines(
+            pathlib.Path(__file__).resolve().parents[3]
+            / "tests/data/reliability/valid-move-lists.txt"
+        )
+    ]
     sys.exit(main())
