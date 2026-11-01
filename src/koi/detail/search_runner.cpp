@@ -2724,6 +2724,11 @@ void SearchRunner::run() {
         // before run_impl's internal try) must still deliver exactly one
         // completion; otherwise the GUI waits forever for a bestmove.
         SearchResult failed;
+        // A setup-prefix failure still has to answer the request that created
+        // this session.  The completion gate suppresses completions whose
+        // identity does not match the live root, so a default identity here
+        // would silently swallow the only bestmove the GUI will ever get.
+        failed.identity = session_->identity();
         failed.failed = true;
         failed.completed = true;
         try {

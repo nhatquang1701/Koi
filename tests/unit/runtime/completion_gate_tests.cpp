@@ -77,6 +77,22 @@ void test_mismatched_root_key_is_suppressed_even_for_a_legal_looking_move() {
             "root-key mismatch suppression must not carry a move to the controller");
 }
 
+void test_empty_candidate_with_matching_identity_falls_back() {
+    // A setup-prefix failure publishes a completed result with the session's
+    // identity but no best move; it must reach the common-legal fallback
+    // instead of being suppressed as stale.
+    const GameState root = GameState::startpos();
+    CompletionCandidate empty;
+    empty.identity = identity(root);
+    CompletionGate gate;
+    const auto result = gate.validate(root, SearchLimits{}, identity(root), empty);
+    require(result.identity_match, "the failed completion must match the live request");
+    require(result.disposition == CompletionDisposition::fallback,
+            "an empty candidate with a matching identity must use the fallback");
+    require(result.best_move.has_value() && root.is_legal(*result.best_move),
+            "the fallback must produce a legal move for a nonterminal root");
+}
+
 void test_illegal_d4c3_uses_a_common_legal_fallback() {
     const auto parsed = GameState::from_fen(
         "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1");
@@ -167,6 +183,7 @@ int main(int argc, char** argv) {
         {"current root move", test_current_root_move_is_emitted},
         {"stale generation", test_stale_generation_is_suppressed},
         {"mismatched root key", test_mismatched_root_key_is_suppressed_even_for_a_legal_looking_move},
+        {"empty failed completion fallback", test_empty_candidate_with_matching_identity_falls_back},
         {"illegal d4c3 fallback", test_illegal_d4c3_uses_a_common_legal_fallback},
         {"searchmoves restriction", test_searchmoves_is_a_hard_restriction},
         {"invalid PV fallback", test_invalid_pv_cannot_be_emitted_as_valid_completion},
