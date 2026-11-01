@@ -27,6 +27,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
 | R34 ASan unit label | pass* | 20/24 suites, zero ASan reports; 4 blocked by local %TEMP% quirk |
+| R66 post-fix ASan fuzz revalidation | pass | all four fuzzers clean on current ASan engine |
 | R65 truncated Syzygy hang | fixed | canonical-size gate; reproduced hang gone; same-size/6-man residual |
 | R64 200k asset-churn soak | pass | 200,001 bestmoves, 29,922 scored, 2,034.5 s, bounded RSS |
 | R63 illegal crafted book move | pass | illegal entry never returned; legal fallback |
