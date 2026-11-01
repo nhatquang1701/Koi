@@ -47,6 +47,14 @@ public:
                            HashMemoryPolicy hash_memory_policy = {},
                            std::size_t initial_hash_mb = 512);
 
+    // Copies would alias the shared implementation (transposition table,
+    // evaluator, hash policy) and silently share a single search service's
+    // mutable state, so the service is a move-only value.
+    SearchService(const SearchService&) = delete;
+    SearchService& operator=(const SearchService&) = delete;
+    SearchService(SearchService&&) noexcept = default;
+    SearchService& operator=(SearchService&&) noexcept = default;
+
     [[nodiscard]] SearchHandle start(GameState root, SearchLimits limits,
                                      SearchEventSink sink = {}, SearchOptions options = {});
     [[nodiscard]] HashResizeResult set_hash_size_mb(std::size_t megabytes);

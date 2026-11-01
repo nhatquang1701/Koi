@@ -12,6 +12,7 @@
 #include <optional>
 #include <stdexcept>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 #include "../../support/material_evaluator.hpp"
@@ -35,6 +36,15 @@ using koi::SearchService;
 using koi::SearchOptions;
 using koi::TablebaseProbeResult;
 using koi::test::require;
+
+// Sharing a SearchService would share its transposition table and evaluator
+// configuration; the ownership rule is move-only.
+static_assert(!std::is_copy_constructible_v<SearchService>,
+              "SearchService must not be copy-constructible");
+static_assert(!std::is_copy_assignable_v<SearchService>,
+              "SearchService must not be copy-assignable");
+static_assert(std::is_move_constructible_v<SearchService>,
+              "SearchService must remain move-constructible");
 
 // Counts evaluations so the service-level evaluator swap can be observed from
 // the test without running a long search.
