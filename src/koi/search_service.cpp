@@ -18,6 +18,10 @@ struct SearchService::Impl {
           table(std::make_shared<TranspositionTable>(initial_hash_mb, std::move(hash_memory_policy))),
           evaluator_mutex(std::make_shared<std::mutex>()) {}
 
+    // Guards the evaluator pointer against concurrent start()/set_evaluator()
+    // calls.  evaluator_mutex is unrelated: it serializes evaluation work on
+    // evaluators that cannot run concurrently, never configuration.
+    mutable std::mutex config_mutex;
     std::shared_ptr<const Evaluator> evaluator;
     std::shared_ptr<TranspositionTable> table;
     std::shared_ptr<std::mutex> evaluator_mutex;
@@ -98,10 +102,16 @@ SearchHandle SearchService::start(GameState root, SearchLimits limits, SearchEve
         options.strength_profile_hook(options);
     }
 
+    std::shared_ptr<const Evaluator> evaluator;
+    {
+        std::lock_guard lock(impl_->config_mutex);
+        evaluator = impl_->evaluator;
+    }
+
     auto session = std::make_shared<detail::SearchSession>(
         std::move(root), std::move(limits), options);
-    detail::SearchRunner runner(session, impl_->evaluator, impl_->table, impl_->evaluator_mutex,
-                                std::move(sink));
+    detail::SearchRunner runner(session, std::move(evaluator), impl_->table,
+                                impl_->evaluator_mutex, std::move(sink));
     session->launch([runner = std::move(runner)]() mutable { runner.run(); });
     return SearchHandle(std::move(session));
 }
@@ -110,6 +120,7 @@ void SearchService::set_evaluator(std::shared_ptr<const Evaluator> evaluator) {
     if (!evaluator) {
         throw std::invalid_argument("SearchService requires a non-null evaluator");
     }
+    std::lock_guard lock(impl_->config_mutex);
     impl_->evaluator = std::move(evaluator);
 }
 

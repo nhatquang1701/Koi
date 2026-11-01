@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <thread>
@@ -220,6 +221,39 @@ void test_running_search_keeps_its_evaluator() {
 
     require(replacement->evaluations() == 0,
             "a running search must keep the evaluator it started with");
+}
+
+void test_concurrent_evaluator_swap_is_safe() {
+    auto first = std::make_shared<CountingEvaluator>();
+    auto second = std::make_shared<CountingEvaluator>();
+    SearchService service(first, {}, 16);
+    const GameState root = GameState::startpos();
+
+    std::atomic<int> completions{0};
+    SearchEventSink sink;
+    sink.on_complete = [&completions](const SearchResult&) {
+        completions.fetch_add(1, std::memory_order_relaxed);
+    };
+    SearchLimits limits;
+    limits.depth = 3;
+
+    // set_evaluator() is an embedder-facing configuration operation; it must
+    // be safe while start() snapshots the evaluator on another thread.  The
+    // searches themselves remain single-threaded and tiny.
+    std::thread swapper([&service, &first, &second] {
+        for (int i = 0; i < 16; ++i) {
+            service.set_evaluator((i % 2 == 0) ? second : first);
+        }
+    });
+    for (int i = 0; i < 16; ++i) {
+        auto handle = service.start(root, limits, sink);
+        handle.wait();
+    }
+    swapper.join();
+
+    require(completions.load() == 16, "concurrent evaluator swaps must not lose completions");
+    require(first->evaluations() + second->evaluations() > 0,
+            "concurrent evaluator swaps must still evaluate through a snapshot");
 }
 
 void test_hash_controls_are_observable() {
@@ -510,6 +544,7 @@ int main(int argc, char** argv) {
         {"search service stop", test_stop_ends_an_infinite_search},
         {"search service evaluator swap", test_set_evaluator_applies_to_the_next_search},
         {"search service evaluator pinning", test_running_search_keeps_its_evaluator},
+        {"search service concurrent evaluator swap", test_concurrent_evaluator_swap_is_safe},
         {"search service hash controls", test_hash_controls_are_observable},
         {"search service sinkless search", test_search_without_a_sink_still_completes},
         {"search service ponderhit conversion", test_request_ponderhit_converts_a_running_ponder_search},
