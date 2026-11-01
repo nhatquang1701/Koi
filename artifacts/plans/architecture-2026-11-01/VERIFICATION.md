@@ -23,6 +23,11 @@ Run IDs: Windows `41326510478`, Linux `41326510541`.
   local Python environment/timing failures remain (`elo_estimate_python`,
   `measurement_phase_python`, `measurement_forensics_python`,
   `uci_benchmark_python`).
+- **Complete local CTest matrix, heavy labels included** (358.9 s): all
+  C++/process/packaging/reliability/search/tools/uci/unit tests pass; only the
+  known local Python environment/timing failures remain
+  (`elo_estimate_python`, `measurement_phase_python`,
+  `measurement_forensics_python`, `koi_trainer_python` timeout).
 - `koi_search_tests`: 4/4 shards (140.5 s).
 - `uci_controller_tests`: 66/66.
 - `syzygy_tablebase_tests`: 22/22.
