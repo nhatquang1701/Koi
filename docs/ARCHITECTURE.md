@@ -153,6 +153,9 @@ flowchart TD
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |
 | `detail/search_session.cpp` | One immutable request, worker ownership, cancellation/ponderhit timer, completion claim. |
 | `detail/root_fallback.*` | Bounded root-fallback policy: emergency static/one-ply scanners used when a short search cannot complete an authoritative iteration. |
+| `detail/search_worker_pools.hpp` | Lazy-SMP helper pool and root-parallel worker pool: worker lifetime, abort/failure capture, live statistics. |
+| `detail/search_stats_support.hpp` | Shared per-worker `SearchStats` merge used by pools and the serial driver. |
+| `detail/fen_validation.*` | Stateless FEN syntax validation used before the native position and mirror are built. |
 | `detail/uci_option_table.hpp` | UCI option catalog (order, defaults, bounds, combo values) consumed by handshake and setoption. |
 | `detail/debug_log.*` | Best-effort developer debug log (JSON lines, rotation); never on UCI stdout. |
 | `hash_types.hpp` | Public hash policy/result value types shared by `SearchService` and `TranspositionTable` without exposing TT storage. |
@@ -212,8 +215,9 @@ header surface and the test tree, not by a future redesign.
   string`, stderr or the debug log. Search code performs no I/O.
 - **Driver vs policy**
   `detail/search_runner` owns search flow and publication; the bounded
-  root-fallback scanners live in `detail/root_fallback`. The driver must call
-  the policy, not define it inline.
+  root-fallback scanners live in `detail/root_fallback` and worker lifetime
+  lives in `detail/search_worker_pools`. The driver must call those units, not
+  define them inline.
 - **Protocol data**
   The UCI option catalog is private detail data (`uci_option_table.hpp`); the
   controller consumes it and must not redefine the table or bounds.
