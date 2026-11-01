@@ -3,6 +3,7 @@ name: macOS CTest
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 # macOS arm64 (Apple Silicon) is the modules-off portability leg: it proves the
 # documented fallback build (KOI_BUILD_MODULES=OFF) works with Homebrew LLVM.
