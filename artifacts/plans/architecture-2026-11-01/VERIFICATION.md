@@ -39,6 +39,8 @@ passes in that configuration.
 - `koi_architecture_boundaries`: pass (public-header seams, protocol purity,
   core-source purity, test-tree placement, artifacts-free build, documented
   contract).
+- Shadow-diff configuration (`-DKOI_BUILD_SHADOW_DIFF=ON`): built and
+  `koi_shadow_diff_tests` passes.
 - Strict documentation build: `mkdocs build --strict` pass.
 
 ### macOS local validation (GitHub macOS runner unavailable)
