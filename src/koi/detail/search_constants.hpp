@@ -10,6 +10,8 @@ inline constexpr int kInfinity = 1'000'000;
 inline constexpr int kMateScore = 100'000;
 inline constexpr int kMateThreshold = 99'000;
 inline constexpr int kMaximumSearchDepth = 64;
+// Initial aspiration half-window in centipawns.
+inline constexpr int kAspirationWindow = 50;
 inline constexpr int kMaximumQuiescenceDepth = 16;
 // Checked qsearch uses native recursion, and every frame owns a fixed move
 // metadata buffer.  Keep the safety horizon materially below the regular

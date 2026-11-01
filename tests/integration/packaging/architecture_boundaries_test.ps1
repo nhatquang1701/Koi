@@ -151,6 +151,20 @@ if ($gameStateSource -notmatch '#include "koi/detail/fen_validation\.hpp"') {
     Fail 'game_state.cpp must include detail/fen_validation.hpp'
 }
 
+# 3g. Worker-pool ownership is its own detail unit; the driver only orchestrates.
+foreach ($required in @('src/koi/detail/search_worker_pools.hpp',
+                        'src/koi/detail/search_stats_support.hpp')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
+        Fail "$required is missing"
+    }
+}
+$runnerPools = Read-RepositoryFile 'src/koi/detail/search_runner.cpp'
+foreach ($forbidden in @('class LazySmpPool', 'class RootWorkerPool', 'void accumulate_stats(')) {
+    if ($runnerPools -match [regex]::Escape($forbidden)) {
+        Fail "search_runner.cpp must not define $forbidden"
+    }
+}
+
 # 4. Engine core sources must not contain dead/tooling translation units.
 $cmake = Read-RepositoryFile 'CMakeLists.txt'
 $coreMatch = [regex]::Match($cmake, '(?s)set\(KOI_CORE_SOURCES(.*?)\n\)')
