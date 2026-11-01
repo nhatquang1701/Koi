@@ -188,6 +188,13 @@ setoption name NoSuchOption value 1
 setoption name Threads value 8
 setoption name Hash value 128
 setoption name MultiPV value 256
+setoption name SyzygyProbeLimit value 7
+setoption name SyzygyProbeDepth value 100
+setoption name SyzygyInteriorDepth value 100
+setoption name UCI_Chess960 value true
+debug on
+debug off
+register later
 setoption
 setoption name
 unknown command here
