@@ -55,6 +55,18 @@ foreach ($source in $engineSources) {
     }
 }
 
+# 0c. Public headers stay lightweight: no heavy implementation/vendor includes.
+$heavyPublicIncludes = @('<fstream>', '<iostream>', '"chess.hpp"', '"tbprobe.h"', '<cuda.h>')
+foreach ($header in Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src/koi') -File -Filter '*.hpp') {
+    $relative = [System.IO.Path]::GetRelativePath($repositoryRoot, $header.FullName).Replace('\', '/')
+    $content = Get-Content -LiteralPath $header.FullName -Raw
+    foreach ($include in $heavyPublicIncludes) {
+        if ($content.Contains("#include $include")) {
+            Fail "public header $relative must not include $include"
+        }
+    }
+}
+
 # 1. SearchService must not leak the transposition-table definition.
 if ((Read-RepositoryFile 'src/koi/search_service.hpp') -match '#include\s+"koi/transposition_table\.hpp"') {
     Fail 'search_service.hpp must not include transposition_table.hpp (use hash_types.hpp)'
