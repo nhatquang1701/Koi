@@ -72,6 +72,15 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
   asserts) and the ASan unit label is 24/24 with zero sanitizer reports.
 - The standard 3-4-5 man Syzygy size gate caught a reproduced 80-byte `KQvK.rtbw`
   search hang and the macOS fixture regression it exposed (fixtures now canonical).
+- Boot fail-closed matrix: missing/directory/corrupt/unreadable `KOI_NNUE_PATH`
+  exits 4 with `no usable NNUE network` and no protocol output (process-spawned).
+- Malformed Polyglot move encodings (from == to, invalid promotion bits) are
+  never used; legal fallback.
+- Randomized fuzzers are dependency-free (committed fixtures), registered in
+  CTest/CI, and run on Windows/Linux/macOS; Windows CI also runs the protocol
+  corpus under AddressSanitizer.
+- A fresh 200,000-round asset-churn soak was started on the fully hardened
+  engine (`soak-200k-latest.log`); the earlier 200k run already passed.
 - Linked book assets: hardlink (Windows) and symlink (Unix) resolve for
   detection/use; a broken Unix symlink falls back silently with a legal search.
 - Crafted Polyglot entry with an illegal move for the keyed position is never
@@ -95,7 +104,8 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
    transient-lock variant (R41) are covered.
 4. **Multi-hour soak**: a 200,000-round asset-churn soak completed on
    2026-11-01 (200,001 bestmoves, 29,922 scored, 2,034.5 s ≈ 34 min, RSS 29-83 MB,
-   exit 0), after the earlier 100k runs. An overnight (8 h+) run remains undone.
+   exit 0), and a second 200k run on the post-asset-hardening engine is in
+   progress. An overnight (8 h+) run remains undone.
 5. **Platform signals** (SIGTERM/SIGHUP on POSIX, console-close on Windows) are
    not part of the UCI contract; engine defaults apply.
 6. **CI backlog**: many pushes queued Windows/Linux CTests; latest green matrix
