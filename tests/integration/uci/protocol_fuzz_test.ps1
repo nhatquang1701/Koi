@@ -744,6 +744,58 @@ try {
     Assert-LegalBestmoveLine $debugBest2 'debug-file'
     Send-UciCommand $debugSession 'quit'
     [void](Complete-UciSession $debugSession $false)
+
+    # 9l. UCI_AnalyseMode bypasses the auto-detected book; turning it off later
+    # in the same session restores detection and book use.
+    $assetAnalyse = Join-Path $assetRoot 'engine-analyse-book'
+    New-Item -ItemType Directory -Path $assetAnalyse -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetAnalyse $executableName)
+    $analyseBook = Join-Path $assetAnalyse 'book.bin'
+    $analyseBytes = [byte[]]::new(16)
+    [byte[]]$analyseKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($analyseKey, 0, $analyseBytes, 0, 8)
+    $analyseBytes[8] = 0x03
+    $analyseBytes[9] = 0x1c
+    $analyseBytes[10] = 0x00
+    $analyseBytes[11] = 100
+    [System.IO.File]::WriteAllBytes($analyseBook, $analyseBytes)
+
+    $analyseSession = Start-UciSession -Executable (Join-Path $assetAnalyse $executableName)
+    Send-UciCommand $analyseSession 'uci'
+    [void](Read-UciUntil $analyseSession { param($line) $line -eq 'uciok' } 'analyse-book uciok' -ValidateUciOutput)
+    Send-UciCommand $analyseSession 'isready'
+    [void](Read-UciUntil $analyseSession { param($line) $line -eq 'readyok' } 'analyse-book readyok' -ValidateUciOutput)
+    Send-UciCommand $analyseSession 'setoption name UCI_AnalyseMode value true'
+    Send-UciCommand $analyseSession 'isready'
+    [void](Read-UciUntil $analyseSession { param($line) $line -eq 'readyok' } 'analyse-book analysis readiness' -ValidateUciOutput)
+    Send-UciCommand $analyseSession 'position startpos'
+    Send-UciCommand $analyseSession 'go depth 1'
+    [void](Read-UciUntil $analyseSession { param($line) $line -match '^bestmove ' } 'analyse-book analysis bestmove' -ValidateUciOutput)
+    $analysePhaseLineCount = $analyseSession.Lines.Count
+
+    Send-UciCommand $analyseSession 'setoption name UCI_AnalyseMode value false'
+    Send-UciCommand $analyseSession 'isready'
+    [void](Read-UciUntil $analyseSession { param($line) $line -eq 'readyok' } 'analyse-book normal readiness' -ValidateUciOutput)
+    Send-UciCommand $analyseSession 'position startpos'
+    Send-UciCommand $analyseSession 'go depth 1'
+    [void](Read-UciUntil $analyseSession { param($line) $line -match '^bestmove ' } 'analyse-book normal bestmove' -ValidateUciOutput)
+    Send-UciCommand $analyseSession 'quit'
+    $analyseLines = Complete-UciSession $analyseSession $false
+    if (@($analyseLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 2) {
+        throw 'analysis-then-normal book case must complete two searches'
+    }
+    $analysisPhaseBookLines = @($analyseLines | Select-Object -First $analysePhaseLineCount |
+        Where-Object { $_ -match '^info string book' })
+    if ($analysisPhaseBookLines.Count -ne 0) {
+        throw 'analysis mode must bypass the opening book'
+    }
+    $normalPhaseBookLines = @($analyseLines | Where-Object { $_ -match '^info string book' })
+    if (@($normalPhaseBookLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+        throw 'leaving analysis mode must auto-detect the book exactly once'
+    }
+    if (@($normalPhaseBookLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
+        throw 'leaving analysis mode must use the book on the next search'
+    }
 }
 finally {
     Stop-AllUciSessions
