@@ -27,6 +27,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
 | R34 ASan unit label | pass* | 20/24 suites, zero ASan reports; 4 blocked by local %TEMP% quirk |
+| R86 memory-limit probe observability | fixed | CTest skip 77 when diagnostic absent; full diagnostics |
 | R85 Debug CI max-book timeout | fixed locally | scoped 120 s wait; PROCESSORS 4 |
 | R84 local reliability label | pass | 8/8 in 139.1 s |
 | R83 hardened-engine 200k soak | pass | 200,001 bestmoves, 2,188.7 s, bounded RSS |
