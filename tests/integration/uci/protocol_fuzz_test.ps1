@@ -1644,5 +1644,19 @@ if ((Count-Lines $readyFlood '^readyok$') -ne 101) {
     throw '100 isready commands during a search must produce 101 readyok answers'
 }
 
+# 30. Very long asset paths (100 KB values, far beyond normal filesystem limits)
+# must stay inert: the option is accepted/rejected safely and the next search is
+# clean.
+$longPathValue = 'a' * 100000
+$longSeparatorValue = ';' * 100000
+$longPathCase = Invoke-UciTranscript ("uci`nisready`nsetoption name BookFile value " +
+    $longPathValue + "`nsetoption name EvalFile value " + $longPathValue +
+    "`nsetoption name DebugFile value " + $longPathValue +
+    "`nsetoption name SyzygyPath value " + $longSeparatorValue +
+    "`nisready`nposition startpos`ngo depth 1`nstop`nquit`n") 'long-asset-paths'
+Assert-ProtocolGrammar $longPathCase
+Assert-CleanDiagnostics $longPathCase
+Assert-OneLegalBestmove $longPathCase
+
 Write-Output 'PASS protocol fuzz corpus'
 
