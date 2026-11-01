@@ -1491,7 +1491,7 @@ if(Python3_Interpreter_FOUND)
             )
             koi_set_timeout("koi_${KOI_FUZZ_NAME}_fuzz_process" 300)
             set_tests_properties("koi_${KOI_FUZZ_NAME}_fuzz_process"
-                PROPERTIES LABELS "process;reliability")
+                PROPERTIES LABELS "process;reliability" PROCESSORS 4)
         endforeach()
 endif()
 

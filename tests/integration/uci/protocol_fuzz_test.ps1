@@ -1392,6 +1392,10 @@ try {
     if ((Get-Item -LiteralPath $maxBookPath).Length -ne (16 * 1024 * 1024)) {
         throw 'the 16 MiB book fixture has the wrong size'
     }
+    # Debug/CI runs can take far longer than the default 15 s to load and
+    # bucket 1,048,576 entries; bound the wait explicitly for this one case.
+    $savedUciTimeout = $env:KOI_UCI_TIMEOUT_MS
+    $env:KOI_UCI_TIMEOUT_MS = '120000'
     $maxBookSession = Start-UciSession -Executable (Join-Path $assetMaxBook $executableName)
     Send-UciCommand $maxBookSession 'uci'
     [void](Read-UciUntil $maxBookSession { param($line) $line -eq 'uciok' } 'max-book uciok' -ValidateUciOutput)
@@ -1411,6 +1415,11 @@ try {
     }
     if ($maxBookBest -notmatch '^bestmove e2e4') {
         throw 'the 16 MiB book search must complete with bestmove e2e4'
+    }
+    if ($null -eq $savedUciTimeout) {
+        Remove-Item Env:KOI_UCI_TIMEOUT_MS -ErrorAction SilentlyContinue
+    } else {
+        $env:KOI_UCI_TIMEOUT_MS = $savedUciTimeout
     }
 
     # 9y. Polyglot entries with malformed move encodings (from == to, invalid
