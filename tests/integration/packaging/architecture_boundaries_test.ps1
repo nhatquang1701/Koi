@@ -99,6 +99,21 @@ if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot 'tests/support/nnue_
     Fail 'tests/support/nnue_synthetic.cpp (synthetic fixtures) is missing'
 }
 
+# 3e. The bounded root-fallback policy is its own detail unit; the driver owns
+# flow and must not reintroduce the scanners inline.
+foreach ($required in @('src/koi/detail/root_fallback.hpp', 'src/koi/detail/root_fallback.cpp')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
+        Fail "$required is missing"
+    }
+}
+$runnerSource = Read-RepositoryFile 'src/koi/detail/search_runner.cpp'
+if ($runnerSource -match 'int short_fallback_evaluate\(') {
+    Fail 'search_runner.cpp must not define the fallback evaluation helpers'
+}
+if ($runnerSource -notmatch '#include "koi/detail/root_fallback\.hpp"') {
+    Fail 'search_runner.cpp must include detail/root_fallback.hpp'
+}
+
 # 4. Engine core sources must not contain dead/tooling translation units.
 $cmake = Read-RepositoryFile 'CMakeLists.txt'
 $coreMatch = [regex]::Match($cmake, '(?s)set\(KOI_CORE_SOURCES(.*?)\n\)')
