@@ -40,10 +40,10 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
 | Resource soak | `protocol_soak_test.ps1` | Threads/Hash + SyzygyPath/BookFile churn; 60 rounds default; `-Rounds` for long runs |
 | Option churn | `protocol_option_churn_test.ps1` | Hash/Threads/MultiPV/EvalFile/BookFile/Syzygy during active search |
 | Broken pipe / stdio | `protocol_broken_pipe_test.ps1` | mid-search and pre-handshake disconnects, stderr close, slow consumer |
-| FEN fuzzer | `artifacts/.../fen_fuzz.py` | 2000 release + 500 ASan cases: 0 failures |
-| Move-list fuzzer | `move_fuzz.py` | 2000 + 500 cases, max 1493 tokens: 0 failures |
-| setoption fuzzer | `option_fuzz.py` | 1000 + 300 cases: 0 failures |
-| go/state fuzzer | `go_fuzz.py` | 1000 + 300 cases: 0 failures |
+| FEN fuzzer | `artifacts/.../fen_fuzz.py` | 2000 release + 500 ASan cases: 0 failures; also registered in CTest as `koi_fen_fuzz_process` |
+| Move-list fuzzer | `artifacts/.../move_fuzz.py` | registered as `koi_move_fuzz_process` |
+| setoption fuzzer | `artifacts/.../option_fuzz.py` | registered as `koi_option_fuzz_process` |
+| go/state fuzzer | `artifacts/.../go_fuzz.py` | registered as `koi_go_fuzz_process` |
 | CCRL game harness | `artifacts/plans/ccrl-eligibility-2026-11-01/crash_1000.py` | 1000 games vs SF19, Mac: 0 crashes/illegal/protocol |
 | Permission matrix | fuzz sections 9o/9p/9q | unreadable book/Syzygy/EvalFile (Windows ACL, Unix chmod) |
 | ASan tree | `build/asan-reliability` | reliability legs + 20/24 unit suites clean (4 local `%TEMP%` quirks) |
