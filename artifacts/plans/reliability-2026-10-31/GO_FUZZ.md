@@ -8,7 +8,7 @@ searchmoves`), random valid positions, `isready`, `ucinewgame`, `stop`,
 `ponderhit`, MultiPV/Ponder/AnalyseMode toggles.
 
 Script: `artifacts/plans/reliability-2026-10-31/go_fuzz.py`
-(deterministic: `random.Random(20261101 + case)`). Each session:
+(deterministic: `random.Random(20261101 + case)`; valid positions come from the committed `tests/data/reliability/valid-fens.txt` fixture, so no third-party Python dependency is needed). Each session:
 - `uci`, `isready`,
 - 3–15 random commands,
 - deterministic healthy tail: `position startpos / go depth 1 / stop / quit`.

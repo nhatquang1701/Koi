@@ -18,9 +18,8 @@ import os
 import random
 import re
 import subprocess
+import pathlib
 import sys
-
-import chess
 
 GO_TOKENS = [
     "depth", "nodes", "mate", "movetime", "wtime", "btime", "winc", "binc",
@@ -54,16 +53,20 @@ def random_go(rng: random.Random) -> str:
     return "go " + " ".join(tokens)
 
 
+FIXTURE_FENS: list[str] = []
+
+
+def _load_fixture_lines(path: pathlib.Path) -> list[str]:
+    try:
+        return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except OSError:
+        return []
+
+
 def random_position(rng: random.Random) -> str:
-    if rng.random() < 0.5:
+    if rng.random() < 0.5 or not FIXTURE_FENS:
         return "position startpos"
-    board = chess.Board()
-    for _ in range(rng.randint(0, 30)):
-        legal = list(board.legal_moves)
-        if not legal:
-            break
-        board.push(rng.choice(legal))
-    return f"position fen {board.fen()}"
+    return f"position fen {rng.choice(FIXTURE_FENS)}"
 
 
 def run_case(config: dict) -> dict:
@@ -148,4 +151,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    FIXTURE_FENS = _load_fixture_lines(
+        pathlib.Path(__file__).resolve().parents[3] / "tests/data/reliability/valid-fens.txt"
+    )
     sys.exit(main())
