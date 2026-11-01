@@ -156,6 +156,8 @@ flowchart TD
 | `detail/search_worker_pools.hpp` | Lazy-SMP helper pool and root-parallel worker pool: worker lifetime, abort/failure capture, live statistics. |
 | `detail/search_stats_support.hpp` | Shared per-worker `SearchStats` merge used by pools and the serial driver. |
 | `detail/fen_validation.*` | Stateless FEN syntax validation used before the native position and mirror are built. |
+| `detail/game_state_impl.hpp`, `detail/native_check_probe.hpp` | Private `GameState::Impl` and the position-invariant move-check probe inputs. |
+| `detail/consistency.*` | Native/shadow consistency diagnostic snapshot builder, friended by `GameState`. |
 | `detail/uci_option_table.hpp` | UCI option catalog (order, defaults, bounds, combo values) consumed by handshake and setoption. |
 | `detail/debug_log.*` | Best-effort developer debug log (JSON lines, rotation); never on UCI stdout. |
 | `hash_types.hpp` | Public hash policy/result value types shared by `SearchService` and `TranspositionTable` without exposing TT storage. |
