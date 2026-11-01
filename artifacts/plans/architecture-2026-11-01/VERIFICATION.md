@@ -1,7 +1,8 @@
 # Architecture verification snapshot (1.0.0 baseline)
 
 Branch: `koi-engine`
-Verified head: `0ac7758` (docs-only commit on top of `16cb757`)
+Verified heads: `0ac7758` (CI) and `dd5f17a` (local + ASan); later
+move-only/typed-failure changes are covered by focused and ASan runs.
 Date: 2026-11-01
 
 ## CI (GitHub Actions)
@@ -54,6 +55,15 @@ Run IDs: Windows `41326510478`, Linux `41326510541`.
   `bestmove`; setup-prefix failures carry the request identity so their
   completion is not suppressed as stale.
 - `koi_architecture_boundaries` CTest enforces the above rules.
+
+## Sanitizer validation after the refactors
+
+- ASan tree rebuilt from the refactored source.
+- ASan unit label: **24/24 pass** (50.6 s).
+- ASan reliability label: **8/8 pass**, **790.9 s wall**, zero
+  AddressSanitizer/SEGV reports.
+- This covers the root-fallback extraction, worker pools/stats support,
+  header-seam changes, typed failure paths and protocol diagnostics.
 
 ## Deliberately deferred (2.0.0 ownership work)
 

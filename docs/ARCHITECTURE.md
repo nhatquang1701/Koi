@@ -234,6 +234,9 @@ header surface and the test tree, not by a future redesign.
 - The controller thread owns the current position, option state, asset
   adapters and the active `SearchHandle`; search workers are joined before
   state/options/assets are replaced.
+- `SearchService` is a move-only value: its implementation (transposition
+  table, evaluator snapshot, hash policy) is shared by design, so copying
+  would silently alias mutable service state.
 - A `SearchHandle` owns one `detail::SearchSession`: cancellation, ponderhit
   conversion, worker join and exactly-once completion live there.
 - The transposition table is shared per `SearchService`; resize waits for
@@ -255,6 +258,10 @@ header surface and the test tree, not by a future redesign.
   search internals stay `noexcept` where the API promises it.
 - No failure may cross a thread boundary: the session publishes a completion
   once and the controller suppresses stale generations.
+- A failed completion carries a typed `SearchFailureReason`; the controller
+  emits one `info string search failed (<reason>); using a safe fallback move`
+  before its legal fallback bestmove, so failure is visible at the protocol
+  boundary.
 
 ## Test architecture (mirrors the tree)
 
