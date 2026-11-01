@@ -1422,6 +1422,56 @@ try {
         $env:KOI_UCI_TIMEOUT_MS = $savedUciTimeout
     }
 
+    # 9z. Large distinct-key book (65,536 entries, none matching startpos): the
+    # loader must bucket many keys without a book move or a crash.
+    $assetKeyedBook = Join-Path $assetRoot 'engine-distinct-key-book'
+    New-Item -ItemType Directory -Path $assetKeyedBook -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetKeyedBook $executableName)
+    if (-not ('KoiTestBookWriter' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Buffers.Binary;
+using System.IO;
+public static class KoiTestBookWriter
+{
+    public static void WriteDistinctKeys(string path, ulong baseKey, int count)
+    {
+        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write);
+        Span<byte> entry = stackalloc byte[16];
+        for (int i = 1; i <= count; i++)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(entry, baseKey ^ (ulong)i);
+            BinaryPrimitives.WriteUInt16BigEndian(entry.Slice(8), 0x031C);
+            BinaryPrimitives.WriteUInt16BigEndian(entry.Slice(10), 1);
+            BinaryPrimitives.WriteUInt32BigEndian(entry.Slice(12), 0);
+            stream.Write(entry);
+        }
+    }
+}
+"@
+    }
+    [KoiTestBookWriter]::WriteDistinctKeys(
+        (Join-Path $assetKeyedBook 'book.bin'),
+        [uint64]0x463b96181691fc9c,
+        65536)
+    $keyedSession = Start-UciSession -Executable (Join-Path $assetKeyedBook $executableName)
+    Send-UciCommand $keyedSession 'uci'
+    [void](Read-UciUntil $keyedSession { param($line) $line -eq 'uciok' } 'keyed-book uciok' -ValidateUciOutput)
+    Send-UciCommand $keyedSession 'isready'
+    [void](Read-UciUntil $keyedSession { param($line) $line -eq 'readyok' } 'keyed-book readyok' -ValidateUciOutput)
+    Send-UciCommand $keyedSession 'position startpos'
+    Send-UciCommand $keyedSession 'go depth 1'
+    $keyedBest = Read-UciUntil $keyedSession { param($line) $line -match '^bestmove ' } 'keyed-book bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $keyedBest 'keyed-book'
+    Send-UciCommand $keyedSession 'quit'
+    $keyedLines = Complete-UciSession $keyedSession $false
+    if (@($keyedLines | Where-Object { $_ -match '^info string book move ' }).Count -ne 0) {
+        throw 'a book without the startpos key must not produce a book move'
+    }
+    if (@($keyedLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 1) {
+        throw 'the distinct-key book case must complete exactly one search'
+    }
+
     # 9y. Polyglot entries with malformed move encodings (from == to, invalid
     # promotion bits) must never be used; the search falls back legally.
     $assetBadMoves = Join-Path $assetRoot 'engine-malformed-book-moves'
