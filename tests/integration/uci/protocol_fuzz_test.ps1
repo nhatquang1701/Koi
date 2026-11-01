@@ -874,6 +874,49 @@ try {
     if (@($eligLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 2) {
         throw 'normal searches before and after the bypass matrix must both use the book'
     }
+
+    # 9n. Explicit Syzygy path list with a corrupt component must fail closed;
+    # an empty directory is not corrupt (it reports "no usable tables").
+    $assetSyzygy = Join-Path $assetRoot 'engine-syzygy-list'
+    New-Item -ItemType Directory -Path $assetSyzygy -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetSyzygy $executableName)
+    $emptyTables = Join-Path $assetSyzygy 'empty-tables'
+    $corruptTables = Join-Path $assetSyzygy 'corrupt-tables'
+    New-Item -ItemType Directory -Path $emptyTables -Force | Out-Null
+    New-Item -ItemType Directory -Path $corruptTables -Force | Out-Null
+    [System.IO.File]::WriteAllBytes((Join-Path $corruptTables 'KQvK.rtbw'), [byte[]]::new(80))
+    $separator = [System.IO.Path]::PathSeparator
+    $tablePathList = $emptyTables + $separator + $corruptTables
+
+    $syzygySession = Start-UciSession -Executable (Join-Path $assetSyzygy $executableName)
+    Send-UciCommand $syzygySession 'uci'
+    [void](Read-UciUntil $syzygySession { param($line) $line -eq 'uciok' } 'syzygy-list uciok' -ValidateUciOutput)
+    Send-UciCommand $syzygySession "setoption name SyzygyPath value $tablePathList"
+    Send-UciCommand $syzygySession 'isready'
+    [void](Read-UciUntil $syzygySession { param($line) $line -eq 'readyok' } 'syzygy-list readyok' -ValidateUciOutput)
+    Send-UciCommand $syzygySession 'position startpos'
+    Send-UciCommand $syzygySession 'go depth 1'
+    $syzygyBest = Read-UciUntil $syzygySession { param($line) $line -match '^bestmove ' } 'syzygy-list bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $syzygyBest 'syzygy-list'
+
+    Send-UciCommand $syzygySession "setoption name SyzygyPath value $emptyTables"
+    Send-UciCommand $syzygySession 'isready'
+    [void](Read-UciUntil $syzygySession { param($line) $line -eq 'readyok' } 'syzygy-empty readyok' -ValidateUciOutput)
+    Send-UciCommand $syzygySession 'position startpos'
+    Send-UciCommand $syzygySession 'go depth 1'
+    $syzygyEmptyBest = Read-UciUntil $syzygySession { param($line) $line -match '^bestmove ' } 'syzygy-empty bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $syzygyEmptyBest 'syzygy-empty'
+    Send-UciCommand $syzygySession 'quit'
+    $syzygyLines = Complete-UciSession $syzygySession $false
+    $corruptLines = @($syzygyLines | Where-Object {
+        $_ -match '^info string Syzygy: corrupt tables at .+ \(probing disabled\)$'
+    })
+    if ($corruptLines.Count -ne 1) {
+        throw 'a corrupt component in an explicit Syzygy path list must disable probing exactly once'
+    }
+    if (@($syzygyLines | Where-Object { $_ -match '^info string Syzygy: no usable tables at ' }).Count -lt 1) {
+        throw 'an empty Syzygy directory must be reported as unusable, not corrupt'
+    }
 }
 finally {
     Stop-AllUciSessions

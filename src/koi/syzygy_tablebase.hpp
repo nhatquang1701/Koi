@@ -52,6 +52,19 @@ struct SyzygyRootResult {
 [[nodiscard]] std::optional<std::filesystem::path> discover_syzygy_directory(
     const std::filesystem::path& executable_directory);
 
+// Classification of one Syzygy directory for the UCI fail-closed checks.
+// `empty` means the directory exists but has no `.rtbw`/`.rtbz` files;
+// `corrupt` means it has at least one table file whose magic bytes are wrong.
+enum class SyzygyDirectoryStatus : std::uint8_t {
+    missing,
+    empty,
+    usable,
+    corrupt,
+};
+
+[[nodiscard]] SyzygyDirectoryStatus syzygy_directory_status(
+    const std::filesystem::path& directory);
+
 // True when `directory` contains at least one `.rtbw`/`.rtbz` file and every
 // such file starts with the standard Syzygy magic bytes for its format.  Fathom
 // registers tables by filename alone, so a corrupt zero-filled file would be

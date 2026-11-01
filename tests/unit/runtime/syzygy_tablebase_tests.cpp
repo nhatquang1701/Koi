@@ -85,6 +85,35 @@ void test_platform_path_list_is_forwarded_to_fathom() {
     require(tablebase.large_table_limit() > 0, "the list must register the readable component's tables");
 }
 
+void test_syzygy_directory_status_classification() {
+    const koi::test::TempDirectory root;
+    const std::filesystem::path missing = root.file("missing");
+    const std::filesystem::path empty = root.file("empty");
+    const std::filesystem::path usable = root.file("usable");
+    const std::filesystem::path corrupt = root.file("corrupt");
+    std::filesystem::create_directories(empty);
+    std::filesystem::create_directories(usable);
+    std::filesystem::create_directories(corrupt);
+    {
+        std::ofstream table(usable / "KQvK.rtbw", std::ios::binary);
+        const unsigned char magic[4] = {0x71, 0xE8, 0x23, 0x5D};
+        table.write(reinterpret_cast<const char*>(magic), 4);
+        table.write(std::string(76, '\0').data(), 76);
+    }
+    {
+        std::ofstream table(corrupt / "KQvK.rtbw", std::ios::binary);
+        table.write(std::string(80, '\0').data(), 80);
+    }
+    require(koi::syzygy_directory_status(missing) == koi::SyzygyDirectoryStatus::missing,
+            "a missing Syzygy directory must be classified as missing");
+    require(koi::syzygy_directory_status(empty) == koi::SyzygyDirectoryStatus::empty,
+            "a directory without table files must be classified as empty");
+    require(koi::syzygy_directory_status(usable) == koi::SyzygyDirectoryStatus::usable,
+            "a directory with valid-magic tables must be usable");
+    require(koi::syzygy_directory_status(corrupt) == koi::SyzygyDirectoryStatus::corrupt,
+            "a directory with wrong-magic tables must be classified as corrupt");
+}
+
 void test_empty_path_list_components_are_dropped() {
     // Regression: a path list made only of separators used to reach Fathom's
     // tb_init splitter, which read past the end of the path string when no
@@ -460,6 +489,7 @@ int main(int argc, char** argv) {
         {"snapshot native rule state after pinned double push",
          test_snapshot_uses_native_rule_state_after_a_pinned_double_push},
         {"platform path list reaches Fathom", test_platform_path_list_is_forwarded_to_fathom},
+        {"Syzygy directory status classification", test_syzygy_directory_status_classification},
         {"all-empty path-list components are inert", test_empty_path_list_components_are_dropped},
         {"policy setters do not reload Fathom", test_policy_setters_do_not_reload_fathom},
         {"absent and malformed paths disable probing safely",

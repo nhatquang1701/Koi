@@ -511,14 +511,14 @@ bool table_magic_matches(const std::filesystem::path& file) {
 
 } // namespace
 
-bool is_usable_syzygy_directory(const std::filesystem::path& directory) {
+SyzygyDirectoryStatus syzygy_directory_status(const std::filesystem::path& directory) {
     std::error_code error;
     if (!std::filesystem::is_directory(directory, error) || error) {
-        return false;
+        return SyzygyDirectoryStatus::missing;
     }
     std::filesystem::directory_iterator iterator(directory, error);
     if (error) {
-        return false;
+        return SyzygyDirectoryStatus::missing;
     }
     bool has_table = false;
     for (const std::filesystem::directory_entry& entry : iterator) {
@@ -532,10 +532,14 @@ bool is_usable_syzygy_directory(const std::filesystem::path& directory) {
         }
         has_table = true;
         if (!table_magic_matches(entry.path())) {
-            return false;
+            return SyzygyDirectoryStatus::corrupt;
         }
     }
-    return has_table;
+    return has_table ? SyzygyDirectoryStatus::usable : SyzygyDirectoryStatus::empty;
+}
+
+bool is_usable_syzygy_directory(const std::filesystem::path& directory) {
+    return syzygy_directory_status(directory) == SyzygyDirectoryStatus::usable;
 }
 
 std::optional<std::filesystem::path> discover_syzygy_directory(

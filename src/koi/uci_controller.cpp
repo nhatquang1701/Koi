@@ -2004,26 +2004,50 @@ void UciController::ensure_auto_syzygy_loaded() {
 void UciController::rebuild_syzygy() {
     syzygy_configured_ = true;
     syzygy_.reset();
-    // A single directory is validated before Fathom sees it: Fathom registers
-    // tables by filename and would otherwise report a corrupt file only at
-    // probe time (on stderr).  Path lists keep Fathom's own policy.
+    // Every configured directory is validated before Fathom sees it: Fathom
+    // registers tables by filename and would otherwise report a corrupt file
+    // only at probe time (on stderr).  This applies to single directories and
+    // to every component of a platform path list.
     const std::string raw_path = syzygy_path_.string();
 #ifdef _WIN32
     // Fathom uses ';' on Windows; a drive-letter colon is part of one path.
-    const bool path_list = raw_path.find(';') != std::string::npos;
+    constexpr char kSyzygyPathSeparator = ';';
 #else
-    const bool path_list = raw_path.find(':') != std::string::npos;
+    constexpr char kSyzygyPathSeparator = ':';
 #endif
-    if (!syzygy_path_.empty() && !path_list) {
-        std::error_code error;
-        if (std::filesystem::is_directory(syzygy_path_, error) && !error &&
-            !is_usable_syzygy_directory(syzygy_path_)) {
+    const bool path_list = raw_path.find(kSyzygyPathSeparator) != std::string::npos;
+    if (!syzygy_path_.empty()) {
+        const auto reject_corrupt = [this](const std::filesystem::path& corrupt) {
             std::lock_guard lock(output_mutex_);
-            output_ << "info string Syzygy: corrupt tables at " << syzygy_path_.string()
+            output_ << "info string Syzygy: corrupt tables at " << corrupt.string()
                     << " (probing disabled)\n"
                     << std::flush;
             syzygy_ = std::make_shared<SyzygyTablebase>();
-            return;
+        };
+        if (!path_list) {
+            if (syzygy_directory_status(syzygy_path_) == SyzygyDirectoryStatus::corrupt) {
+                reject_corrupt(syzygy_path_);
+                return;
+            }
+        } else {
+            std::size_t begin = 0;
+            while (begin <= raw_path.size()) {
+                const std::size_t end = raw_path.find(kSyzygyPathSeparator, begin);
+                const std::size_t length =
+                    (end == std::string::npos ? raw_path.size() : end) - begin;
+                if (length != 0) {
+                    const std::filesystem::path component =
+                        std::filesystem::path(raw_path.substr(begin, length));
+                    if (syzygy_directory_status(component) == SyzygyDirectoryStatus::corrupt) {
+                        reject_corrupt(component);
+                        return;
+                    }
+                }
+                if (end == std::string::npos) {
+                    break;
+                }
+                begin = end + 1;
+            }
         }
     }
     syzygy_ = std::make_shared<SyzygyTablebase>(
