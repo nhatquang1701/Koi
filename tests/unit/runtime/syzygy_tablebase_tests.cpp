@@ -98,7 +98,9 @@ void test_syzygy_directory_status_classification() {
         std::ofstream table(usable / "KQvK.rtbw", std::ios::binary);
         const unsigned char magic[4] = {0x71, 0xE8, 0x23, 0x5D};
         table.write(reinterpret_cast<const char*>(magic), 4);
-        table.write(std::string(76, '\0').data(), 76);
+        // KQvK.rtbw is canonically 272 bytes; the standard-size manifest
+        // rejects any other length as a truncated/oversized table.
+        table.write(std::string(268, '\0').data(), 268);
     }
     {
         std::ofstream table(corrupt / "KQvK.rtbw", std::ios::binary);
@@ -388,7 +390,9 @@ void write_dummy_kqvk(const std::filesystem::path& directory) {
 void write_syzygy_magic_table(const std::filesystem::path& directory,
                               std::string_view name = "KQvK.rtbw",
                               std::array<unsigned char, 4> magic = {0x71, 0xE8, 0x23, 0x5D}) {
-    std::vector<unsigned char> bytes(80, 0);
+    // KQvK.rtbw is canonically 272 bytes; other standard names in this helper
+    // are only used for discovery, so the KQvK length is the one to match.
+    std::vector<unsigned char> bytes(272, 0);
     std::copy(magic.begin(), magic.end(), bytes.begin());
     std::ofstream tablebase(directory / name, std::ios::binary);
     tablebase.write(reinterpret_cast<const char*>(bytes.data()),
