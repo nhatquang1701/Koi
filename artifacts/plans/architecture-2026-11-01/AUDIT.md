@@ -60,6 +60,28 @@ Verification after the refactors (Windows Release):
 - full CI is run on the pushed heads; local `%TEMP%` sandbox limitations are
   unchanged and documented.
 
+## Implemented during the program (continued)
+
+5. Hash-memory policy/result value types split into `src/koi/hash_types.hpp`, so
+   `SearchService` no longer pulls the transposition-table definition.
+6. Dead `move_chooser.*` removed; benchmark fixtures moved into the separate
+   `koi_strength_suite` library.
+7. Reliability fuzzers relocated from `artifacts/` to `tests/python/reliability/`.
+8. `detail::DebugLog` extracted behind a forward declaration; Syzygy
+   forward-declared in the controller header (compile firewall).
+9. UCI option catalog extracted to `detail/uci_option_table.hpp`; architecture
+   guard enforces the split.
+10. Bounded root-fallback policy extracted from `search_runner.cpp` into
+    `detail/root_fallback.{hpp,cpp}`; the driver shrank by ~1,700 lines.
+11. Option normalization moved into `SearchService` (runner no longer owns
+    configuration policy).
+12. Synthetic NNUE fixture factories moved to `tests/support/nnue_synthetic.cpp`.
+13. Module contract drift guards added (runtime assertions in
+    `koi_module_tests`); `SyzygyTablebase` gained an explicit `SyzygyLoadStatus`
+    so path conflicts are reported accurately.
+14. Architecture-boundary CTest (`koi_architecture_boundaries`) extended to
+    enforce all of the above.
+
 ## Architecture rules codified for 1.0.0
 
 1. **Dependency direction**: GUI/CLI → `UciController` (protocol + option + asset

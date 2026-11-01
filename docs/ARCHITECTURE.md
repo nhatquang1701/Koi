@@ -152,6 +152,9 @@ flowchart TD
 | `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output. |
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |
 | `detail/search_session.cpp` | One immutable request, worker ownership, cancellation/ponderhit timer, completion claim. |
+| `detail/root_fallback.*` | Bounded root-fallback policy: emergency static/one-ply scanners used when a short search cannot complete an authoritative iteration. |
+| `detail/uci_option_table.hpp` | UCI option catalog (order, defaults, bounds, combo values) consumed by handshake and setoption. |
+| `detail/debug_log.*` | Best-effort developer debug log (JSON lines, rotation); never on UCI stdout. |
 | `hash_types.hpp` | Public hash policy/result value types shared by `SearchService` and `TranspositionTable` without exposing TT storage. |
 | `completion_gate.cpp` | Legality/PV/searchmoves validation before a bestmove is published. |
 | `detail/search_runner.cpp` | Backend dispatch, iterative deepening, aspiration windows, Lazy SMP and root-parallel scheduling. |
@@ -207,6 +210,17 @@ header surface and the test tree, not by a future redesign.
 - **Protocol purity**
   `UciController` is the only UCI protocol writer. Diagnostics are `info
   string`, stderr or the debug log. Search code performs no I/O.
+- **Driver vs policy**
+  `detail/search_runner` owns search flow and publication; the bounded
+  root-fallback scanners live in `detail/root_fallback`. The driver must call
+  the policy, not define it inline.
+- **Protocol data**
+  The UCI option catalog is private detail data (`uci_option_table.hpp`); the
+  controller consumes it and must not redefine the table or bounds.
+- **Test-only code stays out of the engine**
+  Synthetic NNUE fixtures live in `tests/support/nnue_synthetic.cpp`; only
+  tests and the dev fixture tool link them. The engine core contains no
+  synthetic-network code.
 - **Optional layers**
   `detail/` is private implementation without ABI promises; `gpu/` and
   `modules/` remain optional (no implementation imports the named modules).
@@ -223,7 +237,8 @@ header surface and the test tree, not by a future redesign.
   through `detail::SearchTableAccess`.
 - Fathom/Syzygy is process-global and initialized/freed by the
   `SyzygyTablebase` adapter on the controller thread; no probe runs while a
-  search is active.
+  search is active. A second adapter with a different path reports an explicit
+  `path_conflict` load status instead of a misleading “no usable tables”.
 - `Threads == 1` is deterministic for fixed options/position; `Threads > 1`
   is intentionally nondeterministic and must only be asserted by invariants.
 
