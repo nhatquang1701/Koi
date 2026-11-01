@@ -83,9 +83,9 @@ passes in that configuration.
 
 - ASan tree rebuilt from the refactored source.
 - ASan unit label: **24/24 pass** (50.6 s).
-- ASan reliability label: **8/8 pass** on the final tree (`325c7c1`),
-  **804.9 s wall**, zero AddressSanitizer/SEGV reports (an earlier 790.9 s run
-  covered the same refactors).
+- ASan reliability label: **8/8 pass** on the architecture tree (`325c7c1`,
+  **804.9 s**) and again after the TT-resize follow-up (`0bc567f`,
+  **899.7 s**), zero AddressSanitizer/SEGV reports.
 - ASan unit label on the final tree: **24/24 pass** (71.6 s).
 - This covers the root-fallback extraction, worker pools/stats support,
   header-seam changes, typed failure paths, protocol diagnostics, move-only
