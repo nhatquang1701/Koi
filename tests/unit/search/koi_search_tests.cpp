@@ -4246,6 +4246,22 @@ void test_search_worker_converts_exceptions_to_failed_completion() {
             "a failed search must retain a legal root fallback");
 }
 
+void test_search_failure_reason_names_and_defaults() {
+    const koi::SearchResult result;
+    require(!result.failed && result.failure_reason == koi::SearchFailureReason::none,
+            "a default search result has no failure");
+
+    require(std::string_view(koi::search_failure_reason_name(
+                koi::SearchFailureReason::setup_failed)) == "setup_failed",
+            "setup failures keep their protocol name");
+    require(std::string_view(koi::search_failure_reason_name(
+                koi::SearchFailureReason::helper_failed)) == "helper_failed",
+            "helper failures keep their protocol name");
+    require(std::string_view(koi::search_failure_reason_name(
+                koi::SearchFailureReason::internal_error)) == "internal_error",
+            "internal failures keep their protocol name");
+}
+
 void test_ponder_search_runs_until_stopped_and_completes_once() {
     auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
@@ -4903,6 +4919,7 @@ int main(int argc, char** argv) {
         {"bounded quiescence checks", test_quiescence_keeps_bounded_checking_continuations},
         {"deep quiescence checks", test_quiescence_reaches_a_third_quiet_checking_layer},
         {"infinite search lifecycle", test_infinite_search_runs_until_stopped_and_completes_once},
+        {"search failure reason contract", test_search_failure_reason_names_and_defaults},
         {"search exception lifecycle", test_search_worker_converts_exceptions_to_failed_completion},
         {"ponder search lifecycle", test_ponder_search_runs_until_stopped_and_completes_once},
         {"ponder terminal lifecycle", test_ponder_terminal_and_empty_roots_wait_for_stop},
