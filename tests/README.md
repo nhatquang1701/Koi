@@ -165,9 +165,10 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   with no late bestmove, a malformed EvalFile is rejected once, and each
   replacement search answers legally),
   `koi_fen_fuzz_process`, `koi_move_fuzz_process`, `koi_option_fuzz_process`,
-  `koi_go_fuzz_process` (seeded randomized adversarial FEN/move-list/setoption/
-  go-state inputs, 150/150/100/100 cases; fixture-driven, no third-party Python
-  runtime dependency),
+  `koi_go_fuzz_process`, `koi_command_fuzz_process` (seeded randomized
+  adversarial FEN/move-list/setoption/go-state/raw-command inputs,
+  150/150/100/100/150 cases; fixture-driven, no third-party Python runtime
+  dependency),
   `koi_engine_perft_responsiveness`,
   `koi_engine_variant_process` (three engine binaries,
   automatic selection, and the `KOI_CPU_VARIANT` overrides),

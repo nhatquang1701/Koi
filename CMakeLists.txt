@@ -1476,7 +1476,7 @@ if(Python3_Interpreter_FOUND)
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/reliability")
         set(KOI_RELIABILITY_FUZZ_DIR
             "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/plans/reliability-2026-10-31")
-        foreach(KOI_FUZZ_SPEC IN ITEMS "fen:150" "move:150" "option:100" "go:100")
+        foreach(KOI_FUZZ_SPEC IN ITEMS "fen:150" "move:150" "option:100" "go:100" "command:150")
             string(REPLACE ":" ";" KOI_FUZZ_PARTS "${KOI_FUZZ_SPEC}")
             list(GET KOI_FUZZ_PARTS 0 KOI_FUZZ_NAME)
             list(GET KOI_FUZZ_PARTS 1 KOI_FUZZ_CASES)
