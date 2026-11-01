@@ -4,11 +4,37 @@ import koi;
 #include <iostream>
 #include <stdexcept>
 
+#include "koi/search_types.hpp"
 #include "koi_test_support.hpp"
 
 namespace {
 
 using koi::test::require;
+
+// The optional module layer mirrors native value contracts.  Keep the
+// SearchOptions defaults in lock-step at compile time so a native default
+// change cannot silently drift away from the module contract.
+static_assert(koi::module_api::SearchOptionsContract{}.hash_mb == koi::SearchOptions{}.hash_mb,
+              "module SearchOptionsContract.hash_mb default drifted");
+static_assert(koi::module_api::SearchOptionsContract{}.threads == koi::SearchOptions{}.threads,
+              "module SearchOptionsContract.threads default drifted");
+static_assert(koi::module_api::SearchOptionsContract{}.speed_percent ==
+                  koi::SearchOptions{}.speed_percent,
+              "module SearchOptionsContract.speed_percent default drifted");
+static_assert(koi::module_api::SearchOptionsContract{}.multi_pv == koi::SearchOptions{}.multi_pv,
+              "module SearchOptionsContract.multi_pv default drifted");
+static_assert(koi::module_api::SearchOptionsContract{}.analyse_mode ==
+                  koi::SearchOptions{}.analyse_mode,
+              "module SearchOptionsContract.analyse_mode default drifted");
+static_assert(koi::module_api::SearchOptionsContract{}.show_wdl == koi::SearchOptions{}.show_wdl,
+              "module SearchOptionsContract.show_wdl default drifted");
+static_assert(koi::module_api::SearchOptionsContract{}.move_overhead_ms ==
+                  koi::SearchOptions{}.move_overhead_ms,
+              "module SearchOptionsContract.move_overhead_ms default drifted");
+static_assert(koi::module_api::SearchOptionsContract{}.slow_mover_percent ==
+                  koi::SearchOptions{}.slow_mover_percent,
+              "module SearchOptionsContract.slow_mover_percent default drifted");
+
 
 void test_module_contracts() {
     require(koi::module_api::architecture_version == 1,
