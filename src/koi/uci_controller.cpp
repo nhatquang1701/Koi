@@ -87,6 +87,21 @@ constexpr int kWdlScoreLimit = 1'000;
 // must never leave the engine searching indefinitely.
 constexpr std::chrono::milliseconds kBareGoFallback{250};
 
+// Debug logging must never open a FIFO/named pipe/device: opening one for
+// writing can block indefinitely on Unix and stall the UCI loop.  A missing
+// path is fine (the open creates a regular file); an existing path must be a
+// regular file.
+bool debug_path_is_openable(const std::filesystem::path& path) {
+    std::error_code error;
+    if (!std::filesystem::exists(path, error)) {
+        return !error;
+    }
+    if (error) {
+        return false;
+    }
+    return std::filesystem::is_regular_file(path, error) && !error;
+}
+
 const char* hash_status_name(HashResizeStatus status) noexcept {
     switch (status) {
     case HashResizeStatus::applied:
@@ -2263,6 +2278,9 @@ void UciController::configure_debug_file() {
     if (oversized && !error) {
         rotate_debug_file_if_needed(0);
     }
+    if (!debug_path_is_openable(path)) {
+        return;
+    }
     debug_file_.open(path, std::ios::binary | std::ios::app);
 }
 
@@ -2278,6 +2296,9 @@ void UciController::debug_json_event(std::string event, std::string fields) noex
         }
         if (!debug_file_.is_open()) {
             const std::filesystem::path path = debug_path();
+            if (!debug_path_is_openable(path)) {
+                return;
+            }
             debug_file_.open(path, std::ios::binary | std::ios::app);
         }
         if (!debug_file_.is_open()) {
@@ -2291,7 +2312,11 @@ void UciController::debug_json_event(std::string event, std::string fields) noex
         message += "}\n";
         rotate_debug_file_if_needed(message.size());
         if (!debug_file_.is_open()) {
-            debug_file_.open(debug_path(), std::ios::binary | std::ios::app);
+            const std::filesystem::path path = debug_path();
+            if (!debug_path_is_openable(path)) {
+                return;
+            }
+            debug_file_.open(path, std::ios::binary | std::ios::app);
         }
         if (!debug_file_.is_open()) {
             return;

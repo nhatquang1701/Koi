@@ -761,7 +761,10 @@ Rules for `setoption`:
 - `EvalFile` with a non-empty value reports `info string NNUE enabled from <path>`
   or `info string EvalFile rejected: <reason>`.
 - `Debug` can also be toggled with the standard `debug on` / `debug off` command.
-  Debug output never goes to UCI stdout or normal stderr.
+  Debug output never goes to UCI stdout or normal stderr. An existing
+  non-regular `DebugFile` (FIFO/named pipe, directory, device) is ignored by
+  type instead of being opened, so a blocking special file cannot stall the UCI
+  loop.
 
 ### 7.2 Command handling
 

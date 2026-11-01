@@ -1305,6 +1305,44 @@ try {
             Remove-Item -LiteralPath $specialEval -Force -ErrorAction SilentlyContinue
         }
     }
+
+    # 9v. DebugFile pointing at a FIFO (Unix) or named pipe (Windows): opening
+    # it for append could block; it must be ignored by type and the session must
+    # stay responsive.
+    $assetDebugPipe = Join-Path $assetRoot 'engine-special-debug'
+    New-Item -ItemType Directory -Path $assetDebugPipe -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetDebugPipe $executableName)
+    if ($IsWindows) {
+        $specialDebug = '\\.\pipe\koi-fuzz-debug-' + [guid]::NewGuid().ToString('N')
+    } else {
+        $specialDebug = Join-Path $assetDebugPipe 'koi-debug.fifo'
+        & mkfifo $specialDebug
+        if ($LASTEXITCODE -ne 0) {
+            throw 'failed to create the FIFO for the DebugFile test'
+        }
+    }
+    try {
+        $debugPipeSession = Start-UciSession -Executable (Join-Path $assetDebugPipe $executableName)
+        Send-UciCommand $debugPipeSession 'uci'
+        [void](Read-UciUntil $debugPipeSession { param($line) $line -eq 'uciok' } 'special-debug uciok' -ValidateUciOutput)
+        Send-UciCommand $debugPipeSession 'setoption name Debug value true'
+        Send-UciCommand $debugPipeSession "setoption name DebugFile value $specialDebug"
+        Send-UciCommand $debugPipeSession 'isready'
+        [void](Read-UciUntil $debugPipeSession { param($line) $line -eq 'readyok' } 'special-debug readyok' -ValidateUciOutput)
+        Send-UciCommand $debugPipeSession 'position startpos'
+        Send-UciCommand $debugPipeSession 'go depth 1'
+        $debugPipeBest = Read-UciUntil $debugPipeSession { param($line) $line -match '^bestmove ' } 'special-debug bestmove' -ValidateUciOutput
+        Assert-LegalBestmoveLine $debugPipeBest 'special-debug'
+        Send-UciCommand $debugPipeSession 'quit'
+        $debugPipeLines = Complete-UciSession $debugPipeSession $false
+        if (@($debugPipeLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 1) {
+            throw 'the session must keep searching with a non-regular DebugFile'
+        }
+    } finally {
+        if (-not $IsWindows -and (Test-Path -LiteralPath $specialDebug)) {
+            Remove-Item -LiteralPath $specialDebug -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 finally {
     Stop-AllUciSessions
