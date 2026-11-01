@@ -1308,8 +1308,7 @@ void UciController::note_clock_baseline(const SearchLimits& limits) noexcept {
 }
 
 std::uint32_t UciController::effective_move_overhead_ms() const noexcept {
-    constexpr std::uint32_t kMaximumOverheadMs = 5'000;
-    return std::min(kMaximumOverheadMs, std::max(move_overhead_ms_, observed_gui_overhead_ms_));
+    return std::min(kMaximumMoveOverheadMs, std::max(move_overhead_ms_, observed_gui_overhead_ms_));
 }
 
 void UciController::start_search(GameState root, SearchLimits limits, bool skip_book) {

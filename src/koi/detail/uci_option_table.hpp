@@ -11,17 +11,14 @@
 #include <cstdint>
 #include <string_view>
 
+#include "koi/detail/search_constants.hpp"
+
 namespace koi::detail {
 
 inline constexpr std::uint64_t kMaximumRandomSeed = 2'147'483'647;
 inline constexpr std::uint64_t kMinimumHashMegabytes = 1;
 inline constexpr std::uint64_t kMaximumHashMegabytes = 4'096;
-inline constexpr std::uint64_t kMinimumSlowMoverPercent = 10;
-inline constexpr std::uint64_t kMaximumSlowMoverPercent = 1'000;
-inline constexpr std::uint64_t kMaximumMoveOverheadMs = 5'000;
 inline constexpr std::uint64_t kMaximumContemptCp = 1'000;
-inline constexpr std::uint64_t kMinimumMultiPv = 1;
-inline constexpr std::uint64_t kMaximumMultiPv = 16;
 inline constexpr std::uint64_t kMaximumBookDepth = 40;
 inline constexpr std::uint64_t kMaximumBookSafetyDepth = 3;
 inline constexpr std::uint64_t kMinimumSyzygyProbeDepth = 1;

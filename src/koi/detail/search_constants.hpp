@@ -12,6 +12,13 @@ inline constexpr int kMateThreshold = 99'000;
 inline constexpr int kMaximumSearchDepth = 64;
 // Initial aspiration half-window in centipawns.
 inline constexpr int kAspirationWindow = 50;
+// Shared option bounds: the UCI catalog and the service-level option
+// normalizer must clamp to exactly the same values.
+inline constexpr std::size_t kMinimumMultiPv = 1;
+inline constexpr std::size_t kMaximumMultiPv = 16;
+inline constexpr std::uint32_t kMaximumMoveOverheadMs = 5'000;
+inline constexpr std::uint32_t kMinimumSlowMoverPercent = 10;
+inline constexpr std::uint32_t kMaximumSlowMoverPercent = 1'000;
 inline constexpr int kMaximumQuiescenceDepth = 16;
 // Checked qsearch uses native recursion, and every frame owns a fixed move
 // metadata buffer.  Keep the safety horizon materially below the regular

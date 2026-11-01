@@ -9,18 +9,13 @@
 #include <stdexcept>
 #include <utility>
 
+#include "koi/detail/search_constants.hpp"
 #include "koi/detail/search_runner.hpp"
 #include "koi/detail/search_session.hpp"
 
 namespace koi {
 
 namespace detail {
-
-namespace {
-
-constexpr std::size_t kMaximumMultiPv = 16;
-
-} // namespace
 
 std::size_t normalized_threads(std::size_t threads) noexcept {
     return std::clamp(threads, std::size_t{1}, maximum_search_threads());
@@ -31,15 +26,15 @@ std::uint8_t normalized_speed(std::uint8_t speed_percent) noexcept {
 }
 
 std::size_t normalized_multi_pv(std::size_t multi_pv) noexcept {
-    return std::clamp(multi_pv, std::size_t{1}, kMaximumMultiPv);
+    return std::clamp(multi_pv, kMinimumMultiPv, kMaximumMultiPv);
 }
 
 std::uint32_t normalized_move_overhead(std::uint32_t move_overhead_ms) noexcept {
-    return std::min<std::uint32_t>(move_overhead_ms, 5'000);
+    return std::min(move_overhead_ms, kMaximumMoveOverheadMs);
 }
 
 std::uint32_t normalized_slow_mover(std::uint32_t slow_mover_percent) noexcept {
-    return std::clamp<std::uint32_t>(slow_mover_percent, 10, 1'000);
+    return std::clamp(slow_mover_percent, kMinimumSlowMoverPercent, kMaximumSlowMoverPercent);
 }
 
 std::uint32_t normalized_elo(std::uint32_t elo) noexcept {

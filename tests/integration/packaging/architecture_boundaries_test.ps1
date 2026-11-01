@@ -116,6 +116,24 @@ if ($uciHeader -notmatch 'class DebugLog;') {
     Fail 'uci_controller.hpp must forward-declare detail::DebugLog'
 }
 
+# 3b2. Shared option bounds live in one place; the catalog and service consume
+# them rather than redefining the numbers.
+$sharedBounds = Read-RepositoryFile 'src/koi/detail/search_constants.hpp'
+if ($sharedBounds -notmatch 'kMaximumMultiPv') {
+    Fail 'search_constants.hpp must own the shared option bounds'
+}
+$optionTableBounds = Read-RepositoryFile 'src/koi/detail/uci_option_table.hpp'
+if (-not $optionTableBounds.Contains('#include "koi/detail/search_constants.hpp"')) {
+    Fail 'uci_option_table.hpp must consume the shared option bounds'
+}
+if ($optionTableBounds -match 'kMaximumMultiPv\s*=') {
+    Fail 'uci_option_table.hpp must not redefine the shared MultiPV bound'
+}
+$serviceBounds = Read-RepositoryFile 'src/koi/search_service.cpp'
+if (-not $serviceBounds.Contains('#include "koi/detail/search_constants.hpp"')) {
+    Fail 'search_service.cpp must consume the shared option bounds'
+}
+
 # 3c. The UCI option catalog is private detail data; the controller consumes it
 # instead of defining its own copy.
 $optionTablePath = Join-Path $repositoryRoot 'src/koi/detail/uci_option_table.hpp'
