@@ -7,7 +7,7 @@
 
 namespace koi::detail {
 
-void accumulate_stats(SearchStats& total, const SearchStats& partial) noexcept {
+inline void accumulate_stats(SearchStats& total, const SearchStats& partial) noexcept {
     total.nodes += partial.nodes;
     total.qnodes += partial.qnodes;
     total.qsearch_cache_hits += partial.qsearch_cache_hits;

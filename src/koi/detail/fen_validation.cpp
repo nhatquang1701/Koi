@@ -20,7 +20,7 @@ struct FenLayout {
     int black_pieces = 0;
 };
 
-bool split_fen_fields(std::string_view fen, std::array<std::string_view, 6>& fields) {
+static bool split_fen_fields(std::string_view fen, std::array<std::string_view, 6>& fields) {
     std::size_t offset = 0;
     std::size_t count = 0;
     while (offset < fen.size()) {
@@ -43,7 +43,7 @@ bool split_fen_fields(std::string_view fen, std::array<std::string_view, 6>& fie
     return count == fields.size();
 }
 
-bool valid_piece_placement(std::string_view placement, FenLayout& layout) {
+static bool valid_piece_placement(std::string_view placement, FenLayout& layout) {
     layout = {};
     int rank = 7;
     int width = 0;
@@ -105,7 +105,7 @@ bool valid_piece_placement(std::string_view placement, FenLayout& layout) {
     return !adjacent_kings;
 }
 
-bool valid_castling(std::string_view castling, const FenLayout& layout) {
+static bool valid_castling(std::string_view castling, const FenLayout& layout) {
     if (castling == "-") {
         return true;
     }
@@ -126,7 +126,7 @@ bool valid_castling(std::string_view castling, const FenLayout& layout) {
            (!castling.contains('q') || (piece_at(60) == 'k' && piece_at(56) == 'r'));
 }
 
-bool valid_en_passant(std::string_view en_passant, std::string_view side_to_move,
+static bool valid_en_passant(std::string_view en_passant, std::string_view side_to_move,
                       std::string_view halfmove_clock, const FenLayout& layout) {
     if (en_passant == "-") {
         return true;
@@ -148,7 +148,7 @@ bool valid_en_passant(std::string_view en_passant, std::string_view side_to_move
            layout.squares[static_cast<std::size_t>(origin_square)] == '\0';
 }
 
-bool valid_counter(std::string_view counter, bool allow_zero, std::uint32_t maximum) {
+static bool valid_counter(std::string_view counter, bool allow_zero, std::uint32_t maximum) {
     std::uint32_t value = 0;
     const auto [end, error] = std::from_chars(counter.data(), counter.data() + counter.size(), value);
     return error == std::errc{} && end == counter.data() + counter.size() && (allow_zero || value > 0) &&

@@ -187,6 +187,23 @@ foreach ($forbidden in @('class LazySmpPool', 'class RootWorkerPool', 'void accu
     }
 }
 
+# 3h. Header-defined helpers must be inline and carry their own includes.
+$poolHeader = Read-RepositoryFile 'src/koi/detail/search_worker_pools.hpp'
+foreach ($include in @('<condition_variable>', '<chrono>', '<functional>', '<optional>', '<algorithm>')) {
+    if (-not $poolHeader.Contains("#include $include")) {
+        Fail "search_worker_pools.hpp must include $include directly"
+    }
+}
+foreach ($helper in @('safely_report_info', 'publish_iteration_lines', 'maybe_publish_interim')) {
+    if (-not $poolHeader.Contains("inline void $helper(")) {
+        Fail "search_worker_pools.hpp helper $helper must be inline"
+    }
+}
+$statsHeader = Read-RepositoryFile 'src/koi/detail/search_stats_support.hpp'
+if (-not $statsHeader.Contains('inline void accumulate_stats(')) {
+    Fail 'search_stats_support.hpp accumulate_stats must be inline'
+}
+
 # 4. Engine core sources must not contain dead/tooling translation units.
 $cmake = Read-RepositoryFile 'CMakeLists.txt'
 $coreMatch = [regex]::Match($cmake, '(?s)set\(KOI_CORE_SOURCES(.*?)\n\)')

@@ -8,10 +8,15 @@
 // They are private implementation, kept out of search_runner.cpp so the driver
 // owns flow/publication and the pools own worker lifetime and error capture.
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -736,7 +741,7 @@ private:
     bool stopping_ = false;
 };
 
-void safely_report_info(const SearchEventSink& sink, const SearchInfo& info) {
+inline void safely_report_info(const SearchEventSink& sink, const SearchInfo& info) {
     if (!sink.on_info) {
         return;
     }
@@ -759,7 +764,7 @@ struct InterimReportState {
 
 // Publishes a completed iteration (one line for single-PV, one per MultiPV
 // rank) through the sink and remembers it for interim refresh.
-void publish_iteration_lines(const SearchEventSink& sink, InterimReportState& state,
+inline void publish_iteration_lines(const SearchEventSink& sink, InterimReportState& state,
                              std::vector<SearchInfo> lines) {
     for (const SearchInfo& info : lines) {
         safely_report_info(sink, info);
@@ -773,7 +778,7 @@ void publish_iteration_lines(const SearchEventSink& sink, InterimReportState& st
 // tbhits stay those of the completed iteration while the reported depth and
 // the principal variation track the in-flight iteration; `nodes` is clamped
 // against the live total so the GUI readout never goes backwards.
-void maybe_publish_interim(const SearchEventSink& sink, InterimReportState& state,
+inline void maybe_publish_interim(const SearchEventSink& sink, InterimReportState& state,
                            const std::uint64_t live_nodes, const int live_depth,
                            const PrincipalVariation* live_pv,
                            const std::chrono::milliseconds interval) {

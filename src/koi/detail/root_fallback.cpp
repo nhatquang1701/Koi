@@ -1,6 +1,7 @@
 #include "koi/detail/root_fallback.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <mutex>
 #include <optional>
@@ -46,7 +47,7 @@ bool FallbackControl::interrupted() const noexcept {
     return time_manager != nullptr && time_manager->should_stop(0);
 }
 
-int apply_claimable_draw_option(const GameState& state, const Color root_color,
+static int apply_claimable_draw_option(const GameState& state, const Color root_color,
                                 const int score) noexcept {
     // Preserve the interruption sentinel: it is control flow, not a chess
     // score that can be replaced by the draw option.
@@ -57,7 +58,7 @@ int apply_claimable_draw_option(const GameState& state, const Color root_color,
         std::max(0, score) : std::min(0, score);
 }
 
-int short_fallback_evaluate(const Evaluator& evaluator, const GameState& state,
+static int short_fallback_evaluate(const Evaluator& evaluator, const GameState& state,
                             const Color root_color, std::mutex* evaluator_mutex) {
     int score = 0;
     if (evaluator_mutex != nullptr) {
@@ -74,7 +75,7 @@ int short_fallback_evaluate(const Evaluator& evaluator, const GameState& state,
 // terminal ordering in one place: a no-legal-move mate must win over a rule
 // draw, and a stalemate must remain neutral.  Returning nullopt means the
 // position is live and not currently draw-terminated.
-std::optional<int> fallback_terminal_or_draw_score(
+static std::optional<int> fallback_terminal_or_draw_score(
     const GameState& state, const Color root_color, const int mate_distance) {
     const std::vector<Move> legal_moves = state.legal_moves();
     if (legal_moves.empty()) {
@@ -92,7 +93,7 @@ std::optional<int> fallback_terminal_or_draw_score(
     return std::nullopt;
 }
 
-std::optional<int> emergency_king_escape_risk(
+static std::optional<int> emergency_king_escape_risk(
     const GameState& root, const MoveMetadata& metadata,
     const GameState& after_move) noexcept {
     if (!root.in_check() || metadata.moving_piece != PieceType::king) {
@@ -106,7 +107,7 @@ std::optional<int> emergency_king_escape_risk(
         (metadata.is_capture() ? kEmergencyKingCaptureRisk : 0);
 }
 
-int quiet_forcing_fallback_score(
+static int quiet_forcing_fallback_score(
     const GameState& after_move, const Color root_color,
     const Evaluator& evaluator, std::mutex* evaluator_mutex,
     const FallbackControl* control = nullptr) {
@@ -189,7 +190,7 @@ int quiet_forcing_fallback_score(
         after_move, root_color, found_reply ? worst_score : -kInfinity);
 }
 
-int checked_root_fallback_score(
+static int checked_root_fallback_score(
     const GameState& after_check, const Color root_color,
     const Evaluator& evaluator, std::mutex* evaluator_mutex,
     const FallbackControl* control = nullptr) {
@@ -269,7 +270,7 @@ int checked_root_fallback_score(
         after_check, root_color, found_evasion ? worst_evasion_score : -kInfinity);
 }
 
-bool hanging_major_piece_check(const GameState& after_check,
+static bool hanging_major_piece_check(const GameState& after_check,
                                const MoveMetadata& checking_move) noexcept {
     if (!after_check.in_check() ||
         (checking_move.moving_piece != PieceType::queen &&
@@ -286,7 +287,7 @@ bool hanging_major_piece_check(const GameState& after_check,
                        });
 }
 
-int shallow_checked_root_fallback_score(
+static int shallow_checked_root_fallback_score(
     const GameState& after_check, const MoveMetadata& checking_move,
     const Color root_color,
     const Evaluator& evaluator, std::mutex* evaluator_mutex,
@@ -353,13 +354,13 @@ int shallow_checked_root_fallback_score(
         after_check, root_color, found_evasion ? worst_evasion_score : -kInfinity);
 }
 
-int forcing_reply_fallback_score(const GameState& after_forcing_reply,
+static int forcing_reply_fallback_score(const GameState& after_forcing_reply,
                                  Color root_color, const Evaluator& evaluator,
                                  std::mutex* evaluator_mutex,
                                  PieceType captured_piece,
                                  const FallbackControl* control);
 
-int king_evasion_fallback_score(
+static int king_evasion_fallback_score(
     const GameState& after_evasion, const Color root_color,
     const Evaluator& evaluator, std::mutex* evaluator_mutex,
     const bool is_capture,
@@ -467,7 +468,7 @@ int king_evasion_fallback_score(
         found_check ? worst_score - king_exposure_penalty : static_score);
 }
 
-int checked_reply_fallback_score(const GameState& after_check, const Color root_color,
+static int checked_reply_fallback_score(const GameState& after_check, const Color root_color,
                                  const Evaluator& evaluator,
                                  std::mutex* evaluator_mutex,
                                  const FallbackControl* control = nullptr) {
@@ -542,7 +543,7 @@ int checked_reply_fallback_score(const GameState& after_check, const Color root_
     return apply_claimable_draw_option(after_check, root_color, best_evasion_score);
 }
 
-int root_evasion_fallback_score(
+static int root_evasion_fallback_score(
     const GameState& after_evasion, const Color root_color,
     const Evaluator& evaluator, std::mutex* evaluator_mutex,
     const FallbackControl* control = nullptr) {
@@ -608,7 +609,7 @@ int root_evasion_fallback_score(
     return apply_claimable_draw_option(after_evasion, root_color, score);
 }
 
-int overdue_check_reply_fallback_score(
+static int overdue_check_reply_fallback_score(
     const GameState& after_check, const Color root_color,
     const Evaluator& evaluator, std::mutex* evaluator_mutex) {
     constexpr std::size_t kMaximumEvasions = 2;
@@ -738,7 +739,7 @@ int overdue_check_reply_fallback_score(
     return apply_claimable_draw_option(after_check, root_color, best_evasion_score);
 }
 
-int forcing_reply_fallback_score(const GameState& after_forcing_reply,
+static int forcing_reply_fallback_score(const GameState& after_forcing_reply,
                                  const Color root_color, const Evaluator& evaluator,
                                  std::mutex* evaluator_mutex,
                                  const PieceType captured_piece,
@@ -862,11 +863,11 @@ std::optional<Move> first_safe_short_search_move(
     return std::nullopt;
 }
 
-bool is_safe_equal_non_pawn_exchange(const MoveMetadata& metadata) noexcept;
+static bool is_safe_equal_non_pawn_exchange(const MoveMetadata& metadata) noexcept;
 bool short_quiet_needs_fallback(
     const GameState& root, const MoveMetadataList& legal_moves,
     const std::optional<Move>& candidate) noexcept;
-bool quiet_move_leaves_safe_capture(
+static bool quiet_move_leaves_safe_capture(
     const MoveMetadata& candidate, const MoveMetadataList& opponent_moves) noexcept;
 
 std::optional<ShortFallbackChoice> scored_safe_checking_capture(
@@ -936,10 +937,11 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
     const FallbackControl* control,
     bool permit_overdue_shallow,
     bool reject_hanging_major_checks) noexcept {
-    if (stats != nullptr) {
-        ++stats->short_fallback_invocations;
-    }
-    const PositionFeatures root_features = root.position_features();
+    try {
+        if (stats != nullptr) {
+            ++stats->short_fallback_invocations;
+        }
+        const PositionFeatures root_features = root.position_features();
     MoveMetadataList fallback_moves = legal_moves;
     if (root.in_check()) {
         // Checked roots must compare all king evasions before spending the
@@ -1495,7 +1497,10 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
     if (unsafe_best_move.has_value()) {
         return ShortFallbackChoice{*unsafe_best_move, unsafe_best_score};
     }
-    return std::nullopt;
+        return std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
 }
 
 bool short_fallback_should_replace_completed_root(
@@ -1634,16 +1639,16 @@ bool short_check_needs_fallback(const MoveMetadataList& legal_moves,
         metadata->moving_piece == PieceType::rook;
 }
 
-bool is_safe_short_capture(const MoveMetadata& metadata) noexcept {
+static bool is_safe_short_capture(const MoveMetadata& metadata) noexcept {
     return metadata.is_capture() && metadata.see_computed && metadata.see_score >= 0;
 }
 
-bool is_safe_material_capture(const MoveMetadata& metadata) noexcept {
+static bool is_safe_material_capture(const MoveMetadata& metadata) noexcept {
     return is_safe_short_capture(metadata) &&
         metadata.captured_piece != PieceType::pawn;
 }
 
-bool is_safe_equal_non_pawn_exchange(const MoveMetadata& metadata) noexcept {
+static bool is_safe_equal_non_pawn_exchange(const MoveMetadata& metadata) noexcept {
     return is_safe_short_capture(metadata) && metadata.moving_piece != PieceType::pawn &&
         metadata.captured_piece == metadata.moving_piece &&
         metadata.captured_piece != PieceType::none;
@@ -1702,7 +1707,7 @@ bool short_checked_root_king_evasion_needs_fallback(
     return metadata != legal_moves.end() && metadata->moving_piece == PieceType::king;
 }
 
-bool quiet_move_leaves_safe_capture(
+static bool quiet_move_leaves_safe_capture(
     const MoveMetadata& candidate, const MoveMetadataList& opponent_moves) noexcept {
     if (candidate.is_capture() || candidate.gives_check ||
         candidate.move.promotion() != Promotion::none) {

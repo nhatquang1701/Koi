@@ -1594,6 +1594,8 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         {
             std::lock_guard lock(output_mutex_);
             output_ << "info string search could not start: " << error.what() << '\n'
+                    << "info string search failed (setup_failed); using a safe fallback "
+                       "move\n"
                     << std::flush;
         }
         write_search_completion(generation, start_failure_fallback);
