@@ -690,9 +690,20 @@ try {
     [System.IO.File]::WriteAllBytes($lockBook, $lockBytes)
 
     $bookLock = $null
+    $bookPermissionDenied = $false
     try {
-        $bookLock = [System.IO.File]::Open($lockBook, [System.IO.FileMode]::Open,
-            [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        if ($IsWindows) {
+            $bookLock = [System.IO.File]::Open($lockBook, [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        } else {
+            # On Unix, FileShare.None is not a mandatory cross-process lock, so
+            # simulate the transient unavailability with chmod 000 instead.
+            & chmod 000 $lockBook
+            if ($LASTEXITCODE -ne 0) {
+                throw 'failed to chmod the book to 000 for the transient-lock case'
+            }
+            $bookPermissionDenied = $true
+        }
         $lockSession = Start-UciSession -Executable (Join-Path $assetLock $executableName)
         Send-UciCommand $lockSession 'uci'
         [void](Read-UciUntil $lockSession { param($line) $line -eq 'uciok' } 'locked-book uciok' -ValidateUciOutput)
@@ -702,8 +713,16 @@ try {
         Send-UciCommand $lockSession 'go depth 1'
         [void](Read-UciUntil $lockSession { param($line) $line -match '^bestmove ' } 'locked-book first bestmove' -ValidateUciOutput)
 
-        $bookLock.Dispose()
-        $bookLock = $null
+        if ($IsWindows) {
+            $bookLock.Dispose()
+            $bookLock = $null
+        } else {
+            & chmod 644 $lockBook
+            if ($LASTEXITCODE -ne 0) {
+                throw 'failed to restore book permissions for the transient-lock case'
+            }
+            $bookPermissionDenied = $false
+        }
 
         Send-UciCommand $lockSession 'isready'
         [void](Read-UciUntil $lockSession { param($line) $line -eq 'readyok' } 'released-book readyok' -ValidateUciOutput)
@@ -715,6 +734,9 @@ try {
     } finally {
         if ($null -ne $bookLock) {
             $bookLock.Dispose()
+        }
+        if ($bookPermissionDenied) {
+            & chmod 644 $lockBook 2>$null
         }
     }
     if (@($lockLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 2) {
