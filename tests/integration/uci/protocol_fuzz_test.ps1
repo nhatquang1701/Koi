@@ -1422,6 +1422,40 @@ try {
         $env:KOI_UCI_TIMEOUT_MS = $savedUciTimeout
     }
 
+    # 9ad. Mixed directory: a valid tiny table plus a canonical-size zero-filled
+    # table must reject the whole directory before Fathom.
+    $assetMixedTb = Join-Path $assetRoot 'engine-mixed-syzygy'
+    New-Item -ItemType Directory -Path $assetMixedTb -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetMixedTb $executableName)
+    $mixedTables = Join-Path $assetMixedTb 'tables'
+    New-Item -ItemType Directory -Path $mixedTables -Force | Out-Null
+    [byte[]]$mixedZero = [byte[]]::new(272)
+    [byte[]]$mixedMagic = 0x71, 0xE8, 0x23, 0x5D
+    [Array]::Copy($mixedMagic, 0, $mixedZero, 0, 4)
+    [System.IO.File]::WriteAllBytes((Join-Path $mixedTables 'KQvK.rtbw'), $mixedZero)
+    [byte[]]$mixedGood = [byte[]]::new(80)
+    [Array]::Copy($mixedMagic, 0, $mixedGood, 0, 4)
+    $mixedGood[4] = 0x31
+    [System.IO.File]::WriteAllBytes((Join-Path $mixedTables 'KNvK.rtbw'), $mixedGood)
+    $mixedSession = Start-UciSession -Executable (Join-Path $assetMixedTb $executableName)
+    Send-UciCommand $mixedSession 'uci'
+    [void](Read-UciUntil $mixedSession { param($line) $line -eq 'uciok' } 'mixed-syzygy uciok' -ValidateUciOutput)
+    Send-UciCommand $mixedSession "setoption name SyzygyPath value $mixedTables"
+    Send-UciCommand $mixedSession 'isready'
+    [void](Read-UciUntil $mixedSession { param($line) $line -eq 'readyok' } 'mixed-syzygy readyok' -ValidateUciOutput)
+    Send-UciCommand $mixedSession 'position startpos'
+    Send-UciCommand $mixedSession 'go depth 1'
+    $mixedBest = Read-UciUntil $mixedSession { param($line) $line -match '^bestmove ' } 'mixed-syzygy bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $mixedBest 'mixed-syzygy'
+    Send-UciCommand $mixedSession 'quit'
+    $mixedLines = Complete-UciSession $mixedSession $false
+    if (@($mixedLines | Where-Object { $_ -match '^info string Syzygy: corrupt tables at .+ \(probing disabled\)$' }).Count -ne 1) {
+        throw 'a mixed directory with one zero-filled table must be rejected as corrupt once'
+    }
+    if (@($mixedLines | Where-Object { $_ -match '^info string Syzygy: [0-9]+-man tables' }).Count -ne 0) {
+        throw 'a mixed directory must not be announced as usable'
+    }
+
     # 9ac. `ucinewgame` must not disturb auto book detection/use: two searches
     # across the reset both use the book, with one detection announcement.
     $assetNewGame = Join-Path $assetRoot 'engine-book-ucinewgame'
