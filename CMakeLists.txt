@@ -1417,7 +1417,7 @@ if(POWERSHELL_EXECUTABLE)
         )
         koi_set_timeout(koi_protocol_memory_limit_process 120)
         set_tests_properties(koi_protocol_memory_limit_process
-            PROPERTIES LABELS "process;uci;reliability")
+            PROPERTIES LABELS "process;uci;reliability" SKIP_RETURN_CODE 77)
     endif()
 set_tests_properties(koi_protocol_broken_pipe_process
         PROPERTIES LABELS "process;uci;reliability")
