@@ -342,6 +342,7 @@ set(KOI_CORE_SOURCES
     src/koi/perft.cpp
     src/koi/position.cpp
     src/koi/search_service.cpp
+    src/koi/search_types.cpp
     src/koi/search_ordering.cpp
     src/koi/static_exchange.cpp
     src/koi/syzygy_tablebase.cpp

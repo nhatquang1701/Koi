@@ -12,11 +12,11 @@
 #include <thread>
 #include <vector>
 
-#include "koi/game_state.hpp"
 #include "koi/move.hpp"
 
 namespace koi {
 
+class GameState;
 class SyzygyTablebase;
 
 struct ClockLimit {
@@ -229,11 +229,10 @@ struct SearchRequestIdentity {
     }
 
     // Builds the identity of a live root.  The board supplies key and fen; the
-    // caller supplies the protocol generation.
+    // caller supplies the protocol generation.  Defined in search_types.cpp so
+    // this public header does not need the complete GameState facade.
     [[nodiscard]] static SearchRequestIdentity from(const GameState& root,
-                                                    const std::uint64_t generation) {
-        return SearchRequestIdentity{generation, root.position_key(), root.fen()};
-    }
+                                                    const std::uint64_t generation);
 };
 
 struct SearchResult {

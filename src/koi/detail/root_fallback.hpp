@@ -14,6 +14,7 @@
 #include <optional>
 
 #include "koi/detail/search_constants.hpp"
+#include "koi/game_state.hpp"
 #include "koi/search_types.hpp"
 
 namespace koi {

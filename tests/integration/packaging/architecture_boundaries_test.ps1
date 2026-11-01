@@ -22,6 +22,16 @@ function Read-RepositoryFile([string]$RelativePath) {
     return Get-Content -LiteralPath (Join-Path $repositoryRoot $RelativePath) -Raw
 }
 
+# 0a. Public value headers stay light: search_types forward-declares the rules
+# facade instead of pulling the whole GameState header.
+$searchTypesHeader = Read-RepositoryFile 'src/koi/search_types.hpp'
+if ($searchTypesHeader -match '#include\s+"koi/game_state\.hpp"') {
+    Fail 'search_types.hpp must forward-declare GameState instead of including game_state.hpp'
+}
+if ($searchTypesHeader -notmatch 'class GameState;') {
+    Fail 'search_types.hpp must forward-declare GameState'
+}
+
 # 0. The embedding service header must not pull private detail headers.
 $serviceHeader = Read-RepositoryFile 'src/koi/search_service.hpp'
 if ($serviceHeader -match '#include\s+"koi/detail/') {
