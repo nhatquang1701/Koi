@@ -1149,6 +1149,59 @@ try {
             }
         }
     }
+
+    # 9r. Linked book file: a hardlink on Windows, a symlink on Unix. The link
+    # must resolve for detection/use; on Unix, breaking the link must fall back
+    # silently without a crash.
+    $assetLink = Join-Path $assetRoot 'engine-linked-book'
+    New-Item -ItemType Directory -Path $assetLink -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetLink $executableName)
+    $linkTarget = Join-Path $assetLink 'real-book.bin'
+    $linkBook = Join-Path $assetLink 'book.bin'
+    $linkBytes = [byte[]]::new(16)
+    [byte[]]$linkKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($linkKey, 0, $linkBytes, 0, 8)
+    $linkBytes[8] = 0x03
+    $linkBytes[9] = 0x1c
+    $linkBytes[10] = 0x00
+    $linkBytes[11] = 100
+    [System.IO.File]::WriteAllBytes($linkTarget, $linkBytes)
+    if ($IsWindows) {
+        New-Item -ItemType HardLink -Path $linkBook -Target $linkTarget | Out-Null
+    } else {
+        & ln -s $linkTarget $linkBook
+        if ($LASTEXITCODE -ne 0) {
+            throw 'failed to create the symlinked book'
+        }
+    }
+    $linkSession = Start-UciSession -Executable (Join-Path $assetLink $executableName)
+    Send-UciCommand $linkSession 'uci'
+    [void](Read-UciUntil $linkSession { param($line) $line -eq 'uciok' } 'linked-book uciok' -ValidateUciOutput)
+    Send-UciCommand $linkSession 'isready'
+    [void](Read-UciUntil $linkSession { param($line) $line -eq 'readyok' } 'linked-book readyok' -ValidateUciOutput)
+    Send-UciCommand $linkSession 'position startpos'
+    Send-UciCommand $linkSession 'go depth 1'
+    [void](Read-UciUntil $linkSession { param($line) $line -match '^bestmove ' } 'linked-book bestmove' -ValidateUciOutput)
+    if (-not $IsWindows) {
+        Remove-Item -LiteralPath $linkTarget -Force
+        Send-UciCommand $linkSession 'isready'
+        [void](Read-UciUntil $linkSession { param($line) $line -eq 'readyok' } 'broken-link readyok' -ValidateUciOutput)
+        Send-UciCommand $linkSession 'position startpos'
+        Send-UciCommand $linkSession 'go depth 1'
+        [void](Read-UciUntil $linkSession { param($line) $line -match '^bestmove ' } 'broken-link bestmove' -ValidateUciOutput)
+    }
+    Send-UciCommand $linkSession 'quit'
+    $linkLines = Complete-UciSession $linkSession $false
+    $expectedBestmoves = if ($IsWindows) { 1 } else { 2 }
+    if (@($linkLines | Where-Object { $_ -match '^bestmove ' }).Count -ne $expectedBestmoves) {
+        throw 'the linked-book case must complete the expected number of searches'
+    }
+    if (@($linkLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+        throw 'a linked book must be detected exactly once'
+    }
+    if (@($linkLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
+        throw 'a linked book must be used exactly once'
+    }
 }
 finally {
     Stop-AllUciSessions
