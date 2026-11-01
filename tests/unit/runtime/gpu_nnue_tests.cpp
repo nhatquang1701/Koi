@@ -18,6 +18,7 @@
 #include "koi/gpu/nnue_gpu_evaluator.hpp"
 #include "koi/gpu/ptx_variant.hpp"
 #include "koi/nnue.hpp"
+#include "../../support/nnue_synthetic.hpp"
 #include "koi_test_support.hpp"
 
 using koi::test::require;
@@ -36,7 +37,7 @@ constexpr const char* kFixtures[] = {
 std::shared_ptr<const koi::NnueNetwork> test_network() {
     constexpr std::size_t kHidden = 1536;
     constexpr std::size_t kL1 = 32;
-    koi::NnueNetwork network = koi::NnueNetwork::synthetic_v5();
+    koi::NnueNetwork network = koi::test::synthetic_network_v5();
     network.manifest.layer_sizes = {36864, kHidden, 8, kL1};
     network.feature_weights.assign(36864 * kHidden, 0);
     for (std::size_t index = 0; index < network.feature_weights.size(); ++index) {
@@ -292,7 +293,7 @@ void test_gpu_nnue_require_falls_back_to_the_cpu_when_unusable() {
     // (hidden 32, L1 8), so service creation fails before any driver work on
     // every machine and this fallback stays deterministic.
     const auto incompatible =
-        std::make_shared<const koi::NnueNetwork>(koi::NnueNetwork::synthetic_v5());
+        std::make_shared<const koi::NnueNetwork>(koi::test::synthetic_network_v5());
     const GpuNnueMode saved = koi::gpu::gpu_nnue_mode();
     set_environment_variable("KOI_GPU_NNUE", nullptr);
     koi::gpu::reset_gpu_nnue_environment_cache();

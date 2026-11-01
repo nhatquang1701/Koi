@@ -148,21 +148,6 @@ struct NnueNetwork {
     // bias is stored at the plain 127 scale.  Versions 2-5 leave it at zero.
     std::uint8_t l1_diff_shift = 0;
 
-    [[nodiscard]] static NnueNetwork synthetic();
-    [[nodiscard]] static NnueNetwork synthetic_v2();
-    // Minimal-width v4 network for container and inference fixtures.  Trained
-    // networks default to 1024 hidden units; the fixture keeps the payload
-    // small while still exercising the pair-product and per-bucket layout.
-    [[nodiscard]] static NnueNetwork synthetic_v4();
-    // Minimal-width v5 network: 36864 inputs, 32 hidden units, 8 output
-    // buckets, and 8 L1 units, with shifts 7/12 and a 6-bit L1 shift.
-    [[nodiscard]] static NnueNetwork synthetic_v5();
-    // Minimal-width v6 network mirroring synthetic_v5, plus the antisymmetric
-    // L1 difference weights (a small alternating +/-1 pattern).  It keeps the
-    // legacy combined head (l1_diff_shift = 0) so pre-split containers and the
-    // cross-language fixture remain bit-comparable; tests set the split shift
-    // explicitly.
-    [[nodiscard]] static NnueNetwork synthetic_v6();
 };
 
 class NnueLoader final {

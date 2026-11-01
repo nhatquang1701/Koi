@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "koi/nnue.hpp"
+#include "../../tests/support/nnue_synthetic.hpp"
 
 namespace {
 
@@ -22,7 +23,7 @@ struct Arguments {
 };
 
 koi::NnueNetwork gpu_compatible_v5_fixture() {
-    koi::NnueNetwork network = koi::NnueNetwork::synthetic_v5();
+    koi::NnueNetwork network = koi::test::synthetic_network_v5();
     // Keep the seed weights while value-initializing the added dimensions.
     // The same synthetic network then satisfies the GPU kernel's fixed shape.
     network.manifest.layer_sizes[1] = kGpuV5HiddenUnits;
@@ -77,7 +78,7 @@ int main(int argc, char** argv) {
     }
 
     const koi::NnueNetwork network = arguments->arch == "v4"
-                                         ? koi::NnueNetwork::synthetic_v4()
+                                         ? koi::test::synthetic_network_v4()
                                          : gpu_compatible_v5_fixture();
     const auto encoded = koi::NnueLoader::serialize(network);
     if (!encoded.has_value()) {

@@ -158,8 +158,14 @@ $nnueSource = Read-RepositoryFile 'src/koi/nnue.cpp'
 if ($nnueSource -match 'NnueNetwork::synthetic') {
     Fail 'src/koi/nnue.cpp must not define synthetic NNUE fixture factories'
 }
-if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot 'tests/support/nnue_synthetic.cpp'))) {
-    Fail 'tests/support/nnue_synthetic.cpp (synthetic fixtures) is missing'
+$nnueHeader = Read-RepositoryFile 'src/koi/nnue.hpp'
+if ($nnueHeader -match 'NnueNetwork::synthetic|static NnueNetwork synthetic') {
+    Fail 'src/koi/nnue.hpp must not declare synthetic NNUE fixture factories'
+}
+foreach ($required in @('tests/support/nnue_synthetic.cpp', 'tests/support/nnue_synthetic.hpp')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
+        Fail "$required (synthetic fixtures) is missing"
+    }
 }
 
 # 3e. The bounded root-fallback policy is its own detail unit; the driver owns

@@ -11,9 +11,9 @@
 
 #include "koi/nnue.hpp"
 
-namespace koi {
+namespace koi::test {
 
-NnueNetwork NnueNetwork::synthetic() {
+NnueNetwork synthetic_network() {
     NnueNetwork network;
     network.manifest.magic = std::string(kKoiNnueMagic);
     network.manifest.version = kKoiNnueFormatVersion;
@@ -44,8 +44,8 @@ NnueNetwork NnueNetwork::synthetic() {
     return network;
 }
 
-NnueNetwork NnueNetwork::synthetic_v2() {
-    NnueNetwork network = synthetic();
+NnueNetwork synthetic_network_v2() {
+    NnueNetwork network = synthetic_network();
     network.manifest.layer_sizes = kKoiNnuePieceSquareKingPawnV2LayerSizes;
     network.manifest.feature_set = std::string(kKoiNnuePieceSquareKingPawnV2FeatureSet);
     const std::size_t input_units = network.manifest.layer_sizes[0];
@@ -72,7 +72,7 @@ NnueNetwork NnueNetwork::synthetic_v2() {
     return network;
 }
 
-NnueNetwork NnueNetwork::synthetic_v4() {
+NnueNetwork synthetic_network_v4() {
     NnueNetwork network;
     network.manifest.magic = std::string(kKoiNnueMagic);
     network.manifest.version = kKoiNnueHalfkaKingBucketV1FormatVersion;
@@ -104,7 +104,7 @@ NnueNetwork NnueNetwork::synthetic_v4() {
     return network;
 }
 
-NnueNetwork NnueNetwork::synthetic_v5() {
+NnueNetwork synthetic_network_v5() {
     NnueNetwork network;
     network.manifest.magic = std::string(kKoiNnueMagic);
     network.manifest.version = kKoiNnueHalfkaThreatV5FormatVersion;
@@ -146,8 +146,8 @@ NnueNetwork NnueNetwork::synthetic_v5() {
     return network;
 }
 
-NnueNetwork NnueNetwork::synthetic_v6() {
-    NnueNetwork network = synthetic_v5();
+NnueNetwork synthetic_network_v6() {
+    NnueNetwork network = synthetic_network_v5();
     network.manifest.version = kKoiNnueHalfkaThreatV6FormatVersion;
     network.l1_diff_weights.resize(network.l1_weights.size());
     for (std::size_t index = 0; index < network.l1_diff_weights.size(); ++index) {
@@ -157,4 +157,4 @@ NnueNetwork NnueNetwork::synthetic_v6() {
     return network;
 }
 
-} // namespace koi
+} // namespace koi::test
