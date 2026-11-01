@@ -225,6 +225,15 @@ struct PositionConsistencySnapshot {
     }
 };
 
+namespace detail {
+
+// Builds the native/shadow consistency diagnostic snapshot.  Declared here
+// (and friended below) so the GameState facade does not carry the diagnostic
+// aggregation itself; the implementation lives in detail/consistency.cpp.
+[[nodiscard]] PositionConsistencySnapshot build_consistency_snapshot(const GameState& state);
+
+} // namespace detail
+
 inline constexpr std::uint8_t kWhiteKingSideCastling = 0x1;
 inline constexpr std::uint8_t kWhiteQueenSideCastling = 0x2;
 inline constexpr std::uint8_t kBlackKingSideCastling = 0x4;
@@ -405,6 +414,7 @@ private:
     void invalidate_feature_cache() noexcept;
 
     friend int detail::static_exchange_gain(const GameState&, const MoveMetadata&) noexcept;
+    friend PositionConsistencySnapshot detail::build_consistency_snapshot(const GameState&);
 
     class Impl;
     std::unique_ptr<Impl> impl_;

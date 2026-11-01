@@ -316,6 +316,7 @@ endif()
 
 set(KOI_CORE_SOURCES
     src/koi/detail/compatibility_mirror.cpp
+    src/koi/detail/consistency.cpp
     src/koi/detail/debug_log.cpp
     src/koi/detail/fen_validation.cpp
     src/koi/detail/root_fallback.cpp

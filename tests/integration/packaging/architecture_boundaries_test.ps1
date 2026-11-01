@@ -195,6 +195,19 @@ if ($runnerSource -notmatch '#include "koi/detail/root_fallback\.hpp"') {
     Fail 'search_runner.cpp must include detail/root_fallback.hpp'
 }
 
+# 3f2. GameState's implementation and diagnostic builder live in detail units.
+foreach ($required in @('src/koi/detail/consistency.cpp',
+                        'src/koi/detail/game_state_impl.hpp',
+                        'src/koi/detail/native_check_probe.hpp')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
+        Fail "$required is missing"
+    }
+}
+$gameStateSourceForImpl = Read-RepositoryFile 'src/koi/game_state.cpp'
+if ($gameStateSourceForImpl -match 'class GameState::Impl') {
+    Fail 'game_state.cpp must not define GameState::Impl directly'
+}
+
 # 3f. Stateless FEN syntax validation is its own detail unit.
 foreach ($required in @('src/koi/detail/fen_validation.hpp', 'src/koi/detail/fen_validation.cpp')) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {

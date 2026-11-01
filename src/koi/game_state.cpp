@@ -19,6 +19,8 @@
 #include "koi/detail/attack_tables.hpp"
 #include "koi/detail/compatibility_mirror.hpp"
 #include "koi/detail/feature_state.hpp"
+#include "koi/detail/game_state_impl.hpp"
+#include "koi/detail/native_check_probe.hpp"
 #include "koi/detail/no_init_array.hpp"
 #include "koi/detail/static_exchange.hpp"
 #include "koi/position.hpp"
@@ -26,6 +28,8 @@
 namespace koi {
 
 namespace {
+
+using detail::NativeCheckProbe;
 
 constexpr std::array<std::uint64_t, 781> kPolyglotRandom{
 +0x9D39247E33776D41ULL,
@@ -811,15 +815,6 @@ constexpr std::array<std::uint64_t, 781> kPolyglotRandom{
     0xF8D626AAAF278509ULL,
 };
 
-std::vector<std::string> sorted_native_move_strings(const Position& position) {
-    std::vector<std::string> moves;
-    for (const Move& move : position.legal_moves()) {
-        moves.push_back(move.uci());
-    }
-    std::sort(moves.begin(), moves.end());
-    return moves;
-}
-
 std::uint64_t metadata_validation_token(const std::uint64_t key,
                                         const MoveMetadata& metadata) noexcept {
     std::uint64_t value = key ^ 0x9E3779B97F4A7C15ULL;
@@ -890,25 +885,6 @@ std::uint64_t native_feature_attacks(const NativeFeatureBitboards& pieces,
     }
     return 0;
 }
-
-// Position-invariant inputs of the per-move check probe.  A legal move list is
-// probed against one unchanged board, so the enemy king bitboard, the combined
-// occupancy, and the mover's slider bitboards are read once per list instead of
-// once per move.
-struct NativeCheckProbe {
-    std::uint64_t enemy_king = 0;
-    std::uint64_t occupied = 0;
-    std::uint64_t friendly_rook_queen = 0;
-    std::uint64_t friendly_bishop_queen = 0;
-    // Open-board (empty-occupancy) union of the enemy king's rook and bishop
-    // rays: the conservative superset of every square from which a sliding
-    // attack could reach the king and of every square a king slider line can
-    // pass through.  Zero means the rays were not computed (a default probe on
-    // a non-probing path); the per-move probe then runs the full computation
-    // instead of trusting the prefilter.
-    std::uint64_t king_slider_rays = 0;
-    Color moving_color = Color::white;
-};
 
 [[nodiscard]] NativeCheckProbe native_check_probe(const Position& position) noexcept {
     NativeCheckProbe probe;
@@ -1277,43 +1253,6 @@ void native_position_features(const Position& position,
 
 } // namespace
 
-class GameState::Impl {
-public:
-    // NativePosition is the legality and incremental-key authority. The
-    // vendored board is owned by CompatibilityMirror and remains a private
-    // compatibility adapter for Polyglot and diagnostic consumers.
-    detail::CompatibilityMirror compatibility_mirror{};
-    Position native_position{};
-    mutable detail::FeatureState feature_state{};
-    // Search-only states disable shadow maintenance (see detach_mirror()).
-    // The flag is copied so every search descendant inherits it.
-    bool mirror_tracking = true;
-    // Cached invariant inputs of the last native_check_probe() built for
-    // native_position.  move_gives_check() compares fresh inputs on every call,
-    // so a stale cache (for example after a copy, which starts with the default
-    // probe) can never change a result.  No mutable is needed: unique_ptr
-    // indirection permits mutation from const member functions.
-    NativeCheckProbe check_probe{};
-
-    Impl() = default;
-
-    // The feature cache is a pure accelerator: a copied state recomputes the
-    // features it needs.  Dropping the 256-slot copy keeps per-node search
-    // copies (root-parallel workers, legality probes) inexpensive while
-    // preserving identical evaluation results.  The compatibility mirror is
-    // copied only while it is tracked: a detached search state never consults
-    // it, so descendants must not pay for a second board and its history.
-    // The assignment is conditional because mirror_tracking is declared after
-    // the mirror and cannot be read from the initializer list.
-    Impl(const Impl& other) : native_position(other.native_position),
-                              feature_state(),
-                              mirror_tracking(other.mirror_tracking) {
-        if (mirror_tracking) {
-            compatibility_mirror = other.compatibility_mirror;
-        }
-    }
-};
-
 GameState::GameState() : impl_(std::make_unique<Impl>()) {}
 
 GameState::GameState(const GameState& other) : impl_(std::make_unique<Impl>(*other.impl_)) {}
@@ -1392,38 +1331,7 @@ bool GameState::has_legal_move() const noexcept {
 }
 
 PositionConsistencySnapshot GameState::consistency_snapshot() const {
-    PositionConsistencySnapshot snapshot;
-    snapshot.native_fen = impl_->native_position.fen();
-    snapshot.shadow_fen = impl_->compatibility_mirror.fen_for_comparison(impl_->native_position);
-    snapshot.native_legal_moves = sorted_native_move_strings(impl_->native_position);
-    snapshot.shadow_legal_moves = impl_->compatibility_mirror.legal_move_strings();
-    snapshot.native_position_key = position_key();
-    snapshot.shadow_position_key = impl_->compatibility_mirror.position_key();
-    snapshot.native_castling_rights = castling_rights();
-    snapshot.shadow_castling_rights = impl_->compatibility_mirror.castling_rights();
-    snapshot.native_en_passant_square = en_passant_square();
-    snapshot.shadow_en_passant_square =
-        impl_->compatibility_mirror.en_passant_square_for_comparison(impl_->native_position);
-    snapshot.native_halfmove_clock = halfmove_clock();
-    snapshot.shadow_halfmove_clock = impl_->compatibility_mirror.halfmove_clock();
-    snapshot.native_fullmove_number = fullmove_number();
-    snapshot.shadow_fullmove_number = impl_->compatibility_mirror.fullmove_number();
-    snapshot.native_repetition_count = repetition_count();
-    snapshot.shadow_repetition_count = impl_->compatibility_mirror.repetition_count();
-    snapshot.native_repetition_sensitive = is_repetition_sensitive();
-    snapshot.shadow_repetition_sensitive = snapshot.shadow_repetition_count >= 2;
-    snapshot.native_can_claim_threefold_repetition = can_claim_threefold_repetition();
-    snapshot.native_is_automatic_fivefold_repetition = is_automatic_fivefold_repetition();
-    snapshot.native_in_check = in_check();
-    snapshot.shadow_in_check = impl_->compatibility_mirror.in_check();
-    snapshot.native_side_to_move = side_to_move();
-    snapshot.shadow_side_to_move = impl_->compatibility_mirror.side_to_move();
-    const bool shadow_checkmate = snapshot.shadow_in_check && snapshot.shadow_legal_moves.empty();
-    snapshot.shadow_can_claim_threefold_repetition =
-        snapshot.shadow_repetition_count >= 3 && !shadow_checkmate;
-    snapshot.shadow_is_automatic_fivefold_repetition =
-        snapshot.shadow_repetition_count >= 5 && !shadow_checkmate;
-    return snapshot;
+    return detail::build_consistency_snapshot(*this);
 }
 
 bool GameState::native_shadow_consistent() const noexcept {
