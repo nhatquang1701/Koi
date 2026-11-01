@@ -1,5 +1,8 @@
 #include "koi/uci_controller.hpp"
 
+#include "koi/detail/debug_log.hpp"
+#include "koi/syzygy_tablebase.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -80,27 +83,11 @@ constexpr std::uint64_t kMaximumSyzygyProbeDepth = 100;
 constexpr std::uint64_t kMaximumSyzygyProbeLimit = 7;
 constexpr std::uint64_t kMinimumSyzygyInteriorDepth = 0;
 constexpr std::uint64_t kMaximumSyzygyInteriorDepth = 100;
-constexpr std::uintmax_t kDebugRotationBytes = 8U * 1024U * 1024U;
 constexpr int kWdlScoreLimit = 1'000;
 // Bounded fallback for a bare `go` and for malformed or asymmetric clock
 // commands. A UCI `go` always has to be answered, so a missing usable limit
 // must never leave the engine searching indefinitely.
 constexpr std::chrono::milliseconds kBareGoFallback{250};
-
-// Debug logging must never open a FIFO/named pipe/device: opening one for
-// writing can block indefinitely on Unix and stall the UCI loop.  A missing
-// path is fine (the open creates a regular file); an existing path must be a
-// regular file.
-bool debug_path_is_openable(const std::filesystem::path& path) {
-    std::error_code error;
-    if (!std::filesystem::exists(path, error)) {
-        return !error;
-    }
-    if (error) {
-        return false;
-    }
-    return std::filesystem::is_regular_file(path, error) && !error;
-}
 
 const char* hash_status_name(HashResizeStatus status) noexcept {
     switch (status) {
@@ -700,6 +687,9 @@ UciController::UciController(std::istream& input, std::ostream& output,
       nnue_autodiscovered_(nnue_autodiscovered),
       opening_book_(executable_directory_),
       search_service_(std::move(search_service)) {
+    debug_log_ = std::make_unique<detail::DebugLog>();
+    debug_log_->set_executable_directory(executable_directory_);
+    syzygy_ = std::make_shared<SyzygyTablebase>();
     if (!executable_directory_.empty()) {
         if (const auto discovered = discover_syzygy_directory(executable_directory_);
             discovered.has_value()) {
@@ -784,10 +774,10 @@ int UciController::run() {
                 (equals_ignore_case(debug_value, "on") ||
                  equals_ignore_case(debug_value, "off"))) {
                 const bool debug = equals_ignore_case(debug_value, "on");
-                if (debug_enabled_ != debug) {
+                if (debug_log_->enabled() != debug) {
                     stop_and_suppress_active_search();
-                    debug_enabled_ = debug;
-                    configure_debug_file();
+                    debug_log_->set_enabled(debug);
+                    debug_log_->configure();
                 }
             }
         } else if (name == "stop") {
@@ -877,7 +867,7 @@ void UciController::handle_position(std::istream& command, std::string_view comm
                 " key " + std::to_string(position_.position_key()) +
                 " fen " + position_.fen() +
                 " legal_moves " + std::to_string(legal.size()));
-    if (debug_enabled_) {
+    if (debug_log_->enabled()) {
         const PositionConsistencySnapshot snapshot = position_.consistency_snapshot();
         debug_json_event(
             "position",
@@ -1288,17 +1278,17 @@ void UciController::handle_setoption(std::istream& command) {
     }
 
     case UciOptionId::debug:
-        apply_boolean(debug_enabled_, [this](bool debug) {
-            debug_enabled_ = debug;
-            configure_debug_file();
+        apply_boolean(debug_log_->enabled(), [this](bool debug) {
+            debug_log_->set_enabled(debug);
+            debug_log_->configure();
         });
         break;
 
     case UciOptionId::debug_file:
         stop_and_suppress_active_search();
-        debug_file_path_ = value;
-        if (debug_enabled_) {
-            configure_debug_file();
+        debug_log_->set_requested_path(std::filesystem::path(value));
+        if (debug_log_->enabled()) {
+            debug_log_->configure();
         }
         break;
     }
@@ -2228,103 +2218,13 @@ void UciController::write_book_completion(std::uint64_t generation, const GameSt
              << "bestmove " << validation.best_move->uci() << '\n' << std::flush;
 }
 
-std::filesystem::path UciController::debug_path() const {
-    const std::filesystem::path base = executable_directory_.empty() ?
-        std::filesystem::current_path() : executable_directory_;
-    const std::filesystem::path requested = debug_file_path_.empty() ?
-        std::filesystem::path{"koi-debug.log"} : debug_file_path_;
-    return requested.is_absolute() ? requested : base / requested;
-}
-
-void UciController::rotate_debug_file_if_needed(std::size_t incoming_bytes) {
-    const std::filesystem::path path = debug_path();
-    std::error_code error;
-    const std::uintmax_t current_size = std::filesystem::exists(path, error) && !error ?
-        std::filesystem::file_size(path, error) : 0;
-    if (error || current_size < kDebugRotationBytes &&
-        incoming_bytes <= kDebugRotationBytes - current_size) {
-        return;
-    }
-
-    if (debug_file_.is_open()) {
-        debug_file_.close();
-    }
-    for (int backup = 2; backup >= 1; --backup) {
-        const std::filesystem::path source = path.string() + "." + std::to_string(backup);
-        const std::filesystem::path target = path.string() + "." + std::to_string(backup + 1);
-        std::filesystem::remove(target, error);
-        error.clear();
-        if (std::filesystem::exists(source, error) && !error) {
-            std::filesystem::rename(source, target, error);
-            error.clear();
-        }
-    }
-    std::filesystem::rename(path, path.string() + ".1", error);
-}
-
-void UciController::configure_debug_file() {
-    std::lock_guard lock(debug_mutex_);
-    if (debug_file_.is_open()) {
-        debug_file_.close();
-    }
-    if (!debug_enabled_) {
-        return;
-    }
-
-    const std::filesystem::path path = debug_path();
-    std::error_code error;
-    const bool oversized = std::filesystem::exists(path, error) && !error &&
-        std::filesystem::file_size(path, error) >= kDebugRotationBytes;
-    if (oversized && !error) {
-        rotate_debug_file_if_needed(0);
-    }
-    if (!debug_path_is_openable(path)) {
-        return;
-    }
-    debug_file_.open(path, std::ios::binary | std::ios::app);
-}
-
 void UciController::debug_event(std::string message) noexcept {
     debug_json_event("log", "\"message\":" + debug_quoted(message));
 }
 
 void UciController::debug_json_event(std::string event, std::string fields) noexcept {
-    try {
-        std::lock_guard lock(debug_mutex_);
-        if (!debug_enabled_) {
-            return;
-        }
-        if (!debug_file_.is_open()) {
-            const std::filesystem::path path = debug_path();
-            if (!debug_path_is_openable(path)) {
-                return;
-            }
-            debug_file_.open(path, std::ios::binary | std::ios::app);
-        }
-        if (!debug_file_.is_open()) {
-            return;
-        }
-        std::string message = "{\"event\":" + debug_quoted(event);
-        if (!fields.empty()) {
-            message += ',';
-            message += fields;
-        }
-        message += "}\n";
-        rotate_debug_file_if_needed(message.size());
-        if (!debug_file_.is_open()) {
-            const std::filesystem::path path = debug_path();
-            if (!debug_path_is_openable(path)) {
-                return;
-            }
-            debug_file_.open(path, std::ios::binary | std::ios::app);
-        }
-        if (!debug_file_.is_open()) {
-            return;
-        }
-        debug_file_.write(message.data(), static_cast<std::streamsize>(message.size()));
-        debug_file_.flush();
-    } catch (...) {
-        // Developer diagnostics are strictly best effort and never affect UCI.
+    if (debug_log_) {
+        debug_log_->write_event(event, fields);
     }
 }
 

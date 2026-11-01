@@ -177,6 +177,7 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   `koi_uci_match_process`, `koi_stockfish_strength_option`, `koi_uci_match_clock`,
   `cutechess_stability_diagnostics`, `cutechess_stability_smoke`,
   `run_tests_artifact_path`, `hash_memory_stability`, `windows_ci_configuration`,
+  `koi_architecture_boundaries` (public-header/core/test-tree architecture guard),
   `install_book_script`,
   `package_release_layout`.
 

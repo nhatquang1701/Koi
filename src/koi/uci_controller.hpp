@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <iosfwd>
 #include <memory>
 #include <mutex>
@@ -19,9 +18,16 @@
 
 #include "koi/opening_book.hpp"
 #include "koi/search_service.hpp"
-#include "koi/syzygy_tablebase.hpp"
 
 namespace koi {
+
+namespace detail {
+
+class DebugLog;
+
+} // namespace detail
+
+class SyzygyTablebase;
 
 namespace uci {
 
@@ -103,20 +109,14 @@ private:
                              std::uint64_t generation);
     void debug_event(std::string message) noexcept;
     void debug_json_event(std::string event, std::string fields) noexcept;
-    void configure_debug_file();
     void rebuild_syzygy();
     void ensure_auto_syzygy_loaded();
-    [[nodiscard]] std::filesystem::path debug_path() const;
-    void rotate_debug_file_if_needed(std::size_t incoming_bytes);
 
     std::istream& input_;
     std::ostream& output_;
     std::ostream& diagnostics_;
     std::mutex output_mutex_;
-    std::mutex debug_mutex_;
     std::filesystem::path executable_directory_;
-    std::filesystem::path debug_file_path_;
-    std::ofstream debug_file_;
     GameState position_;
 
     OpeningBook opening_book_;
@@ -147,8 +147,8 @@ private:
     std::uint32_t slow_mover_percent_ = 100;
     std::uint32_t contempt_cp_ = 0;
     bool strength_mode_ = false;
-    bool debug_enabled_ = false;
     bool analyse_mode_ = false;
+    std::unique_ptr<detail::DebugLog> debug_log_;
     std::size_t multi_pv_ = 1;
     bool ponder_enabled_ = false;
     bool own_book_ = false;
@@ -178,8 +178,7 @@ private:
     std::uint8_t syzygy_probe_limit_ = 7;
     std::uint8_t syzygy_interior_depth_ = 0;
     bool syzygy_50_move_rule_ = true;
-    std::shared_ptr<SyzygyTablebase> syzygy_ =
-        std::make_shared<SyzygyTablebase>();
+    std::shared_ptr<SyzygyTablebase> syzygy_;
     CompletionGate completion_gate_;
     // Protocol staleness counter: begin_generation() bumps this for every new
     // search request and write_search_completion() drops replies whose

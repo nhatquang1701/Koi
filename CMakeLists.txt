@@ -316,6 +316,7 @@ endif()
 
 set(KOI_CORE_SOURCES
     src/koi/detail/compatibility_mirror.cpp
+    src/koi/detail/debug_log.cpp
     src/koi/detail/attack_tables.cpp
     src/koi/detail/evaluation_context.cpp
     src/koi/detail/feature_state.cpp
@@ -1022,6 +1023,18 @@ add_test(
 )
 
 koi_set_timeout(koi_protocol_broken_pipe_process 60)
+
+# Architecture-boundary guard for the 1.0.0 baseline (public-header seams,
+# core target purity, test-tree placement, documented contract).  It reads the
+# source/CMake tree only and must stay fast.
+add_test(
+    NAME koi_architecture_boundaries
+    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/packaging/architecture_boundaries_test.ps1"
+)
+koi_set_timeout(koi_architecture_boundaries 60)
+set_tests_properties(koi_architecture_boundaries
+    PROPERTIES LABELS "packaging;architecture")
 
 add_test(
     NAME koi_engine_perft_responsiveness
