@@ -1082,6 +1082,73 @@ try {
             }
         }
     }
+
+    # 9q. EvalFile pointing at an unreadable network: rejected exactly once,
+    # current evaluator preserved, next search legal.
+    if ([string]::IsNullOrWhiteSpace($env:KOI_NNUE_PATH) -or
+        -not (Test-Path -LiteralPath $env:KOI_NNUE_PATH -PathType Leaf)) {
+        throw 'the fuzz test needs KOI_NNUE_PATH for the unreadable-EvalFile case'
+    }
+    $assetEval = Join-Path $assetRoot 'engine-unreadable-evalfile'
+    New-Item -ItemType Directory -Path $assetEval -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetEval $executableName)
+    $deniedNet = Join-Path $assetEval 'denied.nnue'
+    Copy-Item -LiteralPath $env:KOI_NNUE_PATH -Destination $deniedNet
+    $evalDenied = $false
+    try {
+        if ($IsWindows) {
+            & icacls $deniedNet /deny "${env:USERNAME}:R" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw 'failed to apply the read-deny ACL to the network'
+            }
+        } else {
+            & chmod 000 $deniedNet
+            if ($LASTEXITCODE -ne 0) {
+                throw 'failed to chmod the network to 000'
+            }
+        }
+        $readable = $true
+        try {
+            $probeStream = [System.IO.File]::OpenRead($deniedNet)
+            $probeStream.Dispose()
+        } catch {
+            $readable = $false
+        }
+        if ($readable) {
+            throw 'the network was still readable after the permission change'
+        }
+        $evalDenied = $true
+
+        $evalSession = Start-UciSession -Executable (Join-Path $assetEval $executableName)
+        Send-UciCommand $evalSession 'uci'
+        [void](Read-UciUntil $evalSession { param($line) $line -eq 'uciok' } 'unreadable-eval uciok' -ValidateUciOutput)
+        Send-UciCommand $evalSession "setoption name EvalFile value $deniedNet"
+        Send-UciCommand $evalSession 'isready'
+        [void](Read-UciUntil $evalSession { param($line) $line -eq 'readyok' } 'unreadable-eval readyok' -ValidateUciOutput)
+        Send-UciCommand $evalSession 'position startpos'
+        Send-UciCommand $evalSession 'go depth 1'
+        $evalBest = Read-UciUntil $evalSession { param($line) $line -match '^bestmove ' } 'unreadable-eval bestmove' -ValidateUciOutput
+        Assert-LegalBestmoveLine $evalBest 'unreadable-eval'
+        Send-UciCommand $evalSession 'quit'
+        $evalLines = Complete-UciSession $evalSession $false
+        if (@($evalLines | Where-Object { $_ -match '^info string EvalFile rejected: ' }).Count -ne 1) {
+            throw 'an unreadable EvalFile must be rejected exactly once'
+        }
+        if (@($evalLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 1) {
+            throw 'the search after an unreadable EvalFile must still produce one bestmove'
+        }
+    } finally {
+        if ($evalDenied) {
+            try {
+                if ($IsWindows) {
+                    [System.IO.File]::Delete($deniedNet)
+                } else {
+                    Remove-Item -LiteralPath $deniedNet -Force -ErrorAction SilentlyContinue
+                }
+            } catch {
+            }
+        }
+    }
 }
 finally {
     Stop-AllUciSessions
