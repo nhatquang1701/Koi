@@ -1,4 +1,5 @@
 #include "koi/search_service.hpp"
+#include "koi/transposition_table.hpp"
 
 #include <memory>
 #include <mutex>

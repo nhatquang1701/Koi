@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 
+#include "koi/hash_types.hpp"
 #include "koi/move.hpp"
 
 namespace koi {
@@ -75,48 +76,6 @@ struct TranspositionEntry {
 
 static_assert(sizeof(TranspositionEntry) == 24,
               "TranspositionEntry must stay cache-friendly");
-
-enum class HashResizeStatus : std::uint8_t {
-    applied,
-    reduced,
-    unchanged,
-    disabled
-};
-
-enum class HashResizeReason : std::uint8_t {
-    none,
-    request_clamped,
-    physical_memory_cap,
-    commit_cap,
-    allocation_failed,
-    startup_unavailable
-};
-
-struct HashResizeResult {
-    std::size_t requested_mb = 0;
-    std::size_t effective_mb = 0;
-    std::size_t allocated_bytes = 0;
-    std::size_t segment_count = 0;
-    std::uint64_t total_physical_bytes = 0;
-    std::uint64_t available_physical_bytes = 0;
-    std::uint64_t available_commit_bytes = 0;
-    HashResizeStatus status = HashResizeStatus::unchanged;
-    HashResizeReason reason = HashResizeReason::none;
-};
-
-struct HashMemorySnapshot {
-    std::uint64_t total_physical_bytes = 0;
-    std::uint64_t available_physical_bytes = 0;
-    std::uint64_t available_commit_bytes = 0;
-};
-
-using HashMemoryProvider = std::function<HashMemorySnapshot()>;
-using HashAllocationFailureProvider = std::function<bool(std::size_t)>;
-
-struct HashMemoryPolicy {
-    HashMemoryProvider memory_provider;
-    HashAllocationFailureProvider allocation_failure;
-};
 
 // The search seam owns the exclusive access mode on behalf of one search; it
 // also drives the debug-only exclusive-session claim below, which stays

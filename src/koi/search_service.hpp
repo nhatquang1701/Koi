@@ -1,12 +1,13 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <memory>
 
 #include "koi/evaluator.hpp"
+#include "koi/hash_types.hpp"
 #include "koi/detail/search_constants.hpp"
 #include "koi/search_types.hpp"
-#include "koi/transposition_table.hpp"
 
 namespace koi {
 
