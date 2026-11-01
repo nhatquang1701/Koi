@@ -74,10 +74,10 @@ bool is_path_list(std::string_view text) {
     return text.find(kSyzygyPathSeparator) != std::string_view::npos;
 }
 
-bool acquire_fathom(const std::string& raw_path) {
+SyzygyLoadStatus acquire_fathom(const std::string& raw_path) {
     const std::string path_text = sanitized_path_list(raw_path);
     if (path_text.empty()) {
-        return false;
+        return SyzygyLoadStatus::empty_path;
     }
     std::lock_guard lock(fathom_mutex());
     FathomOwnership& ownership = fathom_ownership();
@@ -88,22 +88,23 @@ bool acquire_fathom(const std::string& raw_path) {
         path_list ? std::filesystem::path(path_text) : normalized_path(path_text);
     if (ownership.users != 0) {
         if (ownership.path != normalized) {
-            return false;
+            return SyzygyLoadStatus::path_conflict;
         }
         ++ownership.users;
-        return true;
+        return SyzygyLoadStatus::loaded;
     }
 
     const bool initialized = tb_init(normalized.string().c_str());
-    if (!initialized || TB_LARGEST == 0) {
-        if (initialized) {
-            tb_free();
-        }
-        return false;
+    if (!initialized) {
+        return SyzygyLoadStatus::init_failed;
+    }
+    if (TB_LARGEST == 0) {
+        tb_free();
+        return SyzygyLoadStatus::no_tables;
     }
     ownership.path = normalized;
     ownership.users = 1;
-    return true;
+    return SyzygyLoadStatus::loaded;
 }
 
 void release_fathom() noexcept {
@@ -233,6 +234,7 @@ public:
     std::atomic<std::uint8_t> probe_depth{1};
     std::atomic_bool fifty_move_rule{true};
     bool enabled = false;
+    SyzygyLoadStatus status = SyzygyLoadStatus::disabled;
     std::atomic<std::uint64_t> hits = 0;
 };
 
@@ -317,10 +319,20 @@ SyzygyTablebase::SyzygyTablebase(std::filesystem::path path, const std::uint8_t 
 #endif
     const bool readable_directory =
         path_list || std::filesystem::is_directory(impl_->path, path_error);
-    if (impl_->path.empty() || impl_->probe_limit == 0 || path_error || !readable_directory) {
+    if (impl_->path.empty()) {
+        impl_->status = SyzygyLoadStatus::empty_path;
         return;
     }
-    impl_->enabled = acquire_fathom(impl_->path.string());
+    if (impl_->probe_limit == 0) {
+        impl_->status = SyzygyLoadStatus::disabled;
+        return;
+    }
+    if (path_error || !readable_directory) {
+        impl_->status = SyzygyLoadStatus::path_not_directory;
+        return;
+    }
+    impl_->status = acquire_fathom(impl_->path.string());
+    impl_->enabled = impl_->status == SyzygyLoadStatus::loaded;
 }
 
 SyzygyTablebase::~SyzygyTablebase() {
@@ -330,6 +342,8 @@ SyzygyTablebase::~SyzygyTablebase() {
 }
 
 bool SyzygyTablebase::enabled() const noexcept { return impl_->enabled; }
+
+SyzygyLoadStatus SyzygyTablebase::load_status() const noexcept { return impl_->status; }
 
 int SyzygyTablebase::large_table_limit() const noexcept {
     return impl_->enabled ? static_cast<int>(TB_LARGEST) : 0;

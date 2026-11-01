@@ -82,7 +82,25 @@ void test_platform_path_list_is_forwarded_to_fathom() {
     const std::string list = first.string() + separator + second.string();
     const koi::SyzygyTablebase tablebase(list, 5, 1, true);
     require(tablebase.enabled(), "a platform SyzygyPath list must reach Fathom and load tables");
+    require(tablebase.load_status() == koi::SyzygyLoadStatus::loaded,
+            "an acquired Fathom path must report the loaded status");
     require(tablebase.large_table_limit() > 0, "the list must register the readable component's tables");
+}
+
+void test_load_status_classification() {
+    const koi::test::TempDirectory root;
+
+    const koi::SyzygyTablebase no_path;
+    require(no_path.load_status() == koi::SyzygyLoadStatus::empty_path,
+            "a default-constructed tablebase must report an empty path");
+
+    const koi::SyzygyTablebase disabled(std::filesystem::path("unused"), 0, 1, true);
+    require(disabled.load_status() == koi::SyzygyLoadStatus::disabled,
+            "a zero probe limit must report a disabled tablebase");
+
+    const koi::SyzygyTablebase missing(root.file("does-not-exist"), 7, 1, true);
+    require(missing.load_status() == koi::SyzygyLoadStatus::path_not_directory,
+            "a non-directory path must be classified as path_not_directory");
 }
 
 void test_syzygy_directory_status_classification() {
@@ -559,6 +577,7 @@ int main(int argc, char** argv) {
          test_snapshot_converts_rule_metadata_and_piece_bitboards},
         {"snapshot native rule state after pinned double push",
          test_snapshot_uses_native_rule_state_after_a_pinned_double_push},
+        {"load status classification", test_load_status_classification},
         {"platform path list reaches Fathom", test_platform_path_list_is_forwarded_to_fathom},
         {"Syzygy directory status classification", test_syzygy_directory_status_classification},
         {"zero-filled Syzygy tables", test_zero_payload_tables_are_corrupt},

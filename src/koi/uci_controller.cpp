@@ -1960,12 +1960,30 @@ void UciController::rebuild_syzygy() {
     // Surface load diagnostics and the largest registered table so a GUI can
     // tell an empty/mismatched directory apart from a working install.
     std::lock_guard lock(output_mutex_);
-    if (syzygy_->enabled()) {
+    switch (syzygy_->load_status()) {
+    case SyzygyLoadStatus::loaded:
         output_ << "info string Syzygy: " << syzygy_->large_table_limit()
                 << "-man tables at " << syzygy_path_.string() << '\n' << std::flush;
-    } else {
+        break;
+    case SyzygyLoadStatus::path_conflict:
+        // Fathom is process-global and already owns a different path.  Report
+        // the ownership conflict instead of pretending the directory is empty.
+        output_ << "info string Syzygy: path conflicts with an already-loaded tablebase (probing "
+                   "disabled)\n"
+                << std::flush;
+        break;
+    case SyzygyLoadStatus::init_failed:
+        output_ << "info string Syzygy: failed to initialize tables at " << syzygy_path_.string()
+                << " (probing disabled)\n"
+                << std::flush;
+        break;
+    case SyzygyLoadStatus::disabled:
+    case SyzygyLoadStatus::empty_path:
+    case SyzygyLoadStatus::path_not_directory:
+    case SyzygyLoadStatus::no_tables:
         output_ << "info string Syzygy: no usable tables at " << syzygy_path_.string() << '\n'
                 << std::flush;
+        break;
     }
 }
 

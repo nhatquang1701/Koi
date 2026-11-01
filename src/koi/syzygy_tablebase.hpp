@@ -64,6 +64,20 @@ enum class SyzygyDirectoryStatus : std::uint8_t {
     unreadable,
 };
 
+// Why a SyzygyTablebase instance did or did not become usable.  Fathom is
+// process-global and accepts only one path at a time, so a second instance with
+// a different path is a path conflict, not "no tables": report that distinctly
+// instead of misdiagnosing a working installation.
+enum class SyzygyLoadStatus : std::uint8_t {
+    disabled,
+    loaded,
+    empty_path,
+    path_not_directory,
+    path_conflict,
+    no_tables,
+    init_failed,
+};
+
 // Expected canonical size for a standard 3-4-5 man Syzygy table file name
 // (for example "KQvK.rtbw"); std::nullopt for unknown names such as 6-man
 // tables.  Used to reject truncated/oversized files before Fathom maps them.
@@ -92,6 +106,8 @@ public:
     SyzygyTablebase& operator=(const SyzygyTablebase&) = delete;
 
     [[nodiscard]] bool enabled() const noexcept;
+    // Why the instance is (not) probing; stable for the instance lifetime.
+    [[nodiscard]] SyzygyLoadStatus load_status() const noexcept;
     // Largest table registered in the loaded directory (0 when disabled).
     // While this instance is enabled Fathom cannot be re-initialised, so the
     // underlying TB_LARGEST global is stable and safe to read.
