@@ -108,4 +108,56 @@ if ($stderrClosed.ExitCode -ne 0) {
 }
 $stderrClosed.Dispose()
 
+# 4. Slow-consumer backpressure: the GUI does not drain stdout for a few
+# seconds while the engine emits high-volume MultiPV analysis; the engine may
+# block on the pipe, but must recover after the drain starts and still answer
+# stop/quit cleanly with exactly one bestmove and empty stderr.
+$slowStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+$slowStartInfo.FileName = $EnginePath
+$slowStartInfo.UseShellExecute = $false
+$slowStartInfo.CreateNoWindow = $true
+$slowStartInfo.RedirectStandardInput = $true
+$slowStartInfo.RedirectStandardOutput = $true
+$slowStartInfo.RedirectStandardError = $true
+$slow = [System.Diagnostics.Process]::new()
+$slow.StartInfo = $slowStartInfo
+if (-not $slow.Start()) {
+    throw "unable to start $EnginePath for the backpressure test"
+}
+$script:Processes.Add($slow)
+$slowErrTask = $slow.StandardError.ReadToEndAsync()
+$slow.StandardInput.WriteLine('uci')
+$slow.StandardInput.WriteLine('isready')
+$slow.StandardInput.WriteLine('setoption name MultiPV value 20')
+$slow.StandardInput.WriteLine('position startpos')
+$slow.StandardInput.WriteLine('go infinite')
+$slow.StandardInput.Flush()
+# Deliberately leave stdout undrained long enough for the pipe to fill.
+Start-Sleep -Milliseconds 3000
+$slowOutTask = $slow.StandardOutput.ReadToEndAsync()
+$slow.StandardInput.WriteLine('stop')
+$slow.StandardInput.Flush()
+# Give the unblocked engine time to process stop and publish the completion
+# before quit is read; quit-during-search legitimately suppresses bestmove.
+Start-Sleep -Milliseconds 1000
+$slow.StandardInput.WriteLine('quit')
+$slow.StandardInput.Flush()
+$slow.StandardInput.Close()
+if (-not $slow.WaitForExit($TimeoutMilliseconds)) {
+    try { $slow.Kill() } catch {}
+    throw 'engine hung while a slow consumer drained its stdout'
+}
+$slowOut = $slowOutTask.GetAwaiter().GetResult()
+$slowErr = $slowErrTask.GetAwaiter().GetResult()
+if ($slow.ExitCode -ne 0) {
+    throw "engine exited with $($slow.ExitCode) after slow-consumer drain"
+}
+if ($slowErr.Length -ne 0) {
+    throw "slow-consumer drain produced stderr: $slowErr"
+}
+if ($slowOut -notmatch '(?m)^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)??$') {
+    throw 'slow-consumer drain did not produce a legal bestmove'
+}
+$slow.Dispose()
+
 Write-Output 'PASS protocol broken pipe'

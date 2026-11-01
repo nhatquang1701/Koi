@@ -715,6 +715,31 @@ try {
     if (@($lockLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
         throw 'the released book must be used on the next search (no negative cache)'
     }
+
+    # 9k. Debug logging with an unusable path: enabling Debug and pointing
+    # DebugFile at a directory (then at a real file) must not disturb search or
+    # stderr; diagnostics never crash the engine.
+    $assetDebug = Join-Path $assetRoot 'engine-debug'
+    New-Item -ItemType Directory -Path $assetDebug -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetDebug $executableName)
+    $debugSession = Start-UciSession -Executable (Join-Path $assetDebug $executableName)
+    Send-UciCommand $debugSession 'uci'
+    [void](Read-UciUntil $debugSession { param($line) $line -eq 'uciok' } 'debug uciok' -ValidateUciOutput)
+    Send-UciCommand $debugSession 'isready'
+    [void](Read-UciUntil $debugSession { param($line) $line -eq 'readyok' } 'debug readyok' -ValidateUciOutput)
+    Send-UciCommand $debugSession 'setoption name Debug value true'
+    Send-UciCommand $debugSession "setoption name DebugFile value $assetDebug"
+    Send-UciCommand $debugSession 'position startpos'
+    Send-UciCommand $debugSession 'go depth 1'
+    $debugBest = Read-UciUntil $debugSession { param($line) $line -match '^bestmove ' } 'debug directory bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $debugBest 'debug-directory'
+    Send-UciCommand $debugSession "setoption name DebugFile value $(Join-Path $assetDebug 'koi-debug.log')"
+    Send-UciCommand $debugSession 'position startpos'
+    Send-UciCommand $debugSession 'go depth 1'
+    $debugBest2 = Read-UciUntil $debugSession { param($line) $line -match '^bestmove ' } 'debug file bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $debugBest2 'debug-file'
+    Send-UciCommand $debugSession 'quit'
+    [void](Complete-UciSession $debugSession $false)
 }
 finally {
     Stop-AllUciSessions
