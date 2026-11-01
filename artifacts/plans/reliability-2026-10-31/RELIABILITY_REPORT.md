@@ -107,8 +107,9 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
    transient-lock variant (R41) are covered.
 4. **Multi-hour soak**: a 200,000-round asset-churn soak completed on
    2026-11-01 (200,001 bestmoves, 29,922 scored, 2,034.5 s ≈ 34 min, RSS 29-83 MB,
-   exit 0), and a second 200k run on the post-asset-hardening engine is in
-   progress. An overnight (8 h+) run remains undone.
+   exit 0), and a second 200k run on the post-asset-hardening engine also
+   passed (200,001 bestmoves, 29,933 scored, 2,188.7 s, RSS 28-83 MB). An
+   overnight (8 h+) run remains undone.
 5. **Platform signals** (SIGTERM/SIGHUP on POSIX, console-close on Windows) are
    not part of the UCI contract; engine defaults apply.
 6. **CI backlog**: many pushes queued Windows/Linux CTests; latest green matrix
