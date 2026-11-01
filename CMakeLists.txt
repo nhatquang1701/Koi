@@ -1405,7 +1405,21 @@ if(POWERSHELL_EXECUTABLE)
         PROPERTIES LABELS "process;uci;heavy;reliability" RUN_SERIAL TRUE)
     set_tests_properties(koi_protocol_option_churn_process
         PROPERTIES LABELS "process;uci;reliability")
-    set_tests_properties(koi_protocol_broken_pipe_process
+        # OS-level allocation failure: Linux-only, because it relies on
+    # RLIMIT_AS via `ulimit -v`; the engine must report allocation_failed and
+    # keep searching with the previous table.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(
+            NAME koi_protocol_memory_limit_process
+            COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/protocol_memory_limit_test.ps1"
+                    -EnginePath "$<TARGET_FILE:koi_engine>"
+        )
+        koi_set_timeout(koi_protocol_memory_limit_process 120)
+        set_tests_properties(koi_protocol_memory_limit_process
+            PROPERTIES LABELS "process;uci;reliability")
+    endif()
+set_tests_properties(koi_protocol_broken_pipe_process
         PROPERTIES LABELS "process;uci;reliability")
     set_tests_properties(koi_engine_process koi_engine_perft_responsiveness PROPERTIES RUN_SERIAL TRUE)
     set_tests_properties(koi_engine_time_safety_process
