@@ -1,3 +1,4 @@
 # Measurement-tool dependency only; the C++ engine has no Python dependency.
 # Chess rules, PGN parsing and the UCI client live in tools/measurement/koi_chess.
 numpy
+python-chess

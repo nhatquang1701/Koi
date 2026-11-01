@@ -1454,6 +1454,43 @@ if(Python3_Interpreter_FOUND)
     )
 endif()
 
+# Randomized adversarial fuzzers (FEN, move lists, setoption, go/state).  They
+# need python-chess to generate valid random positions/move lists; when the
+# module is unavailable (for example in a source-tarball build without the
+# measurement requirements) the tests are simply not registered.
+if(Python3_Interpreter_FOUND)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c "import chess"
+        RESULT_VARIABLE KOI_PYTHON_CHESS_RESULT
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
+    if(KOI_PYTHON_CHESS_RESULT EQUAL 0)
+        file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/reliability")
+        set(KOI_RELIABILITY_FUZZ_DIR
+            "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/plans/reliability-2026-10-31")
+        foreach(KOI_FUZZ_SPEC IN ITEMS "fen:150" "move:150" "option:100" "go:100")
+            string(REPLACE ":" ";" KOI_FUZZ_PARTS "${KOI_FUZZ_SPEC}")
+            list(GET KOI_FUZZ_PARTS 0 KOI_FUZZ_NAME)
+            list(GET KOI_FUZZ_PARTS 1 KOI_FUZZ_CASES)
+            add_test(
+                NAME "koi_${KOI_FUZZ_NAME}_fuzz_process"
+                COMMAND "${Python3_EXECUTABLE}"
+                        "${KOI_RELIABILITY_FUZZ_DIR}/${KOI_FUZZ_NAME}_fuzz.py"
+                        --engine "$<TARGET_FILE:koi_engine>"
+                        --cases "${KOI_FUZZ_CASES}"
+                        --workers 2
+                        --out "${CMAKE_BINARY_DIR}/reliability/${KOI_FUZZ_NAME}-fuzz.json"
+            )
+            koi_set_timeout("koi_${KOI_FUZZ_NAME}_fuzz_process" 300)
+            set_tests_properties("koi_${KOI_FUZZ_NAME}_fuzz_process"
+                PROPERTIES LABELS "process;reliability")
+        endforeach()
+    else()
+        message(STATUS "python-chess unavailable: randomized reliability fuzzers not registered")
+    endif()
+endif()
+
 # Engine-spawning tests need a valid NNUE network now that the classical
 # evaluator is gone. Generate a small fixture network in the build directory and
 # point every test at it explicitly (an explicit KOI_NNUE_PATH keeps the UCI
