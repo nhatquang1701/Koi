@@ -139,6 +139,8 @@ python artifacts/plans/reliability-2026-10-31/fen_fuzz.py --engine <exe> --cases
   (Windows, Linux, macOS, docs); later heads are being checked as they finish.
 - The expanded reliability label (8 CTest entries) passed locally under
   AddressSanitizer: 8/8, 715.8 s wall, zero sanitizer reports.
+- A 1,000,000-round asset-churn soak (≈3 h) is running against the hardened
+  engine (`soak-1m-assetchurn.log`); two 200k runs already passed.
 - The Windows Debug helper now scopes a 120 s UCI wait to the 16 MiB book case
   and reserves four processors for the fuzz entries, so slow Debug runs do not
   time out or disturb match tests.
