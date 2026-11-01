@@ -88,6 +88,13 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
   detection/use; a broken Unix symlink falls back silently with a legal search.
 - Crafted Polyglot entry with an illegal move for the keyed position is never
   returned as `book move`; the engine falls back to a legal search answer.
+- Book state machine: linked book files (hardlink/symlink, broken symlink),
+  16 MiB all-same-key book, 65,536-distinct-key book, malformed move encodings,
+  `OwnBook` auto/false/true toggling, and book use across `ucinewgame` are pinned.
+- Syzygy fail-closed hardening: canonical-size manifest for the standard
+  3-4-5 man set, zero-filled body rejection (WDL and DTZ), mixed good/corrupt
+  directories rejected as a whole, and the real 290-file set passes the guard
+  (no false rejects). ASan covers the zero-body and mixed-directory cases.
 - CCRL package built (engines + NNUE + licenses, no book/tests/Stockfish);
   provenance audit in `artifacts/plans/ccrl-eligibility-2026-11-01/`.
 
