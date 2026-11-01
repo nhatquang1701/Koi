@@ -6,7 +6,7 @@ fuzzer feeds 2000 generated FEN-like lines (roughly half deliberately malformed,
 half valid random legal positions) through a real UCI session and checks crash,
 hang, stderr and bestmove invariants.
 
-Script: `artifacts/plans/reliability-2026-10-31/fen_fuzz.py`
+Script: `tests/python/reliability/fen_fuzz.py`
 (deterministic: `random.Random(20261101 + case)`; committed fixtures (generated once with python-chess) supply valid
 positions; invalid boards/fields are generated from
 random piece strings, mutated startpos, random ASCII and invalid field values).
@@ -35,7 +35,7 @@ Commands:
 
 ```powershell
 $env:KOI_NNUE_PATH = "<promoted net>"
-python artifacts/plans/reliability-2026-10-31/fen_fuzz.py `
+python tests/python/reliability/fen_fuzz.py `
   --engine build/full-release-gpu/koi-engine.exe --cases 2000 --workers 6 `
   --out artifacts/plans/reliability-2026-10-31/fen-fuzz.json
 # ASan run: --engine build/asan-reliability/koi-engine.exe --cases 500 --workers 4

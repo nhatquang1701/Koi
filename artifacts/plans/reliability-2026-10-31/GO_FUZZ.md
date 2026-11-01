@@ -7,7 +7,7 @@ controller state machine beyond the fixed corpus: mixed/contradictory limits
 searchmoves`), random valid positions, `isready`, `ucinewgame`, `stop`,
 `ponderhit`, MultiPV/Ponder/AnalyseMode toggles.
 
-Script: `artifacts/plans/reliability-2026-10-31/go_fuzz.py`
+Script: `tests/python/reliability/go_fuzz.py`
 (deterministic: `random.Random(20261101 + case)`; valid positions come from the committed `tests/data/reliability/valid-fens.txt` fixture, so no third-party Python dependency is needed). Each session:
 - `uci`, `isready`,
 - 3–15 random commands,
@@ -28,7 +28,7 @@ Commands:
 
 ```powershell
 $env:KOI_NNUE_PATH = "<promoted net>"
-python artifacts/plans/reliability-2026-10-31/go_fuzz.py `
+python tests/python/reliability/go_fuzz.py `
   --engine build/full-release-gpu/koi-engine.exe --cases 1000 --workers 6 `
   --out artifacts/plans/reliability-2026-10-31/go-fuzz.json
 # ASan: --engine build/asan-reliability/koi-engine.exe --cases 300 --workers 4

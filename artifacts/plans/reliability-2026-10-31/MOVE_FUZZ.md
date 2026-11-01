@@ -7,7 +7,7 @@ valid random games, mutated games, random UCI-like tokens (illegal squares,
 wrong promotions, Chess960-style castling `e1h1`, control bytes), and very long
 token lists (up to ~1500 tokens).
 
-Script: `artifacts/plans/reliability-2026-10-31/move_fuzz.py`
+Script: `tests/python/reliability/move_fuzz.py`
 (deterministic: `random.Random(20261101 + case)`; committed fixtures (generated once with python-chess) supply legal
 random games; malformed tokens are generated from a constrained alphabet).
 
@@ -34,7 +34,7 @@ Commands:
 
 ```powershell
 $env:KOI_NNUE_PATH = "<promoted net>"
-python artifacts/plans/reliability-2026-10-31/move_fuzz.py `
+python tests/python/reliability/move_fuzz.py `
   --engine build/full-release-gpu/koi-engine.exe --cases 2000 --workers 6 `
   --out artifacts/plans/reliability-2026-10-31/move-fuzz.json
 # ASan: --engine build/asan-reliability/koi-engine.exe --cases 500 --workers 4

@@ -40,10 +40,10 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
 | Resource soak | `protocol_soak_test.ps1` | Threads/Hash + SyzygyPath/BookFile churn; 60 rounds default; `-Rounds` for long runs |
 | Option churn | `protocol_option_churn_test.ps1` | Hash/Threads/MultiPV/EvalFile/BookFile/Syzygy during active search |
 | Broken pipe / stdio | `protocol_broken_pipe_test.ps1` | mid-search and pre-handshake disconnects, stderr close, slow consumer |
-| FEN fuzzer | `artifacts/.../fen_fuzz.py` | 2000 release + 500 ASan cases: 0 failures; also registered in CTest as `koi_fen_fuzz_process` |
-| Move-list fuzzer | `artifacts/.../move_fuzz.py` | registered as `koi_move_fuzz_process` |
-| setoption fuzzer | `artifacts/.../option_fuzz.py` | registered as `koi_option_fuzz_process` |
-| go/state fuzzer | `artifacts/.../go_fuzz.py` | registered as `koi_go_fuzz_process` |
+| FEN fuzzer | `tests/python/reliability/fen_fuzz.py` | 2000 release + 500 ASan cases: 0 failures; also registered in CTest as `koi_fen_fuzz_process` |
+| Move-list fuzzer | `tests/python/reliability/move_fuzz.py` | registered as `koi_move_fuzz_process` |
+| setoption fuzzer | `tests/python/reliability/option_fuzz.py` | registered as `koi_option_fuzz_process` |
+| go/state fuzzer | `tests/python/reliability/go_fuzz.py` | registered as `koi_go_fuzz_process` |
 | CCRL game harness | `artifacts/plans/ccrl-eligibility-2026-11-01/crash_1000.py` | 1000 games vs SF19, Mac: 0 crashes/illegal/protocol |
 | Permission matrix | fuzz sections 9o/9p/9q | unreadable book/Syzygy/EvalFile (Windows ACL, Unix chmod) |
 | Boot fail-closed matrix | fuzz section 31 | missing/directory/corrupt/unreadable `KOI_NNUE_PATH`: exit 4, no protocol output |
@@ -147,7 +147,7 @@ ctest --test-dir build/asan-reliability -C Debug -R koi_protocol_fuzz_process --
 # long soak:
 pwsh -File tests/integration/uci/protocol_soak_test.ps1 -EnginePath <exe> -Rounds 30000
 # fuzzers (fixture-driven, no third-party runtime dependency):
-python artifacts/plans/reliability-2026-10-31/fen_fuzz.py --engine <exe> --cases 2000 --out out.json
+python tests/python/reliability/fen_fuzz.py --engine <exe> --cases 2000 --out out.json
 ```
 
 ## 6. Current tree / CI

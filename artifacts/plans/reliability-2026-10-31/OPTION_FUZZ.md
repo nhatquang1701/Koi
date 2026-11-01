@@ -4,7 +4,7 @@
 Exercises `UciController::handle_setoption` parsing and state handling with
 random/hostile option commands, then requires one healthy depth-1 search.
 
-Script: `artifacts/plans/reliability-2026-10-31/option_fuzz.py`
+Script: `tests/python/reliability/option_fuzz.py`
 (deterministic: `random.Random(20261101 + case)`). Each session sends 5–40
 random commands, each followed by `isready`, then `position startpos / go depth
 1 / stop / quit`.
@@ -33,7 +33,7 @@ Commands:
 
 ```powershell
 $env:KOI_NNUE_PATH = "<promoted net>"
-python artifacts/plans/reliability-2026-10-31/option_fuzz.py `
+python tests/python/reliability/option_fuzz.py `
   --engine build/full-release-gpu/koi-engine.exe --cases 1000 --workers 6 `
   --out artifacts/plans/reliability-2026-10-31/option-fuzz.json
 # ASan: --engine build/asan-reliability/koi-engine.exe --cases 300 --workers 4
