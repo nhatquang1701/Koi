@@ -1449,6 +1449,40 @@ void test_large_hash_option_is_capped_without_crashing_the_controller() {
             "a capped large hash request must leave isready usable");
 }
 
+void test_hash_allocation_failure_preserves_table_and_controller() {
+    // Allow the initial table allocation, then fail every resize: the Hash
+    // option must report allocation_failed, keep the previous table, and leave
+    // the controller able to search normally.
+    auto allocations = std::make_shared<int>(0);
+    koi::HashMemoryPolicy policy;
+    policy.allocation_failure = [allocations](std::size_t) {
+        return (*allocations)++ > 0;
+    };
+
+    std::istringstream input(
+        "setoption name Hash value 64\n"
+        "isready\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "quit\n");
+    std::ostringstream output;
+    std::ostringstream diagnostics;
+    UciController controller(input, output, diagnostics,
+                              koi::SearchService{std::make_shared<koi::test::MaterialEvaluator>(),
+                                                 std::move(policy)});
+    require(controller.run() == 0,
+            "a failed hash allocation must not crash the controller");
+    require(diagnostics.str().empty(),
+            "a failed hash allocation must not write diagnostics");
+    require(output.str().find("reason allocation_failed") != std::string::npos,
+            "a failed hash allocation must be reported as allocation_failed");
+    require(output.str().find("readyok\n") != std::string::npos,
+            "isready must stay usable after a failed hash allocation");
+    require(lines_starting_with(output_lines(output.str()), "bestmove ").size() == 1,
+            "the controller must still complete one search after a failed hash allocation");
+}
+
 void test_immediate_ponderhit_without_observed_reply_still_answers() {
     GatedInputBuffer input(
         "position startpos\n"
@@ -2345,6 +2379,7 @@ int main(int argc, char** argv) {
         {"opening-book option generation replacement", test_book_option_changes_suppress_active_search_generations},
         {"Hash and Clear Hash contract", test_hash_options_preserve_the_contract_and_never_advertise_threads},
         {"large Hash safety", test_large_hash_option_is_capped_without_crashing_the_controller},
+        {"hash allocation failure", test_hash_allocation_failure_preserves_table_and_controller},
         {"Threads validation", test_threads_option_accepts_valid_values_and_ignores_invalid_values},
         {"Threads and Move Overhead generation replacement",
          test_threads_and_move_overhead_changes_suppress_the_active_generation},
