@@ -1,8 +1,9 @@
 # Architecture verification snapshot (1.0.0 baseline)
 
 Branch: `koi-engine`
-Verified heads: code `325c7c1` and certification commit `85ebba7`; both are
-fully green on Windows/Linux/docs (watched to completion). Earlier CI head
+Verified heads: code `325c7c1`, certification commit `85ebba7`, and the final
+hygiene head `fc5311b`; all are fully green on Windows/Linux/docs (watched to
+completion). Earlier CI head
 `0ac7758` and the intermediate refactors were validated locally and under ASan.
 Date: 2026-11-01
 
