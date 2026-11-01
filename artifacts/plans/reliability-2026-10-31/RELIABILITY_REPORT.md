@@ -80,15 +80,20 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
    allocation-failure path is now covered by an injected policy (R60), but no
    process-wide memory-limit/job-object run exists. Large real allocations were
    deliberately not requested to avoid destabilising the host.
-2. **Symlinked assets** were not exercised; read-permission denial for book,
-   Syzygy and EvalFile is now covered (R57/R58/R59), and the transient-lock
-   variant is covered (R41).
-3. **Multi-hour soak**: a 200,000-round asset-churn soak completed on
+2. **Crafted same-size Syzygy payloads**: the standard 3-4-5 man set is now
+   canonical-size-validated (R65), which catches truncation/oversize. A crafted
+   file of exactly the expected size with a garbage header can still hang Fathom
+   during probing (third-party trust boundary); unknown 6-man names are not
+   size-validated at all. Auto-discovery remains silent for rejected directories.
+3. **Directory junctions/UNC paths** remain untested; file hardlinks/symlinks
+   (R62), read-permission denial for book/Syzygy/EvalFile (R57/R58/R59) and the
+   transient-lock variant (R41) are covered.
+4. **Multi-hour soak**: a 200,000-round asset-churn soak completed on
    2026-11-01 (200,001 bestmoves, 29,922 scored, 2,034.5 s ≈ 34 min, RSS 29-83 MB,
    exit 0), after the earlier 100k runs. An overnight (8 h+) run remains undone.
-4. **Platform signals** (SIGTERM/SIGHUP on POSIX, console-close on Windows) are
+5. **Platform signals** (SIGTERM/SIGHUP on POSIX, console-close on Windows) are
    not part of the UCI contract; engine defaults apply.
-5. **CI backlog**: many pushes queued Windows/Linux CTests; latest green matrix
+6. **CI backlog**: many pushes queued Windows/Linux CTests; latest green matrix
    may lag HEAD by a few commits. macOS runs are occasionally cancelled by the
    workflow concurrency policy.
 
