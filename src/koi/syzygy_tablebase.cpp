@@ -858,6 +858,28 @@ SyzygyDirectoryStatus syzygy_directory_status(const std::filesystem::path& direc
                 return SyzygyDirectoryStatus::corrupt;
             }
         }
+        // A zero-filled payload that happens to match the canonical size used
+        // to be handed to Fathom, where it could hang a probe.  Every real
+        // Syzygy table has non-zero header/data bytes immediately after the
+        // 4-byte magic; reject the all-zero body before mapping the file.
+        std::ifstream payload(entry.path(), std::ios::binary);
+        std::array<unsigned char, 64> payload_bytes{};
+        payload.read(reinterpret_cast<char*>(payload_bytes.data()),
+                     static_cast<std::streamsize>(payload_bytes.size()));
+        const std::streamsize payload_count = payload.gcount();
+        if (payload_count <= 4) {
+            return SyzygyDirectoryStatus::corrupt;
+        }
+        bool payload_nonzero = false;
+        for (std::streamsize i = 4; i < payload_count; ++i) {
+            if (payload_bytes[static_cast<std::size_t>(i)] != 0) {
+                payload_nonzero = true;
+                break;
+            }
+        }
+        if (!payload_nonzero) {
+            return SyzygyDirectoryStatus::corrupt;
+        }
     }
     return has_table ? SyzygyDirectoryStatus::usable : SyzygyDirectoryStatus::empty;
 }

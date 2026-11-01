@@ -1422,6 +1422,36 @@ try {
         $env:KOI_UCI_TIMEOUT_MS = $savedUciTimeout
     }
 
+    # 9ab. Canonically sized but zero-filled table body: must be rejected as
+    # corrupt before Fathom maps it (this used to hang a probe).
+    $assetZeroTb = Join-Path $assetRoot 'engine-zero-body-syzygy'
+    New-Item -ItemType Directory -Path $assetZeroTb -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetZeroTb $executableName)
+    $zeroTables = Join-Path $assetZeroTb 'tables'
+    New-Item -ItemType Directory -Path $zeroTables -Force | Out-Null
+    [byte[]]$zeroWdl = [byte[]]::new(272)
+    [byte[]]$wdlMagic = 0x71, 0xE8, 0x23, 0x5D
+    [Array]::Copy($wdlMagic, 0, $zeroWdl, 0, 4)
+    [System.IO.File]::WriteAllBytes((Join-Path $zeroTables 'KQvK.rtbw'), $zeroWdl)
+    $zeroSession = Start-UciSession -Executable (Join-Path $assetZeroTb $executableName)
+    Send-UciCommand $zeroSession 'uci'
+    [void](Read-UciUntil $zeroSession { param($line) $line -eq 'uciok' } 'zero-body-syzygy uciok' -ValidateUciOutput)
+    Send-UciCommand $zeroSession "setoption name SyzygyPath value $zeroTables"
+    Send-UciCommand $zeroSession 'isready'
+    [void](Read-UciUntil $zeroSession { param($line) $line -eq 'readyok' } 'zero-body-syzygy readyok' -ValidateUciOutput)
+    Send-UciCommand $zeroSession 'position startpos'
+    Send-UciCommand $zeroSession 'go depth 1'
+    $zeroBest = Read-UciUntil $zeroSession { param($line) $line -match '^bestmove ' } 'zero-body-syzygy bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $zeroBest 'zero-body-syzygy'
+    Send-UciCommand $zeroSession 'quit'
+    $zeroLines = Complete-UciSession $zeroSession $false
+    if (@($zeroLines | Where-Object { $_ -match '^info string Syzygy: corrupt tables at .+ \(probing disabled\)$' }).Count -ne 1) {
+        throw 'a canonical-size zero-filled table must be rejected as corrupt once'
+    }
+    if (@($zeroLines | Where-Object { $_ -match '^info string Syzygy: [0-9]+-man tables' }).Count -ne 0) {
+        throw 'a canonical-size zero-filled table must not be announced as usable'
+    }
+
     # 9aa. OwnBook toggling with an auto-detected book: auto use, explicit
     # false disables it, explicit true re-enables it, detection announced once.
     $assetToggle = Join-Path $assetRoot 'engine-ownbook-toggle'
