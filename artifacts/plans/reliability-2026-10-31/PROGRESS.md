@@ -27,6 +27,7 @@ Updated: 2026-10-31 (round 3: sanitizer baseline, fail-closed assets, packaging 
 | R8 bundled release book | fixed | custom CC0 book, 752,320 B, sha `2ee7643d...`; packaging input updated |
 | R9 release archives | fixed | developer tools removed from archives; engine + assets only; packaging tests green |
 | R34 ASan unit label | pass* | 20/24 suites, zero ASan reports; 4 blocked by local %TEMP% quirk |
+| R41 transient locked book | fixed | first search falls back, released book detected/used; no negative cache |
 | R40 suite revalidation | pass* | release 4/4; ASan fuzz clean; 58/66 local non-heavy, 8 environment quirks |
 | R39 100k-round soak | pass | 100,001 bestmoves, 14969 scored, 1329 s, bounded RSS |
 | R38 exhaustive option-invalid matrix | pass | all advertised options reject malformed values; Release + ASan green |
