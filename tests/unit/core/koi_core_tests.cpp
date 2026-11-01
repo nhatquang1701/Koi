@@ -14,13 +14,11 @@
 
 #include "koi/game_state.hpp"
 #include "koi/position.hpp"
-#include "koi/move_chooser.hpp"
 
 namespace {
 
 using koi::Move;
 using koi::Position;
-using koi::RandomMoveChooser;
 
 static_assert(sizeof(Move) == sizeof(std::uint32_t),
               "Koi moves must remain 32-bit packed values");
@@ -452,25 +450,6 @@ void test_checkmate_and_stalemate_have_no_legal_moves() {
     require(stalemate.legal_moves().empty(), "stalemate position must have no legal moves");
 }
 
-void test_random_chooser_returns_a_legal_move() {
-    const koi::GameState state;
-    RandomMoveChooser chooser(1234);
-
-    const Move selected = chooser.choose(state);
-    require(state.is_legal(selected), "random chooser must return a legal move");
-}
-
-void test_seeded_choosers_are_repeatable() {
-    const koi::GameState state;
-    RandomMoveChooser first(5678);
-    RandomMoveChooser second(5678);
-
-    for (int i = 0; i < 12; ++i) {
-        require(first.choose(state).uci() == second.choose(state).uci(),
-                "choosers with the same seed must produce the same sequence");
-    }
-}
-
 void test_position_features_refresh_after_make_and_unmake() {
     koi::GameState state = koi::GameState::startpos();
     const koi::Move move = *koi::Move::parse_uci("e2e4");
@@ -824,8 +803,6 @@ int main(int argc, char** argv) {
         {"compatibility position forwarding", test_position_forwards_fen_and_move_application},
         {"native search state contract", test_native_position_exposes_search_state_contract},
         {"checkmate and stalemate", test_checkmate_and_stalemate_have_no_legal_moves},
-        {"random chooser legality", test_random_chooser_returns_a_legal_move},
-        {"seeded chooser repeatability", test_seeded_choosers_are_repeatable},
         {"position feature freshness", test_position_features_refresh_after_make_and_unmake},
         {"position feature concurrent reads", test_position_features_are_safe_for_concurrent_const_reads},
         {"position feature concurrent copy", test_copying_a_const_state_is_safe_while_its_feature_cache_is_populated},

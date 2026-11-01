@@ -334,7 +334,6 @@ set(KOI_CORE_SOURCES
     src/koi/gpu/gpu_nnue_service.cpp
     src/koi/gpu/nnue_gpu_evaluator.cpp
     src/koi/move.cpp
-    src/koi/move_chooser.cpp
     src/koi/nnue.cpp
     src/koi/opening_book.cpp
     src/koi/perft.cpp
@@ -343,7 +342,6 @@ set(KOI_CORE_SOURCES
     src/koi/search_ordering.cpp
     src/koi/static_exchange.cpp
     src/koi/syzygy_tablebase.cpp
-    src/koi/strength_suite.cpp
     src/koi/time_manager.cpp
     src/koi/transposition_table.cpp
     src/koi/uci_controller.cpp
@@ -386,6 +384,16 @@ endfunction()
 # CPU detection is compiled for the baseline instruction set and shared by every
 # variant: a binary built for AVX2/AVX-512 must be able to ask whether the host
 # supports its instruction set before executing anything else.
+# Benchmark/strength fixtures are tooling, not part of the engine runtime.  Keep
+# them out of koi_core so the engine target contains only engine code; koi-bench
+# and the strength tests link this small static library explicitly.
+add_library(koi_strength_suite STATIC
+    src/koi/strength_suite.cpp
+)
+target_include_directories(koi_strength_suite PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 add_library(koi_cpu_features OBJECT src/koi/cpu_features.cpp)
 target_include_directories(koi_cpu_features PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -807,7 +815,7 @@ add_executable(koi_strength_tests
     tests/unit/search/koi_strength_tests.cpp
 )
 
-target_link_libraries(koi_strength_tests PRIVATE koi_core)
+target_link_libraries(koi_strength_tests PRIVATE koi_core koi_strength_suite)
 
 add_test(NAME koi_strength_tests COMMAND koi_strength_tests)
 
@@ -855,7 +863,7 @@ add_executable(koi_bench
     tools/engine/koi_bench.cpp
 )
 
-target_link_libraries(koi_bench PRIVATE koi_core)
+target_link_libraries(koi_bench PRIVATE koi_core koi_strength_suite)
 set_target_properties(koi_bench PROPERTIES OUTPUT_NAME "koi-bench")
 
 add_executable(koi_replay
