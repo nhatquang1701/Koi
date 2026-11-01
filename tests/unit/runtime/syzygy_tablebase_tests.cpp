@@ -118,6 +118,33 @@ void test_syzygy_directory_status_classification() {
             "a directory with wrong-magic tables must be classified as corrupt");
 }
 
+void test_zero_payload_tables_are_corrupt() {
+    const koi::test::TempDirectory root;
+    const std::filesystem::path zero_body = root.file("zero-body");
+    const std::filesystem::path tiny_valid = root.file("tiny-valid");
+    std::filesystem::create_directories(zero_body);
+    std::filesystem::create_directories(tiny_valid);
+    {
+        std::ofstream table(zero_body / "KQvK.rtbw", std::ios::binary);
+        const unsigned char magic[4] = {0x71, 0xE8, 0x23, 0x5D};
+        table.write(reinterpret_cast<const char*>(magic), 4);
+        table.write(std::string(268, '\0').data(), 268);
+    }
+    {
+        // KNvK.rtbw is canonically 80 bytes; real files carry non-zero header
+        // bytes immediately after the magic.
+        std::ofstream table(tiny_valid / "KNvK.rtbw", std::ios::binary);
+        const unsigned char magic[4] = {0x71, 0xE8, 0x23, 0x5D};
+        table.write(reinterpret_cast<const char*>(magic), 4);
+        table.write("\x01", 1);
+        table.write(std::string(75, '\0').data(), 75);
+    }
+    require(koi::syzygy_directory_status(zero_body) == koi::SyzygyDirectoryStatus::corrupt,
+            "a canonically sized zero-filled table body must be corrupt");
+    require(koi::syzygy_directory_status(tiny_valid) == koi::SyzygyDirectoryStatus::usable,
+            "a tiny real-like table with a non-zero payload must be usable");
+}
+
 void test_standard_syzygy_size_manifest() {
     const auto expect = [](std::string_view name, std::uint64_t size) {
         const auto found = koi::expected_standard_syzygy_size(name);
@@ -513,6 +540,7 @@ int main(int argc, char** argv) {
          test_snapshot_uses_native_rule_state_after_a_pinned_double_push},
         {"platform path list reaches Fathom", test_platform_path_list_is_forwarded_to_fathom},
         {"Syzygy directory status classification", test_syzygy_directory_status_classification},
+        {"zero-filled Syzygy tables", test_zero_payload_tables_are_corrupt},
         {"standard Syzygy size manifest", test_standard_syzygy_size_manifest},
         {"all-empty path-list components are inert", test_empty_path_list_components_are_dropped},
         {"policy setters do not reload Fathom", test_policy_setters_do_not_reload_fathom},
