@@ -1,6 +1,7 @@
 #include "koi/uci_controller.hpp"
 
 #include "koi/detail/debug_log.hpp"
+#include "koi/detail/uci_option_table.hpp"
 #include "koi/syzygy_tablebase.hpp"
 
 #include <algorithm>
@@ -35,6 +36,27 @@ namespace koi {
 
 namespace {
 
+using detail::UciOptionDescriptor;
+using detail::UciOptionId;
+using detail::UciOptionKind;
+using detail::find_uci_option;
+using detail::kMaximumBookDepth;
+using detail::kMaximumBookSafetyDepth;
+using detail::kMaximumContemptCp;
+using detail::kMaximumHashMegabytes;
+using detail::kMaximumMoveOverheadMs;
+using detail::kMaximumMultiPv;
+using detail::kMaximumRandomSeed;
+using detail::kMaximumSlowMoverPercent;
+using detail::kMaximumSyzygyInteriorDepth;
+using detail::kMaximumSyzygyProbeDepth;
+using detail::kMaximumSyzygyProbeLimit;
+using detail::kMinimumHashMegabytes;
+using detail::kMinimumMultiPv;
+using detail::kMinimumSlowMoverPercent;
+using detail::kMinimumSyzygyProbeDepth;
+using detail::kUciOptions;
+
 enum class BoundedLineRead : std::uint8_t {
     eof,
     line,
@@ -63,26 +85,10 @@ BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& lin
     return any ? BoundedLineRead::line : BoundedLineRead::eof;
 }
 
-constexpr std::uint64_t kMaximumRandomSeed = 2'147'483'647;
-constexpr std::uint64_t kMinimumHashMegabytes = 1;
-constexpr std::uint64_t kMaximumHashMegabytes = 4'096;
 // The UCI surface no longer exposes a Speed option; internal time management
 // keeps the neutral 100 % factor so the time-manager semantics and the
 // koi-bench `--speed` API stay unchanged.
 constexpr std::uint8_t kFixedSpeedPercent = 100;
-constexpr std::uint64_t kMinimumSlowMoverPercent = 10;
-constexpr std::uint64_t kMaximumSlowMoverPercent = 1'000;
-constexpr std::uint64_t kMaximumMoveOverheadMs = 5'000;
-constexpr std::uint64_t kMaximumContemptCp = 1'000;
-constexpr std::uint64_t kMinimumMultiPv = 1;
-constexpr std::uint64_t kMaximumMultiPv = 16;
-constexpr std::uint64_t kMaximumBookDepth = 40;
-constexpr std::uint64_t kMaximumBookSafetyDepth = 3;
-constexpr std::uint64_t kMinimumSyzygyProbeDepth = 1;
-constexpr std::uint64_t kMaximumSyzygyProbeDepth = 100;
-constexpr std::uint64_t kMaximumSyzygyProbeLimit = 7;
-constexpr std::uint64_t kMinimumSyzygyInteriorDepth = 0;
-constexpr std::uint64_t kMaximumSyzygyInteriorDepth = 100;
 constexpr int kWdlScoreLimit = 1'000;
 // Bounded fallback for a bare `go` and for malformed or asymmetric clock
 // commands. A UCI `go` always has to be answered, so a missing usable limit
@@ -158,137 +164,6 @@ bool equals_ignore_case(std::string_view left, std::string_view right) {
         }
     }
     return true;
-}
-
-enum class UciOptionKind {
-    check,
-    spin,
-    string,
-    button,
-    combo,
-};
-
-enum class UciOptionId {
-    random_seed,
-    hash,
-    threads,
-    analyse_mode,
-    multi_pv,
-    ponder,
-    own_book,
-    book_file,
-    book_depth,
-    book_random,
-    book_safety,
-    book_safety_depth,
-    clear_hash,
-    show_wdl,
-    move_overhead,
-    dynamic_overhead,
-    slow_mover,
-    contempt,
-    strength_mode,
-    syzygy_path,
-    syzygy_probe_depth,
-    syzygy_probe_limit,
-    syzygy_interior_depth,
-    syzygy_50_move_rule,
-    eval_file,
-    gpu_nnue,
-    debug,
-    debug_file,
-};
-
-struct UciOptionDescriptor {
-    std::string_view name;
-    UciOptionKind kind;
-    UciOptionId id;
-    std::string_view default_value;
-    std::uint64_t minimum;
-    std::uint64_t maximum;
-    bool dynamic_maximum;
-    bool advertised;
-    // `var` clauses of a combo option, without the leading "var", e.g.
-    // "var auto var on var off".  Empty for every other kind.
-    std::string_view combo_values{};
-};
-
-// Single source of truth for the UCI option surface. Both `write_handshake`
-// and `handle_setoption` consume this table, so an advertised option can never
-// drift out of sync with the option the controller actually applies. The order
-// of the entries is the order advertised to a GUI and must stay stable.
-constexpr std::array<UciOptionDescriptor, 28> kUciOptions{{
-    {"RandomSeed", UciOptionKind::spin, UciOptionId::random_seed, "0", 0,
-     kMaximumRandomSeed, false, true},
-    {"Hash", UciOptionKind::spin, UciOptionId::hash, "512", kMinimumHashMegabytes,
-     kMaximumHashMegabytes, false, true},
-    {"Threads", UciOptionKind::spin, UciOptionId::threads, "1", 1, 0, true, true},
-    {"UCI_AnalyseMode", UciOptionKind::check, UciOptionId::analyse_mode, "false", 0, 0, false,
-     true},
-    {"MultiPV", UciOptionKind::spin, UciOptionId::multi_pv, "1", kMinimumMultiPv,
-     kMaximumMultiPv, false, true},
-    {"Ponder", UciOptionKind::check, UciOptionId::ponder, "false", 0, 0, false, true},
-    {"OwnBook", UciOptionKind::check, UciOptionId::own_book, "false", 0, 0, false, true},
-    {"BookFile", UciOptionKind::string, UciOptionId::book_file, "book.bin", 0, 0, false, true},
-    {"BookDepth", UciOptionKind::spin, UciOptionId::book_depth, "16", 0, kMaximumBookDepth,
-     false, true},
-    {"BookRandom", UciOptionKind::check, UciOptionId::book_random, "false", 0, 0, false, true},
-    {"BookSafety", UciOptionKind::check, UciOptionId::book_safety, "true", 0, 0, false, true},
-    {"BookSafetyDepth", UciOptionKind::spin, UciOptionId::book_safety_depth, "2", 0,
-     kMaximumBookSafetyDepth, false, true},
-    {"Clear Hash", UciOptionKind::button, UciOptionId::clear_hash, "", 0, 0, false, true},
-    {"UCI_ShowWDL", UciOptionKind::check, UciOptionId::show_wdl, "false", 0, 0, false, true},
-    {"Move Overhead", UciOptionKind::spin, UciOptionId::move_overhead, "30", 0,
-     kMaximumMoveOverheadMs, false, true},
-    // Derive the per-move overhead from the time control (2% of the remaining
-    // clock, 10..100 ms) instead of the fixed Move Overhead value.
-    {"Dynamic Overhead", UciOptionKind::check, UciOptionId::dynamic_overhead, "false", 0, 0,
-     false, true},
-    {"Slow Mover", UciOptionKind::spin, UciOptionId::slow_mover, "100", kMinimumSlowMoverPercent,
-     kMaximumSlowMoverPercent, false, true},
-    // Draw avoidance: a draw is scored -Contempt for Koi and +Contempt for the
-    // opponent, so Koi only accepts a draw when every alternative is worse.
-    {"Contempt", UciOptionKind::spin, UciOptionId::contempt, "0", 0, kMaximumContemptCp, false,
-     true},
-    {"StrengthMode", UciOptionKind::check, UciOptionId::strength_mode, "false", 0, 0, false, true},
-    {"SyzygyPath", UciOptionKind::string, UciOptionId::syzygy_path, "", 0, 0, false, true},
-    {"SyzygyProbeDepth", UciOptionKind::spin, UciOptionId::syzygy_probe_depth, "1",
-     kMinimumSyzygyProbeDepth, kMaximumSyzygyProbeDepth, false, true},
-    {"SyzygyProbeLimit", UciOptionKind::spin, UciOptionId::syzygy_probe_limit, "7", 0,
-     kMaximumSyzygyProbeLimit, false, true},
-    // Experimental, unvalidated interior probing.  0 keeps root-only probing;
-    // SyzygyProbeDepth continues to gate the root probe.
-    {"SyzygyInteriorDepth", UciOptionKind::spin, UciOptionId::syzygy_interior_depth, "0",
-     kMinimumSyzygyInteriorDepth, kMaximumSyzygyInteriorDepth, false, true},
-    {"Syzygy50MoveRule", UciOptionKind::check, UciOptionId::syzygy_50_move_rule, "true", 0, 0,
-     false, true},
-    // Empty keeps the boot-time NNUE network. A non-empty path loads and
-    // activates another Koi NNUE network; a rejected file keeps the current
-    // evaluator (a network is mandatory since the HCE removal, 2026-10-28).
-    {"EvalFile", UciOptionKind::string, UciOptionId::eval_file, "", 0, 0, false, true},
-    // EXPERIMENTAL, OFF BY DEFAULT, and scheduled for removal.  GPU inference for
-    // a compatible v5 NNUE network: `auto` uses the GPU when this build has the
-    // kernel, the CUDA driver loads, and the search uses more than one thread;
-    // `on` requests the GPU and falls back to the CPU with a diagnostic when it
-    // is unavailable; `off` (default) never uses it.  Precedence: an explicit
-    // `off` from this option or KOI_GPU_NNUE=0 always wins, otherwise a non-empty
-    // KOI_GPU_NNUE other than "0" forces `on` as a test override, otherwise this
-    // option decides.
-    {"GpuNnue", UciOptionKind::combo, UciOptionId::gpu_nnue, "off", 0, 0, false, true,
-     "var auto var on var off"},
-    // Developer diagnostics stay settable but are intentionally not advertised.
-    {"Debug", UciOptionKind::check, UciOptionId::debug, "false", 0, 0, false, false},
-    {"DebugFile", UciOptionKind::string, UciOptionId::debug_file, "koi-debug.log", 0, 0, false,
-     false},
-}};
-
-const UciOptionDescriptor* find_uci_option(std::string_view name) {
-    for (const UciOptionDescriptor& option : kUciOptions) {
-        if (equals_ignore_case(name, option.name)) {
-            return &option;
-        }
-    }
-    return nullptr;
 }
 
 std::uint64_t option_maximum(const UciOptionDescriptor& option) {
