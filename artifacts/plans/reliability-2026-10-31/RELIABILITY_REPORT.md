@@ -4,9 +4,9 @@ Status: **active** (until the user says "Stop"). No version bump, tag, or releas
 has been made for this work. Engine source changes in this program:
 1 MiB bounded protocol lines; Fathom Syzygy path-list sanitization + per-component
 magic validation (ASan heap-buffer-overflow fix); SIGPIPE ignore on POSIX; NNUE
-refresh/threat-copy micro-optimizations; `currmovenumber` emission; empty-dir
-Syzygy classification; book/analysis/eligibility behavior pinned. Everything else
-is test/evidence/tooling.
+refresh/threat-copy micro-optimizations; `currmovenumber` emission; empty-dir and
+unreadable Syzygy classification; truthful unreadable-book detection; book/
+analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
 
 ## 1. Contracts hardened
 
@@ -22,9 +22,12 @@ is test/evidence/tooling.
   `searchmoves`; contradictory `go` limits; weird clock/increment values.
 - **Fail-closed assets**: book size/multiple/16 MiB caps; transient lock (no
   negative cache); corrupt/truncated/removed/hot-added book; analysis/MultiPV/
-  infinite/ponder/searchmoves book eligibility; corrupt Syzygy dirs and path
-  lists (component-wise magic validation); invalid EvalFile forms (missing,
-  empty, directory, random bytes); bad DebugFile paths/directories.
+  infinite/ponder/searchmoves book eligibility; **unreadable** book (ACL/chmod)
+  is not announced as detected; corrupt **and unreadable** Syzygy dirs/path-list
+  components are classified and reported distinctly; invalid or unreadable
+  EvalFile forms (missing, empty, directory, random bytes, permission-denied);
+  bad DebugFile paths/directories. Permission-denied regressions exist for all
+  three assets (book, Syzygy, network).
 - **Raw stdio**: 1 MiB line bound, binary/NUL stdin, CRLF, tab separators,
   closed stdout/stderr (GUI crash), slow-consumer backpressure, PID-level
   process tests.
@@ -42,6 +45,7 @@ is test/evidence/tooling.
 | setoption fuzzer | `option_fuzz.py` | 1000 + 300 cases: 0 failures |
 | go/state fuzzer | `go_fuzz.py` | 1000 + 300 cases: 0 failures |
 | CCRL game harness | `artifacts/plans/ccrl-eligibility-2026-11-01/crash_1000.py` | 1000 games vs SF19, Mac: 0 crashes/illegal/protocol |
+| Permission matrix | fuzz sections 9o/9p/9q | unreadable book/Syzygy/EvalFile (Windows ACL, Unix chmod) |
 | ASan tree | `build/asan-reliability` | reliability legs + 20/24 unit suites clean (4 local `%TEMP%` quirks) |
 | TSan | Linux CI `linux-tsan` job | 64 TT mutexes require `detect_deadlocks=0` |
 
@@ -56,19 +60,28 @@ is test/evidence/tooling.
   zero crashes, timeouts, unexpected stderr or malformed output.
 - 1000-game ultra-fast Koi-vs-Stockfish run on Mac arm64: 0 crashes/timeouts/
   illegal moves/protocol violations (997 checkmate, 3 fivefold, 90.2 s).
+- Read-permission matrix: unreadable book is not announced; unreadable Syzygy
+  table reports `unreadable tables` (not corrupt) and disables probing; unreadable
+  EvalFile is rejected once with the previous evaluator preserved — each followed
+  by a legal search. All pass release + ASan fuzz legs.
+- Controller-level Hash allocation failure: policy failing every allocation
+  yields `reason allocation_failed`, `readyok`, one legal bestmove, exit 0
+  (release + ASan filtered runs).
 - CCRL package built (engines + NNUE + licenses, no book/tests/Stockfish);
   provenance audit in `artifacts/plans/ccrl-eligibility-2026-11-01/`.
 
 ## 4. Residual risks / not yet covered
 
-1. **Process-level allocation-failure injection** (e.g., Hash resize under
-   forced `bad_alloc`) — unit-level policy exists; no OS-level forced-failure
-   test yet. Large real allocations were deliberately not requested to avoid
-   destabilising the host.
-2. **ACL/permission-denied assets** and **symlinked assets** on Windows were not
-   exercised (read-only/transient-lock variants are covered).
-3. **Multi-hour soak** is evidenced up to 100k rounds (~22 min); an overnight
-   run has not been done in this session.
+1. **OS-level allocation-failure injection** remains untested: the controller
+   allocation-failure path is now covered by an injected policy (R60), but no
+   process-wide memory-limit/job-object run exists. Large real allocations were
+   deliberately not requested to avoid destabilising the host.
+2. **Symlinked assets** were not exercised; read-permission denial for book,
+   Syzygy and EvalFile is now covered (R57/R58/R59), and the transient-lock
+   variant is covered (R41).
+3. **Multi-hour soak**: 100k rounds previously, and a 200,000-round asset-churn
+   soak was launched on 2026-11-01 (see `soak-200k-assetchurn.log`); the result
+   will be recorded when it completes.
 4. **Platform signals** (SIGTERM/SIGHUP on POSIX, console-close on Windows) are
    not part of the UCI contract; engine defaults apply.
 5. **CI backlog**: many pushes queued Windows/Linux CTests; latest green matrix
