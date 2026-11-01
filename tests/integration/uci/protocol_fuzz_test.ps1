@@ -796,6 +796,77 @@ try {
     if (@($normalPhaseBookLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
         throw 'leaving analysis mode must use the book on the next search'
     }
+
+    # 9m. Book eligibility matrix: MultiPV>1, infinite, ponder and searchmoves
+    # all bypass the book; normal searches still use it (and MultiPV must return
+    # to 1 for the book to come back).
+    $assetElig = Join-Path $assetRoot 'engine-book-eligibility'
+    New-Item -ItemType Directory -Path $assetElig -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetElig $executableName)
+    $eligBook = Join-Path $assetElig 'book.bin'
+    $eligBytes = [byte[]]::new(16)
+    [byte[]]$eligKey = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c
+    [Array]::Copy($eligKey, 0, $eligBytes, 0, 8)
+    $eligBytes[8] = 0x03
+    $eligBytes[9] = 0x1c
+    $eligBytes[10] = 0x00
+    $eligBytes[11] = 100
+    [System.IO.File]::WriteAllBytes($eligBook, $eligBytes)
+
+    $eligSession = Start-UciSession -Executable (Join-Path $assetElig $executableName)
+    Send-UciCommand $eligSession 'uci'
+    [void](Read-UciUntil $eligSession { param($line) $line -eq 'uciok' } 'eligibility uciok' -ValidateUciOutput)
+    Send-UciCommand $eligSession 'isready'
+    [void](Read-UciUntil $eligSession { param($line) $line -eq 'readyok' } 'eligibility readyok' -ValidateUciOutput)
+
+    Send-UciCommand $eligSession 'setoption name MultiPV value 2'
+    Send-UciCommand $eligSession 'position startpos'
+    Send-UciCommand $eligSession 'go depth 1'
+    [void](Read-UciUntil $eligSession { param($line) $line -match '^bestmove ' } 'eligibility multipv-2 bestmove' -ValidateUciOutput)
+    $multipvPhase = @($eligSession.Lines | Where-Object { $_ -match '^info string book' })
+    if ($multipvPhase.Count -ne 0) {
+        throw 'MultiPV>1 must bypass the opening book'
+    }
+
+    Send-UciCommand $eligSession 'setoption name MultiPV value 1'
+    Send-UciCommand $eligSession 'position startpos'
+    Send-UciCommand $eligSession 'go depth 1'
+    [void](Read-UciUntil $eligSession { param($line) $line -match '^bestmove ' } 'eligibility multipv-1 bestmove' -ValidateUciOutput)
+    if (@($eligSession.Lines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
+        throw 'MultiPV=1 must use the opening book'
+    }
+
+    foreach ($bypass in @(
+            @('go infinite', 'stop'),
+            @('go ponder wtime 1000 btime 1000', 'stop'),
+            @('go depth 1 searchmoves e2e4'))) {
+        $before = $eligSession.Lines.Count
+        Send-UciCommand $eligSession 'position startpos'
+        Send-UciCommand $eligSession $bypass[0]
+        if ($bypass.Count -gt 1) {
+            Send-UciCommand $eligSession $bypass[1]
+        }
+        [void](Read-UciUntil $eligSession { param($line) $line -match '^bestmove ' } "eligibility bypass $($bypass[0]) bestmove" -ValidateUciOutput)
+        $since = @($eligSession.Lines | Select-Object -Skip $before | Where-Object { $_ -match '^info string book' })
+        if ($since.Count -ne 0) {
+            throw "book bypass mode '$($bypass[0])' must not emit book lines"
+        }
+    }
+
+    Send-UciCommand $eligSession 'position startpos'
+    Send-UciCommand $eligSession 'go depth 1'
+    [void](Read-UciUntil $eligSession { param($line) $line -match '^bestmove ' } 'eligibility restored bestmove' -ValidateUciOutput)
+    Send-UciCommand $eligSession 'quit'
+    $eligLines = Complete-UciSession $eligSession $false
+    if (@($eligLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 6) {
+        throw 'the book eligibility matrix must complete six searches'
+    }
+    if (@($eligLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+        throw 'the eligibility matrix must announce the book exactly once'
+    }
+    if (@($eligLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 2) {
+        throw 'normal searches before and after the bypass matrix must both use the book'
+    }
 }
 finally {
     Stop-AllUciSessions
