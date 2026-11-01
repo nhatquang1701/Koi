@@ -1343,6 +1343,53 @@ try {
             Remove-Item -LiteralPath $specialDebug -Force -ErrorAction SilentlyContinue
         }
     }
+
+    # 9w. Maximum accepted book size (16 MiB = 1,048,576 entries).  Every entry
+    # has the startpos key and e2e4, so the loader must build a large record set
+    # for one key, pick e2e4, and stay responsive.
+    $assetMaxBook = Join-Path $assetRoot 'engine-max-book'
+    New-Item -ItemType Directory -Path $assetMaxBook -Force | Out-Null
+    Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetMaxBook $executableName)
+    $maxBookPath = Join-Path $assetMaxBook 'book.bin'
+    [byte[]]$maxBookEntry = 0x46, 0x3b, 0x96, 0x18, 0x16, 0x91, 0xfc, 0x9c,
+        0x03, 0x1c, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00
+    $maxBookEntries = 1048576
+    $maxBookStream = [System.IO.File]::Open($maxBookPath, [System.IO.FileMode]::Create,
+        [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    try {
+        $chunk = [byte[]]::new($maxBookEntry.Length * 1024)
+        for ($i = 0; $i -lt 1024; $i++) {
+            [Array]::Copy($maxBookEntry, 0, $chunk, $i * $maxBookEntry.Length, $maxBookEntry.Length)
+        }
+        for ($i = 0; $i -lt ($maxBookEntries / 1024); $i++) {
+            $maxBookStream.Write($chunk, 0, $chunk.Length)
+        }
+    } finally {
+        $maxBookStream.Dispose()
+    }
+    if ((Get-Item -LiteralPath $maxBookPath).Length -ne (16 * 1024 * 1024)) {
+        throw 'the 16 MiB book fixture has the wrong size'
+    }
+    $maxBookSession = Start-UciSession -Executable (Join-Path $assetMaxBook $executableName)
+    Send-UciCommand $maxBookSession 'uci'
+    [void](Read-UciUntil $maxBookSession { param($line) $line -eq 'uciok' } 'max-book uciok' -ValidateUciOutput)
+    Send-UciCommand $maxBookSession 'isready'
+    [void](Read-UciUntil $maxBookSession { param($line) $line -eq 'readyok' } 'max-book readyok' -ValidateUciOutput)
+    Send-UciCommand $maxBookSession 'position startpos'
+    Send-UciCommand $maxBookSession 'go depth 1'
+    $maxBookBest = Read-UciUntil $maxBookSession { param($line) $line -match '^bestmove ' } 'max-book bestmove' -ValidateUciOutput
+    Assert-LegalBestmoveLine $maxBookBest 'max-book'
+    Send-UciCommand $maxBookSession 'quit'
+    $maxBookLines = Complete-UciSession $maxBookSession $false
+    if (@($maxBookLines | Where-Object { $_ -match '^info string book detected' }).Count -ne 1) {
+        throw 'the 16 MiB book must be detected exactly once'
+    }
+    if (@($maxBookLines | Where-Object { $_ -match '^info string book move e2e4 ' }).Count -ne 1) {
+        throw 'the 16 MiB all-e2e4 book must return the book move'
+    }
+    if ($maxBookBest -notmatch '^bestmove e2e4') {
+        throw 'the 16 MiB book search must complete with bestmove e2e4'
+    }
 }
 finally {
     Stop-AllUciSessions
