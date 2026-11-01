@@ -114,6 +114,20 @@ if ($runnerSource -notmatch '#include "koi/detail/root_fallback\.hpp"') {
     Fail 'search_runner.cpp must include detail/root_fallback.hpp'
 }
 
+# 3f. Stateless FEN syntax validation is its own detail unit.
+foreach ($required in @('src/koi/detail/fen_validation.hpp', 'src/koi/detail/fen_validation.cpp')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
+        Fail "$required is missing"
+    }
+}
+$gameStateSource = Read-RepositoryFile 'src/koi/game_state.cpp'
+if ($gameStateSource -match 'bool valid_piece_placement\(') {
+    Fail 'game_state.cpp must not define FEN syntax helpers'
+}
+if ($gameStateSource -notmatch '#include "koi/detail/fen_validation\.hpp"') {
+    Fail 'game_state.cpp must include detail/fen_validation.hpp'
+}
+
 # 4. Engine core sources must not contain dead/tooling translation units.
 $cmake = Read-RepositoryFile 'CMakeLists.txt'
 $coreMatch = [regex]::Match($cmake, '(?s)set\(KOI_CORE_SOURCES(.*?)\n\)')
