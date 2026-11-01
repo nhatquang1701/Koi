@@ -67,6 +67,11 @@ analysis/eligibility behavior pinned. Everything else is test/evidence/tooling.
 - Controller-level Hash allocation failure: policy failing every allocation
   yields `reason allocation_failed`, `readyok`, one legal bestmove, exit 0
   (release + ASan filtered runs).
+- With a workspace `TEMP` override (removing the sandbox artifact), the local
+  release suite is 63/66 (only 3 Python measurement tests fail in their own
+  asserts) and the ASan unit label is 24/24 with zero sanitizer reports.
+- The standard 3-4-5 man Syzygy size gate caught a reproduced 80-byte `KQvK.rtbw`
+  search hang and the macOS fixture regression it exposed (fixtures now canonical).
 - Linked book assets: hardlink (Windows) and symlink (Unix) resolve for
   detection/use; a broken Unix symlink falls back silently with a legal search.
 - Crafted Polyglot entry with an illegal move for the keyed position is never
