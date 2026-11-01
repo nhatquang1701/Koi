@@ -151,6 +151,9 @@ flowchart TD
 | --- | --- |
 | `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output. |
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |
+| `detail/search_session.cpp` | One immutable request, worker ownership, cancellation/ponderhit timer, completion claim. |
+| `hash_types.hpp` | Public hash policy/result value types shared by `SearchService` and `TranspositionTable` without exposing TT storage. |
+| `completion_gate.cpp` | Legality/PV/searchmoves validation before a bestmove is published. |
 | `detail/search_runner.cpp` | Backend dispatch, iterative deepening, aspiration windows, Lazy SMP and root-parallel scheduling. |
 | `detail/search_context.*` | Search-local recursive state: move loop, quiescence, pruning call sites, fixed-capacity stack. |
 | `detail/search_policy.hpp` | Centralized scalar gates: null move, late-move reductions, futility, probcut, check extensions. |
@@ -159,7 +162,7 @@ flowchart TD
 | `transposition_table.cpp` | Physical storage, locking, generations, clearing, resizing, and mate-score normalization. |
 | `static_exchange.cpp` | Bitboard static-exchange evaluation used by pruning and ordering. |
 | `search_ordering.cpp` | History, killers, and continuation counters for move ordering. |
-| `nnue.cpp` | Required evaluator: NNUE container, inference and incremental state (classical HCE removed 2026-10-28; rewrite planned). |
+| `nnue.cpp` | Required evaluator: NNUE container, inference and incremental state; the only evaluator since the 2026-10-28 HCE removal. |
 | `opening_book.cpp` | Optional Polyglot opening book; release packages bundle a CC0 book, the repository commits none. |
 | `syzygy_tablebase.cpp` | Optional Syzygy root and interior probing; no tablebase data is bundled. |
 | `time_manager.cpp` | Soft/hard time budgets, move-overhead subtraction, and flag-proof ceilings. |
@@ -184,3 +187,70 @@ flowchart TD
    network, and orders moves through the shared ordering tables.
 5. Completed root iterations are published back through the UCI controller,
    which is the only component that writes protocol output.
+
+## Architecture contract (1.0.0)
+
+This is the architecture Koi keeps until 2.0.0. It is enforced by the public
+header surface and the test tree, not by a future redesign.
+
+- **Dependency direction**
+  `GUI/CLI -> uci_controller -> search_service -> search_runner/search_context
+  -> position/game_state, evaluator, transposition_table, ordering, SEE`.
+  Assets (`opening_book`, `syzygy_tablebase`, NNUE discovery/loading) are
+  adapters owned at the runtime boundary; core search never includes UCI or
+  filesystem/protocol headers.
+- **Public value surface**
+  `search_service.hpp`, `search_types.hpp`, `hash_types.hpp`,
+  `evaluator.hpp` and `game_state.hpp` form the embedding surface.
+  Public headers must not expose `detail/` types, third-party storage layouts,
+  or protocol-only state.
+- **Protocol purity**
+  `UciController` is the only UCI protocol writer. Diagnostics are `info
+  string`, stderr or the debug log. Search code performs no I/O.
+- **Optional layers**
+  `detail/` is private implementation without ABI promises; `gpu/` and
+  `modules/` remain optional (no implementation imports the named modules).
+
+## Ownership and threading
+
+- The controller thread owns the current position, option state, asset
+  adapters and the active `SearchHandle`; search workers are joined before
+  state/options/assets are replaced.
+- A `SearchHandle` owns one `detail::SearchSession`: cancellation, ponderhit
+  conversion, worker join and exactly-once completion live there.
+- The transposition table is shared per `SearchService`; resize waits for
+  hazard-lease readers outside the maintenance lock. Search accesses it only
+  through `detail::SearchTableAccess`.
+- Fathom/Syzygy is process-global and initialized/freed by the
+  `SyzygyTablebase` adapter on the controller thread; no probe runs while a
+  search is active.
+- `Threads == 1` is deterministic for fixed options/position; `Threads > 1`
+  is intentionally nondeterministic and must only be asserted by invariants.
+
+## Error and fail-closed policy
+
+- Asset/process boundaries fail closed: missing or malformed NNUE, book,
+  Syzygy or debug paths produce at most one diagnostic and never abort a
+  running UCI session; boot-time missing NNUE exits 4 before protocol output.
+- Exceptions are caught at the UCI command boundary and inside session setup;
+  search internals stay `noexcept` where the API promises it.
+- No failure may cross a thread boundary: the session publishes a completion
+  once and the controller suppresses stale generations.
+
+## Test architecture (mirrors the tree)
+
+- `tests/unit/<layer>` — component contracts and invariants.
+- `tests/integration/uci` — protocol/process tests (fuzz corpus, soak, broken
+  pipe, boot/permission matrices).
+- `tests/python/reliability` — dependency-free randomized fuzzers registered
+  as CTest tests.
+- `tests/data` — UCI fixtures, openings and committed reliability fixtures.
+- `tests/support` — shared C++/PowerShell helpers.
+
+## Stability until 2.0.0
+
+The UCI surface and option order, option defaults, file/asset layout,
+`SearchService` API and `koi-*` CLI behaviour are frozen for 1.0.0. Changes
+after this baseline must be internal refactors or bug fixes with regressions.
+Target/library splitting, UCI-option/state extraction, primary named modules
+and any evaluator/search redesign are 2.0.0 work and are not started here.
