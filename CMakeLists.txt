@@ -526,6 +526,7 @@ koi_add_core_target(koi_core_generic "")
 # removal (the production engine requires NNUE).
 add_library(koi_material_evaluator_test_support STATIC
     tests/support/uci_controller_test_constructor.cpp
+    tests/support/nnue_synthetic.cpp
 )
 target_link_libraries(koi_material_evaluator_test_support PUBLIC koi_core)
 
@@ -573,7 +574,7 @@ koi_set_timeout(koi_gpu_probe 60)
 set_tests_properties(koi_gpu_probe PROPERTIES LABELS "runtime")
 
 add_executable(gpu_nnue_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/runtime/gpu_nnue_tests.cpp")
-target_link_libraries(gpu_nnue_tests PRIVATE koi_core koi_test_support)
+target_link_libraries(gpu_nnue_tests PRIVATE koi_core koi_test_support koi_material_evaluator_test_support)
 if(KOI_GPU_PTX_AVAILABLE)
     target_include_directories(gpu_nnue_tests PRIVATE "${CMAKE_BINARY_DIR}/generated")
     target_compile_definitions(gpu_nnue_tests PRIVATE KOI_GPU_INFERENCE_AVAILABLE=1)
@@ -615,7 +616,7 @@ add_executable(nnue_boundary_tests
     tests/unit/evaluation/nnue_boundary_tests.cpp
 )
 
-target_link_libraries(nnue_boundary_tests PRIVATE koi_core)
+target_link_libraries(nnue_boundary_tests PRIVATE koi_core koi_material_evaluator_test_support)
 
 add_test(NAME nnue_boundary_tests COMMAND nnue_boundary_tests)
 
@@ -884,7 +885,7 @@ set_target_properties(koi_eval_features PROPERTIES OUTPUT_NAME "koi-eval-feature
 add_executable(koi_nnue_fixture
     tools/engine/koi_nnue_fixture.cpp
 )
-target_link_libraries(koi_nnue_fixture PRIVATE koi_core)
+target_link_libraries(koi_nnue_fixture PRIVATE koi_core koi_material_evaluator_test_support)
 set_target_properties(koi_nnue_fixture PROPERTIES OUTPUT_NAME "koi-nnue-fixture")
 add_dependencies(koi_nnue_fixture_tests koi_nnue_fixture)
 

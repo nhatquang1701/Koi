@@ -90,6 +90,15 @@ if (-not (Test-Path -LiteralPath $optionTablePath)) {
     }
 }
 
+# 3d. Synthetic NNUE fixtures are test support, not engine code.
+$nnueSource = Read-RepositoryFile 'src/koi/nnue.cpp'
+if ($nnueSource -match 'NnueNetwork::synthetic') {
+    Fail 'src/koi/nnue.cpp must not define synthetic NNUE fixture factories'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot 'tests/support/nnue_synthetic.cpp'))) {
+    Fail 'tests/support/nnue_synthetic.cpp (synthetic fixtures) is missing'
+}
+
 # 4. Engine core sources must not contain dead/tooling translation units.
 $cmake = Read-RepositoryFile 'CMakeLists.txt'
 $coreMatch = [regex]::Match($cmake, '(?s)set\(KOI_CORE_SOURCES(.*?)\n\)')
