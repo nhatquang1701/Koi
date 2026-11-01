@@ -40,6 +40,9 @@ struct HashResizeResult {
     std::uint64_t available_commit_bytes = 0;
     HashResizeStatus status = HashResizeStatus::unchanged;
     HashResizeReason reason = HashResizeReason::none;
+    // The new storage is live, but the retired storage is still referenced by
+    // a reader pin and is retained for safe deferred reclamation.
+    bool reclamation_deferred = false;
 };
 
 struct HashMemorySnapshot {

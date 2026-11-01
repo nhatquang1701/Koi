@@ -365,6 +365,7 @@ HashResizeResult TranspositionTable::set_size_mb(std::size_t megabytes) noexcept
     HashResizeResult result;
     {
         std::lock_guard lock(maintenance_mutex_);
+        reap_deferred_storage_locked();
         result = resize_locked(megabytes, &retired);
     }
     // Wait for readers of the retired storage *outside* the maintenance lock.
@@ -376,6 +377,52 @@ HashResizeResult TranspositionTable::set_size_mb(std::size_t megabytes) noexcept
             while (hazard.storage.load(std::memory_order_acquire) == retired.get()) {
                 std::this_thread::yield();
             }
+        }
+    }
+    return result;
+}
+
+void TranspositionTable::reap_deferred_storage_locked() noexcept {
+    for (auto entry = deferred_retired_.begin(); entry != deferred_retired_.end();) {
+        Storage* const candidate = entry->get();
+        bool referenced = false;
+        for (const HazardSlot& hazard : hazards_) {
+            if (hazard.storage.load(std::memory_order_acquire) == candidate) {
+                referenced = true;
+                break;
+            }
+        }
+        if (referenced) {
+            ++entry;
+        } else {
+            entry = deferred_retired_.erase(entry);
+        }
+    }
+}
+
+HashResizeResult TranspositionTable::try_set_size_mb(std::size_t megabytes) noexcept {
+    std::shared_ptr<Storage> retired;
+    HashResizeResult result;
+    {
+        std::lock_guard lock(maintenance_mutex_);
+        reap_deferred_storage_locked();
+        result = resize_locked(megabytes, &retired);
+    }
+    if (retired != nullptr) {
+        bool referenced = false;
+        for (const HazardSlot& hazard : hazards_) {
+            if (hazard.storage.load(std::memory_order_acquire) == retired.get()) {
+                referenced = true;
+                break;
+            }
+        }
+        if (referenced) {
+            // A reader still pins the old storage.  Keep the shared_ptr alive;
+            // readers only dereference after revalidating the live pointer, so
+            // a stale slot is safe, and reclamation waits for it to drain.
+            std::lock_guard lock(maintenance_mutex_);
+            deferred_retired_.push_back(std::move(retired));
+            result.reclamation_deferred = true;
         }
     }
     return result;

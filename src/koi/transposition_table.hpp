@@ -89,6 +89,13 @@ public:
     explicit TranspositionTable(std::size_t megabytes = 512, HashMemoryPolicy policy = {});
 
     [[nodiscard]] HashResizeResult set_size_mb(std::size_t megabytes) noexcept;
+    // Publishes the new storage immediately and never waits for a pinned
+    // reader: the retired storage is retained in a deferred list and reclaimed
+    // by a later maintenance call once every hazard slot stops referencing it.
+    // `reclamation_deferred` reports that the cleanup is still pending.  This is
+    // for embedders that must not block on a concurrent session; the UCI path
+    // still uses the blocking set_size_mb after joining its search.
+    [[nodiscard]] HashResizeResult try_set_size_mb(std::size_t megabytes) noexcept;
     [[nodiscard]] std::size_t size_mb() const noexcept;
     // Approximate occupancy in permill (0..1000) of entries from the current
     // clear epoch.  Samples a bounded number of slots (see
@@ -155,6 +162,10 @@ private:
                          TranspositionBound bound, Move best_move, int ply, bool pv,
                          int eval) noexcept;
     void prefetch_exclusive(Storage* storage, std::uint64_t key) const noexcept;
+
+    // Reclaims retired storages whose hazard references have drained.  Called
+    // with maintenance_mutex_ held.
+    void reap_deferred_storage_locked() noexcept;
 
     // Hazard-pointer lease for the store/probe hot paths.  A reader
     // publishes the storage pointer it is about to use in one hazard slot and
@@ -315,6 +326,8 @@ private:
 
     mutable std::mutex maintenance_mutex_;
     std::shared_ptr<Storage> storage_;
+    // Retired storages kept alive until their hazard-slot references drain.
+    std::vector<std::shared_ptr<Storage>> deferred_retired_;
     std::atomic<Storage*> hot_storage_{nullptr};
     // One hazard slot per concurrent reader, see Lease.  Slots are assigned by
     // a process-wide thread-lifetime pool, so a thread always publishes in the

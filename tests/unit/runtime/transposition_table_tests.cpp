@@ -223,6 +223,38 @@ void test_exclusive_access_round_trips_through_the_session_pin() {
             "entries stored through the pin must remain visible through the locked path");
 }
 
+void test_try_resize_defers_reclamation_while_pinned() {
+    TranspositionTable table(1);
+    SearchTableAccess access(table);
+    const Move move = parse_move("e2e4");
+
+    access.set_exclusive(true);
+    access.store(0x61ULL, 4, 12, TranspositionBound::exact, move, 0, false, 7);
+
+    // The non-blocking resize publishes the new storage immediately; the old
+    // storage stays alive because the session pin still references it.
+    const koi::HashResizeResult deferred = table.try_set_size_mb(2);
+    require(deferred.reclamation_deferred,
+            "a pinned reader must defer retired-storage reclamation");
+    require(table.size_mb() == 2, "the new storage must be live immediately");
+
+    // The pinned view still reads its own (retained) storage safely.
+    const auto pinned_entry = access.probe(0x61ULL);
+    require(pinned_entry.has_value() && pinned_entry->depth == 4,
+            "the pinned reader must remain valid on the retired storage");
+
+    access.set_exclusive(false);
+    const koi::HashResizeResult reaped = table.try_set_size_mb(2);
+    require(!reaped.reclamation_deferred,
+            "reclamation must complete once the pinned reader is released");
+    require(table.size_mb() == 2, "the table must remain usable after reclamation");
+
+    table.store(0x62ULL, 5, 20, TranspositionBound::exact, move, 0, false, 9);
+    const auto entry = table.probe(0x62ULL);
+    require(entry.has_value() && entry->depth == 5,
+            "the resized table must accept new entries after reclamation");
+}
+
 void test_exclusive_session_pin_blocks_resize_until_release() {
     TranspositionTable table(1);
     SearchTableAccess access(table);
@@ -286,6 +318,7 @@ int main(int argc, char** argv) {
         {"transposition cluster masking", test_cluster_masking_covers_every_slot},
         {"transposition concurrent access", test_concurrent_store_and_probe_is_safe},
         {"transposition exclusive round trip", test_exclusive_access_round_trips_through_the_session_pin},
+        {"transposition try resize defers reclamation", test_try_resize_defers_reclamation_while_pinned},
         {"transposition exclusive pin blocks resize", test_exclusive_session_pin_blocks_resize_until_release},
     };
     return koi::test::run_tests(tests, argc, argv);
