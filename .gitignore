@@ -28,3 +28,7 @@ koi-debug.log
 
 # Kept private and untracked; do not commit.
 /AGENTS.md
+
+# Generated files that must never be tracked (even under force-added evidence trees).
+*.pyc
+artifacts/**/build/
