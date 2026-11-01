@@ -16,16 +16,6 @@ namespace detail {
 
 class SearchSession;
 
-// Option normalization is shared with SearchService::start so that the public
-// entry point keeps clamping the request snapshot while the per-search flow
-// itself lives in SearchRunner.
-std::size_t normalized_threads(std::size_t threads) noexcept;
-std::uint8_t normalized_speed(std::uint8_t speed_percent) noexcept;
-std::size_t normalized_multi_pv(std::size_t multi_pv) noexcept;
-std::uint32_t normalized_move_overhead(std::uint32_t move_overhead_ms) noexcept;
-std::uint32_t normalized_slow_mover(std::uint32_t slow_mover_percent) noexcept;
-std::uint32_t normalized_elo(std::uint32_t elo) noexcept;
-
 // Owns the per-search flow that used to live inside the SearchService::start
 // worker lambda: timing setup, tablebase probing, the serial and root-parallel
 // iterative-deepening drivers, bounded fallbacks, and result publication.

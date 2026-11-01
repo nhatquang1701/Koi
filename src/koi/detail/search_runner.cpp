@@ -86,33 +86,8 @@ constexpr std::size_t kMaximumEmergencyRootEvasionReplies = 6;
 // ceiling leaves too little budget for both fallback scoring and a root pass;
 // at the serial-path cutoff, scoring every root move can likewise starve the
 // first authoritative iteration.
-constexpr std::size_t kMaximumMultiPv = 16;
 
 } // namespace
-
-std::size_t normalized_threads(std::size_t threads) noexcept {
-    return std::clamp(threads, std::size_t{1}, maximum_search_threads());
-}
-
-std::uint8_t normalized_speed(std::uint8_t speed_percent) noexcept {
-    return static_cast<std::uint8_t>(std::clamp<std::uint32_t>(speed_percent, 1, 100));
-}
-
-std::size_t normalized_multi_pv(std::size_t multi_pv) noexcept {
-    return std::clamp(multi_pv, std::size_t{1}, kMaximumMultiPv);
-}
-
-std::uint32_t normalized_move_overhead(std::uint32_t move_overhead_ms) noexcept {
-    return std::min<std::uint32_t>(move_overhead_ms, 5'000);
-}
-
-std::uint32_t normalized_slow_mover(std::uint32_t slow_mover_percent) noexcept {
-    return std::clamp<std::uint32_t>(slow_mover_percent, 10, 1'000);
-}
-
-std::uint32_t normalized_elo(std::uint32_t elo) noexcept {
-    return std::clamp<std::uint32_t>(elo, 1'320, 3'190);
-}
 
 namespace {
 

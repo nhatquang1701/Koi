@@ -1,6 +1,9 @@
 #include "koi/search_service.hpp"
 #include "koi/transposition_table.hpp"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -10,6 +13,40 @@
 #include "koi/detail/search_session.hpp"
 
 namespace koi {
+
+namespace detail {
+
+namespace {
+
+constexpr std::size_t kMaximumMultiPv = 16;
+
+} // namespace
+
+std::size_t normalized_threads(std::size_t threads) noexcept {
+    return std::clamp(threads, std::size_t{1}, maximum_search_threads());
+}
+
+std::uint8_t normalized_speed(std::uint8_t speed_percent) noexcept {
+    return static_cast<std::uint8_t>(std::clamp<std::uint32_t>(speed_percent, 1, 100));
+}
+
+std::size_t normalized_multi_pv(std::size_t multi_pv) noexcept {
+    return std::clamp(multi_pv, std::size_t{1}, kMaximumMultiPv);
+}
+
+std::uint32_t normalized_move_overhead(std::uint32_t move_overhead_ms) noexcept {
+    return std::min<std::uint32_t>(move_overhead_ms, 5'000);
+}
+
+std::uint32_t normalized_slow_mover(std::uint32_t slow_mover_percent) noexcept {
+    return std::clamp<std::uint32_t>(slow_mover_percent, 10, 1'000);
+}
+
+std::uint32_t normalized_elo(std::uint32_t elo) noexcept {
+    return std::clamp<std::uint32_t>(elo, 1'320, 3'190);
+}
+
+} // namespace detail
 
 struct SearchService::Impl {
     explicit Impl(std::shared_ptr<const Evaluator> evaluator, HashMemoryPolicy hash_memory_policy,
