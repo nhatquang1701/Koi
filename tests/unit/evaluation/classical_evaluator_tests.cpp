@@ -145,12 +145,18 @@ void test_pawn_king_and_piece_terms_are_directional() {
     require(semi_open_rook > blocked_rook,
             "a rook beside an own pawn must outscore a blocked rook");
 
+    // Middlegame material keeps the tapered king table in its mg regime; in a
+    // bare pawn ending a central king is legitimately better.
     const int exposed_king = evaluator.evaluate(
-        state_from_fen("4k3/8/8/4K3/8/8/5PPP/8 w - - 0 1"), Color::white);
+        state_from_fen("rnbqkbnr/pppppppp/8/8/4K3/8/PPPPPPPP/RNBQ1BNR w kq - 0 1"),
+        Color::white);
     const int sheltered_king = evaluator.evaluate(
-        state_from_fen("4k3/8/8/8/8/8/5PPP/6K1 w - - 0 1"), Color::white);
+        state_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w kq - 0 1"),
+        Color::white);
     require(sheltered_king > exposed_king,
-            "a sheltered castled king must outscore an exposed king");
+            "a sheltered castled king must outscore an exposed king (sheltered=" +
+                std::to_string(sheltered_king) + " exposed=" +
+                std::to_string(exposed_king) + ")");
 }
 
 void test_concurrent_evaluation_is_safe_and_stable() {

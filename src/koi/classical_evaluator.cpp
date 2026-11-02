@@ -71,6 +71,30 @@ constexpr std::size_t kBlack = 1;
                     abs_int(rank_of(first) - rank_of(second)));
 }
 
+// Tapered king tables (rank 1 first, White perspective; Black is mirrored).
+// The old formula mixed castling safety and endgame centralisation in one
+// expression; explicit tables make the two regimes independently tunable.
+inline constexpr std::array<int, 64> kKingMg{
+    20, 30, 10, 0, 0, 10, 30, 20,
+    -10, -20, -20, -20, -20, -20, -20, -10,
+    -20, -30, -30, -40, -40, -30, -30, -20,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+};
+inline constexpr std::array<int, 64> kKingEg{
+    -50, -30, -30, -30, -30, -30, -30, -50,
+    -30, -30, 0, 0, 0, 0, -30, -30,
+    -30, -10, 20, 30, 30, 20, -10, -30,
+    -30, -10, 30, 40, 40, 30, -10, -30,
+    -30, -10, 30, 40, 40, 30, -10, -30,
+    -30, -10, 20, 30, 30, 20, -10, -30,
+    -30, -20, -10, 0, 0, -10, -20, -30,
+    -50, -40, -30, -20, -20, -30, -40, -50,
+};
+
 // Piece-square tables are formulas for v1; they are replaced by tuned tables
 // once the term set and strength harness are stable.
 [[nodiscard]] constexpr Score piece_square(PieceType type, int square, Color color) noexcept {
@@ -99,12 +123,8 @@ constexpr std::size_t kBlack = 1;
     case PieceType::queen:
         return Score{6 - distance, 4 - distance / 2};
     case PieceType::king: {
-        if (rank == 0) {
-            // Castled/central-home king safety (white-perspective squares).
-            const int safety = file == 6 ? 24 : (file == 2 ? 16 : (file == 4 ? 4 : 0));
-            return Score{safety, -center * 2};
-        }
-        return Score{-rank * 12 - abs_int(file - 3) * 3, 12 - distance * 2};
+        const std::size_t index = static_cast<std::size_t>(rank * 8 + file);
+        return Score{kKingMg[index], kKingEg[index]};
     }
     case PieceType::none:
         return {};
