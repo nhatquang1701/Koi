@@ -189,3 +189,6 @@ Mac M4 arm64, 100 ms equal-time, 32 openings, 64 games.
 | Combined | 16/29/19 | **47.66%** | **-16.5** | **-0.458** |
 
 Decision: negative screen; reverted without a confirmation run.
+
+| threat weight 150% | 17/34/13 (64) | 53.13% | +21.7 | 0.270 | screen |
+| threat weight 150% | 43/38/45 (126) | 49.21% | -5.5 | -0.482 | confirm negative; default kept |
