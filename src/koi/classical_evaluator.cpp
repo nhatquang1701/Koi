@@ -160,10 +160,35 @@ struct EvalBoard {
 }
 
 [[nodiscard]] EvalBoard make_eval_board(const GameState& state) {
+    const PositionFeatures features = state.position_features();
     EvalBoard eval;
-    state.copy_board_to(eval.board);
-    eval.side_to_move = state.side_to_move();
+    eval.board = features.board;
+    eval.colors = features.colors;
+    eval.occupied = features.occupied;
+    eval.phase = features.game_phase;
+    eval.side_to_move = features.side_to_move;
+    eval.development[0] = features.development[0];
+    eval.development[1] = features.development[1];
+    eval.center_control[0] = features.center_control[0];
+    eval.center_control[1] = features.center_control[1];
+    eval.king_zone_attacks[0] = features.king_zone_attacks[0];
+    eval.king_zone_attacks[1] = features.king_zone_attacks[1];
+    eval.piece_mobility = features.piece_mobility;
+    eval.attacked_squares = features.attacked_squares;
 
+    for (std::size_t color = 0; color < 2; ++color) {
+        if (features.king_squares[color].index() < Square::kInvalid) {
+            eval.kings[color] = features.king_squares[color].index();
+        }
+    }
+    // Rebuild exact bitboards from the board snapshot.  The cached feature
+    // bitboards are used when present, but the mailbox is authoritative and
+    // also covers synthetic feature snapshots.
+    eval.colors = {};
+    for (auto& type_board : eval.pieces) {
+        type_board = {};
+    }
+    eval.occupied = 0;
     for (int square = 0; square < 64; ++square) {
         const Piece piece = eval.board[static_cast<std::size_t>(square)];
         if (piece.empty()) {
@@ -177,47 +202,8 @@ struct EvalBoard {
         if (piece.type == PieceType::king) {
             eval.kings[color] = square;
         }
-        switch (piece.type) {
-        case PieceType::knight:
-        case PieceType::bishop:
-            eval.phase = static_cast<std::uint8_t>(eval.phase + 1);
-            break;
-        case PieceType::rook:
-            eval.phase = static_cast<std::uint8_t>(eval.phase + 2);
-            break;
-        case PieceType::queen:
-            eval.phase = static_cast<std::uint8_t>(eval.phase + 4);
-            break;
-        default:
-            break;
-        }
     }
-    eval.phase = std::min<std::uint8_t>(eval.phase, kPhaseMaximum);
-
-    // Home-square development count: knights off b1/g1 or bishops off c1/f1
-    // for White, mirrored for Black.
     for (std::size_t color = 0; color < 2; ++color) {
-        constexpr std::array<std::uint64_t, 2> kHomeMinorSquares{
-            0x0000000000000042ULL,   // b1 (1), g1 (6)
-            0x4200000000000000ULL};  // b8 (57), g8 (62)
-        constexpr std::array<std::uint64_t, 2> kHomeBishopSquares{
-            0x0000000000000024ULL,   // c1 (2), f1 (5)
-            0x2400000000000000ULL};  // c8 (58), f8 (61)
-        const std::uint64_t minors = eval.pieces[color][type_index(PieceType::knight)] |
-            eval.pieces[color][type_index(PieceType::bishop)];
-        const std::uint64_t home = color == kWhite
-            ? kHomeMinorSquares[0] | kHomeBishopSquares[0]
-            : kHomeMinorSquares[1] | kHomeBishopSquares[1];
-        eval.development[color] = static_cast<std::uint8_t>(
-            std::popcount(minors & ~home));
-    }
-
-    constexpr std::uint64_t kCenterMask =
-        (std::uint64_t{1} << 27) | (std::uint64_t{1} << 28) |
-        (std::uint64_t{1} << 35) | (std::uint64_t{1} << 36);  // d4/e4/d5/e5
-
-    for (std::size_t color = 0; color < 2; ++color) {
-        const std::uint64_t own = eval.colors[color];
         std::uint64_t pawns = eval.pieces[color][type_index(PieceType::pawn)];
         while (pawns != 0) {
             const int square = std::countr_zero(pawns);
@@ -225,59 +211,14 @@ struct EvalBoard {
             eval.pawn_attacks[color] |=
                 detail::pawn_attacks(square, color == kWhite);
         }
-        // Pawn attacks were already accumulated into the map above; seed the
-        // aggregate with them and skip recomputing each pawn below.
-        std::uint64_t attacks = eval.pawn_attacks[color];
-        for (int square = 0; square < 64; ++square) {
-            const Piece piece = eval.board[static_cast<std::size_t>(square)];
-            if (piece.empty() || index_of(piece.color) != color) {
-                continue;
-            }
-            if (piece.type == PieceType::pawn) {
-                continue;
-            }
-            std::uint64_t piece_attacks = 0;
-            switch (piece.type) {
-            case PieceType::pawn:
-                break;
-            case PieceType::knight:
-                piece_attacks = detail::knight_attacks(square);
-                break;
-            case PieceType::bishop:
-                piece_attacks = detail::bishop_attacks(square, eval.occupied);
-                break;
-            case PieceType::rook:
-                piece_attacks = detail::rook_attacks(square, eval.occupied);
-                break;
-            case PieceType::queen:
-                piece_attacks = detail::queen_attacks(square, eval.occupied);
-                break;
-            case PieceType::king:
-                piece_attacks = detail::king_attacks(square);
-                break;
-            case PieceType::none:
-                break;
-            }
-            attacks |= piece_attacks;
-            eval.piece_mobility[static_cast<std::size_t>(square)] =
-                static_cast<std::uint8_t>(std::popcount(piece_attacks & ~own));
-        }
-        eval.attacked_squares[color] = attacks;
-        eval.center_control[color] =
-            static_cast<std::uint8_t>(std::popcount(attacks & kCenterMask));
-    }
-
-    for (std::size_t color = 0; color < 2; ++color) {
-        if (eval.kings[color] < 0) {
-            eval.king_zone_attacks[color] = 0;
-            continue;
-        }
-        const std::uint64_t zone =
-            detail::king_attacks(eval.kings[color]) | bit_of(eval.kings[color]);
-        eval.king_zone_attacks[color] = static_cast<std::uint8_t>(
-            std::popcount(eval.attacked_squares[1 - color] & zone));
     }
     return eval;
+}
+
+[[nodiscard]] int pawn_attack_distance(int from, int to, bool white) noexcept {
+    const int forward = white ? 1 : -1;
+    return rank_of(to) - rank_of(from) == forward &&
+        abs_int(file_of(to) - file_of(from)) == 1;
 }
 
 [[nodiscard]] Score pawn_structure(const EvalBoard& eval, std::size_t color) {
@@ -351,13 +292,6 @@ struct EvalBoard {
             if (ahead_rank >= 0 && ahead_rank < 8 &&
                 ((eval.occupied >> (ahead_rank * 8 + file)) & 1U) != 0) {
                 bonus += Score{-10, -16};
-            }
-            // A friendly rook behind the passer supports its advance.
-            const int behind_rank = white ? rank - 1 : rank + 1;
-            if (behind_rank >= 0 && behind_rank < 8 &&
-                ((eval.pieces[color][type_index(PieceType::rook)] >>
-                  (behind_rank * 8 + file)) & 1U) != 0) {
-                bonus += Score{10, 16};
             }
             score += bonus;
             continue;

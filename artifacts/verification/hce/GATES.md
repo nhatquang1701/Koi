@@ -88,3 +88,15 @@ Decision: neutral within noise. The native-input refactor is kept as an
 architectural change (no shared NNUE feature container), not as a strength gain.
 Windows depth-5 bench throughput for the native path: 749,877 NPS vs 801,077 for
 the cached-feature v1 path on the same machine (minor overhead, same term set).
+
+## v6 (rook behind passed pawn) vs v3
+
+Mac M4 arm64, 100 ms equal-time, 64 games, 32 openings.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 13/11/8 | 57.81% | +54.7 | 0.360 |
+| Black | 8/13/11 | 45.31% | -32.7 | -0.373 |
+| Combined | 21/24/19 | **51.56%** | **+11.0** | **-0.014** |
+
+Decision: neutral; reverted to keep the v3 baseline lean.
