@@ -62,3 +62,14 @@ Mac M4 arm64, clean HCE both sides, `Threads=1`, `Hash=64`, no book.
 Decision: consistently positive but still inconclusive at the 95% boundary.
 The focused v3 change is retained as the current HCE baseline pending a larger/
 longer confirmation; no promotion or Elo claim is made.
+
+## v4 (backward pawns) vs v3
+
+Mac M4 arm64, 100 ms equal-time, HCE both sides, `Threads=1`, `Hash=64`, no book.
+
+| Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 32-opening screen | 64 | 16/34/14 | 51.56% | +11.3 | -0.163 |
+| 63-opening confirm | 126 | 44/40/42 | 50.79% | +5.5 | -0.165 |
+
+Decision: neutral; the backward-pawn term is reverted and v3 remains the baseline.
