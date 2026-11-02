@@ -1,9 +1,11 @@
+#include <cctype>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 #if defined(__linux__)
@@ -14,6 +16,7 @@
 #include <csignal>
 #endif
 
+#include "koi/classical_evaluator.hpp"
 #include "koi/cpu_features.hpp"
 #include "koi/cpu_variant.hpp"
 #include "koi/executable_path.hpp"
@@ -22,6 +25,30 @@
 #include "koi/uci_controller.hpp"
 
 namespace {
+
+// Development/measurement override: select the clean HCE without requiring a
+// network at boot.  Release/default behavior is unchanged (NNUE required).
+[[nodiscard]] bool hce_requested_from_environment() noexcept {
+    const char* value = std::getenv("KOI_EVALUATOR");
+    if (value == nullptr) {
+        return false;
+    }
+    std::string_view requested(value);
+    const auto equals_ignore_case = [requested](std::string_view candidate) {
+        if (requested.size() != candidate.size()) {
+            return false;
+        }
+        for (std::size_t index = 0; index < requested.size(); ++index) {
+            const char lhs = static_cast<char>(std::tolower(static_cast<unsigned char>(requested[index])));
+            const char rhs = static_cast<char>(std::tolower(static_cast<unsigned char>(candidate[index])));
+            if (lhs != rhs) {
+                return false;
+            }
+        }
+        return true;
+    };
+    return equals_ignore_case("hce") || equals_ignore_case("classical");
+}
 
 #if defined(__linux__) && defined(__GLIBC__)
 // The Windows build links with a 16 MiB stack reserve that worker threads
@@ -135,18 +162,21 @@ int main(int argc, char* argv[]) {
             }
         }
     }
-    // HCE removed (2026-10-28): the engine cannot evaluate without a network.
     koi::EvaluatorSelection selection;
-    try {
-        selection = nnue_path.empty()
-            ? koi::make_evaluator()
-            : koi::make_evaluator(std::optional<std::filesystem::path>(nnue_path));
-    } catch (const std::exception& error) {
-        std::cerr << "koi-engine: unable to load an evaluator network (" << error.what()
-                  << ").\n"
-                  << "koi-engine: the classical evaluator was removed; provide koi.nnue "
-                     "beside the executable or set EvalFile.\n";
-        return 4;
+    if (hce_requested_from_environment()) {
+        // Explicit development/measurement override: boot without a network.
+        selection.evaluator = std::make_shared<koi::ClassicalEvaluator>();
+    } else {
+        try {
+            selection = nnue_path.empty()
+                ? koi::make_evaluator()
+                : koi::make_evaluator(std::optional<std::filesystem::path>(nnue_path));
+        } catch (const std::exception& error) {
+            std::cerr << "koi-engine: unable to load an evaluator network (" << error.what()
+                      << ").\n"
+                      << "koi-engine: provide koi.nnue beside the executable or set EvalFile.\n";
+            return 4;
+        }
     }
     if (selection.evaluator == nullptr) {
         std::cerr << "koi-engine: no usable NNUE network";
@@ -154,8 +184,7 @@ int main(int argc, char* argv[]) {
             std::cerr << " (" << selection.nnue_error->message << ")";
         }
         std::cerr << ".\n"
-                  << "koi-engine: the classical evaluator was removed; provide koi.nnue "
-                     "beside the executable or set EvalFile.\n";
+                  << "koi-engine: provide koi.nnue beside the executable or set EvalFile.\n";
         return 4;
     }
     koi::SearchService search_service(selection.evaluator, {}, 1);
