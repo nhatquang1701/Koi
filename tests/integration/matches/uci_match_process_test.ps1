@@ -447,44 +447,6 @@ try {
             "(exit=$($rejectedMatch.exit_code), output=$($rejectedMatch.output -join ' | ')).")
     }
 
-    $previousGpuSetting = $env:KOI_GPU_NNUE
-    try {
-        $env:KOI_GPU_NNUE = '1'
-        $singleThreadGpu = Invoke-EvaluatorMatch 'gpu-v5' $v5Path `
-            (Join-Path $nnueDirectory 'gpu-single-thread') 1
-        if ($singleThreadGpu.exit_code -eq 0 -or
-            ($singleThreadGpu.output -join ' ') -notmatch 'requires -Threads of at least 2') {
-            throw 'GPU v5 attestation must reject a single-thread configuration.'
-        }
-
-        Remove-Item Env:\KOI_GPU_NNUE -ErrorAction SilentlyContinue
-        $missingGpuRequest = Invoke-EvaluatorMatch 'gpu-v5' $v5Path `
-            (Join-Path $nnueDirectory 'gpu-not-requested') 2
-        if ($missingGpuRequest.exit_code -eq 0 -or
-            ($missingGpuRequest.output -join ' ') -notmatch 'requires KOI_GPU_NNUE=1') {
-            throw 'GPU v5 attestation must reject a missing GPU request environment variable.'
-        }
-
-        $env:KOI_GPU_NNUE = '1'
-        $gpuMatch = Invoke-EvaluatorMatch 'gpu-v5' $v5Path `
-            (Join-Path $nnueDirectory 'gpu-marker') 2
-        if ($gpuMatch.exit_code -eq 0) {
-            $gpuEvidence = $gpuMatch.report.configuration.koi_evaluator_attestation
-            if ($gpuEvidence.gpu_enabled_marker -ne 'koi-engine: GPU NNUE inference enabled.' -or
-                @($gpuEvidence.gpu_unavailable_fallbacks).Count -ne 0) {
-                throw 'A successful GPU v5 report must contain the enabled marker without CPU fallback.'
-            }
-        } elseif (($gpuMatch.output -join ' ') -notmatch 'GPU NNUE unavailable|GPU NNUE inference enabled marker') {
-            throw "GPU v5 must fail only when actual GPU inference could not be attested: $($gpuMatch.output -join ' | ')"
-        }
-    } finally {
-        if ($null -eq $previousGpuSetting) {
-            Remove-Item Env:\KOI_GPU_NNUE -ErrorAction SilentlyContinue
-        } else {
-            $env:KOI_GPU_NNUE = $previousGpuSetting
-        }
-    }
-
     New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
     Set-Content -LiteralPath $fenFile -Value 'forced-mate | 7k/6Q1/5K2/8/8/8/8/8 b - - 0 1' -Encoding UTF8
     $terminalOutputDirectory = Join-Path $outputDirectory 'terminal'

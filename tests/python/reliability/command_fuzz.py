@@ -7,7 +7,7 @@ commands must be inert; stdout must stay protocol-valid; stderr may only contain
 documented position errors; at least one legal bestmove must complete.
 
     python artifacts/plans/reliability-2026-10-31/command_fuzz.py \
-        --engine build/full-release-gpu/koi-engine.exe --cases 500 \
+        --engine build/full-release/koi-engine.exe --cases 500 \
         --workers 4 --out artifacts/plans/reliability-2026-10-31/command-fuzz.json
 """
 

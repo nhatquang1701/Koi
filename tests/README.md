@@ -40,7 +40,7 @@ ctest --test-dir build/release -C Release -j 8 --output-on-failure
 
 On macOS arm64 (Apple Silicon), use Homebrew LLVM clang 19+ (or AppleClang
 18+) with `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`; the CTest
-commands are identical. GPU NNUE is CUDA-only and unavailable on macOS, so the
+commands are identical.
 CPU NNUE path and the generated fixture network are exercised there.
 
 The PowerShell process tests are registered only when `pwsh` is found; the C++
@@ -124,8 +124,6 @@ C++ unit / integration executables under `tests/unit/` and `tests/integration/`:
   `koi_soak_tests` (bounded stability soak: long replays past the snapshot
   window, hash resizes under a live search, ponder cycles, and a thread-count
   sweep),
-  `gpu_nnue_tests` (GPU NNUE bit-exact parity plus the PTX variant table; the
-  parity cases skip without a CUDA device).
 - Runtime and boundaries: `koi_cpu_features_tests`, `koi_cpu_variant_tests`
   (variant parsing, executable names, automatic selection, and the override
   rules), `koi_module_tests`,
@@ -375,7 +373,7 @@ cancellation):
 `.github/workflows/macos.yml` runs two Apple Silicon legs:
 
 - `macos-arm64` installs Homebrew LLVM clang and builds Release with
-  `-DKOI_BUILD_MODULES=OFF -DKOI_ENABLE_GPU_NNUE=OFF -DKOI_STATIC_RUNTIME=OFF`,
+  `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`,
   then runs the same unit, heavy-search, process, and Python label groups as
   the Linux legs. The x86-only AVX-512 binary smoke and the three-binary
   variant process test are omitted, and diagnostics upload on failure.
@@ -399,7 +397,7 @@ through `tools/test/run_tests.ps1`; no MSVC wrapper is needed off Windows:
 cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" \
   -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" \
-  -DKOI_BUILD_MODULES=OFF -DKOI_ENABLE_GPU_NNUE=OFF -DKOI_STATIC_RUNTIME=OFF
+  -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
 cmake --build build/release --config Release
 pwsh -NoProfile -File ./tools/test/run_tests.ps1 -BuildDirectory build/release -NoBuild
 ```

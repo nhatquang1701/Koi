@@ -117,7 +117,7 @@ void test_architectures_generate_deterministic_loadable_distinct_containers() {
                        "generated v5 fixture must be accepted as NNUE v5");
     koi::test::require(loaded_v5->manifest.layer_sizes[1] == 1536 &&
                            loaded_v5->manifest.layer_sizes[3] == 32,
-                       "generated v5 fixture must use the GPU-supported hidden 1536 and L1 32 dimensions");
+                       "generated v5 fixture must use the large hidden 1536 and L1 32 dimensions");
 }
 
 void test_invalid_architecture_and_missing_arguments_are_rejected() {

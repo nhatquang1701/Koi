@@ -7,7 +7,7 @@ on:
 
 # macOS arm64 (Apple Silicon) is the modules-off portability leg: it proves the
 # documented fallback build (KOI_BUILD_MODULES=OFF) works with Homebrew LLVM.
-# GPU NNUE is CUDA-only and the static libstdc++ runtime policy is Linux-only,
+# The static libstdc++ runtime policy is Linux-only,
 # so both are explicitly disabled.  The x86-only AVX variant binaries and their
 # process test are not built or run here.
 jobs:
@@ -33,7 +33,7 @@ jobs:
           cmake -S . -B build/ci-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER="$LLVM_PREFIX/bin/clang" \
             -DCMAKE_CXX_COMPILER="$LLVM_PREFIX/bin/clang++" \
-            -DKOI_BUILD_MODULES=OFF -DKOI_ENABLE_GPU_NNUE=OFF -DKOI_STATIC_RUNTIME=OFF \
+            -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF \
             -DKOI_TEST_TIMEOUT_SECONDS=300 \
             -DPython3_EXECUTABLE="$(command -v python)"
           cmake --build build/ci-release --config Release -j 4
@@ -180,7 +180,7 @@ jobs:
           cmake -S . -B build/ci-package -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER="$LLVM_PREFIX/bin/clang" \
             -DCMAKE_CXX_COMPILER="$LLVM_PREFIX/bin/clang++" \
-            -DKOI_BUILD_MODULES=OFF -DKOI_ENABLE_GPU_NNUE=OFF -DKOI_STATIC_RUNTIME=OFF
+            -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
           cmake --build build/ci-package --config Release -j 4
       - name: Package and verify the release tarball
         run: |

@@ -7,7 +7,7 @@ on stderr, and exactly one legal bestmove from the final healthy startpos search
 Wrongly accepted FENs are fine as long as the engine stays safe.
 
     python artifacts/plans/reliability-2026-10-31/fen_fuzz.py \
-        --engine build/full-release-gpu/koi-engine.exe --cases 2000 \
+        --engine build/full-release/koi-engine.exe --cases 2000 \
         --workers 6 --out artifacts/plans/reliability-2026-10-31/fen-fuzz.json
 """
 

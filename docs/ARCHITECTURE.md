@@ -177,7 +177,6 @@ flowchart TD
 
 ## Optional layers
 
-- `src/koi/gpu/` — CUDA NNUE inference; optional, with the CPU evaluator as
   fallback.
 - `src/koi/modules/` — the optional C++26 named-module partitions (`types`,
   `position`, `eval`, `tablebase`, `search`, `runtime`).
@@ -228,7 +227,7 @@ header surface and the test tree, not by a future redesign.
   tests and the dev fixture tool link them. The engine core contains no
   synthetic-network code.
 - **Optional layers**
-  `detail/` is private implementation without ABI promises; `gpu/` and
+  `detail/` is private implementation without ABI promises; and
   `modules/` remain optional (no implementation imports the named modules).
 
 ## Ownership and threading

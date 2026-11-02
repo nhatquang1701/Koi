@@ -69,7 +69,6 @@ def read_container(path: pathlib.Path) -> dict[str, object]:
     info["quantization"] = quantization
     info["feature_set"] = feature_set
     info["payload_sha256"] = hashlib.sha256(payload).hexdigest()
-    info["gpu_ready"] = version == 8
     return info
 
 

@@ -45,9 +45,7 @@ inline constexpr std::uint32_t kKoiNnueHalfkaThreatV5FormatVersion = 5;
 inline constexpr std::uint32_t kKoiNnueHalfkaThreatV6FormatVersion = 6;
 // Version 8 is a dispatch container: it carries either the v6 halfka+threat
 // math (36864 inputs) or the v4 halfka-only layout (9216 inputs), and the CPU
-// loader selects the math from the architecture word. The experimental GPU
-// kernel accepts only the v5 threat layout; the old claim that v8 itself was
-// "the GPU container" was stale.
+// loader selects the math from the architecture word.
 inline constexpr std::uint32_t kKoiNnueHalfkaThreatV8FormatVersion = 8;
 inline constexpr std::uint32_t kKoiNnueHalfkaKingBucketV1FeatureCount =
     static_cast<std::uint32_t>(kNnueHalfkaKingBucketV1FeatureCount);
@@ -287,12 +285,6 @@ struct EvaluatorSelection {
     bool nnue_enabled = false;
     std::optional<NnueError> nnue_error;
 };
-
-// Wraps a loaded network in the GPU inference adapter when `KOI_GPU_NNUE` is
-// set and the CUDA service can be created; otherwise returns the CPU evaluator.
-[[nodiscard]] std::shared_ptr<const Evaluator> maybe_wrap_gpu_nnue(
-    const std::shared_ptr<const NnueNetwork>& network,
-    std::shared_ptr<const Evaluator> cpu_evaluator);
 
 [[nodiscard]] EvaluatorSelection make_evaluator(
     std::optional<std::filesystem::path> nnue_path = std::nullopt);

@@ -147,9 +147,6 @@ class ReleaseCandidateGamesTest(unittest.TestCase):
         path="C:/nets/fixture.nnue",
         confirmation="info string NNUE enabled from C:/nets/fixture.nnue",
         rejections=(),
-        gpu_marker=None,
-        gpu_fallbacks=(),
-        gpu_requested=None,
         threads=1,
     ):
         self.write_uci_match()
@@ -160,12 +157,9 @@ class ReleaseCandidateGamesTest(unittest.TestCase):
             "koi_evaluator_mode": mode,
             "koi_evalfile_path": path,
             "koi_evalfile_sha256": sha256,
-            "koi_gpu_nnue_requested": mode == "gpu-v5" if gpu_requested is None else gpu_requested,
             "koi_evaluator_attestation": {
                 "nnue_enabled_confirmation": confirmation,
                 "evalfile_rejections": list(rejections),
-                "gpu_enabled_marker": gpu_marker,
-                "gpu_unavailable_fallbacks": list(gpu_fallbacks),
             },
         })
         self.report.write_text(json.dumps(data), encoding="utf-8")
@@ -320,46 +314,6 @@ class ReleaseCandidateGamesTest(unittest.TestCase):
                     expected_max_moves=1,
                     expected_opening_count=0,
                     expected_evaluator_mode="nnue-v4",
-                    expected_evalfile_sha256=expected_hash,
-                )
-                self.assertTrue(errors)
-
-    def test_gpu_v5_requires_requested_gpu_marker_threads_and_no_fallback(self):
-        expected_hash = "c" * 64
-        valid = {
-            "mode": "gpu-v5",
-            "sha256": expected_hash,
-            "confirmation": "info string NNUE enabled from C:/nets/fixture.nnue",
-            "gpu_marker": "koi-engine: GPU NNUE inference enabled.",
-            "gpu_requested": True,
-            "threads": 2,
-        }
-        self.write_evaluator_attestation(**valid)
-        self.assertEqual(
-            self.validate(
-                expected_max_moves=1,
-                expected_threads=2,
-                expected_opening_count=0,
-                expected_evaluator_mode="gpu-v5",
-                expected_evalfile_sha256=expected_hash,
-            ),
-            [],
-        )
-
-        invalid_cases = (
-            {"gpu_marker": None},
-            {"gpu_fallbacks": ["koi-engine: GPU NNUE unavailable (no device); using the CPU network."]},
-            {"gpu_requested": False},
-            {"threads": 1},
-        )
-        for override in invalid_cases:
-            with self.subTest(override=override):
-                self.write_evaluator_attestation(**(valid | override))
-                errors = self.validate(
-                    expected_max_moves=1,
-                    expected_threads=2,
-                    expected_opening_count=0,
-                    expected_evaluator_mode="gpu-v5",
                     expected_evalfile_sha256=expected_hash,
                 )
                 self.assertTrue(errors)

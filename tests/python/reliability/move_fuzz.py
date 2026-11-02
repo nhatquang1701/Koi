@@ -6,7 +6,7 @@ engine never crashes or hangs: exit 0, stderr only `UCI position error:` lines,
 and exactly one legal bestmove from the retained position.
 
     python artifacts/plans/reliability-2026-10-31/move_fuzz.py \
-        --engine build/full-release-gpu/koi-engine.exe --cases 2000 \
+        --engine build/full-release/koi-engine.exe --cases 2000 \
         --workers 6 --out artifacts/plans/reliability-2026-10-31/move-fuzz.json
 """
 

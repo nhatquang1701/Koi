@@ -60,10 +60,9 @@ param(
 
     [string]$KoiOptionsJsonPath = '',
 
-    # Optional evaluator attestation. For nnue-v4, nnue-v5, or gpu-v5 pass an
-    # existing network with -KoiEvalFile; gpu-v5 also requires KOI_GPU_NNUE=1
-    # and at least two -Threads. Existing KoiOptions EvalFile remains supported.
-    [ValidateSet('classical', 'nnue-v4', 'nnue-v5', 'nnue-v6', 'nnue-v8', 'gpu-v5')]
+    # Optional evaluator attestation. For nnue-v4/v5/v6/v8 pass an existing
+    # network with -KoiEvalFile. Existing KoiOptions EvalFile remains supported.
+    [ValidateSet('classical', 'nnue-v4', 'nnue-v5', 'nnue-v6', 'nnue-v8')]
     [string]$KoiEvaluatorMode = 'classical',
 
     [string]$KoiEvalFile = '',
@@ -251,7 +250,6 @@ if (-not [string]::IsNullOrWhiteSpace($evalFileValue)) {
             'nnue-v5' { 5 }
             'nnue-v6' { 6 }
             'nnue-v8' { 8 }
-            { $_ -in @('gpu-v5') } { 5 }
         }
         if ($networkVersion -ne $expectedNetworkVersion) {
             throw "Koi EvalFile for '$KoiEvaluatorMode' does not contain NNUE v$expectedNetworkVersion."
@@ -551,11 +549,6 @@ function Start-UciEngine([string]$Path, [string]$Label, [string]$BootEvalFile = 
     $startInfo.RedirectStandardInput = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
-    if ($Label -ceq 'Koi' -and $KoiEvaluatorMode -in @('nnue-v4', 'nnue-v5', 'nnue-v6', 'nnue-v8')) {
-        # Keep CPU v4/v5 attestations explicit even when the parent shell asked
-        # the engine to prefer GPU inference for unrelated runs.
-        $startInfo.EnvironmentVariables['KOI_GPU_NNUE'] = '0'
-    }
     if (-not [string]::IsNullOrWhiteSpace($BootEvalFile)) {
         # NNUE is mandatory since the HCE removal (2026-10-28): the engine must
         # see a network at boot, before `EvalFile` can be applied over UCI.
@@ -796,8 +789,6 @@ function Get-KoiEvaluatorAttestation($Engine, $StopResult) {
     $rejections = @($allLines | Where-Object {
         $_ -match 'EvalFile (?:rejected|installation failed)'
     })
-    $gpuMarkers = @($stderrLines | Where-Object { $_ -ceq 'koi-engine: GPU NNUE inference enabled.' })
-    $gpuFallbacks = @($stderrLines | Where-Object { $_ -match '^koi-engine: GPU NNUE unavailable \(' })
 
     if ($KoiEvaluatorMode -ne 'classical') {
         if ($rejections.Count -gt 0) {
@@ -808,20 +799,9 @@ function Get-KoiEvaluatorAttestation($Engine, $StopResult) {
             throw 'Koi NNUE-enabled confirmation was missing from UCI output.'
         }
     }
-    if ($KoiEvaluatorMode -eq 'gpu-v5') {
-        if ($gpuFallbacks.Count -gt 0) {
-            throw "GPU v5 attestation rejected CPU fallback: $($gpuFallbacks -join ' | ')"
-        }
-        if ($gpuMarkers.Count -eq 0) {
-            throw 'GPU v5 attestation requires the GPU NNUE inference enabled marker on stderr.'
-        }
-    }
-
     return [ordered]@{
         nnue_enabled_confirmation = if ($confirmations.Count -gt 0) { $confirmations[0] } else { $null }
         evalfile_rejections = @($rejections)
-        gpu_enabled_marker = if ($gpuMarkers.Count -gt 0) { $gpuMarkers[0] } else { $null }
-        gpu_unavailable_fallbacks = @($gpuFallbacks)
     }
 }
 
@@ -1206,14 +1186,6 @@ if ($null -eq $positions) {
 $KoiColor = $KoiColor.ToLowerInvariant()
 $maximumThreads = [Math]::Max(1, [Math]::Min(64, [Environment]::ProcessorCount))
 $Threads = [Math]::Max(1, [Math]::Min($Threads, $maximumThreads))
-if ($KoiEvaluatorMode -eq 'gpu-v5') {
-    if ($Threads -lt 2) {
-        throw 'GPU v5 evaluator attestation requires -Threads of at least 2.'
-    }
-    if ($env:KOI_GPU_NNUE -cne '1') {
-        throw 'GPU v5 evaluator attestation requires KOI_GPU_NNUE=1.'
-    }
-}
 $pgnTimeControl = if (-not [string]::IsNullOrWhiteSpace($TimeControl)) { $TimeControl } elseif ($MovetimeMs -gt 0) { "movetime $MovetimeMs" } elseif ($Nodes -gt 0) {
     "nodes $Nodes"
 } else {
@@ -1642,7 +1614,6 @@ $report = [ordered]@{
         koi_evaluator_mode = $reportedKoiEvaluatorMode
         koi_evalfile_path = $resolvedKoiEvalFile
         koi_evalfile_sha256 = $koiEvalFileSha256
-        koi_gpu_nnue_requested = ($KoiEvaluatorMode -eq 'gpu-v5')
         koi_evaluator_attestation = $koiEvaluatorAttestation
         time_control_metadata = $measurement.time_control
     }

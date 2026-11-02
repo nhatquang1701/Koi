@@ -7,7 +7,7 @@ search.  Hash/Threads are intentionally excluded (their valid numeric values can
 allocate aggressively); the goal is parser/state robustness, not resource bombs.
 
     python artifacts/plans/reliability-2026-10-31/option_fuzz.py \
-        --engine build/full-release-gpu/koi-engine.exe --cases 1000 \
+        --engine build/full-release/koi-engine.exe --cases 1000 \
         --workers 6 --out artifacts/plans/reliability-2026-10-31/option-fuzz.json
 """
 

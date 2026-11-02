@@ -544,33 +544,6 @@ void test_uci_handshake_has_identity_and_supported_options_in_order() {
             "uci response must match tests/data/uci/handshake.txt");
 }
 
-void test_gpu_nnue_option_is_case_insensitive_and_cancels_active_searches() {
-    const ControllerResult result = run_controller(
-        "uci\n"
-        "position startpos\n"
-        "go infinite\n"
-        "setoption name GpuNnue value off\n"
-        "go infinite\n"
-        "setoption name gpuNnue value ON\n"
-        "setoption name GpuNnue value maybe\n"
-        "go infinite\n"
-        "setoption name GpuNnue value auto\n"
-        "go infinite\n"
-        "stop\n"
-        "quit\n");
-    const std::vector<std::string> lines = output_lines(result.output);
-    const std::vector<std::string> bestmoves = lines_starting_with(lines, "bestmove ");
-
-    require(result.exit_code == 0 && result.diagnostics.empty(),
-            "GpuNnue option changes must leave the UCI stdio clean");
-    require(result.output.find(
-                "option name GpuNnue type combo default off var auto var on var off\n") !=
-                std::string::npos,
-            "GpuNnue must be advertised as an auto/on/off combo");
-    require(bestmoves.size() == 1 && is_legal_move(Position{}, first_bestmove_move(bestmoves[0])),
-            "each GpuNnue change must suppress the replaced search and leave one legal completion");
-}
-
 void test_syzygy_options_accept_valid_values_and_ignore_invalid_values() {
     const ControllerResult result = run_controller(
         "uci\n"
@@ -2043,11 +2016,7 @@ void test_handshake_option_table_is_unique_and_well_formed() {
             "a handshake-only transcript must stay clean");
     const std::vector<std::string> options =
         lines_starting_with(output_lines(handshake.output), "option name ");
-    require(options.size() == 26, "the handshake must advertise exactly 26 options");
-    require(handshake.output.find(
-                "option name GpuNnue type combo default off var auto var on var off") !=
-                std::string::npos,
-            "GpuNnue must advertise auto/on/off with auto as the default");
+    require(options.size() == 25, "the handshake must advertise exactly 25 options");
 
     const std::string prefix = "option name ";
     std::vector<std::string> names;
@@ -2369,8 +2338,6 @@ void test_bestmove_reports_the_ponder_move_without_the_option() {
 int main(int argc, char** argv) {
     const std::vector<koi::test::TestCase> tests{
         {"uci handshake and options", test_uci_handshake_has_identity_and_supported_options_in_order},
-        {"GpuNnue option replacement",
-         test_gpu_nnue_option_is_case_insensitive_and_cancels_active_searches},
         {"Syzygy option values", test_syzygy_options_accept_valid_values_and_ignore_invalid_values},
         {"legacy strength handshake", test_legacy_strength_options_are_not_advertised},
         {"legacy strength unknown options", test_legacy_strength_options_are_quiet_unknown_options},

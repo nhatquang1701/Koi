@@ -55,7 +55,6 @@ enum class UciOptionId {
     syzygy_interior_depth,
     syzygy_50_move_rule,
     eval_file,
-    gpu_nnue,
     debug,
     debug_file,
 };
@@ -72,7 +71,7 @@ struct UciOptionDescriptor {
     std::string_view combo_values;
 };
 
-inline constexpr std::array<UciOptionDescriptor, 28> kUciOptions{{
+inline constexpr std::array<UciOptionDescriptor, 27> kUciOptions{{
     {"RandomSeed", UciOptionKind::spin, UciOptionId::random_seed, "0", 0,
      kMaximumRandomSeed, false, true},
     {"Hash", UciOptionKind::spin, UciOptionId::hash, "512", kMinimumHashMegabytes,
@@ -112,8 +111,6 @@ inline constexpr std::array<UciOptionDescriptor, 28> kUciOptions{{
     {"Syzygy50MoveRule", UciOptionKind::check, UciOptionId::syzygy_50_move_rule, "true", 0, 0,
      false, true},
     {"EvalFile", UciOptionKind::string, UciOptionId::eval_file, "", 0, 0, false, true},
-    {"GpuNnue", UciOptionKind::combo, UciOptionId::gpu_nnue, "off", 0, 0, false, true,
-     "var auto var on var off"},
     {"Debug", UciOptionKind::check, UciOptionId::debug, "false", 0, 0, false, false},
     {"DebugFile", UciOptionKind::string, UciOptionId::debug_file, "koi-debug.log", 0, 0, false,
      false},

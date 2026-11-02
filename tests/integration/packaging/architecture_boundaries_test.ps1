@@ -56,7 +56,7 @@ foreach ($source in $engineSources) {
 }
 
 # 0c. Public headers stay lightweight: no heavy implementation/vendor includes.
-$heavyPublicIncludes = @('<fstream>', '<iostream>', '"chess.hpp"', '"tbprobe.h"', '<cuda.h>')
+$heavyPublicIncludes = @('<fstream>', '<iostream>', '"chess.hpp"', '"tbprobe.h"')
 foreach ($header in Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src/koi') -File -Filter '*.hpp') {
     $relative = [System.IO.Path]::GetRelativePath($repositoryRoot, $header.FullName).Replace('\', '/')
     $content = Get-Content -LiteralPath $header.FullName -Raw
@@ -141,8 +141,8 @@ if (-not (Test-Path -LiteralPath $optionTablePath)) {
     Fail 'src/koi/detail/uci_option_table.hpp is missing'
 } else {
     $optionTable = Get-Content -LiteralPath $optionTablePath -Raw
-    if ($optionTable -notmatch 'array<UciOptionDescriptor, 28>') {
-        Fail 'the option catalog must declare the 28-entry table'
+    if ($optionTable -notmatch 'array<UciOptionDescriptor, 27>') {
+        Fail 'the option catalog must declare the 27-entry table'
     }
     $controllerSource = Read-RepositoryFile 'src/koi/uci_controller.cpp'
     if ($controllerSource -match 'enum class UciOptionKind') {

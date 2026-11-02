@@ -34,7 +34,6 @@
 #include "koi/evaluation_features.hpp"
 #include "koi/game_state.hpp"
 #include "koi/syzygy_tablebase.hpp"
-#include "koi/gpu/nnue_gpu_evaluator.hpp"
 #include "koi/time_manager.hpp"
 #include "koi/transposition_table.hpp"
 
@@ -89,31 +88,6 @@ struct RootScheduleRecord {
     int previous_score = -kInfinity;
     bool has_previous_score = false;
     bool previous_exact = false;
-};
-
-// Keeps the process-wide "GPU batching is worth it" counter true for exactly
-// the lifetime of a multi-threaded search.  A boolean flag would be wrong when
-// two searches with different thread counts overlap: the second search would
-// flip the evaluator path of the first one mid-flight.
-class ThreadedGpuSearchScope {
-public:
-    explicit ThreadedGpuSearchScope(const bool threaded) noexcept : threaded_(threaded) {
-        if (threaded_) {
-            gpu::begin_gpu_nnue_threaded_search();
-        }
-    }
-
-    ~ThreadedGpuSearchScope() {
-        if (threaded_) {
-            gpu::end_gpu_nnue_threaded_search();
-        }
-    }
-
-    ThreadedGpuSearchScope(const ThreadedGpuSearchScope&) = delete;
-    ThreadedGpuSearchScope& operator=(const ThreadedGpuSearchScope&) = delete;
-
-private:
-    bool threaded_;
 };
 
 } // namespace
@@ -176,7 +150,6 @@ void SearchRunner::run_impl() {
     // re-arms timing at the top of the next iteration.
     SearchLimits limits = session->limits();
     const SearchOptions& options = session->options();
-    const ThreadedGpuSearchScope gpu_scope(options.threads > 1);
     SearchResult result;
     result.identity = session->identity();
     // The orchestrator uses the same table seam as the recursive search layer;

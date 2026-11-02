@@ -31,7 +31,7 @@ required to search: a boot without a usable network exits with a clear diagnosti
 | Engine area | What Koi provides |
 | --- | --- |
 | Search | Alpha-beta with Lazy SMP |
-| Evaluation | Gated Koi NNUE required in release packages (bundled); classical HCE removed 2026-10-28 (clean rewrite planned); experimental GPU NNUE off by default |
+| Evaluation | Gated Koi NNUE required in release packages (bundled); classical HCE removed 2026-10-28 (clean rewrite planned); GPU NNUE removed 2026-11-02 (CPU-only) |
 | Chess support | Standard chess over the UCI protocol |
 | Optional assets | Bundled CC0 Polyglot opening book, used automatically; user-installed Syzygy tablebases are auto-detected from a conventional directory beside the engine and are never packaged |
 
@@ -54,9 +54,8 @@ sidecars from
 
 macOS arm64 (Apple Silicon) can also build from source: install Homebrew LLVM
 (clang 19+; AppleClang 18+ also works), CMake, and Ninja, then configure with
-`-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is experimental,
-disabled by default, CUDA-only, and
-unavailable on macOS; the CPU NNUE path works normally. NNUE is required: a boot
+`-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. The engine is CPU-only
+and the CPU NNUE path works normally. NNUE is required: a boot
 without a usable network exits with a clear diagnostic.
 See the [user guide](docs/USER_GUIDE.md#build-prerequisites) for the commands.
 

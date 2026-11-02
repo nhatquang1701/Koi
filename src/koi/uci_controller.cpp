@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "koi/gpu/nnue_gpu_evaluator.hpp"
 #include "koi/nnue.hpp"
 #include "koi/perft.hpp"
 #include "koi/time_manager.hpp"
@@ -1095,8 +1094,7 @@ void UciController::handle_setoption(std::istream& command) {
         }
         try {
             auto weights = std::make_shared<const NnueNetwork>(std::move(*network));
-            search_service_.set_evaluator(koi::maybe_wrap_gpu_nnue(
-                weights, std::make_shared<NnueEvaluator>(weights)));
+            search_service_.set_evaluator(std::make_shared<NnueEvaluator>(weights));
         } catch (const std::exception& install_error) {
             // Installing a network allocates; a failure here must keep the
             // previous evaluator and the process alive.
@@ -1112,43 +1110,6 @@ void UciController::handle_setoption(std::istream& command) {
                                            ",\"enabled\":true");
         std::lock_guard lock(output_mutex_);
         output_ << "info string NNUE enabled from " << resolved.string() << '\n' << std::flush;
-        break;
-    }
-
-    case UciOptionId::gpu_nnue: {
-        gpu::GpuNnueMode requested = gpu::GpuNnueMode::disabled;
-        if (!gpu::parse_gpu_nnue_mode(value, requested) ||
-            requested == gpu::gpu_nnue_mode()) {
-            // An invalid or unchanged value must not disturb a live search.
-            break;
-        }
-        stop_and_suppress_active_search();
-        gpu::set_gpu_nnue_mode(requested);
-        // A network installed while the GPU path was disabled was wrapped
-        // without a service.  Re-install it from EvalFile so a later `on` or
-        // `auto` can actually reach the GPU; an evaluator that already owns a
-        // GPU service re-enables dynamically through the mode check, and a
-        // missing driver or an incompatible network reports its reason through
-        // the search diagnostic instead.
-        if (gpu::effective_gpu_nnue_mode() != gpu::GpuNnueMode::disabled &&
-            !eval_file_.empty() && gpu::gpu_nnue_available() &&
-            !gpu::gpu_nnue_status().service_ready) {
-            std::filesystem::path resolved = eval_file_;
-            if (resolved.is_relative() && !executable_directory_.empty()) {
-                resolved = executable_directory_ / resolved;
-            }
-            auto network = NnueLoader::load_file(resolved);
-            if (network.has_value()) {
-                try {
-                    auto weights = std::make_shared<const NnueNetwork>(std::move(*network));
-                    search_service_.set_evaluator(koi::maybe_wrap_gpu_nnue(
-                        weights, std::make_shared<NnueEvaluator>(weights)));
-                } catch (...) {
-                    // Keep the current evaluator; the next search diagnostic
-                    // reports the GPU state.
-                }
-            }
-        }
         break;
     }
 
@@ -1361,13 +1322,6 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                     " move " + book_choice->move.uci() + " root " + root.fen());
         write_book_completion(generation, root, limits, *book_choice, ply, completion_once);
         return;
-    }
-    // One GPU NNUE diagnostic per search start (never per node). The line is
-    // empty unless the GPU adapter is active.
-    if (const std::string gpu_line = gpu::gpu_nnue_search_diagnostic(threads_);
-        !gpu_line.empty()) {
-        std::lock_guard lock(output_mutex_);
-        output_ << "info string " << gpu_line << '\n' << std::flush;
     }
     const GameState search_root = root;
     const bool is_ponder_search = limits.ponder;

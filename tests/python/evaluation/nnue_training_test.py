@@ -99,7 +99,7 @@ class NnueTrainingBoundaryTest(unittest.TestCase):
                 )
                 self.assertEqual(boundary.returncode, 0, boundary.stderr + boundary.stdout)
 
-    def test_synthetic_export_is_small_corpus_and_gpu_independent(self):
+    def test_synthetic_export_is_small_corpus_and_device_independent(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             paths = {}

@@ -5,7 +5,7 @@ Feeds random search-limit combinations and interleaved lifecycle commands, then
 a deterministic healthy search and checks crash/hang/protocol invariants.
 
     python artifacts/plans/reliability-2026-10-31/go_fuzz.py \
-        --engine build/full-release-gpu/koi-engine.exe --cases 1000 \
+        --engine build/full-release/koi-engine.exe --cases 1000 \
         --workers 6 --out artifacts/plans/reliability-2026-10-31/go-fuzz.json
 """
 

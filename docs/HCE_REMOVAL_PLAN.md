@@ -13,7 +13,7 @@ NNUE `koi-v7-h128-official-20261025` is the production evaluator.
   `evaluation_features.*`.
 - Evaluator selection: `make_evaluator()` in `nnue.cpp` (classical fallback when
   no/`bad` net), `main.cpp` boot resolution, `uci_controller.*` EvalFile fallback
-  and identity diagnostics, GPU evaluator fallback.
+  and identity diagnostics.
 - Search coupling: `SearchOptions::evaluator_mode`, eval-cache key comments,
   classical-specific pruning comments in `search_constants.hpp` /
   `search_context.hpp` / `search_policy.hpp` / `search_table_access.hpp`.
@@ -21,7 +21,7 @@ NNUE `koi-v7-h128-official-20261025` is the production evaluator.
   `tools/nnue/ab_match.ps1` (NNUE vs classical), `elo_estimate.py` mode flags.
 - Tests: `classical_evaluator_tests`, `evaluation_boundary_tests`,
   `nnue_boundary_tests`, `uci_controller_tests`, `koi_search_tests`,
-  `koi_strength_tests`, GPU/soak/service tests, several PowerShell/Python
+  `koi_strength_tests`, soak/service tests, several PowerShell/Python
   integration tests that assume a no-net engine works.
 - Docs: README, ENGINE_SPEC §5, USER_GUIDE, ARCHITECTURE, NNUE_PIPELINE,
   tests/README, bot docs.
@@ -39,7 +39,7 @@ C. Build-time `KOI_ENABLE_HCE=OFF` default: code stays in the tree unreferenced.
 1. Freeze: tag/record current HCE sources in a local archive (no git history of the
    removal needed beyond the commit).
 2. Delete HCE implementation + parameter tables; remove `evaluator_mode` and
-   classical branches from selection/UCI/GPU/tools.
+   classical branches from selection/UCI/tools.
 3. Rewire boot: NNUE required (option A), truthful diagnostics; update handshake
    tests if any option disappears.
 4. Convert tests that used classical as a neutral baseline: pin the promoted net
@@ -74,5 +74,6 @@ C. Build-time `KOI_ENABLE_HCE=OFF` default: code stays in the tree unreferenced.
 - Docs updated (ENGINE_SPEC §4, README, ARCHITECTURE, USER_GUIDE banner, pipeline,
   bot/mac-worker, tests/tools READMEs). Some historical measurement sections still
   mention the old evaluator as past tense/by design.
+- The experimental GPU NNUE backend was removed completely on 2026-11-02.
 - Remaining: the clean HCE rewrite itself (separate cycle). Re-add it behind its own
   module, explicit score-scale conversion, and re-recorded fixtures.

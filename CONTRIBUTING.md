@@ -13,9 +13,9 @@ Koi Engine is a Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon) UCI c
     versions, so install a newer CMake (`python3 -m pip install --upgrade cmake`
     or the Kitware APT repository) before configuring.
   - On macOS, `brew install llvm ninja` and configure with
-    `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is CUDA-only
-    and unavailable on macOS; the CPU NNUE path works normally (a network is
-    required since the classical evaluator was removed on 2026-10-28).
+    `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. The engine is CPU-only;
+    the CPU NNUE path works normally (a network is required since the classical
+    evaluator was removed on 2026-10-28).
 - CMake 3.31+
 - Ninja (required for the C++26 named-module build)
 - PowerShell (`pwsh` or `powershell`) for the process tests

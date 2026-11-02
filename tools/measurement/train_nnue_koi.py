@@ -826,7 +826,7 @@ def nnue_container_v4(payload: bytes, hidden_units: int, hidden_shift: int,
                       output_shift: int, version: int = VERSION) -> tuple[bytes, str]:
     """Halfka-only container.
 
-    ``version`` 8 selects the GPU-ready v8 header, which keeps the v4 payload
+    ``version`` 8 selects the v8 dispatch header, which keeps the v4 payload
     byte for byte: the only difference is the version word the loader reads.
     """
     payload_hash = hashlib.sha256(payload).hexdigest()
@@ -1174,7 +1174,7 @@ def main_v5(args, rng) -> int:
 
 
 def main_v6(args, rng, *, format_version: int = V6_VERSION,
-            arch_label: str = "v6", gpu_ready: bool = False) -> int:
+            arch_label: str = "v6") -> int:
     """Train, quantize, and export a v6 network (v5 head plus the diff channel)."""
     if torch is None:  # pragma: no cover - environment dependent
         raise TrainerError("PyTorch is required for training; install torch")
@@ -1378,8 +1378,7 @@ def main_v6(args, rng, *, format_version: int = V6_VERSION,
     net_path.parent.mkdir(parents=True, exist_ok=True)
     net_path.write_bytes(container)
     metadata = {
-        "schema": ("koi-nnue-training-metadata-v4" if gpu_ready
-                   else "koi-nnue-training-metadata-v3"),
+        "schema": "koi-nnue-training-metadata-v3",
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "corpus": str(args.dataset or args.corpus),
         "rows_used": int(rows),
@@ -1388,7 +1387,6 @@ def main_v6(args, rng, *, format_version: int = V6_VERSION,
         "quantization": QUANTIZATION.decode(),
         "arch": arch_label,
         "format_version": format_version,
-        "gpu_ready": gpu_ready,
         "architecture": {
             "input": V5_INPUT_UNITS,
             "hidden": hidden_units,
@@ -1580,8 +1578,7 @@ def main(argv: list[str] | None = None) -> int:
     args.net_out.parent.mkdir(parents=True, exist_ok=True)
     args.net_out.write_bytes(container)
     metadata = {
-        "schema": ("koi-nnue-training-metadata-v4" if v8_halfka
-                   else "koi-nnue-training-metadata-v2"),
+        "schema": "koi-nnue-training-metadata-v2",
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "corpus": str(args.dataset if args.dataset is not None else args.corpus),
         "rows_used": int(offsets.size - 1),
@@ -1590,7 +1587,6 @@ def main(argv: list[str] | None = None) -> int:
         "quantization": QUANTIZATION.decode(),
         "arch": ("v8" if v8_halfka else "v4"),
         "format_version": (V8_VERSION if v8_halfka else VERSION),
-        "gpu_ready": v8_halfka,
         "architecture": {
             "input": INPUT_UNITS,
             "hidden": args.hidden_units,

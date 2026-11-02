@@ -147,9 +147,8 @@ On macOS arm64 (Apple Silicon):
 - CMake 3.31 or newer, for example `python3 -m pip install --upgrade cmake`.
 - C++26 named modules are disabled on macOS (`-DKOI_BUILD_MODULES=OFF`), and
   the Linux static-runtime policy does not apply (`-DKOI_STATIC_RUNTIME=OFF`).
-- GPU NNUE is experimental, disabled by default, and scheduled for removal; it
-  is CUDA-only and unavailable on macOS. The engine uses the CPU NNUE
-  network when one is loaded; NNUE is required since the 2026-10-28 HCE removal.
+  The engine is CPU-only and uses the CPU NNUE network when one is loaded; NNUE
+  is required since the 2026-10-28 HCE removal.
 - Optional: `pwsh` for the PowerShell process tests and Python 3 for the
   Python tooling tests.
 
@@ -212,7 +211,6 @@ the sibling as a child process, forwards its exit code, and a job object kills
 the child if the parent disappears; on Linux it `execv`s the sibling so the
 process image is replaced). On macOS arm64 there are no AVX siblings, so the
 baseline `koi-engine` runs directly. All other tools (`koi-bench`, `koi-replay`,
-`koi-perft`, `koi-eval-features`, `koi-gpu-probe`) are AVX2 builds on Windows
 and Linux x86-64 and baseline builds on macOS arm64.
 
 For an independently reproducible release gate, run the checked-in harness from
@@ -346,7 +344,6 @@ perspectives feeding full-width cross pair products (`p[j] = own[j] * opp[j]`) a
 pair products; the version 3 trainer (`train_nnue_sf.py`) remains available, and
 version 2, 3, and 4 containers still load:
 
-`--arch v8` writes the GPU-ready version 8 container in the halfka-only layout:
 the same 9216-input payload as the version 4 network, so the container differs
 only in its version word. The version 8 container also still accepts the
 36864-input `threat-pairs-v1` form written by `--arch v6`, whose payload is
@@ -409,54 +406,7 @@ colour-split A/B match against the classical evaluator
 network (`tools/nnue/net_match.ps1`, schema `koi-nnue-net-match-v1`). Validation
 output is a local report, not an Elo claim or a CI threshold.
 
-### GPU NNUE inference (experimental, off by default)
-
-**GPU NNUE is experimental, disabled by default, and scheduled for removal.**
-It only runs version 5 networks on NVIDIA GPUs with a CUDA 12.x toolkit; the CPU
-NNUE path is required; the classical evaluator was removed on 2026-10-28.
-The `GpuNnue` UCI option selects the policy:
-
-- `off` (default) never uses the GPU, even when a driver and a compatible
-  network are present.
-- `auto` (experimental) uses the GPU when this build contains the kernel, the
-  CUDA driver loads, the loaded network is a compatible version 5 container, and
-  the search uses `Threads` greater than one. Threads=1 keeps the deterministic
-  CPU path. Any failure falls back to the CPU network.
-- `on` (experimental) requests the GPU. If no CUDA driver is available, the
-  build has no GPU kernel, or the network is not a compatible v5 container, the
-  engine keeps the CPU network and reports why; it never fails to start.
-
-The environment variables stay higher-priority test overrides: `KOI_GPU_NNUE=0`
-forces `off`, and any other non-empty `KOI_GPU_NNUE` value forces `on` over the
-option. An explicit `off` from either the option or `KOI_GPU_NNUE=0` always
-wins, so the GPU can never be enabled against a user's explicit request to
-disable it. `EvalFile` semantics are unchanged; a rejected or incompatible
-network is required to search at all.
-
-At the start of every search with an NNUE network loaded the engine emits one
-diagnostic line, for example:
-
-```
-info string GPU NNUE: on -> cuda (NVIDIA GeForce GTX 1060)
-info string GPU NNUE: off (Threads=1)
-info string GPU NNUE: unavailable (no CUDA driver)
-```
-
-The build compiles `src/koi/gpu/koi_nnue_v5.cu` to PTX for the compute
-capabilities in `KOI_GPU_PTX_ARCHS` (`61;75;86;89;120` by default, covering the
-GTX 10-series through the RTX 50-series) and embeds one module per
-architecture; at runtime only `nvcuda.dll` is loaded dynamically, so builds
-without `nvcc` stay CPU-only. The engine selects the newest embedded module the
-device can run and JITs it, so a GTX 1060 (sm_61) and an RTX 50-series card
-(sm_120) both work, while a GPU older than sm_61 stays on the CPU. Set
-`KOI_GPU_PTX_ARCH=75` to force one embedded module for testing. CUDA 12.x is
-required at build time because CUDA 13 drops Pascal support; the installed
-driver only has to be CUDA 12.x-capable. The GPU result is bit-exact with the
-CPU scalar evaluation, but this first pass does not promise a speedup and makes
-no strength or Elo claims. GPU NNUE is experimental, off by default, and
-scheduled for removal; it is CUDA-only, and macOS arm64 has no CUDA support, so
-those builds always report the GPU as unavailable and use the CPU NNUE or
-classical evaluator (historical).
+`Threads` for multi-threaded CPU search.
 
 For a reproducible local match against Stockfish or another UCI engine, use the
 optional PowerShell harness:
@@ -615,7 +565,6 @@ attestation, and requires the match harness to confirm that the engine enabled
 that exact file; the report records the absolute path, SHA-256, byte size,
 container version, and attestation under `configuration.koi_evaluator`. Missing,
 malformed, or rejected networks fail with a nonzero exit. `--koi-options-json`
-forwards additional non-pinned Koi options (for example `GpuNnue`) to the harness
 and records the file hash; it must not set `EvalFile`.
 
 CTest registers the standard-library-only estimator, match-option, and opening
@@ -1102,7 +1051,6 @@ the options at session start; the portable release defaults are `RandomSeed=0`,
 `Contempt=0`, `Dynamic Overhead=false`,
 `BookRandom=false`, `BookSafety=true`, `BookSafetyDepth=2`,
 `UCI_ShowWDL=false`, `Move Overhead=30`, `Slow Mover=100`, `StrengthMode=false`,
-`GpuNnue=off`,
 `SyzygyPath=""`, `SyzygyProbeDepth=1`, `SyzygyProbeLimit=7`,
 `Syzygy50MoveRule=true`, `SyzygyInteriorDepth=0`, and `EvalFile=""`
 (empty keeps the boot-time evaluator).

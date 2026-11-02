@@ -232,14 +232,12 @@ KOI_CPU_VARIANT=generic, avx2, or avx512 to force one build.
 }
 $developerToolsParagraph = 'Release packages ship the engine binaries and their runtime assets only. Developer tools (koi-bench, koi-replay, koi-perft, koi-eval-features) and the test suite are built from source and are not included.'
 $hardwareParagraph = if ($isMacOSHost) {
-    'GPU NNUE inference is experimental, disabled by default, scheduled for removal, and CUDA-only; it is not available on macOS.'
+    'Koi is CPU-only.'
 } else {
 @"
 Every build requires an x86-64 CPU. The AVX2 build requires AVX2 and the
 AVX-512 build requires AVX-512; the baseline build has no instruction-set
-requirement. The experimental GPU NNUE inference (off by default) needs an NVIDIA GPU (Pascal
-sm_61 or newer) with a CUDA 12.x-capable driver and is opt-in with
-KOI_GPU_NNUE=1.
+requirement. Koi is CPU-only.
 "@
 }
 @"

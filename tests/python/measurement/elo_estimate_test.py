@@ -90,8 +90,6 @@ def make_match_report(paths, anchor, color, *, result="1-0", own_book=False, eva
             "koi_evaluator_attestation": {
                 "nnue_enabled_confirmation": f"info string NNUE enabled from {eval_file}",
                 "evalfile_rejections": [],
-                "gpu_enabled_marker": None,
-                "gpu_unavailable_fallbacks": [],
             },
         })
         koi_options.append(option_line("EvalFile", str(eval_file)))
@@ -529,7 +527,7 @@ class EloEstimateTests(unittest.TestCase):
             directory = Path(temporary_directory)
             paths = make_paths(directory)
             options_path = directory / "koi-options.json"
-            options_path.write_text(json.dumps({"GpuNnue": "off"}), encoding="utf-8")
+            options_path.write_text(json.dumps({"Contempt": "0"}), encoding="utf-8")
             loaded = elo_estimate.load_koi_options_json(options_path)
             self.assertTrue(elo_estimate._same_path(loaded.path, options_path))
             self.assertEqual(loaded.sha256, hashlib.sha256(options_path.read_bytes()).hexdigest())

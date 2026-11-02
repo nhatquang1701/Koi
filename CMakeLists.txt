@@ -199,8 +199,8 @@ else()
 endif()
 
 # Prebuilt Linux binaries should run on any modern distribution, so the C++
-# runtime is linked statically by default. The C library stays dynamic: a fully
-# static glibc would break dlopen("libcuda.so.1"). Sanitizer builds should pass
+# runtime is linked statically by default. The C library stays dynamic for the
+# portable prebuilt configuration. Sanitizer builds should pass
 # -DKOI_STATIC_RUNTIME=OFF. macOS links libc++/libSystem dynamically and has no
 # static runtime pair, so the option defaults off and stays off there.
 if(MSVC OR APPLE)
@@ -245,75 +245,6 @@ target_compile_definitions(koi_test_support INTERFACE
     KOI_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
 )
 
-# --- Optional GPU NNUE inference -------------------------------------------------
-# The v5 evaluation kernel is compiled to PTX by nvcc at build time and embedded
-# as a string; at runtime the engine binds nvcuda.dll dynamically, so a machine
-# without a CUDA driver (or a build without nvcc) simply stays on the CPU path.
-# One PTX module is embedded per architecture in KOI_GPU_PTX_ARCHS so a single
-# binary covers Pascal through Blackwell; the runtime picks the newest module
-# the device can run (see src/koi/gpu/ptx_variant.hpp).
-option(KOI_ENABLE_GPU_NNUE "Build GPU NNUE inference (requires nvcc)" ON)
-set(KOI_GPU_PTX_ARCHS "61;75;86;89;120" CACHE STRING
-    "CUDA compute capabilities embedded as PTX (one module each)")
-set(KOI_GPU_PTX_HEADER "${CMAKE_BINARY_DIR}/generated/koi_nnue_v5_ptx.hpp")
-set(KOI_GPU_PTX_AVAILABLE FALSE)
-if(KOI_ENABLE_GPU_NNUE)
-    find_program(KOI_NVCC nvcc
-        HINTS "$ENV{CUDA_PATH}/bin"
-              "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin"
-              "/usr/local/cuda/bin"
-              "/opt/cuda/bin")
-endif()
-if(KOI_NVCC)
-    # Toolkits drop architectures over time (CUDA 13 removed offline compute_61),
-    # so filter the requested list against what this nvcc can actually compile.
-    execute_process(
-        COMMAND "${KOI_NVCC}" --list-gpu-arch
-        OUTPUT_VARIABLE KOI_NVCC_ARCH_OUTPUT
-        RESULT_VARIABLE KOI_NVCC_ARCH_RESULT
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
-    set(KOI_GPU_PTX_SUPPORTED "")
-    foreach(arch IN LISTS KOI_GPU_PTX_ARCHS)
-        if(KOI_NVCC_ARCH_RESULT EQUAL 0)
-            string(FIND "${KOI_NVCC_ARCH_OUTPUT}" "compute_${arch}" arch_position)
-            if(arch_position EQUAL -1)
-                message(STATUS
-                    "Skipping GPU PTX compute_${arch}: ${KOI_NVCC} does not support it")
-                continue()
-            endif()
-        endif()
-        list(APPEND KOI_GPU_PTX_SUPPORTED "${arch}")
-    endforeach()
-    if(KOI_GPU_PTX_SUPPORTED)
-        set(KOI_GPU_PTX_FILES "")
-        foreach(arch IN LISTS KOI_GPU_PTX_SUPPORTED)
-            set(ptx "${CMAKE_BINARY_DIR}/generated/koi_nnue_v5_sm${arch}.ptx")
-            add_custom_command(
-                OUTPUT "${ptx}"
-                COMMAND "${KOI_NVCC}" -ptx -arch=compute_${arch} -o "${ptx}"
-                        "${CMAKE_CURRENT_SOURCE_DIR}/src/koi/gpu/koi_nnue_v5.cu"
-                DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/koi/gpu/koi_nnue_v5.cu"
-                COMMENT "Compiling koi_nnue_v5.cu to PTX (compute_${arch})")
-            list(APPEND KOI_GPU_PTX_FILES "${ptx}")
-        endforeach()
-        add_custom_command(
-            OUTPUT "${KOI_GPU_PTX_HEADER}"
-            COMMAND "${CMAKE_COMMAND}"
-                    "-DINPUTS=${KOI_GPU_PTX_FILES}"
-                    "-DARCHS=${KOI_GPU_PTX_SUPPORTED}"
-                    -DOUTPUT="${KOI_GPU_PTX_HEADER}"
-                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_ptx.cmake"
-            DEPENDS ${KOI_GPU_PTX_FILES} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_ptx.cmake"
-            COMMENT "Embedding the Koi NNUE v5 PTX variants")
-        add_custom_target(koi_gpu_ptx DEPENDS "${KOI_GPU_PTX_HEADER}")
-        set(KOI_GPU_PTX_AVAILABLE TRUE)
-    else()
-        message(WARNING
-            "KOI_ENABLE_GPU_NNUE is on but no requested PTX architecture is supported; "
-            "building a CPU-only engine.")
-    endif()
-endif()
-
 set(KOI_CORE_SOURCES
     src/koi/detail/compatibility_mirror.cpp
     src/koi/detail/consistency.cpp
@@ -335,9 +266,6 @@ set(KOI_CORE_SOURCES
     src/koi/executable_path.cpp
     src/koi/evaluation_features.cpp
     src/koi/game_state.cpp
-    src/koi/gpu/cuda_driver.cpp
-    src/koi/gpu/gpu_nnue_service.cpp
-    src/koi/gpu/nnue_gpu_evaluator.cpp
     src/koi/move.cpp
     src/koi/nnue.cpp
     src/koi/opening_book.cpp
@@ -447,10 +375,6 @@ function(koi_add_core_target target arch_option)
     )
     if(NOT MSVC)
         target_link_libraries(${target} PUBLIC Threads::Threads)
-        if(CMAKE_DL_LIBS)
-            # The CUDA driver is resolved with dlopen at runtime.
-            target_link_libraries(${target} PUBLIC ${CMAKE_DL_LIBS})
-        endif()
     endif()
     if(arch_option)
         koi_arch_compile_option("${arch_option}" KOI_ARCH_COMPILE_OPTION)
@@ -465,13 +389,6 @@ function(koi_add_core_target target arch_option)
                     "$<$<CONFIG:Release>:-mbmi2>")
             endif()
         endif()
-    endif()
-    if(KOI_GPU_PTX_AVAILABLE)
-        target_include_directories(${target} PRIVATE "${CMAKE_BINARY_DIR}/generated")
-        add_dependencies(${target} koi_gpu_ptx)
-        target_compile_definitions(${target} PRIVATE KOI_GPU_INFERENCE_AVAILABLE=1)
-    else()
-        target_compile_definitions(${target} PRIVATE KOI_GPU_INFERENCE_AVAILABLE=0)
     endif()
 endfunction()
 
@@ -561,34 +478,6 @@ function(koi_set_timeout test_name release_seconds)
     math(EXPR KOI_SCALED_TIMEOUT "${release_seconds} * ${KOI_TIMEOUT_SCALE}")
     set_tests_properties(${test_name} PROPERTIES TIMEOUT ${KOI_SCALED_TIMEOUT})
 endfunction()
-
-# The GPU PTX generation and the per-core GPU wiring live with the core targets
-# above; the probe and parity test below reuse KOI_NVCC and the generated header.
-
-add_executable(koi_gpu_probe "${CMAKE_CURRENT_SOURCE_DIR}/tools/engine/koi_gpu_probe.cpp")
-target_link_libraries(koi_gpu_probe PRIVATE koi_core)
-if(KOI_GPU_PTX_AVAILABLE)
-    target_include_directories(koi_gpu_probe PRIVATE "${CMAKE_BINARY_DIR}/generated")
-    add_dependencies(koi_gpu_probe koi_gpu_ptx)
-    target_compile_definitions(koi_gpu_probe PRIVATE KOI_GPU_INFERENCE_AVAILABLE=1)
-else()
-    target_compile_definitions(koi_gpu_probe PRIVATE KOI_GPU_INFERENCE_AVAILABLE=0)
-endif()
-add_test(NAME koi_gpu_probe COMMAND koi_gpu_probe)
-koi_set_timeout(koi_gpu_probe 60)
-set_tests_properties(koi_gpu_probe PROPERTIES LABELS "runtime")
-
-add_executable(gpu_nnue_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/runtime/gpu_nnue_tests.cpp")
-target_link_libraries(gpu_nnue_tests PRIVATE koi_core koi_test_support koi_material_evaluator_test_support)
-if(KOI_GPU_PTX_AVAILABLE)
-    target_include_directories(gpu_nnue_tests PRIVATE "${CMAKE_BINARY_DIR}/generated")
-    target_compile_definitions(gpu_nnue_tests PRIVATE KOI_GPU_INFERENCE_AVAILABLE=1)
-else()
-    target_compile_definitions(gpu_nnue_tests PRIVATE KOI_GPU_INFERENCE_AVAILABLE=0)
-endif()
-add_test(NAME gpu_nnue_tests COMMAND gpu_nnue_tests)
-koi_set_timeout(gpu_nnue_tests 60)
-set_tests_properties(gpu_nnue_tests PROPERTIES LABELS "unit;runtime")
 
 if(KOI_BUILD_SHADOW_DIFF)
     add_executable(koi_shadow_diff_tests

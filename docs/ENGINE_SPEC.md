@@ -14,7 +14,6 @@ evaluator: the network is bundled at `nnue/koi.nnue`, auto-discovered at boot, a
 advertised through the `EvalFile` default `<autodiscovery>`. The hand-crafted
 classical evaluator was **removed on 2026-10-28** (`docs/HCE_REMOVAL_PLAN.md`):
 a network is required, and a boot without a usable one exits 4 with a diagnostic.
-`EvalFile`/`KOI_NNUE_PATH` still override the boot choice. GPU NNUE is
 experimental, off at runtime, and scheduled for removal.
 
 ## 1. Identity and platforms
@@ -53,7 +52,6 @@ script, and the documentation read `1.1.5`, so the compiled build identity is
 | --- | --- | --- | --- |
 | Windows | MSVC x64 only; `/std:c++latest`; CMake 3.31+; Ninja | x86-64 only; 64-bit required | Non-MSVC Windows compilers fail configuration; MinGW/GCC/Clang are not supported |
 | Linux | GCC 14+ or Clang 18+; CMake 3.31+; Ninja | x86-64 only; 64-bit required | Requires pthreads; `pwsh` and Python 3 enable optional process/Python tests |
-| macOS | AppleClang 18+ or Homebrew LLVM clang 18+ (clang 19+ recommended) | Documented release target is arm64 Apple Silicon; the CMake tree also contains an x86-64 macOS path, but releases ship arm64 only | Documented build passes `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`; GPU NNUE is unavailable |
 
 Build constraints are enforced in `CMakeLists.txt:1-87`. A 64-bit toolchain is
 mandatory (`CMAKE_SIZEOF_VOID_P EQUAL 8`), the Windows compiler must be MSVC, the
@@ -70,8 +68,6 @@ Linux architecture must be `x86_64`, and the macOS compiler must be AppleClang
 | `KOI_TSAN` | OFF | Disables Release IPO for the Linux GCC ThreadSanitizer CI leg; sanitizer flags themselves come from the CI command line |
 | `KOI_PEXT_ATTACKS` | ON | AVX2/AVX-512 cores use `_pext_u64` slider tables; the baseline core keeps the ray path; OFF builds every x86-64 variant with rays |
 | `KOI_PGO` | `OFF` | MSVC-only profile-guided optimization; `generate` builds with `/GENPROFILE` + `/LTCG:PGI`, `use` rebuilds with `/USEPROFILE` + `/LTCG`; cannot be combined with `KOI_SANITIZE` or non-MSVC |
-| `KOI_ENABLE_GPU_NNUE` | ON at configure time | Attempts to find `nvcc` and build the CUDA PTX payload; a build without `nvcc` is CPU-only, and the runtime `GpuNnue` option still defaults to `off` |
-| `KOI_GPU_PTX_ARCHS` | `61;75;86;89;120` | Compute capabilities compiled to PTX, one embedded module each; unsupported architectures are filtered out by `nvcc --list-gpu-arch` |
 | `KOI_BUILD_SHADOW_DIFF` | OFF | Builds `koi_shadow_diff_tests`, the native-vs-chess-library differential oracle |
 | `KOI_TEST_TIMEOUT_SECONDS` | 600 | Default CTest timeout for tests without an explicit budget |
 | `KOI_TIMEOUT_SCALE` | `auto` | Multiplier for explicit process-test and default timeouts: 3 for Debug, otherwise 1 |
@@ -92,7 +88,6 @@ stack to 16 MiB in `main.cpp`.
 | `koi-engine-avx512` | x86-64 AVX-512 (F/BW/CD/DQ/VL) Release core | Directly runnable; gates itself on AVX-512 at startup and exits with code 3 if unsupported |
 | `koi-bench` | AVX2 on x86-64; baseline on macOS arm64 | 64-position hard tactical suite and 128-position optional positional corpus; JSON profiles and speed reports |
 | `koi-perft`, `koi-replay`, `koi-eval-features`, `koi-nnue-fixture` | Same policy as `koi-bench` | Rules/perft, replay, evaluator-feature dump, NNUE fixture generator |
-| `koi-gpu-probe` | Same policy as `koi-bench` | CUDA driver/kernel probe; CPU-only builds report unavailable |
 
 CPU variant selection lives in `src/koi/cpu_variant.cpp` and `src/koi/main.cpp`:
 
@@ -118,9 +113,6 @@ Other environment variables relevant to operation:
 | --- | --- |
 | `KOI_NNUE_PATH` | Explicit NNUE network path; wins over auto-discovery |
 | `KOI_NNUE_AUTODETECT=0` | Disables boot-time NNUE discovery; `EvalFile` still works |
-| `KOI_GPU_NNUE=0` | Forces GPU NNUE off; any other non-empty value forces `on` over the option, except that an explicit `off` from option or environment always wins |
-| `KOI_GPU_PTX_ARCH=<arch>` | Forces one embedded PTX module (for example `75`) for diagnostics |
-| `KOI_GPU_BATCH=<n>` | Test seam that can only lower the GPU batch request within the 256-position cap |
 
 ## 2. Architecture
 
@@ -310,8 +302,6 @@ for search-key completeness (`SearchContext::evaluate`).
   diagnostic instead of searching without an evaluation. At boot `main.cpp`
   resolves `KOI_NNUE_PATH`, otherwise calls `discover_nnue_network` on the
   executable directory and then the working directory.
-- A loaded network is wrapped by `NnueEvaluator` (and, if the GPU path is active,
-  by `GpuNnueEvaluator`). GPU unavailability falls back to CPU inference for the
   same network; there is no hand-crafted fallback evaluator.
 - `UCI EvalFile` with a non-empty value stops and joins the active search, loads
   the file relative to the executable directory, and installs it for subsequent
@@ -352,7 +342,6 @@ not accepted by `validate_manifest` even though legacy v1 constants remain in th
 header. **There is no version 7 container:** no v7 constant or parser branch
 exists, and the `koi-v7-*` names under `artifacts/training/` are trainer
 experiment labels whose exports are v4 containers. Version 8 is the only
-container the experimental GPU kernel accepts; the CPU loader dispatches it by
 the architecture word (v6 threat math or v4 halfka-only).
 
 | Version | Feature set | Inputs | Head | Notes |
@@ -362,7 +351,6 @@ the architecture word (v6 threat math or v4 halfka-only).
 | 4 | `halfka-king-bucket-v1` | 9216 | even hidden 32..8192 → CReLU pair products → 8 piece-count buckets | 12 king buckets × 12 piece planes × 64 squares; reserved layer word must be 0 |
 | 5 | `halfka-king-bucket-v1+threat-pairs-v1` | 36864 | Two-layer integer head: 8..128 L1 units → 8 buckets | Adds threat-pairs group and cross-perspective pair products |
 | 6 | Same as v5 | 36864 | Adds an antisymmetric L1 difference channel | Extra `l1_units × hidden_units` int8 matrix; split diff shift |
-| 8 | v5/v6 threat form, or halfka-only 9216 layout | 36864 or 9216 | Same math as v6 (or v4 for the halfka-only layout) | CPU loader treats it like v6/v4. The GPU kernel still accepts only v5 (see §4.4); the header comment that calls v8 the GPU container is stale |
 
 Feature geometry (`src/koi/evaluation_features.hpp`):
 
@@ -417,27 +405,9 @@ The AVX2 code is only compiled on x86-64; macOS arm64 uses the scalar network
 path with the NEON clamp. An AVX2 result that would overflow is rejected and
 recomputed scalar in the bucket-dot path so the vector path stays bit-identical.
 
-### 4.4 GPU NNUE (experimental, off by default, scheduled for removal)
-
-- The CUDA backend is optional, experimental, disabled at runtime by default, and
-  scheduled for removal (`src/koi/gpu/*`, `src/koi/nnue.cpp`).
-- `GpuNnue` accepts `off` (default), `auto`, and `on`. `auto` uses the GPU only
-  when the build has a kernel, the driver loads, the network is compatible, and
-  `Threads > 1`. `on` requests it and falls back to CPU with a diagnostic.
-  `Threads=1` always uses the deterministic CPU path.
-- Precedence: an explicit `off` from the option or `KOI_GPU_NNUE=0` always wins;
-  otherwise a non-empty `KOI_GPU_NNUE` other than `0` forces `on`; otherwise the
-  option decides.
-- The kernel supports **v5 containers only**, with **hidden = 1536 and L1 = 32**
-  exactly; v6/v8 and other widths are rejected and fall back to CPU
-  (`gpu_nnue_service.cpp:102-128`).
-- Build-time PTX modules cover sm_61, 75, 86, 89, and 120 by default. At runtime
-  only `nvcuda.dll`/`libcuda.so.1` is resolved dynamically; the newest module the
-  device can run is JITed. A GPU older than sm_61 stays on CPU.
-- The GPU result is intended to be bit-exact with the CPU scalar evaluation. No
-  speedup, strength, or Elo claim is made. One diagnostic line is emitted at the
-  start of a search when NNUE is active, for example
-  `info string GPU NNUE: on -> cuda (NVIDIA GeForce GTX 1060)`.
+option, `KOI_GPU_*` environment variable, PTX build step, probe executable, unit
+test, or source directory remains. The engine is CPU-only; `Threads > 1` uses the
+multi-threaded CPU NNUE path.
 
 ### 4.5 Automatic discovery and `EvalFile`
 
@@ -733,7 +703,6 @@ intentionally not advertised, so 26 of the 28 entries are visible. There is no
 | `SyzygyInteriorDepth` | spin | 0 | 0..100 | Experimental interior WDL cutoff depth; 0 disables |
 | `Syzygy50MoveRule` | check | true | true/false | Honors the 50-move rule in tablebase WDL results and requires a zero halfmove clock for cutoffs |
 | `EvalFile` | string | empty or `<autodiscovery>` | path | Loads a Koi NNUE network for subsequent searches; empty (or the informational `<autodiscovery>` marker) keeps the boot evaluator; rejected files fall back |
-| `GpuNnue` | combo | `off` | `auto`, `on`, `off` | Experimental GPU policy; `off` never uses the GPU; see §4.4 |
 | `Debug` (hidden) | check | false | true/false | Enables the debug log; changing it stops and joins the active search |
 | `DebugFile` (hidden) | string | `koi-debug.log` | path | Log path; relative paths resolve beside the executable; rotates at 8 MiB with 3 backups |
 
@@ -746,7 +715,6 @@ Rules for `setoption`:
   active search before the new value is committed, so the next `go` uses a coherent
   snapshot. This includes `Hash`, `Threads`, `MultiPV`, `Slow Mover`,
   `Move Overhead`, `Contempt`, `OwnBook`, book options, `Syzygy*`, `EvalFile`,
-  `GpuNnue`, `Debug`, and `StrengthMode`. `Clear Hash` and `ucinewgame` also stop
   and join first.
 - `Threads` is clamped by `maximum_search_threads()` = `max(1, min(64,
   hardware_concurrency))`; an unavailable hardware count is treated as 1.
@@ -947,7 +915,6 @@ and `KOI_TEST_SHARD`.
 | Rules and state | `koi_core_tests`, `koi_rules_tests`, `native_rule_state_tests`, `perft_tests`, `koi_shadow_diff_tests` |
 | Evaluation | `evaluation_architecture_tests`, `nnue_boundary_tests`, `evaluation_features_tests` |
 | Search | `koi_search_tests_1of4`..`4of4`, `search_ordering_tests`, `search_architecture_tests`, `search_policy_tests`, `search_runtime_tests`, `search_service_tests`, `static_exchange_tests`, `time_manager_tests`, `transposition_table_tests`, `completion_gate_tests`, `koi_strength_tests`, `koi_soak_tests` |
-| Runtime | `koi_cpu_features_tests`, `koi_cpu_variant_tests`, `gpu_nnue_tests`, `koi_module_tests`, `syzygy_tablebase_tests`, `opening_book_tests`, `uci_controller_tests` |
 | Process (PowerShell) | `koi_engine_process`, `koi_protocol_fuzz_process` (deterministic adversarial UCI corpus), `koi_protocol_soak_process` (Threads/Hash churn soak with an RSS bound), `koi_protocol_option_churn_process` (option changes during an active search), `koi_protocol_broken_pipe_process` (GUI-disconnect/SIGPIPE shutdown), `koi_engine_perft_responsiveness`, `koi_engine_variant_process`, `koi_engine_en_croissant_process`, `koi_engine_time_safety_process`, `koi_benchmark_process`, `koi_uci_match_process`, `koi_uci_match_clock`, `koi_stockfish_strength_option`, `cutechess_stability_diagnostics`, `cutechess_stability_smoke`, `hash_memory_stability`, `windows_ci_configuration`, `install_book_script`, `package_release_layout` |
 | Python | `elo_*_python`, `release_*_python`, `strength_*_python`, `nnue_*_python`, `koi_*_python`, `measurement_*_python`, `bullet_*_python`, `tune_*_python` |
 
@@ -971,10 +938,8 @@ build as authoritative.
 | Windows ASan | Debug, `KOI_SANITIZE=ON`, MSVC `/fsanitize=address`, dynamic CRT, no `/RTC`, no LTO | Fast subset (`-LE heavy`). ASan is MSVC-only; Linux ASan and macOS sanitizer builds are not wired |
 | Linux TSan | GCC 14, `-fsanitize=thread -fno-omit-frame-pointer -g`, `KOI_TSAN=ON`, static runtime off, modules off | Concurrency suites: TT, search service, controller, time manager, search shards; deadlock detection is disabled due to TSan's fixed detector table |
 | Shadow diff | `KOI_BUILD_SHADOW_DIFF=ON` builds `koi_shadow_diff_tests` | Compares native `Position` legality, keys, rule state, and FEN against the vendored chess-library mirror; also enabled at explicit diagnostics boundaries and completion validation |
-| GPU parity | `gpu_nnue_tests`, `koi_gpu_probe` | Bit-exact CPU/GPU parity plus the PTX variant table; parity cases skip without a CUDA device |
 | Windows CI | Release full suite, Debug smoke (`-LE heavy`), ASan, shadow diff, package, flake repetitions | Six independent jobs |
 | Linux CI | GCC 14, Clang 18, modules-off, flake repetitions, Ubuntu 22.04 tarball, TSan | Full CTest suite per compiler; the tarball leg runs bounded UCI smokes with automatic and `KOI_CPU_VARIANT=generic` |
-| macOS CI | Apple Silicon arm64 with Homebrew LLVM, `KOI_BUILD_MODULES=OFF`, GPU off, static runtime off; package leg | Unit/heavy/process/Python groups; x86-only AVX-512 and variant-process tests omitted |
 
 Determinism rules: `Threads=1` is the deterministic configuration; threaded tests
 assert legality, coverage, completed depth, ranked MultiPV lines, and coherent
@@ -991,7 +956,6 @@ empty for the 1.1.5 gate.
 | `koi-replay` | Replays coordinate moves from `startpos`/`fen` without exposing the vendored library; reports `legal`, `result`, `termination`, final FEN |
 | `koi-eval-features` | Dump NNUE evaluations for a position corpus (`--nnue` required) |
 | `koi-nnue-fixture` | Generates NNUE fixtures for boundary/parity tests |
-| `koi-gpu-probe` | CUDA driver/kernel/device report; CPU-only builds report unavailable |
 | `tools/build/speed_gate.ps1` | Repeated `koi-bench --report` baseline/candidate comparison; defaults 5 runs, 2% total NPS regression, 2% row regression, rows under 20 ms excluded as timer-quantized |
 | `tools/build/performance_gate.ps1` | Older/alternate NPS comparison harness (threads 2 by default) |
 | `tools/build/release_verify.ps1` | Fresh Debug and Release configure/build, full CTest/process checks, Threads 1/2/4 tactical gates, benchmark/UCI/replay/En Croissant-style artifacts under `artifacts/verification` |
@@ -1037,9 +1001,6 @@ name and version while the tag is the version alone.
 - **NNUE is required.** The classical evaluator was removed on 2026-10-28; a
   clean rewrite is planned (see
   the strength-cycle plan Step 12).
-- **GPU NNUE is experimental, off by default, and scheduled for removal.** It is
-  CUDA-only, unavailable on macOS, supports only v5 containers with hidden 1536
-  and L1 32, and makes no speed or strength claim.
 - **Threat-pair (`threat-pairs-v1`) networks were rejected.** The 36864-input v5
   form lost its matches (33.75% against the official net) and its export
   saturates the L1 head; `--arch v8` writes the halfka-only layout instead.
@@ -1065,8 +1026,7 @@ name and version while the tag is the version alone.
   table" is inaccurate for this tree.
 - **Platform feature gaps:** macOS arm64 ships no AVX2/AVX-512 siblings, uses
   scalar NNUE (NEON only vectorizes the v4 CReLU clamp), disables named modules in
-  the documented build, cannot use the static-runtime option, and has no GPU
-  path. Windows requires MSVC; Linux requires x86-64.
+  the documented build, cannot use the static-runtime option, and no CUDA path. Windows requires MSVC; Linux requires x86-64.
 - **Sanitizer coverage is partial:** ASan is MSVC-only and runs the fast subset;
   TSan exists only on Linux; macOS has no sanitizer leg.
 - **PGO is MSVC-only.** `KOI_PGO` rejects non-MSVC configurations.
@@ -1076,13 +1036,3 @@ name and version while the tag is the version alone.
   4, 5, 6, and 8 are).
 - **Documentation/test-count drift:** `tests/README.md` and `docs/USER_GUIDE.md`
   disagree on the registered test count; `ctest -N` is authoritative.
-- **Stale source comments:** `src/koi/cpu_variant.hpp` still says the selector is
-  "Windows only" although Linux/macOS `execv` support exists,
-  `src/koi/gpu/nnue_gpu_evaluator.hpp` describes the GPU option default as
-  `auto` although the UCI default is `off`, and `src/koi/nnue.hpp` calls the
-  version-8 container "the only container a GPU backend accepts" while
-  `gpu_nnue_service.cpp` accepts version 5 only. The code and the UCI option
-  table are authoritative.
-- **GPU NNUE and CPU fallback:** an unsupported GPU network or missing driver
-  leaves the CPU NNUE evaluator active (the engine now exits when no network is usable); the engine never fails to
-  start because of the GPU path.

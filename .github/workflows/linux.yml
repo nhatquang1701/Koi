@@ -489,7 +489,7 @@ jobs:
           apt_retry apt-get -o Acquire::Retries=5 update
           apt_retry apt-get -o Acquire::Retries=5 install -y --no-install-recommends g++-14 powershell
           python3 -m pip install --disable-pip-version-check --quiet --upgrade cmake ninja
-          cmake -S . -B build/ci-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 -DKOI_BUILD_MODULES=OFF -DKOI_ENABLE_GPU_NNUE=OFF
+          cmake -S . -B build/ci-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 -DKOI_BUILD_MODULES=OFF
           cmake --build build/ci-release --config Release -j 4
           pwsh -NoProfile -File tools/build/package_release.ps1 -BuildDirectory build/ci-release -OutputDirectory artifacts/packages
           ls -l artifacts/packages

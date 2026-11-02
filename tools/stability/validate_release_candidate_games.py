@@ -25,7 +25,7 @@ OPENING_LINE = re.compile(
 )
 RESULTS = {"1-0", "0-1", "1/2-1/2"}
 UCI_MOVE = re.compile(r"^[a-h][1-8][a-h][1-8][nbrq]?$")
-EVALUATOR_MODES = {"classical", "nnue-v4", "nnue-v5", "gpu-v5"}
+EVALUATOR_MODES = {"classical", "nnue-v4", "nnue-v5"}
 SHA256_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
@@ -292,25 +292,6 @@ def _validate_uci_match(
                 errors.append("Koi evaluator attestation has no EvalFile rejection list")
             elif rejections:
                 errors.append("Koi evaluator attestation records an EvalFile rejection")
-
-            requested_gpu = configuration.get("koi_gpu_nnue_requested")
-            fallbacks = attestation.get("gpu_unavailable_fallbacks")
-            if not isinstance(fallbacks, list):
-                errors.append("Koi evaluator attestation has no GPU fallback list")
-                fallbacks = []
-            elif fallbacks:
-                errors.append("Koi evaluator attestation records a GPU unavailable fallback")
-            if expected_evaluator_mode == "gpu-v5":
-                if requested_gpu is not True:
-                    errors.append("GPU v5 report does not confirm KOI_GPU_NNUE=1")
-                if not isinstance(expected_threads, int) or expected_threads < 2:
-                    errors.append("GPU v5 requires at least two expected threads")
-                marker = attestation.get("gpu_enabled_marker")
-                if marker != "koi-engine: GPU NNUE inference enabled.":
-                    errors.append("GPU v5 report is missing the GPU NNUE inference enabled stderr marker")
-            else:
-                if requested_gpu is not False:
-                    errors.append("CPU NNUE report must record GPU inference as not requested")
 
     pgn_games = _uci_pgn_games(pgn_file, errors)
     if len(pgn_games) != expected_games:
@@ -676,7 +657,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.expected_evalfile_sha256 is not None and not SHA256_HEX.fullmatch(args.expected_evalfile_sha256):
         parser.error("--expected-evalfile-sha256 must contain 64 hexadecimal characters")
-    if args.expected_evaluator_mode in {"nnue-v4", "nnue-v5", "gpu-v5"} and args.expected_evalfile_sha256 is None:
+    if args.expected_evaluator_mode in {"nnue-v4", "nnue-v5"} and args.expected_evalfile_sha256 is None:
         parser.error("--expected-evalfile-sha256 is required for a nonclassical evaluator mode")
     if args.expected_evalfile_sha256 is not None and args.expected_evaluator_mode is None:
         parser.error("--expected-evaluator-mode is required with --expected-evalfile-sha256")

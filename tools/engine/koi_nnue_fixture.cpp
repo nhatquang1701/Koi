@@ -14,20 +14,20 @@ namespace {
 
 constexpr std::string_view kUsage =
     "usage: koi-nnue-fixture --arch v4|v5 --output <path>\n";
-constexpr std::uint32_t kGpuV5HiddenUnits = 1'536;
-constexpr std::uint32_t kGpuV5L1Units = 32;
+constexpr std::uint32_t kV5HiddenUnits = 1'536;
+constexpr std::uint32_t kV5L1Units = 32;
 
 struct Arguments {
     std::string_view arch;
     std::filesystem::path output;
 };
 
-koi::NnueNetwork gpu_compatible_v5_fixture() {
+koi::NnueNetwork large_v5_fixture() {
     koi::NnueNetwork network = koi::test::synthetic_network_v5();
     // Keep the seed weights while value-initializing the added dimensions.
-    // The same synthetic network then satisfies the GPU kernel's fixed shape.
-    network.manifest.layer_sizes[1] = kGpuV5HiddenUnits;
-    network.manifest.layer_sizes[3] = kGpuV5L1Units;
+    // A large v5 network shape keeps the v5 fixture exercising its stress path.
+    network.manifest.layer_sizes[1] = kV5HiddenUnits;
+    network.manifest.layer_sizes[3] = kV5L1Units;
 
     const std::size_t input_units = network.manifest.layer_sizes[0];
     const std::size_t hidden_units = network.manifest.layer_sizes[1];
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 
     const koi::NnueNetwork network = arguments->arch == "v4"
                                          ? koi::test::synthetic_network_v4()
-                                         : gpu_compatible_v5_fixture();
+                                         : large_v5_fixture();
     const auto encoded = koi::NnueLoader::serialize(network);
     if (!encoded.has_value()) {
         std::cerr << "unable to serialize NNUE fixture: " << encoded.error().message << '\n';

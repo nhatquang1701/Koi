@@ -5,7 +5,7 @@
 Koi is a C++26 UCI chess engine for standard chess on Windows x64, Linux
 x86-64, and macOS arm64 (Apple Silicon). It uses iterative-deepening alpha-beta
 search and a persistent transposition table, with a required NNUE evaluator
-and optional GPU NNUE, Polyglot book, and Syzygy support.
+and optional Polyglot book and Syzygy support.
 
 ## Start here
 
@@ -18,7 +18,7 @@ and optional GPU NNUE, Polyglot book, and Syzygy support.
 
 macOS arm64 (Apple Silicon) release packages are published; source builds use
 Homebrew LLVM clang 19+ (or AppleClang 18+), CMake, and Ninja with
-`-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. GPU NNUE is CUDA-only and unavailable on macOS; the
+`-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. The engine is CPU-only; the
 CPU NNUE path works normally.
 
 Koi has no required configuration file. Begin with `Hash=512` and `Threads=1`.
@@ -31,7 +31,7 @@ explicit `OwnBook=false` disables it.
 
 The [user guide](USER_GUIDE.md) covers UCI behavior, timing controls,
 MultiPV and analysis, En Croissant, Lucas Chess, generic GUI setup, opening
-books, NNUE, GPU NNUE, Syzygy, and release packaging.
+books, NNUE, Syzygy, and release packaging.
 
 - [Supported UCI behavior](USER_GUIDE.md#supported-uci-behavior)
 - [Optional Syzygy tablebases](USER_GUIDE.md#optional-syzygy-tablebases)
