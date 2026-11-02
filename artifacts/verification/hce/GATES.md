@@ -33,3 +33,18 @@ development baseline pending a larger equal-time gate (preferred at 20-50 ms for
 HCE throughput) and further term/tuning iterations.
 
 No promotion/rejection is claimed from either gate.
+
+## v2 vs v1, 50 ms movetime (300-game gate)
+
+`tests/data/openings/openings-release-strength-160.txt`, 150 openings, 300 games.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 37/63/50 | 45.67% | -30.2 | -1.727 |
+| Black | 53/46/51 | 50.67% | +4.6 | -0.191 |
+| Combined | 90/109/101 | **48.17%** | **-12.8** | **-1.918** |
+
+Decision: inconclusive but negative in both a 300-game 50 ms gate and the
+20k-node diagnostic. The v2 term expansion is therefore reverted to the v1
+baseline (`dccf13d`); individual features will be reintroduced one at a time
+behind focused screens.

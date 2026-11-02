@@ -14,7 +14,6 @@ namespace {
 
 [[nodiscard]] constexpr int abs_int(int value) noexcept { return value < 0 ? -value : value; }
 
-
 // Tapered evaluation unit: midgame and endgame components in centipawns.
 struct Score {
     int mg = 0;
@@ -65,11 +64,6 @@ constexpr std::size_t kBlack = 1;
 [[nodiscard]] constexpr int file_center(int file) noexcept {
     constexpr std::array<int, 8> kFileCenter{0, 1, 2, 3, 3, 2, 1, 0};
     return kFileCenter[static_cast<std::size_t>(file)];
-}
-
-[[nodiscard]] constexpr int square_distance(int first, int second) noexcept {
-    return std::max(abs_int(file_of(first) - file_of(second)),
-                    abs_int(rank_of(first) - rank_of(second)));
 }
 
 // Piece-square tables are formulas for v1; they are replaced by tuned tables
@@ -277,32 +271,8 @@ struct EvalBoard {
         }
         const bool passed = (enemy_pawns & forward_mask) == 0;
         if (passed) {
-            Score bonus{kPassedMg[static_cast<std::size_t>(own_rank)],
-                        kPassedEg[static_cast<std::size_t>(own_rank)]};
-            // King proximity matters most in the endgame: the attacking king
-            // escorts the passer while the defending king is pushed away.
-            if (eval.kings[color] >= 0 && eval.kings[1 - color] >= 0) {
-                const int own_king_distance = square_distance(eval.kings[color], square);
-                const int enemy_king_distance =
-                    square_distance(eval.kings[1 - color], square);
-                const int proximity = enemy_king_distance - own_king_distance;
-                bonus += Score{proximity * 2, proximity * 5};
-            }
-            // A piece directly in front of the passer reduces its value; a
-            // friendly rook behind it supports the advance.
-            const int ahead_rank = white ? rank + 1 : rank - 1;
-            if (ahead_rank >= 0 && ahead_rank < 8 &&
-                ((eval.occupied >> (ahead_rank * 8 + file)) & 1U) != 0) {
-                bonus += Score{-10, -16};
-            }
-            const int behind_rank = white ? rank - 1 : rank + 1;
-            if (behind_rank >= 0 && behind_rank < 8) {
-                const int behind = behind_rank * 8 + file;
-                if (((eval.pieces[color][type_index(PieceType::rook)] >> behind) & 1U) != 0) {
-                    bonus += Score{10, 16};
-                }
-            }
-            score += bonus;
+            score += Score{kPassedMg[static_cast<std::size_t>(own_rank)],
+                           kPassedEg[static_cast<std::size_t>(own_rank)]};
             continue;
         }
 
@@ -360,70 +330,6 @@ struct EvalBoard {
         score += Score{-18, -8};
     }
 
-    // Weighted attackers in the king ring: majors and minors matter more than
-    // pawn pokes, and many attackers compound.
-    const std::uint64_t king_zone =
-        detail::king_attacks(king) | bit_of(king);
-    const std::size_t enemy = 1 - color;
-    int attack_weight = 0;
-    int attack_count = 0;
-    for (std::uint64_t pieces = eval.colors[enemy]; pieces != 0;) {
-        const int square = std::countr_zero(pieces);
-        pieces &= pieces - 1;
-        const Piece piece = eval.board[static_cast<std::size_t>(square)];
-        std::uint64_t attacks = 0;
-        switch (piece.type) {
-        case PieceType::pawn:
-            attacks = detail::pawn_attacks(square, enemy == kWhite);
-            break;
-        case PieceType::knight:
-            attacks = detail::knight_attacks(square);
-            break;
-        case PieceType::bishop:
-            attacks = detail::bishop_attacks(square, eval.occupied);
-            break;
-        case PieceType::rook:
-            attacks = detail::rook_attacks(square, eval.occupied);
-            break;
-        case PieceType::queen:
-            attacks = detail::queen_attacks(square, eval.occupied);
-            break;
-        case PieceType::king:
-        case PieceType::none:
-            break;
-        }
-        if ((attacks & king_zone) == 0) {
-            continue;
-        }
-        ++attack_count;
-        switch (piece.type) {
-        case PieceType::pawn: attack_weight += 1; break;
-        case PieceType::knight:
-        case PieceType::bishop: attack_weight += 2; break;
-        case PieceType::rook: attack_weight += 3; break;
-        case PieceType::queen: attack_weight += 5; break;
-        default: break;
-        }
-    }
-    score += Score{-attack_count * 6 - attack_weight * attack_weight,
-                   -attack_count * 2};
-
-    // Enemy pawn storm: advanced pawns on the king's files are a long-term
-    // danger even before they attack the ring.
-    const std::size_t enemy_color = 1 - color;
-    for (int file = std::max(0, king_file - 1); file <= std::min(7, king_file + 1); ++file) {
-        for (int delta = 1; delta <= 2; ++delta) {
-            const int rank = king_rank + (white ? delta : -delta);
-            if (rank < 0 || rank > 7) {
-                continue;
-            }
-            if (((eval.pieces[enemy_color][type_index(PieceType::pawn)] >>
-                  (rank * 8 + file)) & 1U) != 0) {
-                score += Score{-8, -3};
-            }
-        }
-    }
-
     // Pawn shelter and open files around the king.
     for (int file = std::max(0, king_file - 1); file <= std::min(7, king_file + 1); ++file) {
         bool shield_pawn = false;
@@ -453,7 +359,8 @@ struct EvalBoard {
     const std::uint64_t own_attacks = eval.attacked_squares[color];
     const std::uint64_t enemy_defended = eval.attacked_squares[enemy];
     const std::uint64_t enemy_pieces = eval.colors[enemy] &
-        ~eval.pieces[enemy][type_index(PieceType::king)];
+        ~eval.pieces[enemy][type_index(PieceType::king)] &
+        ~eval.pieces[enemy][type_index(PieceType::pawn)];
 
     constexpr std::array<Score, 7> kHangingBonus{
         Score{}, Score{12, 18}, Score{40, 35}, Score{40, 35},
@@ -475,27 +382,6 @@ struct EvalBoard {
             score += Score{8, 6};
         }
     }
-
-    // Explicit pawn threats: a pawn attack on a minor/major is valuable even
-    // when the target is defended because it gains time or forces a retreat.
-    constexpr std::array<Score, 7> kPawnThreatBonus{
-        Score{}, Score{8, 4}, Score{22, 16}, Score{22, 16},
-        Score{40, 26}, Score{65, 40}, Score{}};
-    for (std::uint64_t pawns = eval.pieces[color][type_index(PieceType::pawn)];
-         pawns != 0;) {
-        const int square = std::countr_zero(pawns);
-        pawns &= pawns - 1;
-        std::uint64_t attacks = detail::pawn_attacks(square, color == kWhite) &
-            eval.colors[enemy] & ~eval.pieces[enemy][type_index(PieceType::king)];
-        while (attacks != 0) {
-            const int target = std::countr_zero(attacks);
-            attacks &= attacks - 1;
-            const PieceType type = eval.board[static_cast<std::size_t>(target)].type;
-            if (type != PieceType::pawn) {
-                score += kPawnThreatBonus[type_index(type)];
-            }
-        }
-    }
     return score;
 }
 
@@ -510,17 +396,14 @@ struct EvalBoard {
         score += Score{35, 50};
     }
 
-    for (const PieceType outpost_type : {PieceType::knight, PieceType::bishop}) {
-        for (std::uint64_t pieces = eval.pieces[color][type_index(outpost_type)];
-             pieces != 0;) {
-            const int square = std::countr_zero(pieces);
-            pieces &= pieces - 1;
-            const std::uint64_t square_bit = bit_of(square);
-            if ((eval.pawn_attacks[color] & square_bit) != 0 &&
-                (enemy_pawn_attacks & square_bit) == 0) {
-                score += outpost_type == PieceType::knight ? Score{25, 15}
-                                                           : Score{12, 8};
-            }
+    for (std::uint64_t knights = eval.pieces[color][type_index(PieceType::knight)];
+         knights != 0;) {
+        const int square = std::countr_zero(knights);
+        knights &= knights - 1;
+        const std::uint64_t square_bit = bit_of(square);
+        if ((eval.pawn_attacks[color] & square_bit) != 0 &&
+            (enemy_pawn_attacks & square_bit) == 0) {
+            score += Score{25, 15};
         }
     }
 
@@ -636,12 +519,6 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
             const Score weight = mobility_weight(piece.type);
             const int mobility = eval.piece_mobility[static_cast<std::size_t>(square)];
             side += Score{weight.mg * mobility, weight.eg * mobility};
-            // A non-pawn piece standing on an enemy-pawn attack square has
-            // less safe mobility than the raw count suggests.
-            if (piece.type != PieceType::pawn && piece.type != PieceType::king &&
-                (eval.pawn_attacks[1 - color] & bit_of(square)) != 0) {
-                side += Score{-12, -6};
-            }
         }
 
         side += pawn_structure(eval, color);
