@@ -132,3 +132,9 @@ is claimed.
 
 | king safety 125% | 22/23/19 | 52.34% | +16.8 | 0.107 | neutral-positive, default kept |
 | pawn structure 75% | 19/19/26 | 44.53% | -38.2 | -0.710 | negative, default kept |
+
+| king safety 175% | 26/18/20 | 54.69% | +33.2 | 0.420 | screen positive but **126-game confirm was 46.43%, -24.9 Elo, LLR -1.058**; default kept |
+
+Protocol note: the 64-game screens are noisy and must not change defaults. Any
+screen-positive variant needs a >=126-game confirm, and only a confirmed positive
+is promoted; king-safety 175% demonstrates the failure mode.
