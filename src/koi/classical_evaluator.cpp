@@ -35,6 +35,45 @@ struct Score {
     return Score{score.mg * mg, score.eg * eg};
 }
 
+// Internal development/tuning seam: term-group scales in percent.  The
+// production defaults are 100 and are used unless KOI_HCE_* is set, so normal
+// engine behavior is unaffected; tuners can screen variants by launching the
+// same binary with different environments.
+struct HceTuning {
+    int passed = 100;
+    int mobility = 100;
+    int king_safety = 100;
+    int pawn_structure = 100;
+    int tempo = 100;
+};
+
+[[nodiscard]] int tuning_percent(const char* name, int fallback) noexcept {
+    const char* value = std::getenv(name);
+    if (value == nullptr || *value == '\0') {
+        return fallback;
+    }
+    char* end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if (end == value || *end != '\0' || parsed < 0 || parsed > 400) {
+        return fallback;
+    }
+    return static_cast<int>(parsed);
+}
+
+[[nodiscard]] const HceTuning& hce_tuning() noexcept {
+    static const HceTuning tuning{
+        tuning_percent("KOI_HCE_PASSED_SCALE", 100),
+        tuning_percent("KOI_HCE_MOBILITY_SCALE", 100),
+        tuning_percent("KOI_HCE_KING_SAFETY_SCALE", 100),
+        tuning_percent("KOI_HCE_PAWN_SCALE", 100),
+        tuning_percent("KOI_HCE_TEMPO_SCALE", 100)};
+    return tuning;
+}
+
+[[nodiscard]] constexpr Score percent_of(Score score, int percent) noexcept {
+    return Score{score.mg * percent / 100, score.eg * percent / 100};
+}
+
 constexpr int kPhaseMaximum = 24;
 constexpr std::size_t kWhite = 0;
 constexpr std::size_t kBlack = 1;
@@ -313,7 +352,7 @@ struct EvalBoard {
                 ((eval.occupied >> (ahead_rank * 8 + file)) & 1U) != 0) {
                 bonus += Score{-10, -16};
             }
-            score += bonus;
+            score += percent_of(bonus, hce_tuning().passed);
             continue;
         }
 
@@ -559,11 +598,12 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
             }
             const Score weight = mobility_weight(piece.type);
             const int mobility = eval.piece_mobility[static_cast<std::size_t>(square)];
-            side += Score{weight.mg * mobility, weight.eg * mobility};
+            side += percent_of(Score{weight.mg * mobility, weight.eg * mobility},
+                               hce_tuning().mobility);
         }
 
-        side += pawn_structure(eval, color);
-        side += king_safety(eval, color);
+        side += percent_of(pawn_structure(eval, color), hce_tuning().pawn_structure);
+        side += percent_of(king_safety(eval, color), hce_tuning().king_safety);
         side += threats(eval, color);
         side += piece_features(eval, color);
 
@@ -576,7 +616,8 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
 
     // Side-to-move tempo.  The score is White-positive, so Black's tempo
     // subtracts.
-    total += eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10};
+    const Score tempo = eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10};
+    total += percent_of(tempo, hce_tuning().tempo);
 
     int score = tapered(total, eval.phase);
     // Opposite bishops with no other material is drawish, but not a strict
