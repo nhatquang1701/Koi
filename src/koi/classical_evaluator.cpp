@@ -45,6 +45,7 @@ struct HceTuning {
     int king_safety = 100;
     int pawn_structure = 100;
     int tempo = 100;
+    int evaluation = 100;
 };
 
 [[nodiscard]] int tuning_percent(const char* name, int fallback) noexcept {
@@ -66,7 +67,8 @@ struct HceTuning {
         tuning_percent("KOI_HCE_MOBILITY_SCALE", 100),
         tuning_percent("KOI_HCE_KING_SAFETY_SCALE", 100),
         tuning_percent("KOI_HCE_PAWN_SCALE", 100),
-        tuning_percent("KOI_HCE_TEMPO_SCALE", 100)};
+        tuning_percent("KOI_HCE_TEMPO_SCALE", 100),
+        tuning_percent("KOI_HCE_EVAL_SCALE", 100)};
     return tuning;
 }
 
@@ -682,6 +684,7 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
     if (opposite_bishop_draw(eval)) {
         score = score / 4;
     }
+    score = score * hce_tuning().evaluation / 100;
     score = std::clamp(score, -detail::kMateThreshold + 1, detail::kMateThreshold - 1);
     return perspective == Color::white ? score : -score;
 }
