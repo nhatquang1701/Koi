@@ -129,3 +129,6 @@ The internal tuning seam (`KOI_HCE_PASSED_SCALE`, `..._MOBILITY_SCALE`,
 `..._KING_SAFETY_SCALE`, `..._PAWN_SCALE`, `..._TEMPO_SCALE`) is retained as
 development infrastructure; production defaults are 100 and no strength change
 is claimed.
+
+| king safety 125% | 22/23/19 | 52.34% | +16.8 | 0.107 | neutral-positive, default kept |
+| pawn structure 75% | 19/19/26 | 44.53% | -38.2 | -0.710 | negative, default kept |
