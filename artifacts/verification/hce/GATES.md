@@ -100,3 +100,17 @@ Mac M4 arm64, 100 ms equal-time, 64 games, 32 openings.
 | Combined | 21/24/19 | **51.56%** | **+11.0** | **-0.014** |
 
 Decision: neutral; reverted to keep the v3 baseline lean.
+
+## v7 (explicit tapered king PST) vs v3
+
+Mac M4 arm64, 100 ms equal-time, 64 games, 32 openings.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 12/12/8 | 56.25% | +43.7 | 0.282 |
+| Black | 9/12/11 | 46.88% | -21.7 | -0.262 |
+| Combined | 21/24/19 | **51.56%** | **+11.0** | **0.020** |
+
+Decision: neutral within noise. The explicit king tables are retained as tuning
+infrastructure (mg/eg regimes are now independently editable), not as a strength
+claim.
