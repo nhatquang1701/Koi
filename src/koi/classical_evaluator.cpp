@@ -46,6 +46,8 @@ struct HceTuning {
     int pawn_structure = 100;
     int tempo = 100;
     int evaluation = 100;
+    int threats = 100;
+    int piece_terms = 100;
 };
 
 [[nodiscard]] int tuning_percent(const char* name, int fallback) noexcept {
@@ -68,7 +70,9 @@ struct HceTuning {
         tuning_percent("KOI_HCE_KING_SAFETY_SCALE", 100),
         tuning_percent("KOI_HCE_PAWN_SCALE", 100),
         tuning_percent("KOI_HCE_TEMPO_SCALE", 100),
-        tuning_percent("KOI_HCE_EVAL_SCALE", 100)};
+        tuning_percent("KOI_HCE_EVAL_SCALE", 100),
+        tuning_percent("KOI_HCE_THREAT_SCALE", 100),
+        tuning_percent("KOI_HCE_PIECE_TERM_SCALE", 100)};
     return tuning;
 }
 
@@ -663,8 +667,8 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
 
         side += percent_of(pawn_structure(eval, color), hce_tuning().pawn_structure);
         side += percent_of(king_safety(eval, color), hce_tuning().king_safety);
-        side += threats(eval, color);
-        side += piece_features(eval, color);
+        side += percent_of(threats(eval, color), hce_tuning().threats);
+        side += percent_of(piece_features(eval, color), hce_tuning().piece_terms);
 
         // Space/development are opening components.
         side += Score{eval.center_control[color] * 3, 0};
