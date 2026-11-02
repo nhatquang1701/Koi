@@ -544,6 +544,41 @@ void test_uci_handshake_has_identity_and_supported_options_in_order() {
             "uci response must match tests/data/uci/handshake.txt");
 }
 
+void test_eval_mode_switches_between_hce_and_the_boot_evaluator() {
+    const ControllerResult result = run_controller(
+        "uci\n"
+        "setoption name EvalMode value hce\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "setoption name EvalMode value nnue\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "setoption name EvalMode value nonsense\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "quit\n");
+    require(result.exit_code == 0 && result.diagnostics.empty(),
+            "EvalMode changes must leave the UCI stdio clean");
+    const std::vector<std::string> lines = output_lines(result.output);
+    const std::vector<std::string> bestmoves = lines_starting_with(lines, "bestmove ");
+    require(bestmoves.size() == 3,
+            "each stop-bounded search must complete exactly once across EvalMode changes");
+    for (const std::string& bestmove : bestmoves) {
+        require(is_legal_move(Position{}, first_bestmove_move(bestmove)),
+                "an EvalMode search must return a legal bestmove");
+    }
+    require(result.output.find("info string evaluator hce") != std::string::npos,
+            "selecting HCE must report the active evaluator");
+    require(result.output.find("info string evaluator nnue") != std::string::npos,
+            "restoring NNUE must report the active evaluator");
+    require(result.output.find("option name EvalMode type combo default nnue var nnue var hce") !=
+                std::string::npos,
+            "EvalMode must be advertised as an nnue/hce combo");
+}
+
 void test_syzygy_options_accept_valid_values_and_ignore_invalid_values() {
     const ControllerResult result = run_controller(
         "uci\n"
@@ -2016,7 +2051,7 @@ void test_handshake_option_table_is_unique_and_well_formed() {
             "a handshake-only transcript must stay clean");
     const std::vector<std::string> options =
         lines_starting_with(output_lines(handshake.output), "option name ");
-    require(options.size() == 25, "the handshake must advertise exactly 25 options");
+    require(options.size() == 26, "the handshake must advertise exactly 26 options");
 
     const std::string prefix = "option name ";
     std::vector<std::string> names;
@@ -2338,6 +2373,7 @@ void test_bestmove_reports_the_ponder_move_without_the_option() {
 int main(int argc, char** argv) {
     const std::vector<koi::test::TestCase> tests{
         {"uci handshake and options", test_uci_handshake_has_identity_and_supported_options_in_order},
+        {"EvalMode evaluator selection", test_eval_mode_switches_between_hce_and_the_boot_evaluator},
         {"Syzygy option values", test_syzygy_options_accept_valid_values_and_ignore_invalid_values},
         {"legacy strength handshake", test_legacy_strength_options_are_not_advertised},
         {"legacy strength unknown options", test_legacy_strength_options_are_quiet_unknown_options},

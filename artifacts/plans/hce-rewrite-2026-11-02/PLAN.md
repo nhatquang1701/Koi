@@ -1,6 +1,6 @@
 # HCE rewrite plan (2026-11-02)
 
-Status: active. Round 1: v1 evaluator module + unit suite. Round 2: GPU NNUE removed completely; `KOI_EVALUATOR=hce` boot override and process search regression landed. Goal: completely rewrite Koi's hand-crafted evaluator (HCE) to be
+Status: active. Round 1: v1 evaluator module + unit suite. Round 2: GPU NNUE removed completely; `KOI_EVALUATOR=hce` boot override, process search regression, and runtime `EvalMode` (`nnue`/`hce`) selection landed. Goal: completely rewrite Koi's hand-crafted evaluator (HCE) to be
 very strong and cleanly integrated, with an explicit evidence trail and at least
 250 iteration rounds (continuing until the user says stop). No version bump/tag/
 release until the user explicitly approves.

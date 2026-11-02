@@ -169,6 +169,8 @@ private:
     bool syzygy_auto_loaded_ = false;
     bool syzygy_configured_ = false;
     std::filesystem::path eval_file_;
+    std::shared_ptr<const Evaluator> boot_evaluator_;
+    bool hce_active_ = false;
     // Boot-time autodiscovery actually installed a network: advertise that in
     // the EvalFile handshake default.  Explicit KOI_NNUE_PATH/EvalFile are not
     // autodiscovery.

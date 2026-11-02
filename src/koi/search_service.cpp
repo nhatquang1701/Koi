@@ -156,6 +156,11 @@ void SearchService::set_evaluator(std::shared_ptr<const Evaluator> evaluator) {
     impl_->evaluator = std::move(evaluator);
 }
 
+std::shared_ptr<const Evaluator> SearchService::evaluator() const {
+    std::lock_guard lock(impl_->config_mutex);
+    return impl_->evaluator;
+}
+
 HashResizeResult SearchService::set_hash_size_mb(std::size_t megabytes) {
     return impl_->table->set_size_mb(megabytes);
 }

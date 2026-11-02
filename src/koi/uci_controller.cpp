@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "koi/classical_evaluator.hpp"
 #include "koi/nnue.hpp"
 #include "koi/perft.hpp"
 #include "koi/time_manager.hpp"
@@ -561,6 +562,8 @@ UciController::UciController(std::istream& input, std::ostream& output,
       nnue_autodiscovered_(nnue_autodiscovered),
       opening_book_(executable_directory_),
       search_service_(std::move(search_service)) {
+    boot_evaluator_ = search_service_.evaluator();
+    hce_active_ = dynamic_cast<const ClassicalEvaluator*>(boot_evaluator_.get()) != nullptr;
     debug_log_ = std::make_unique<detail::DebugLog>();
     debug_log_->set_executable_directory(executable_directory_);
     syzygy_ = std::make_shared<SyzygyTablebase>();
@@ -1064,6 +1067,67 @@ void UciController::handle_setoption(std::istream& command) {
             }
         });
         break;
+
+    case UciOptionId::eval_mode: {
+        std::string mode = value;
+        for (char& character : mode) {
+            character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+        }
+        if (mode == "hce") {
+            if (!hce_active_) {
+                stop_and_suppress_active_search();
+                search_service_.set_evaluator(std::make_shared<ClassicalEvaluator>());
+                hce_active_ = true;
+            }
+            std::lock_guard lock(output_mutex_);
+            output_ << "info string evaluator hce\n" << std::flush;
+            break;
+        }
+        if (mode != "nnue") {
+            break;
+        }
+        if (!hce_active_) {
+            break;
+        }
+        stop_and_suppress_active_search();
+        if (!eval_file_.empty()) {
+            std::filesystem::path resolved = eval_file_;
+            if (resolved.is_relative() && !executable_directory_.empty()) {
+                resolved = executable_directory_ / resolved;
+            }
+            std::expected<NnueNetwork, NnueError> network = NnueLoader::load_file(resolved);
+            if (!network.has_value()) {
+                std::lock_guard lock(output_mutex_);
+                output_ << "info string EvalMode nnue rejected: " << network.error().message
+                        << '\n' << std::flush;
+                break;
+            }
+            try {
+                auto weights = std::make_shared<const NnueNetwork>(std::move(*network));
+                search_service_.set_evaluator(std::make_shared<NnueEvaluator>(weights));
+                hce_active_ = false;
+                std::lock_guard lock(output_mutex_);
+                output_ << "info string evaluator nnue\n" << std::flush;
+            } catch (const std::exception& error) {
+                std::lock_guard lock(output_mutex_);
+                output_ << "info string EvalMode nnue rejected: " << error.what() << '\n'
+                        << std::flush;
+            }
+            break;
+        }
+        if (boot_evaluator_ &&
+            dynamic_cast<const ClassicalEvaluator*>(boot_evaluator_.get()) == nullptr) {
+            search_service_.set_evaluator(boot_evaluator_);
+            hce_active_ = false;
+            std::lock_guard lock(output_mutex_);
+            output_ << "info string evaluator nnue\n" << std::flush;
+        } else {
+            std::lock_guard lock(output_mutex_);
+            output_ << "info string EvalMode nnue requires an EvalFile; keeping HCE\n"
+                    << std::flush;
+        }
+        break;
+    }
 
     case UciOptionId::eval_file: {
         if (value == "<autodiscovery>") {

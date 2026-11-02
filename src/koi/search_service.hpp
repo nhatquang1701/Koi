@@ -62,6 +62,9 @@ public:
     // already running keeps the evaluator it started with; the next start()
     // observes the new one.  The caller must not pass a null pointer.
     void set_evaluator(std::shared_ptr<const Evaluator> evaluator);
+    // Current evaluator snapshot (used by the UCI evaluator-mode switch to
+    // restore the boot evaluator).  Running searches keep their own snapshot.
+    [[nodiscard]] std::shared_ptr<const Evaluator> evaluator() const;
     [[nodiscard]] std::size_t hash_size_mb() const noexcept;
     // Approximate transposition-table occupancy in permill (0..1000) for UCI
     // `info ... hashfull` reporting.
