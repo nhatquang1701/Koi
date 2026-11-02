@@ -36,6 +36,10 @@ Component/policy extraction:
 - `detail/uci_option_table.hpp`: the 28-entry UCI option catalog; shared bounds
   centralized in `detail/search_constants.hpp`.
 - `detail/fen_validation.{hpp,cpp}`: stateless FEN syntax validation.
+- `detail/game_state_impl.hpp` + `detail/native_check_probe.hpp`: the private
+  `GameState::Impl` and move-check probe inputs moved out of the facade TU.
+- `detail/consistency.cpp`: native/shadow consistency-diagnostic snapshot
+  builder, friended by `GameState`.
 - Option normalization moved into `SearchService` (runner no longer owns it).
 - `detail/debug_log.{hpp,cpp}`: best-effort JSON debug log behind the controller.
 
@@ -73,8 +77,8 @@ Documentation/guards:
 
 - Release: full build; complete local CTest matrix (heavy included) passes apart
   from the known local Python environment/timing failures.
-- ASan: unit 24/24; reliability 8/8 (804.9 s / 899.7 s on successive final
-  trees), zero AddressSanitizer/SEGV reports.
+- ASan: unit 24/24; reliability 8/8 (804.9 s / 899.7 s / 743.6 s on successive
+  final trees), zero AddressSanitizer/SEGV reports.
 - Modules-enabled (`KOI_BUILD_MODULES=ON`) full non-heavy suite passes;
   `koi_module_tests` passes with runtime contract-default assertions.
 - Shadow-diff configuration builds and `koi_shadow_diff_tests` passes.
