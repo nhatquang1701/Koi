@@ -177,3 +177,15 @@ Mac M4 arm64, 100 ms equal-time, HCE both sides.
 | 63-opening confirm | 126 | 41/40/45 | 48.41% | -11.2 | -0.657 |
 
 Decision: negative in confirmation; reverted to the v10 default.
+
+## v12 (endgame mop-up) vs v10
+
+Mac M4 arm64, 100 ms equal-time, 32 openings, 64 games.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 7/13/12 | 42.19% | -54.7 | -0.579 |
+| Black | 9/16/7 | 53.13% | +21.7 | 0.121 |
+| Combined | 16/29/19 | **47.66%** | **-16.5** | **-0.458** |
+
+Decision: negative screen; reverted without a confirmation run.
