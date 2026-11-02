@@ -42,6 +42,10 @@ passes in that configuration.
 - Shadow-diff configuration (`-DKOI_BUILD_SHADOW_DIFF=ON`): built and
   `koi_shadow_diff_tests` passes.
 - Strict documentation build: `mkdocs build --strict` pass.
+- Source/binary hygiene: no `TODO`/`FIXME`/`XXX`/`HACK` markers in `src/koi`;
+  MSVC `dumpbin /SYMBOLS` on the release engine reports **0** symbols matching
+  `synthetic_network`, `RandomMoveChooser`, or `strength_suite` (engine binary
+  1.5 MiB), confirming removed/test-only code is not linked into the product.
 
 ### macOS local validation (GitHub macOS runner unavailable)
 
