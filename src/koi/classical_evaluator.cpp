@@ -66,6 +66,11 @@ constexpr std::size_t kBlack = 1;
     return kFileCenter[static_cast<std::size_t>(file)];
 }
 
+[[nodiscard]] constexpr int square_distance(int first, int second) noexcept {
+    return std::max(abs_int(file_of(first) - file_of(second)),
+                    abs_int(rank_of(first) - rank_of(second)));
+}
+
 // Piece-square tables are formulas for v1; they are replaced by tuned tables
 // once the term set and strength harness are stable.
 [[nodiscard]] constexpr Score piece_square(PieceType type, int square, Color color) noexcept {
@@ -271,8 +276,24 @@ struct EvalBoard {
         }
         const bool passed = (enemy_pawns & forward_mask) == 0;
         if (passed) {
-            score += Score{kPassedMg[static_cast<std::size_t>(own_rank)],
-                           kPassedEg[static_cast<std::size_t>(own_rank)]};
+            Score bonus{kPassedMg[static_cast<std::size_t>(own_rank)],
+                        kPassedEg[static_cast<std::size_t>(own_rank)]};
+            // The attacking king escorts a passer while the defending king is
+            // pushed away; this is mostly an endgame term.
+            if (eval.kings[color] >= 0 && eval.kings[1 - color] >= 0) {
+                const int own_king_distance = square_distance(eval.kings[color], square);
+                const int enemy_king_distance =
+                    square_distance(eval.kings[1 - color], square);
+                const int proximity = enemy_king_distance - own_king_distance;
+                bonus += Score{proximity * 2, proximity * 5};
+            }
+            // A piece directly in front of the passer reduces its value.
+            const int ahead_rank = white ? rank + 1 : rank - 1;
+            if (ahead_rank >= 0 && ahead_rank < 8 &&
+                ((eval.occupied >> (ahead_rank * 8 + file)) & 1U) != 0) {
+                bonus += Score{-10, -16};
+            }
+            score += bonus;
             continue;
         }
 
