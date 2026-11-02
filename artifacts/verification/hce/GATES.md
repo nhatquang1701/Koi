@@ -114,3 +114,18 @@ Mac M4 arm64, 100 ms equal-time, 64 games, 32 openings.
 Decision: neutral within noise. The explicit king tables are retained as tuning
 infrastructure (mg/eg regimes are now independently editable), not as a strength
 claim.
+
+## Term-scale tuning screens (v8 tuning seam, 100 ms, 64 games)
+
+All screens use the same binary with `KOI_HCE_*_SCALE` wrappers against the
+default-100 baseline; only the named term group changes.
+
+| Variant | W/D/L | Score | Elo | LLR | Decision |
+| --- | --- | --- | --- | --- | --- |
+| passed pawns 125% | 20/22/22 | 48.44% | -10.9 | -0.336 | neutral/negative, default kept |
+| mobility 125% | 20/16/28 | 43.75% | -43.7 | -0.758 | negative, default kept |
+
+The internal tuning seam (`KOI_HCE_PASSED_SCALE`, `..._MOBILITY_SCALE`,
+`..._KING_SAFETY_SCALE`, `..._PAWN_SCALE`, `..._TEMPO_SCALE`) is retained as
+development infrastructure; production defaults are 100 and no strength change
+is claimed.
