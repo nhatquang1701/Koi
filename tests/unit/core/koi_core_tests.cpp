@@ -785,8 +785,27 @@ void test_tactical_generation_matches_the_filtered_full_list() {
 
 } // namespace
 
+void test_consistency_snapshot_agrees_with_the_live_state() {
+    koi::GameState state = koi::GameState::startpos();
+    const koi::PositionConsistencySnapshot start = state.consistency_snapshot();
+    require(start.consistent(), "startpos native and shadow snapshots must agree");
+    require(start.native_fen == state.fen(), "snapshot must carry the live native FEN");
+    require(state.native_shadow_consistent(), "startpos mirror must be consistent");
+
+    const auto e4 = koi::Move::parse_uci("e2e4");
+    require(e4.has_value() && state.make_move(*e4),
+            "the consistency fixture move must be legal");
+    const koi::PositionConsistencySnapshot after = state.consistency_snapshot();
+    require(after.consistent(), "native and shadow snapshots must agree after a move");
+    require(after.native_fen == state.fen(), "snapshot must follow the live FEN");
+    require(after.native_position_key == state.position_key(),
+            "snapshot must expose the live native position key");
+    require(state.native_shadow_consistent(), "mirror must remain consistent after a move");
+}
+
 int main(int argc, char** argv) {
     const std::vector<koi::test::TestCase> tests{
+        {"consistency snapshot agrees with live state", test_consistency_snapshot_agrees_with_the_live_state},
         {"default position", test_default_position_has_initial_fen_and_twenty_moves},
         {"legal UCI sequence", test_legal_uci_sequence_updates_position},
         {"native position undo and key", test_native_position_undo_restores_state_and_key},
