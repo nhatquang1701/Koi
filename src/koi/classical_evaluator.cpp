@@ -134,6 +134,70 @@ inline constexpr std::array<int, 64> kKingEg{
     -50, -40, -30, -20, -20, -30, -40, -50,
 };
 
+// Explicit piece tables (rank 1 first, White perspective; Black mirrored).
+// Values are the classic simplified-evaluation layout, kept separate for mg/eg
+// so future tuning can move each regime independently.
+inline constexpr std::array<int, 64> kPawnMg{
+    0, 0, 0, 0, 0, 0, 0, 0,
+    5, 10, 10, -20, -20, 10, 10, 5,
+    5, -5, -10, 0, 0, -10, -5, 5,
+    0, 0, 0, 20, 20, 0, 0, 0,
+    5, 5, 10, 25, 25, 10, 5, 5,
+    10, 10, 20, 30, 30, 20, 10, 10,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    0, 0, 0, 0, 0, 0, 0, 0,
+};
+inline constexpr std::array<int, 64> kPawnEg{
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    5, 5, 5, 10, 10, 5, 5, 5,
+    10, 10, 15, 20, 20, 15, 10, 10,
+    25, 25, 30, 40, 40, 30, 25, 25,
+    60, 60, 60, 60, 60, 60, 60, 60,
+    0, 0, 0, 0, 0, 0, 0, 0,
+};
+inline constexpr std::array<int, 64> kKnightPst{
+    -50, -40, -30, -30, -30, -30, -40, -50,
+    -40, -20, 0, 0, 0, 0, -20, -40,
+    -30, 0, 10, 15, 15, 10, 0, -30,
+    -30, 5, 15, 20, 20, 15, 5, -30,
+    -30, 0, 15, 20, 20, 15, 0, -30,
+    -30, 5, 10, 15, 15, 10, 5, -30,
+    -40, -20, 0, 5, 5, 0, -20, -40,
+    -50, -40, -30, -30, -30, -30, -40, -50,
+};
+inline constexpr std::array<int, 64> kBishopPst{
+    -20, -10, -10, -10, -10, -10, -10, -20,
+    -10, 0, 0, 0, 0, 0, 0, -10,
+    -10, 0, 5, 10, 10, 5, 0, -10,
+    -10, 5, 5, 10, 10, 5, 5, -10,
+    -10, 0, 10, 10, 10, 10, 0, -10,
+    -10, 10, 10, 10, 10, 10, 10, -10,
+    -10, 5, 0, 0, 0, 0, 5, -10,
+    -20, -10, -10, -10, -10, -10, -10, -20,
+};
+inline constexpr std::array<int, 64> kRookPst{
+    0, 0, 0, 5, 5, 0, 0, 0,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    5, 10, 10, 10, 10, 10, 10, 5,
+    0, 0, 0, 0, 0, 0, 0, 0,
+};
+inline constexpr std::array<int, 64> kQueenPst{
+    -20, -10, -10, -5, -5, -10, -10, -20,
+    -10, 0, 0, 0, 0, 0, 0, -10,
+    -10, 0, 5, 5, 5, 5, 0, -10,
+    -5, 0, 5, 5, 5, 5, 0, -5,
+    0, 0, 5, 5, 5, 5, 0, -5,
+    -10, 5, 5, 5, 5, 5, 0, -10,
+    -10, 0, 5, 0, 0, 0, 0, -10,
+    -20, -10, -10, -5, -5, -10, -10, -20,
+};
+
 // Piece-square tables are formulas for v1; they are replaced by tuned tables
 // once the term set and strength harness are stable.
 [[nodiscard]] constexpr Score piece_square(PieceType type, int square, Color color) noexcept {
@@ -144,27 +208,20 @@ inline constexpr std::array<int, 64> kKingEg{
     const int rank = rank_of(normalized);
     const int center = file_center(file);
     const int distance = distance_to_center(normalized);
+    const std::size_t index = static_cast<std::size_t>(rank * 8 + file);
     switch (type) {
-    case PieceType::pawn: {
-        const int advance = rank - 1;
-        const int wing = (file == 0 || file == 7) ? -4 : 0;
-        return Score{advance * 8 + center * 2 + wing, advance * 12 + center * 4 + wing};
-    }
+    case PieceType::pawn:
+        return Score{kPawnMg[index], kPawnEg[index]};
     case PieceType::knight:
-        return Score{30 - distance * 6, 24 - distance * 5};
-    case PieceType::bishop: {
-        const bool long_diagonal = file == rank || file + rank == 7;
-        return Score{18 - distance * 4 + (long_diagonal ? 10 : 0),
-                     14 - distance * 3 + (long_diagonal ? 6 : 0)};
-    }
+        return Score{kKnightPst[index], kKnightPst[index]};
+    case PieceType::bishop:
+        return Score{kBishopPst[index], kBishopPst[index]};
     case PieceType::rook:
-        return Score{(rank == 6 ? 22 : 0) + center * 2, (rank == 6 ? 12 : 0) + center * 3};
+        return Score{kRookPst[index], kRookPst[index]};
     case PieceType::queen:
-        return Score{6 - distance, 4 - distance / 2};
-    case PieceType::king: {
-        const std::size_t index = static_cast<std::size_t>(rank * 8 + file);
+        return Score{kQueenPst[index], kQueenPst[index]};
+    case PieceType::king:
         return Score{kKingMg[index], kKingEg[index]};
-    }
     case PieceType::none:
         return {};
     }
