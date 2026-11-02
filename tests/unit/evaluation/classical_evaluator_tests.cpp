@@ -1,6 +1,10 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -74,6 +78,45 @@ void test_scores_are_bounded_and_deterministic() {
     }
 }
 
+std::map<std::string, std::string> read_endgame_fixtures() {
+    std::map<std::string, std::string> fixtures;
+    const std::filesystem::path path =
+        std::filesystem::path(KOI_TEST_DATA_DIR) / "endgames" / "endgame-positions.txt";
+    std::ifstream input(path, std::ios::binary);
+    require(input.good(), "the endgame FEN corpus must exist");
+    std::string line;
+    while (std::getline(input, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        const std::size_t separator = line.find('|');
+        require(separator != std::string::npos,
+                "every endgame fixture must be name|FEN");
+        fixtures[line.substr(0, separator)] = line.substr(separator + 1);
+    }
+    require(!fixtures.empty(), "the endgame FEN corpus must not be empty");
+    return fixtures;
+}
+
+void test_endgame_fixture_invariants() {
+    const ClassicalEvaluator evaluator;
+    const std::map<std::string, std::string> fixtures = read_endgame_fixtures();
+    for (const auto& [name, fen] : fixtures) {
+        const GameState state = state_from_fen(fen.c_str());
+        const int white = evaluator.evaluate(state, Color::white);
+        const int black = evaluator.evaluate(state, Color::black);
+        require(white == -black, "endgame perspective scores must negate: " + name);
+        require(std::abs(white) < koi::detail::kMateThreshold,
+                "endgame scores must stay outside the mate range: " + name);
+        require(evaluator.evaluate(state, Color::white) == white,
+                "endgame evaluation must be deterministic: " + name);
+    }
+
+    const GameState dead = state_from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+    require(evaluator.evaluate(dead, Color::white) == 0,
+            "bare kings must evaluate as a dead draw");
+}
+
 void test_pawn_king_and_piece_terms_are_directional() {
     const ClassicalEvaluator evaluator;
     const int blocked = evaluator.evaluate(
@@ -141,6 +184,7 @@ int main(int argc, char** argv) {
         {"material advantage sign", test_material_advantage_has_the_expected_sign},
         {"colour-swapped negation", test_color_swapped_positions_are_negations},
         {"bounded and deterministic", test_scores_are_bounded_and_deterministic},
+        {"endgame fixture invariants", test_endgame_fixture_invariants},
         {"pawn/king/piece directions", test_pawn_king_and_piece_terms_are_directional},
         {"concurrent evaluation", test_concurrent_evaluation_is_safe_and_stable},
     };
