@@ -521,6 +521,31 @@ struct EvalBoard {
             score += Score{8, 6};
         }
     }
+    // Pawn threats: a pawn attack on a minor or major gains time even when the
+    // target is defended.  Hanging targets are already covered above, so this
+    // only adds the defended-target case.
+    constexpr std::array<Score, 7> kPawnThreatBonus{
+        Score{}, Score{8, 4}, Score{22, 16}, Score{22, 16},
+        Score{40, 26}, Score{65, 40}, Score{}};
+    for (std::uint64_t pawns = eval.pieces[color][type_index(PieceType::pawn)];
+         pawns != 0;) {
+        const int pawn_square = std::countr_zero(pawns);
+        pawns &= pawns - 1;
+        std::uint64_t attacks = detail::pawn_attacks(pawn_square, color == kWhite) &
+            eval.colors[enemy] & ~eval.pieces[enemy][type_index(PieceType::king)];
+        while (attacks != 0) {
+            const int target = std::countr_zero(attacks);
+            attacks &= attacks - 1;
+            const std::uint64_t target_bit = bit_of(target);
+            if ((enemy_defended & target_bit) == 0) {
+                continue;  // already counted as hanging above
+            }
+            const PieceType type = eval.board[static_cast<std::size_t>(target)].type;
+            if (type != PieceType::pawn) {
+                score += kPawnThreatBonus[type_index(type)];
+            }
+        }
+    }
     return score;
 }
 
