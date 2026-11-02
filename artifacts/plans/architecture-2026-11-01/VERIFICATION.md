@@ -14,7 +14,7 @@ Date: 2026-11-01
 | Windows CTest | `0ac7758` | **success** (release-full, debug-smoke, sanitizer, shadow-diff, package, flake) |
 | Linux CTest | `0ac7758` | **success** (gcc, clang, modules-off, tarball, flake, TSan) |
 | Deploy documentation site | `0ac7758` | **success** |
-| macOS CTest | `0ac7758`, later heads | cancelled by the runner ~1 s after creation (infrastructure; both jobs), including a manual `workflow_dispatch` run on `32a8554`. Local macOS-equivalent configurations are documented; earlier macOS legs were green. |
+| macOS CTest | `e47e67e` | **success** (both `macos-arm64` and `macos-package`). Earlier heads were cancelled ~1 s after creation by the runner (including a manual `workflow_dispatch` on `32a8554`); that infrastructure issue has cleared. Local Mac arm64 validation remains recorded below. |
 
 Run IDs: Windows `41326510478`, Linux `41326510541`.
 

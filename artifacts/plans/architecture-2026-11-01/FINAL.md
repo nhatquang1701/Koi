@@ -84,9 +84,9 @@ Documentation/guards:
 - Shadow-diff configuration builds and `koi_shadow_diff_tests` passes.
 - Mac arm64: direct clone build + core CTest 4/4 (GitHub macOS runner is
   infrastructure-cancelled, including manual dispatch).
-- CI: Windows and Linux full matrices green on watched heads `cf606cc`,
-  `33f9b08`; docs green. macOS jobs are cancelled ~1 s after creation by the
-  runner, independent of code.
+- CI: full matrices green on watched heads `cf606cc`, `88c5977`, and `e47e67e`
+  (**Windows + Linux + macOS + docs**). The earlier macOS runner cancellations
+  cleared by `e47e67e`, which passed both `macos-arm64` and `macos-package`.
 
 ## Out of scope for this pass (2.0.0)
 
