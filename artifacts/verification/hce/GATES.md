@@ -48,3 +48,17 @@ Decision: inconclusive but negative in both a 300-game 50 ms gate and the
 20k-node diagnostic. The v2 term expansion is therefore reverted to the v1
 baseline (`dccf13d`); individual features will be reintroduced one at a time
 behind focused screens.
+
+## v3 (passed-pawn king proximity/blocking) vs v1
+
+Mac M4 arm64, clean HCE both sides, `Threads=1`, `Hash=64`, no book.
+
+| Gate | Openings | Games | Score | Elo | LLR | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| 100 ms screen | 32 | 64 | 60.16% | +72.5 | 1.036 | 2 duplicate games |
+| 100 ms confirm | 63 | 126 | 54.37% | +30.6 | 0.586 | no duplicates |
+| 50 ms large | 150 | 300 | 53.67% | +25.6 | 1.195 | no duplicates |
+
+Decision: consistently positive but still inconclusive at the 95% boundary.
+The focused v3 change is retained as the current HCE baseline pending a larger/
+longer confirmation; no promotion or Elo claim is made.
