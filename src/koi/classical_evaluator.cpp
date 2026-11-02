@@ -318,6 +318,40 @@ struct EvalBoard {
             score += Score{6, 8};
         }
 
+        // Backward pawn: no friendly pawn on an adjacent file at the same or a
+        // more advanced rank, and the advance square is controlled by an enemy
+        // pawn.  Isolated pawns are already penalized, so do not double-count.
+        const bool isolated_file =
+            (file == 0 || own_file_count[static_cast<std::size_t>(file - 1)] == 0) &&
+            (file == 7 || own_file_count[static_cast<std::size_t>(file + 1)] == 0);
+        if (!passed && !isolated_file) {
+            bool supported = false;
+            for (int neighbor_file : {file - 1, file + 1}) {
+                if (neighbor_file < 0 || neighbor_file > 7) {
+                    continue;
+                }
+                for (int neighbor_rank = 0; neighbor_rank < 8; ++neighbor_rank) {
+                    const bool not_ahead = white ? neighbor_rank <= rank : neighbor_rank >= rank;
+                    if (not_ahead &&
+                        ((own_pawns >> (neighbor_rank * 8 + neighbor_file)) & 1U) != 0) {
+                        supported = true;
+                    }
+                }
+            }
+            const int front_rank = white ? rank + 1 : rank - 1;
+            bool advance_controlled = false;
+            if (front_rank >= 0 && front_rank < 8) {
+                const int front = front_rank * 8 + file;
+                const std::uint64_t enemy_attackers =
+                    detail::pawn_attackers_of(front, !white);
+                advance_controlled = (enemy_pawns & enemy_attackers) != 0 ||
+                    ((eval.occupied >> front) & 1U) != 0;
+            }
+            if (!supported && advance_controlled) {
+                score += Score{-12, -9};
+            }
+        }
+
         // Candidate: no enemy pawn ahead on this file and a friendly pawn
         // behind/level on an adjacent file.
         bool enemy_ahead_on_file = false;
