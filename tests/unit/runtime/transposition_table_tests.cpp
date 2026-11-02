@@ -255,6 +255,41 @@ void test_try_resize_defers_reclamation_while_pinned() {
             "the resized table must accept new entries after reclamation");
 }
 
+void test_repeated_deferred_resizes_are_safe() {
+    TranspositionTable table(1);
+    const Move move = parse_move("e2e4");
+
+    // Re-pin the live storage for each resize: every generation then has a
+    // reader, so every resize must defer reclamation of that generation.
+    for (int generation = 0; generation < 8; ++generation) {
+        SearchTableAccess access(table);
+        access.set_exclusive(true);
+        const std::uint64_t key = 0x100ULL + static_cast<std::uint64_t>(generation);
+        access.store(key, generation + 1, 12, TranspositionBound::exact, move, 0, false, 7);
+
+        const std::size_t megabytes = 2 + static_cast<std::size_t>(generation % 3);
+        const koi::HashResizeResult result = table.try_set_size_mb(megabytes);
+        require(result.reclamation_deferred,
+                "a pinned generation must defer retired-storage reclamation");
+        require(table.size_mb() == megabytes,
+                "each non-blocking resize must publish its requested size");
+        const auto entry = access.probe(key);
+        require(entry.has_value() && entry->depth == generation + 1,
+                "the pinned view must remain valid across repeated resizes");
+        access.set_exclusive(false);
+    }
+
+    // With no reader left, the next maintenance call drains every retained
+    // generation without blocking.
+    const koi::HashResizeResult drained = table.try_set_size_mb(2);
+    require(!drained.reclamation_deferred,
+            "reclamation must drain once the pinned readers are released");
+    table.store(0x200ULL, 5, 20, TranspositionBound::exact, move, 0, false, 9);
+    const auto entry = table.probe(0x200ULL);
+    require(entry.has_value() && entry->depth == 5,
+            "the table must remain usable after multi-generation reclamation");
+}
+
 void test_exclusive_session_pin_blocks_resize_until_release() {
     TranspositionTable table(1);
     SearchTableAccess access(table);
@@ -319,6 +354,7 @@ int main(int argc, char** argv) {
         {"transposition concurrent access", test_concurrent_store_and_probe_is_safe},
         {"transposition exclusive round trip", test_exclusive_access_round_trips_through_the_session_pin},
         {"transposition try resize defers reclamation", test_try_resize_defers_reclamation_while_pinned},
+        {"transposition repeated deferred resizes", test_repeated_deferred_resizes_are_safe},
         {"transposition exclusive pin blocks resize", test_exclusive_session_pin_blocks_resize_until_release},
     };
     return koi::test::run_tests(tests, argc, argv);
