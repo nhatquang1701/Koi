@@ -621,6 +621,36 @@ struct EvalBoard {
     return white_square_bishop_0 != white_square_bishop_1;
 }
 
+[[nodiscard]] Score mopup(const EvalBoard& eval) noexcept {
+    // Only in a simplified ending: one side has a material advantage and the
+    // board is low-phase.  Drive the defending king to the edge and bring the
+    // attacking king closer; this is the classic mop-up term.
+    if (eval.phase > 8 || eval.kings[0] < 0 || eval.kings[1] < 0) {
+        return {};
+    }
+    int material_values[2]{};
+    for (std::size_t color = 0; color < 2; ++color) {
+        for (const PieceType type : {PieceType::knight, PieceType::bishop,
+                                     PieceType::rook, PieceType::queen}) {
+            material_values[color] +=
+                std::popcount(eval.pieces[color][type_index(type)]) * material(type).mg;
+        }
+    }
+    const int difference = material_values[0] - material_values[1];
+    if (abs_int(difference) < 250) {
+        return {};
+    }
+    const std::size_t winner = difference > 0 ? kWhite : kBlack;
+    const std::size_t loser = 1 - winner;
+    const int losing_king = eval.kings[loser];
+    const int file = file_of(losing_king);
+    const int rank = rank_of(losing_king);
+    const int edge_distance = std::min({file, 7 - file, rank, 7 - rank});
+    const int king_distance = square_distance(eval.kings[winner], losing_king);
+    const int bonus = (3 - edge_distance) * 18 + (14 - king_distance) * 5;
+    return Score{sign_of(winner) * bonus, sign_of(winner) * bonus * 2};
+}
+
 [[nodiscard]] int tapered(const Score score, int phase) noexcept {
     phase = std::clamp(phase, 0, kPhaseMaximum);
     return (score.mg * phase + score.eg * (kPhaseMaximum - phase)) / kPhaseMaximum;
@@ -677,6 +707,7 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
     // subtracts.
     const Score tempo = eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10};
     total += percent_of(tempo, hce_tuning().tempo);
+    total += mopup(eval);
 
     int score = tapered(total, eval.phase);
     // Opposite bishops with no other material is drawish, but not a strict
