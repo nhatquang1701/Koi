@@ -225,16 +225,20 @@ struct EvalBoard {
             eval.pawn_attacks[color] |=
                 detail::pawn_attacks(square, color == kWhite);
         }
-        std::uint64_t attacks = 0;
+        // Pawn attacks were already accumulated into the map above; seed the
+        // aggregate with them and skip recomputing each pawn below.
+        std::uint64_t attacks = eval.pawn_attacks[color];
         for (int square = 0; square < 64; ++square) {
             const Piece piece = eval.board[static_cast<std::size_t>(square)];
             if (piece.empty() || index_of(piece.color) != color) {
                 continue;
             }
+            if (piece.type == PieceType::pawn) {
+                continue;
+            }
             std::uint64_t piece_attacks = 0;
             switch (piece.type) {
             case PieceType::pawn:
-                piece_attacks = detail::pawn_attacks(square, color == kWhite);
                 break;
             case PieceType::knight:
                 piece_attacks = detail::knight_attacks(square);
