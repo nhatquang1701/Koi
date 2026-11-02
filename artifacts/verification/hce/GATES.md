@@ -138,3 +138,16 @@ is claimed.
 Protocol note: the 64-game screens are noisy and must not change defaults. Any
 screen-positive variant needs a >=126-game confirm, and only a confirmed positive
 is promoted; king-safety 175% demonstrates the failure mode.
+
+## v9 (explicit tables for all piece PSTs) vs v8
+
+Mac M4 arm64, 100 ms equal-time, HCE both sides, `Threads=1`, `Hash=64`.
+
+| Gate | Openings | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- | --- |
+| screen | 32 | 64 | 23/24/17 | 54.69% | +33.0 | 0.398 |
+| confirm | 63 | 126 | 42/41/43 | 49.60% | -2.8 | -0.314 |
+
+Decision: neutral in the confirmation. The explicit tables are retained as
+tuning infrastructure (mg/eg arrays are now editable everywhere), not as a
+strength gain.
