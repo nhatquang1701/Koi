@@ -1,6 +1,6 @@
 # Koi developer tools
 
-> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+> **HCE rewrite:** the old hand-crafted evaluator was removed 2026-10-28 and is being cleanly rewritten. NNUE remains the default; the HCE is selectable with `EvalMode=hce` or `KOI_EVALUATOR=hce`. Text below that describes the old classical evaluator as current behaviour is historical.
 
 The tools are grouped by the job they perform. They resolve the repository root
 from their own location, so commands are safe to run from any working directory.
@@ -227,11 +227,16 @@ the regression belongs to the use-mode PGO link itself. The option therefore
 stays `OFF` by default; the recipe above is kept so the experiment can be
 repeated with another compiler or training set.
 
-## Classical evaluation term tuning (removed 2026-10-28)
+## Hand-crafted evaluator (HCE)
 
-The classical evaluator and its `tune_classical.py` ridge-solve workflow were
-removed with HCE; see `docs/HCE_REMOVAL_PLAN.md`. `koi-eval-features` remains for
-dumping NNUE features (`--nnue NET` is required).
+The clean HCE lives in `src/koi/classical_evaluator.*`. It is optional and
+selectable for development/measurement:
+
+- `koi-engine` with `KOI_EVALUATOR=hce` boots without a network, and the UCI
+  `EvalMode` combo switches between `nnue` and `hce` for later searches.
+- `koi-bench --hce` runs the built-in tactical/positional suite with the HCE
+  (no network required); `koi-bench --nnue NET` remains the NNUE path.
+- Term-level tests are in `tests/unit/evaluation/classical_evaluator_tests.cpp`.
 
 ## PGN extraction and oracle analysis
 

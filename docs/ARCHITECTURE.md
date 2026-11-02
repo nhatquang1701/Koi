@@ -170,7 +170,8 @@ flowchart TD
 | `transposition_table.cpp` | Physical storage, locking, generations, clearing, resizing, and mate-score normalization. |
 | `static_exchange.cpp` | Bitboard static-exchange evaluation used by pruning and ordering. |
 | `search_ordering.cpp` | History, killers, and continuation counters for move ordering. |
-| `nnue.cpp` | Required evaluator: NNUE container, inference and incremental state; the only evaluator since the 2026-10-28 HCE removal. |
+| `nnue.cpp` | Default/production evaluator: NNUE container, inference and incremental state. |
+| `classical_evaluator.*` | Clean hand-crafted evaluator (HCE rewrite): stateless, tapered, selectable with `EvalMode=hce`/`KOI_EVALUATOR=hce`. |
 | `opening_book.cpp` | Optional Polyglot opening book; release packages bundle a CC0 book, the repository commits none. |
 | `syzygy_tablebase.cpp` | Optional Syzygy root and interior probing; no tablebase data is bundled. |
 | `time_manager.cpp` | Soft/hard time budgets, move-overhead subtraction, and flag-proof ceilings. |
@@ -190,7 +191,7 @@ flowchart TD
 2. The search service snapshots the request and hands it to the runner.
 3. The runner drives iterative deepening over the shared transposition table
    and, with `Threads > 1`, over Lazy SMP workers.
-4. Every node evaluates through NNUE (required since the 2026-10-28 HCE removal)
+4. Every node evaluates through the active evaluator: NNUE by default, or the clean HCE when explicitly selected
    network, and orders moves through the shared ordering tables.
 5. Completed root iterations are published back through the UCI controller,
    which is the only component that writes protocol output.

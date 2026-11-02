@@ -1,6 +1,6 @@
 # Test layout
 
-> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+> **HCE rewrite:** the old hand-crafted evaluator was removed 2026-10-28 and is being cleanly rewritten. NNUE remains the default; the HCE is selectable with `EvalMode=hce` or `KOI_EVALUATOR=hce`. Text below that describes the old classical evaluator as current behaviour is historical.
 
 Tests are grouped by responsibility while preserving their existing CTest
 names and executable target names.

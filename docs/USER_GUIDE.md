@@ -1,6 +1,6 @@
 # Koi
 
-> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+> **HCE rewrite:** the old hand-crafted evaluator was removed 2026-10-28 and is being cleanly rewritten. NNUE remains the default; the HCE is selectable with `EvalMode=hce` (or `KOI_EVALUATOR=hce` at boot) for development and measurement. Text below that describes the old classical evaluator as current behaviour is historical.
 
 Koi is a Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon) UCI
 chess engine for standard chess. It is
@@ -742,6 +742,10 @@ from the starting position (for example, `bestmove e2e4`).
 - When boot-time auto-discovery actually loaded a network, the `EvalFile` option
   advertises the informational default `<autodiscovery>`; echoing it back is a
   no-op that keeps the boot evaluator. The marker is not a file path.
+- `setoption name EvalMode value hce` selects the clean hand-crafted evaluator
+  for later searches; `value nnue` restores the current `EvalFile` or boot
+  network. Switching stops and suppresses the search that is already running.
+  `KOI_EVALUATOR=hce` selects the HCE at boot without needing a network.
 - `setoption name EvalFile value <path>` loads a Koi NNUE network for the next
   search (an empty value keeps the boot-time evaluator, so replaying defaults
   never triggers a load). A rejected or missing file leaves the current

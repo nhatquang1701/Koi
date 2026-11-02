@@ -74,6 +74,42 @@ void test_scores_are_bounded_and_deterministic() {
     }
 }
 
+void test_pawn_king_and_piece_terms_are_directional() {
+    const ClassicalEvaluator evaluator;
+    const int blocked = evaluator.evaluate(
+        state_from_fen("4k3/4p3/4P3/8/8/8/8/4K3 w - - 0 1"), Color::white);
+    const int free_pawn = evaluator.evaluate(
+        state_from_fen("4k3/8/4P3/8/8/8/8/4K3 w - - 0 1"), Color::white);
+    require(free_pawn > blocked,
+            "a free advanced pawn must outscore a blocked one");
+
+    const int advanced = evaluator.evaluate(
+        state_from_fen("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1"), Color::white);
+    const int initial = evaluator.evaluate(
+        state_from_fen("4k3/8/4P3/8/8/8/8/4K3 w - - 0 1"), Color::white);
+    require(advanced > initial, "a more advanced passed pawn must score higher");
+
+    const int bishop_pair = evaluator.evaluate(
+        state_from_fen("4k3/8/8/8/8/8/8/2BBK3 w - - 0 1"), Color::white);
+    const int bishop_knight = evaluator.evaluate(
+        state_from_fen("4k3/8/8/8/8/8/8/2BNK3 w - - 0 1"), Color::white);
+    require(bishop_pair > bishop_knight, "the bishop pair must be rewarded");
+
+    const int blocked_rook = evaluator.evaluate(
+        state_from_fen("4k3/8/8/8/8/8/P7/R3K3 w - - 0 1"), Color::white);
+    const int semi_open_rook = evaluator.evaluate(
+        state_from_fen("4k3/8/8/8/8/8/1P6/R3K3 w - - 0 1"), Color::white);
+    require(semi_open_rook > blocked_rook,
+            "a rook beside an own pawn must outscore a blocked rook");
+
+    const int exposed_king = evaluator.evaluate(
+        state_from_fen("4k3/8/8/4K3/8/8/5PPP/8 w - - 0 1"), Color::white);
+    const int sheltered_king = evaluator.evaluate(
+        state_from_fen("4k3/8/8/8/8/8/5PPP/6K1 w - - 0 1"), Color::white);
+    require(sheltered_king > exposed_king,
+            "a sheltered castled king must outscore an exposed king");
+}
+
 void test_concurrent_evaluation_is_safe_and_stable() {
     const ClassicalEvaluator evaluator;
     const GameState state = state_from_fen(
@@ -105,6 +141,7 @@ int main(int argc, char** argv) {
         {"material advantage sign", test_material_advantage_has_the_expected_sign},
         {"colour-swapped negation", test_color_swapped_positions_are_negations},
         {"bounded and deterministic", test_scores_are_bounded_and_deterministic},
+        {"pawn/king/piece directions", test_pawn_king_and_piece_terms_are_directional},
         {"concurrent evaluation", test_concurrent_evaluation_is_safe_and_stable},
     };
     return koi::test::run_tests(tests, argc, argv);

@@ -11,9 +11,12 @@ The engine is a standard-chess UCI engine written in C++26. `Threads=1` is the
 deterministic configuration; `Threads>1` is intentionally nondeterministic Lazy
 SMP. Release packages ship the gated Koi-native NNUE evaluator as the primary
 evaluator: the network is bundled at `nnue/koi.nnue`, auto-discovered at boot, and
-advertised through the `EvalFile` default `<autodiscovery>`. The hand-crafted
-classical evaluator was **removed on 2026-10-28** (`docs/HCE_REMOVAL_PLAN.md`):
-a network is required, and a boot without a usable one exits 4 with a diagnostic.
+advertised through the `EvalFile` default `<autodiscovery>`. The original hand-crafted
+classical evaluator was **removed on 2026-10-28** and is being cleanly rewritten
+(`src/koi/classical_evaluator.*`); NNUE stays the default and production
+evaluator, and a default boot without a usable network exits 4 with a diagnostic.
+The HCE is selectable for development/measurement with `EvalMode=hce` or the
+`KOI_EVALUATOR=hce` boot override.
 experimental, off at runtime, and scheduled for removal.
 
 ## 1. Identity and platforms
@@ -113,6 +116,7 @@ Other environment variables relevant to operation:
 | --- | --- |
 | `KOI_NNUE_PATH` | Explicit NNUE network path; wins over auto-discovery |
 | `KOI_NNUE_AUTODETECT=0` | Disables boot-time NNUE discovery; `EvalFile` still works |
+| `KOI_EVALUATOR=hce` | Explicit development/measurement boot override: starts the clean HCE without a network; default NNUE-required boot is unchanged |
 
 ## 2. Architecture
 
@@ -295,14 +299,15 @@ for search-key completeness (`SearchContext::evaluate`).
 
 ### 4.1 Evaluator selection and snapshot rules
 
-- **NNUE is required.** The classical evaluator (HCE) was removed on 2026-10-28
-  because its implementation was considered unreliable; a clean rewrite is
-  planned (`docs/HCE_REMOVAL_PLAN.md`). `make_evaluator()` returns no evaluator
-  when the network is missing or rejected, and `main.cpp` exits 4 with a clear
-  diagnostic instead of searching without an evaluation. At boot `main.cpp`
-  resolves `KOI_NNUE_PATH`, otherwise calls `discover_nnue_network` on the
-  executable directory and then the working directory.
-  same network; there is no hand-crafted fallback evaluator.
+- **NNUE is the default and production evaluator.** The original hand-crafted
+  evaluator (HCE) was removed on 2026-10-28; the clean rewrite in
+  `src/koi/classical_evaluator.*` is optional and selected only through
+  `EvalMode` or the `KOI_EVALUATOR=hce` development/measurement boot override.
+  `make_evaluator()` returns no evaluator when the network is missing or
+  rejected, and a default `main.cpp` boot exits 4 with a clear diagnostic
+  instead of searching without an evaluation. At boot it resolves
+  `KOI_NNUE_PATH`, otherwise calls `discover_nnue_network` on the executable
+  directory and then the working directory.
 - `UCI EvalFile` with a non-empty value stops and joins the active search, loads
   the file relative to the executable directory, and installs it for subsequent
   searches. An empty `EvalFile` is a no-op that keeps the boot-time evaluator.
@@ -313,25 +318,21 @@ for search-key completeness (`SearchContext::evaluate`).
 - A running search never changes evaluator mid-search. `SearchService::start`
   captures the current evaluator; `set_evaluator` affects only later searches.
 
-### 4.2 Classical evaluator (removed 2026-10-28)
+### 4.2 Hand-crafted evaluator (clean rewrite)
 
-The hand-crafted evaluator (HCE: material, piece-square, mobility, pawn
-structure, activity, development, center control, initiative, king safety,
-king activity, passed pawns, tempo, endgame scaling) was removed on
-2026-10-28 on user instruction because its implementation had accumulated
-odd code. NNUE is now mandatory. A clean HCE rewrite is planned, with its
-own value type and an explicit score-scale conversion; see
-`docs/HCE_REMOVAL_PLAN.md`.
-| King safety | Shield 14, open file 10, king-zone attack 8, attacker weight 6, phase offset 8 / divisor 32 |
-| King activity | Weight 1; fades in above endgame threshold 12 |
-| Passed pawn extras | Promotion weight 8, enemy-king penalty 2, king proximity 3, king support 12 |
-| Tempo | 10 |
-| Endgame scaling | Base 64 (unchanged); minor-only and opposite-bishop endings scale to 32 when phase ≤ 8 |
+`src/koi/classical_evaluator.*` is a stateless, thread-safe `Evaluator`
+(`supports_concurrent_evaluation() == true`) with a tapered midgame/endgame
+score in centipawns. Current terms: material and piece-square tables, mobility,
+pawn structure (doubled, isolated, connected, candidate, passed), king safety
+(king-zone attackers, shelter, open files), threats/hanging pieces, bishop pair,
+knight outposts, rook files/seventh rank, space/development, tempo, and drawish
+material/opposite-bishop detection. Scores are clamped outside the mate range.
 
-The evaluator returns a side-to-move-relative score and supports concurrent
-evaluation. Its positional score range is deliberately narrower than an NNUE's;
-several search margins are calibrated to that range (see comments in
-`src/koi/detail/search_constants.hpp`).
+It is selected for later searches with `EvalMode=hce` (stops/suppresses an
+active search first) or at boot with `KOI_EVALUATOR=hce`, which needs no network.
+`EvalMode=nnue` restores the current `EvalFile` or boot network and reports a
+diagnostic when neither is available. `koi-bench --hce` runs the tactical suite
+with this evaluator; the unit suite lives in `classical_evaluator_tests`.
 
 ### 4.3 NNUE containers and features
 
@@ -703,6 +704,7 @@ intentionally not advertised, so 26 of the 28 entries are visible. There is no
 | `SyzygyInteriorDepth` | spin | 0 | 0..100 | Experimental interior WDL cutoff depth; 0 disables |
 | `Syzygy50MoveRule` | check | true | true/false | Honors the 50-move rule in tablebase WDL results and requires a zero halfmove clock for cutoffs |
 | `EvalFile` | string | empty or `<autodiscovery>` | path | Loads a Koi NNUE network for subsequent searches; empty (or the informational `<autodiscovery>` marker) keeps the boot evaluator; rejected files fall back |
+| `EvalMode` | combo | `nnue` | `nnue`, `hce` | Selects the evaluator for later searches; HCE is the clean hand-crafted evaluator. `nnue` restores the current `EvalFile` or boot evaluator and reports if neither is available. |
 | `Debug` (hidden) | check | false | true/false | Enables the debug log; changing it stops and joins the active search |
 | `DebugFile` (hidden) | string | `koi-debug.log` | path | Log path; relative paths resolve beside the executable; rotates at 8 MiB with 3 backups |
 

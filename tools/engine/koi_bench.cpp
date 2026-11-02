@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "koi/game_state.hpp"
+#include "koi/classical_evaluator.hpp"
 #include "koi/nnue.hpp"
 #include "koi/search_service.hpp"
 #include "koi/strength_suite.hpp"
@@ -44,6 +45,8 @@ struct BenchmarkConfig {
     std::optional<std::string> profile_json_path;
     std::optional<std::string> report_json_path;
     std::optional<std::string> nnue_path;
+    bool hce = false;
+    std::string evaluator = "nnue";
     // Effective evaluator after loading: a requested-but-rejected network must
     // never make the report claim it measured NNUE.
     bool nnue_active = false;
@@ -186,6 +189,10 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
                 return std::nullopt;
             }
             config.depth_sweep = std::pair<std::uint8_t, std::uint8_t>{from, to};
+            continue;
+        }
+        if (argument == "--hce") {
+            config.hce = true;
             continue;
         }
         if (argument == "--nnue") {
@@ -592,7 +599,12 @@ void write_profile_json(const std::string& path, const BenchmarkConfig& config,
            << "  \"hash_mb\": 512,\n"
            << "  \"threads\": " << config.threads << ",\n"
            << "  \"speed\": " << static_cast<unsigned>(config.speed_percent) << ",\n"
-           << "  \"evaluator\": \"" << "nnue" << "\",\n";
+           << "  \"evaluator\": ";
+    write_json_string(output, config.evaluator);
+    output << ",\n";
+    if (config.hce) {
+        output << "  \"hce\": {\"active\": true},\n";
+    }
     if (config.nnue_path) {
         std::error_code file_error;
         const auto network_bytes = std::filesystem::file_size(*config.nnue_path, file_error);
@@ -699,7 +711,9 @@ void write_speed_json(const std::string& path, const BenchmarkConfig& config,
            << "  \"suite\": \"" << suite_name(config) << "\",\n"
            << "  \"source\": ";
     write_json_string(output, config.fen_file_path ? *config.fen_file_path : std::string("built-in"));
-    output << ",\n  \"evaluator\": \"" << "nnue" << "\",\n"
+    output << ",\n  \"evaluator\": ";
+    write_json_string(output, config.evaluator);
+    output << ",\n"
            << "  \"threads\": " << config.threads << ",\n"
            << "  \"speed\": " << static_cast<unsigned>(config.speed_percent) << ",\n"
            << "  \"hash_mb\": 512,\n"
@@ -757,14 +771,18 @@ void write_speed_json(const std::string& path, const BenchmarkConfig& config,
 int main(int argc, char** argv) {
     auto config = parse_arguments(argc, argv);
     if (!config.has_value()) {
-        std::cerr << "usage: koi-bench [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path] [--profile-json path] [--report path]\n";
+        std::cerr << "usage: koi-bench [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path | --hce] [--profile-json path] [--report path]\n";
         return 2;
     }
-    if (!config->nnue_path.has_value()) {
-        std::cerr << "koi-bench: --nnue NET is required (the classical evaluator was\n"
-                     "removed; see docs/HCE_REMOVAL_PLAN.md)\n";
+    if (!config->hce && !config->nnue_path.has_value()) {
+        std::cerr << "koi-bench: --nnue NET or --hce is required\n";
         return 2;
     }
+    if (config->hce && config->nnue_path.has_value()) {
+        std::cerr << "koi-bench: --hce and --nnue are mutually exclusive\n";
+        return 2;
+    }
+    config->evaluator = config->hce ? "hce" : "nnue";
     if (config->fen_file_path.has_value() && !config->depth_sweep.has_value() &&
         !config->fixed_depth.has_value() && config->node_limit == 0) {
         // External FEN lists carry no per-position depth, so fixed-depth mode
@@ -812,9 +830,14 @@ int main(int argc, char** argv) {
                 position.depth = *config->fixed_depth;
             }
         }
-        koi::EvaluatorSelection selection =
-            koi::make_evaluator(std::filesystem::path{*config->nnue_path});
-        config->nnue_active = selection.nnue_enabled;
+        koi::EvaluatorSelection selection;
+        if (config->hce) {
+            selection.evaluator = std::make_shared<koi::ClassicalEvaluator>();
+            config->nnue_active = false;
+        } else {
+            selection = koi::make_evaluator(std::filesystem::path{*config->nnue_path});
+            config->nnue_active = selection.nnue_enabled;
+        }
         if (!selection.evaluator) {
             if (selection.nnue_error.has_value()) {
                 config->nnue_error_message = selection.nnue_error->message;

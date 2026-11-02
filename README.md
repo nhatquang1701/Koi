@@ -31,7 +31,7 @@ required to search: a boot without a usable network exits with a clear diagnosti
 | Engine area | What Koi provides |
 | --- | --- |
 | Search | Alpha-beta with Lazy SMP |
-| Evaluation | Gated Koi NNUE required in release packages (bundled); classical HCE removed 2026-10-28 (clean rewrite planned); GPU NNUE removed 2026-11-02 (CPU-only) |
+| Evaluation | Gated Koi NNUE required in release packages (bundled); NNUE is the default evaluator; clean HCE rewrite available via `EvalMode`/`KOI_EVALUATOR=hce`; GPU NNUE removed 2026-11-02 (CPU-only) |
 | Chess support | Standard chess over the UCI protocol |
 | Optional assets | Bundled CC0 Polyglot opening book, used automatically; user-installed Syzygy tablebases are auto-detected from a conventional directory beside the engine and are never packaged |
 

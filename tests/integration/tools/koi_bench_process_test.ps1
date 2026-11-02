@@ -21,8 +21,10 @@ $nnuePath = if ($env:KOI_NNUE_PATH) { $env:KOI_NNUE_PATH } else { Join-Path (Spl
 if (-not (Test-Path -LiteralPath $nnuePath -PathType Leaf)) {
     throw "NNUE test network is missing: $nnuePath"
 }
-function Invoke-Benchmark([string]$Executable, [string]$Arguments = '', [string]$Label = 'benchmark') {
-    $Arguments = "$Arguments --nnue `"$nnuePath`""
+function Invoke-Benchmark([string]$Executable, [string]$Arguments = '', [string]$Label = 'benchmark', [switch]$Hce) {
+    if (-not $Hce) {
+        $Arguments = "$Arguments --nnue `"$nnuePath`""
+    }
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $Executable
     $startInfo.UseShellExecute = $false
@@ -62,7 +64,7 @@ function Assert-BenchmarkOutput($Result) {
 
     $lines = @($Result.Stdout -split "`r?`n" | Where-Object { $_.Length -ne 0 })
     if ($lines.Count -lt 3 -or $lines[0] -cne 'Koi benchmark' -or
-        $lines[1] -notmatch '^config threads [1-9][0-9]* speed (?:[1-9]|[1-9][0-9]|100) timed [01] hash (?:cold|warm)(?: suite optional_strength)?$') {
+        $lines[1] -notmatch '^config threads [1-9][0-9]* speed (?:[1-9]|[1-9][0-9]|100) timed [01] hash (?:cold|warm)(?: suite optional_strength)?(?: depth [0-9]+)?$') {
         throw "koi-bench must begin with its benchmark header: $($Result.Stdout)"
     }
 
@@ -431,4 +433,15 @@ foreach ($position in $sweepJson.positions) {
 $conflict = Invoke-Benchmark $BenchPath "--fen-file `"$fenFile`" --depth 3 --depth-sweep 2..3" 'conflicting-modes'
 if ($conflict.ExitCode -eq 0) {
     throw 'koi-bench must reject a fixed depth combined with a depth sweep.'
+}
+
+# The clean HCE must be selectable without any network file and report itself
+# truthfully in the profile JSON.
+$hceProfile = Join-Path $scratchDirectory 'hce-profile.json'
+$hce = Invoke-Benchmark $BenchPath "--hce --depth 1 --profile-json `"$hceProfile`"" 'hce-mode' -Hce
+Assert-BenchmarkOutput $hce
+$hceJson = Get-Content -LiteralPath $hceProfile -Raw | ConvertFrom-Json
+if ($hceJson.evaluator -cne 'hce' -or $hceJson.hce.active -ne $true -or
+    $hceJson.positions.Count -lt 1) {
+    throw 'koi-bench --hce must report the HCE evaluator and a non-empty profile.'
 }
