@@ -73,3 +73,18 @@ Mac M4 arm64, 100 ms equal-time, HCE both sides, `Threads=1`, `Hash=64`, no book
 | 63-opening confirm | 126 | 44/40/42 | 50.79% | +5.5 | -0.165 |
 
 Decision: neutral; the backward-pawn term is reverted and v3 remains the baseline.
+
+## v5 (native-input HCE) vs v3 (behaviour screen)
+
+Mac M4 arm64, 100 ms equal-time, 32 openings, 64 games, HCE both sides.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 13/10/9 | 56.25% | +43.7 | 0.255 |
+| Black | 11/9/12 | 48.44% | -10.9 | -0.149 |
+| Combined | 24/19/21 | **52.34%** | **+16.4** | **0.106** |
+
+Decision: neutral within noise. The native-input refactor is kept as an
+architectural change (no shared NNUE feature container), not as a strength gain.
+Windows depth-5 bench throughput for the native path: 749,877 NPS vs 801,077 for
+the cached-feature v1 path on the same machine (minor overhead, same term set).
