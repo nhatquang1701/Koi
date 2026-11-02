@@ -151,3 +151,18 @@ Mac M4 arm64, 100 ms equal-time, HCE both sides, `Threads=1`, `Hash=64`.
 Decision: neutral in the confirmation. The explicit tables are retained as
 tuning infrastructure (mg/eg arrays are now editable everywhere), not as a
 strength gain.
+
+## Evaluation-scale screens (v10 tuning seam)
+
+All against the default 100% HCE output scale, 100 ms equal-time unless noted.
+
+| Variant | Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- | --- |
+| scale 125% | screen | 64 | 12/28/24 | 40.63% | -67.7 | -1.788 |
+| scale 80% | screen | 64 | 20/29/15 | 53.91% | +27.2 | 0.329 |
+| scale 80% | confirm | 126 | 44/45/37 | 52.78% | +19.3 | 0.313 |
+| scale 80% | large | 300 | 88/114/98 | 48.33% | -11.6 | -1.723 |
+
+Decision: no scale change. The short positive run did not survive the 300-game
+confirmation; default 100 kept. The `KOI_HCE_EVAL_SCALE` knob remains internal
+tuning infrastructure.
