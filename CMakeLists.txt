@@ -329,6 +329,7 @@ set(KOI_CORE_SOURCES
     src/koi/detail/search_ordering_tables.cpp
     src/koi/detail/search_runner.cpp
     src/koi/detail/search_session.cpp
+    src/koi/classical_evaluator.cpp
     src/koi/completion_gate.cpp
     src/koi/cpu_variant.cpp
     src/koi/executable_path.cpp
@@ -615,6 +616,14 @@ add_executable(evaluation_architecture_tests
 target_link_libraries(evaluation_architecture_tests PRIVATE koi_core)
 
 add_test(NAME evaluation_architecture_tests COMMAND evaluation_architecture_tests)
+
+add_executable(classical_evaluator_tests
+    tests/unit/evaluation/classical_evaluator_tests.cpp
+)
+
+target_link_libraries(classical_evaluator_tests PRIVATE koi_core koi_test_support)
+
+add_test(NAME classical_evaluator_tests COMMAND classical_evaluator_tests)
 
 add_executable(nnue_boundary_tests
     tests/unit/evaluation/nnue_boundary_tests.cpp
@@ -1393,7 +1402,7 @@ if(TARGET koi_module_tests)
     set_tests_properties(koi_module_tests PROPERTIES LABELS "unit")
 endif()
 set_tests_properties(
-    evaluation_architecture_tests nnue_boundary_tests
+    classical_evaluator_tests evaluation_architecture_tests nnue_boundary_tests
     evaluation_features_tests
     PROPERTIES LABELS "unit;evaluation"
 )
