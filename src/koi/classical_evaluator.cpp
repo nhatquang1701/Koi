@@ -352,6 +352,13 @@ struct EvalBoard {
                 ((eval.occupied >> (ahead_rank * 8 + file)) & 1U) != 0) {
                 bonus += Score{-10, -16};
             }
+            // A friendly rook behind the passer supports its advance.
+            const int behind_rank = white ? rank - 1 : rank + 1;
+            if (behind_rank >= 0 && behind_rank < 8 &&
+                ((eval.pieces[color][type_index(PieceType::rook)] >>
+                  (behind_rank * 8 + file)) & 1U) != 0) {
+                bonus += Score{10, 16};
+            }
             score += bonus;
             continue;
         }
