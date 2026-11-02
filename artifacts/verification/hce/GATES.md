@@ -166,3 +166,14 @@ All against the default 100% HCE output scale, 100 ms equal-time unless noted.
 Decision: no scale change. The short positive run did not survive the 300-game
 confirmation; default 100 kept. The `KOI_HCE_EVAL_SCALE` knob remains internal
 tuning infrastructure.
+
+## v11 (defended pawn threats) vs v10
+
+Mac M4 arm64, 100 ms equal-time, HCE both sides.
+
+| Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 32-opening screen | 64 | 20/27/17 | 52.34% | +16.5 | 0.274 |
+| 63-opening confirm | 126 | 41/40/45 | 48.41% | -11.2 | -0.657 |
+
+Decision: negative in confirmation; reverted to the v10 default.
