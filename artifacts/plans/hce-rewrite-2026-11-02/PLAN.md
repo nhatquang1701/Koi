@@ -1,6 +1,6 @@
 # HCE rewrite plan (2026-11-02)
 
-Status: active. Round 1: v1 evaluator module + unit suite. Round 2: GPU NNUE removed completely; `KOI_EVALUATOR=hce` boot override, process search regression, and runtime `EvalMode` (`nnue`/`hce`) selection landed. Round 3: `koi-bench --hce`, per-term HCE unit tests, and HCE selection/bench documentation. Round 4: passed-pawn king proximity/blocking/rook support, weighted king attackers, pawn storms, pawn threats, outposts and mobility-area safety; bench evidence in BENCH.md. Goal: completely rewrite Koi's hand-crafted evaluator (HCE) to be
+Status: active. Round 1: v1 evaluator module + unit suite. Round 2: GPU NNUE removed completely; `KOI_EVALUATOR=hce` boot override, process search regression, and runtime `EvalMode` (`nnue`/`hce`) selection landed. Round 3: `koi-bench --hce`, per-term HCE unit tests, and HCE selection/bench documentation. Round 4: passed-pawn king proximity/blocking/rook support, weighted king attackers, pawn storms, pawn threats, outposts and mobility-area safety; bench evidence in BENCH.md; first Mac gates in GATES.md (100 ms short gate +38.9 Elo inconclusive; 20k-node diagnostic -8.1 Elo inconclusive). Goal: completely rewrite Koi's hand-crafted evaluator (HCE) to be
 very strong and cleanly integrated, with an explicit evidence trail and at least
 250 iteration rounds (continuing until the user says stop). No version bump/tag/
 release until the user explicitly approves.
