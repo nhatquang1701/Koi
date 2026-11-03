@@ -335,3 +335,17 @@ Decision: neutral in confirmation; default mobility weights kept.
 | rook mobility 150% | 23/19/22 (64) | 50.78% | +5.7 | -0.086 | screen neutral; default kept |
 
 | bishop mobility 150% | 16/31/17 (64) | 49.22% | -5.5 | -0.235 | screen neutral; default kept |
+
+## Legacy-tuned PST tables vs v24
+
+Value-only reuse of the pre-removal HCE PST arrays (same repository licence), in a
+separate header. Mac M4 arm64, HCE both sides, Threads=1, Hash=64.
+
+| Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 100 ms screen | 64 | 22/28/14 | 56.25% | +43.8 | 0.644 |
+| 100 ms confirm | 126 | 48/40/38 | 53.97% | +27.7 | 0.537 |
+| 50 ms large | 300 | 98/94/108 | 48.33% | -11.6 | -1.553 |
+
+Decision: the large gate reverses the short-run gain; reverted. Legacy values are
+not accepted on short-run evidence.

@@ -7,7 +7,6 @@
 #include <cstdint>
 
 #include "koi/detail/attack_tables.hpp"
-#include "koi/detail/hce_legacy_pst.hpp"
 #include "koi/detail/search_constants.hpp"
 
 namespace koi {
@@ -230,23 +229,17 @@ inline constexpr std::array<int, 64> kQueenPst{
     const std::size_t index = static_cast<std::size_t>(rank * 8 + file);
     switch (type) {
     case PieceType::pawn:
-        return Score{detail::hce_legacy::kPawnMiddleGame[index],
-                     detail::hce_legacy::kPawnEndGame[index]};
+        return Score{kPawnMg[index], kPawnEg[index]};
     case PieceType::knight:
-        return Score{detail::hce_legacy::kKnightMiddleGame[index],
-                     detail::hce_legacy::kKnightEndGame[index]};
+        return Score{kKnightPst[index], kKnightPst[index]};
     case PieceType::bishop:
-        return Score{detail::hce_legacy::kBishopMiddleGame[index],
-                     detail::hce_legacy::kBishopEndGame[index]};
+        return Score{kBishopPst[index], kBishopPst[index]};
     case PieceType::rook:
-        return Score{detail::hce_legacy::kRookMiddleGame[index],
-                     detail::hce_legacy::kRookEndGame[index]};
+        return Score{kRookPst[index], kRookPst[index]};
     case PieceType::queen:
-        return Score{detail::hce_legacy::kQueenMiddleGame[index],
-                     detail::hce_legacy::kQueenEndGame[index]};
+        return Score{kQueenPst[index], kQueenPst[index]};
     case PieceType::king:
-        return Score{detail::hce_legacy::kKingMiddleGame[index],
-                     detail::hce_legacy::kKingEndGame[index]};
+        return Score{kKingMg[index], kKingEg[index]};
     case PieceType::none:
         return {};
     }

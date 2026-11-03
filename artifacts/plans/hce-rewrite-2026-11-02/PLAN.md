@@ -117,3 +117,5 @@ Round 49: per-piece mobility knobs added; knight mobility 150% screened +43.8 bu
 Round 50: rook mobility 150% screened neutral (+5.7 Elo); default kept.
 
 Round 51: bishop mobility 150% screened neutral (-5.5 Elo); per-piece mobility matrix closed, defaults kept.
+
+Round 55: legacy-tuned PST values screened +43.8 and confirmed +27.7 but reversed in a 300-game gate (-11.6); reverted.
