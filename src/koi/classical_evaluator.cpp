@@ -7,7 +7,6 @@
 #include <cstdint>
 
 #include "koi/detail/attack_tables.hpp"
-#include "koi/detail/hce_correction.hpp"
 #include "koi/detail/search_constants.hpp"
 
 namespace koi {
@@ -216,40 +215,35 @@ inline constexpr std::array<int, 64> kQueenPst{
     const int center = file_center(file);
     const int distance = distance_to_center(normalized);
     const std::size_t index = static_cast<std::size_t>(rank * 8 + file);
-    Score base{};
     switch (type) {
-    case PieceType::pawn: base = {kPawnMg[index], kPawnEg[index]}; break;
-    case PieceType::knight: base = {kKnightPst[index], kKnightPst[index]}; break;
-    case PieceType::bishop: base = {kBishopPst[index], kBishopPst[index]}; break;
-    case PieceType::rook: base = {kRookPst[index], kRookPst[index]}; break;
-    case PieceType::queen: base = {kQueenPst[index], kQueenPst[index]}; break;
-    case PieceType::king: base = {kKingMg[index], kKingEg[index]}; break;
-    case PieceType::none: return {};
+    case PieceType::pawn:
+        return Score{kPawnMg[index], kPawnEg[index]};
+    case PieceType::knight:
+        return Score{kKnightPst[index], kKnightPst[index]};
+    case PieceType::bishop:
+        return Score{kBishopPst[index], kBishopPst[index]};
+    case PieceType::rook:
+        return Score{kRookPst[index], kRookPst[index]};
+    case PieceType::queen:
+        return Score{kQueenPst[index], kQueenPst[index]};
+    case PieceType::king:
+        return Score{kKingMg[index], kKingEg[index]};
+    case PieceType::none:
+        return {};
     }
-    const std::size_t type_index_correction = static_cast<std::size_t>(static_cast<int>(type) - 1);
-    base.mg += detail::hce_correction::kPstMg[type_index_correction][index];
-    base.eg += detail::hce_correction::kPstEg[type_index_correction][index];
-    return base;
     return {};
 }
 
 [[nodiscard]] constexpr Score material(PieceType type) noexcept {
-    const int material_index = static_cast<int>(type) - 1;
-    Score base{};
     switch (type) {
-    case PieceType::pawn: base = {100, 120}; break;
-    case PieceType::knight: base = {320, 305}; break;
-    case PieceType::bishop: base = {335, 325}; break;
-    case PieceType::rook: base = {500, 540}; break;
-    case PieceType::queen: base = {900, 930}; break;
+    case PieceType::pawn: return {100, 120};
+    case PieceType::knight: return {320, 305};
+    case PieceType::bishop: return {335, 325};
+    case PieceType::rook: return {500, 540};
+    case PieceType::queen: return {900, 930};
     case PieceType::king: return {0, 0};
     case PieceType::none: return {};
     }
-    if (material_index >= 0 && material_index < 5) {
-        base.mg += detail::hce_correction::kMaterialMg[static_cast<std::size_t>(material_index)];
-        base.eg += detail::hce_correction::kMaterialEg[static_cast<std::size_t>(material_index)];
-    }
-    return base;
     return {};
 }
 

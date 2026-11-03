@@ -211,3 +211,20 @@ Decision: negative screen; reverted without a confirmation run.
 
 All tested output scales (80/110/125/150) are non-positive; the default 100%
 scale is final unless a different score-calibration mechanism is found.
+
+## v15 (NNUE-fitted PST correction) vs v13
+
+Static-corpus fit: PST-only ridge correction on 12k generated positions against the
+promoted NNUE static eval. HCE->NNUE corpus MAE improved 163.3 -> 148.2 cp
+(validation 145.8 cp), with material untouched and the unit suite green.
+
+Mac game screen, 100 ms, 32 openings, 64 games:
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 11/11/10 | 51.56% | +10.9 | 0.007 |
+| Black | 7/9/16 | 35.94% | -100.4 | -0.864 |
+| Combined | 18/20/26 | **43.75%** | **-44.8** | **-0.857** |
+
+Decision: negative game screen; reverted despite better static-corpus agreement.
+Static-fit agreement with NNUE is not a playing-strength proxy.
