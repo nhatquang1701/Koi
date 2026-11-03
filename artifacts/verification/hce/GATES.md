@@ -251,3 +251,15 @@ Behaviour screen only (architecture correction), Mac 100 ms, 64 games.
 | Combined | 19/30/15 | **53.13%** | **+21.8** | **0.211** |
 
 Neutral-positive; the native-input architecture is retained with no strength claim.
+
+## v17 (safe mobility) vs v16
+
+Mac M4 arm64, 100 ms equal-time, 32 openings, 64 games.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 7/14/11 | 43.75% | -43.7 | -0.501 |
+| Black | 6/17/9 | 45.31% | -32.7 | -0.475 |
+| Combined | 13/31/20 | **44.53%** | **-38.2** | **-0.976** |
+
+Decision: negative screen; reverted. Raw mobility remains the better default.
