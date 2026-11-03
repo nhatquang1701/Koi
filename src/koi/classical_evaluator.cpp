@@ -50,6 +50,10 @@ struct HceTuning {
     int piece_terms = 100;
     int eg_component = 100;
     int passed_rank = 100;
+    int mobility_knight = 100;
+    int mobility_bishop = 100;
+    int mobility_rook = 100;
+    int mobility_queen = 100;
 };
 
 [[nodiscard]] int tuning_percent(const char* name, int fallback) noexcept {
@@ -76,7 +80,11 @@ struct HceTuning {
         tuning_percent("KOI_HCE_THREAT_SCALE", 100),
         tuning_percent("KOI_HCE_PIECE_TERM_SCALE", 100),
         tuning_percent("KOI_HCE_EG_SCALE", 100),
-        tuning_percent("KOI_HCE_PASSED_RANK_SCALE", 100)};
+        tuning_percent("KOI_HCE_PASSED_RANK_SCALE", 100),
+        tuning_percent("KOI_HCE_MOB_N", 100),
+        tuning_percent("KOI_HCE_MOB_B", 100),
+        tuning_percent("KOI_HCE_MOB_R", 100),
+        tuning_percent("KOI_HCE_MOB_Q", 100)};
     return tuning;
 }
 
@@ -726,8 +734,17 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
             }
             const Score weight = mobility_weight(piece.type);
             const int mobility = eval.piece_mobility[static_cast<std::size_t>(square)];
-            side += percent_of(Score{weight.mg * mobility, weight.eg * mobility},
-                               hce_tuning().mobility);
+            int piece_mobility_scale = 100;
+            switch (piece.type) {
+            case PieceType::knight: piece_mobility_scale = hce_tuning().mobility_knight; break;
+            case PieceType::bishop: piece_mobility_scale = hce_tuning().mobility_bishop; break;
+            case PieceType::rook: piece_mobility_scale = hce_tuning().mobility_rook; break;
+            case PieceType::queen: piece_mobility_scale = hce_tuning().mobility_queen; break;
+            default: break;
+            }
+            side += percent_of(
+                Score{weight.mg * mobility, weight.eg * mobility},
+                hce_tuning().mobility * piece_mobility_scale / 100);
         }
 
         side += percent_of(pawn_structure(eval, color), hce_tuning().pawn_structure);
