@@ -695,7 +695,7 @@ struct EvalBoard {
 
 int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) const {
     const EvalBoard eval = make_eval_board(state);
-    if (insufficient_material(eval) || opposite_bishop_draw(eval)) {
+    if (insufficient_material(eval)) {
         return 0;
     }
 
