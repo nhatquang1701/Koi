@@ -19,8 +19,11 @@ bump, tag, or packaging work.
   without a network; `EvalFile` remains NNUE-only.
 - Tools: `koi-bench --hce`; `koi-eval-features --hce` (static eval corpus dumps);
   HCE benchmark regression test (`koi_hce_bench_process`); HCE process test.
-- Tests: `classical_evaluator_tests` (term directions, endgame corpus invariants,
-  determinism, bounds, concurrency), 7/7. ASan-clean.
+- Tests: `classical_evaluator_tests` (term directions, pawn-structure/tempo,
+  endgame corpus invariants, determinism, bounds, concurrency), 8/8. ASan-clean.
+  Controller evaluator-mode transitions (68/68), `koi_hce_process`,
+  `koi_hce_bench_process` (>=60/64 depth-3 tactical matches),
+  `koi_hce_eval_features_process` (HCE CSV + mode conflicts).
 - Evidence: `BENCH.md` (depth-5 bench), `GATES.md` (Mac screen/confirm/300-game
   gates), `EVAL_CORPUS.md` (HCE-vs-NNUE static comparison), `PROFILE` note
   (search/quiescence dominates, eval is not the time bottleneck).
@@ -49,3 +52,14 @@ bump, tag, or packaging work.
 - Longer equal-time confirmation (>=300 games) for any screen-positive change.
 - Search/eval synergy investigation (HCE score interaction with pruning).
 EOF
+
+## Recent state (rounds 31-47)
+
+- Native board builder restored after a silent regression (round 31); behaviour
+  screen was neutral-positive and the architecture is retained.
+- Added `EvalMode`/`EvalFile` state-sync fix and transition regression tests.
+- ASan fuzz per-case timeout hardened to 45 s for loaded CI runners.
+- Additional unit/tool tests and the consolidated evidence were added.
+- Further single-term candidates (safe mobility, pawn islands, pawn storm,
+  minor threats, check-aware tempo, passed-rank scale) screened and reverted:
+  none survived confirmation/large gates.
