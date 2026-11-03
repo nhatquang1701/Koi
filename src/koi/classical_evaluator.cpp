@@ -42,7 +42,7 @@ struct Score {
 struct HceTuning {
     int passed = 100;
     int mobility = 100;
-    int king_safety = 100;
+    int king_safety = 75;
     int pawn_structure = 100;
     int tempo = 100;
     int evaluation = 100;

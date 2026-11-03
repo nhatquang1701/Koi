@@ -35,6 +35,9 @@ bump, tag, or packaging work.
 - v3 passed-pawn king-proximity/blocking: consistently positive in screens
   (+72.5/64, +30.6/126, +25.6/300 Elo) but never crossed the SPRT boundary;
   retained as the current baseline, no Elo claim.
+- **King-safety scale 75%: accepted** (round 57). Four equal-time gates on the Mac
+  (64/126/300/128 games) were all positive; cumulative LLR 4.389 > 2.94. The
+  default is now 75 (was 100), with the override knob retained.
 - No other candidate survived confirmation. Reverted: combined v2 term set,
   backward pawns, rook-behind-passer, pawn threats, mop-up, weighted
   king-attack model, safe mobility, NNUE-fitted PST correction.

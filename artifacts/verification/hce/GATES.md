@@ -357,3 +357,21 @@ not accepted on short-run evidence.
 | 100 ms screen | 64 | 17/31/16 | 50.78% | +5.4 | -0.121 |
 
 Decision: neutral; reverted.
+
+
+## ACCEPTED: king-safety scale 75% (round 57)
+
+All gates are HCE-vs-HCE equal-time on the Mac M4, `Threads=1`, Hash=64, no book;
+the candidate is the default binary with `KOI_HCE_KING_SAFETY_SCALE=75`.
+
+| Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 100 ms screen (32 openings) | 64 | 22/28/14 | 56.25% | +43.8 | 0.644 |
+| 100 ms confirm (63 openings) | 126 | 47/44/35 | 54.76% | +33.3 | 0.739 |
+| 50 ms large (150 openings) | 300 | 116/94/90 | 54.33% | +30.4 | 1.461 |
+| 100 ms independent subset (64 openings) | 128 | 56/38/34 | 58.59% | +60.5 | 1.545 |
+
+Cumulative LLR = **4.389**, above the 2.94 boundary (H0=0, H1=+20 Elo,
+alpha=beta=0.05) → **accepted**. The default king-safety scale is now **75**
+(was 100); `KOI_HCE_KING_SAFETY_SCALE` remains an override. This supersedes the
+earlier rejected 125%/175% screens, which were the wrong direction.

@@ -121,3 +121,5 @@ Round 51: bishop mobility 150% screened neutral (-5.5 Elo); per-piece mobility m
 Round 55: legacy-tuned PST values screened +43.8 and confirmed +27.7 but reversed in a 300-game gate (-11.6); reverted.
 
 Round 56: legacy king PST candidate screened neutral (+5.4); reverted.
+
+Round 57: king-safety scale 75% accepted: four Mac equal-time gates positive (64/126/300/128 games), cumulative LLR 4.389 > 2.94; default changed to 75 with override retained.
