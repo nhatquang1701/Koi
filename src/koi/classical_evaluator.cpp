@@ -48,6 +48,7 @@ struct HceTuning {
     int evaluation = 100;
     int threats = 100;
     int piece_terms = 100;
+    int eg_component = 100;
 };
 
 [[nodiscard]] int tuning_percent(const char* name, int fallback) noexcept {
@@ -72,7 +73,8 @@ struct HceTuning {
         tuning_percent("KOI_HCE_TEMPO_SCALE", 100),
         tuning_percent("KOI_HCE_EVAL_SCALE", 100),
         tuning_percent("KOI_HCE_THREAT_SCALE", 100),
-        tuning_percent("KOI_HCE_PIECE_TERM_SCALE", 100)};
+        tuning_percent("KOI_HCE_PIECE_TERM_SCALE", 100),
+        tuning_percent("KOI_HCE_EG_SCALE", 100)};
     return tuning;
 }
 
@@ -741,6 +743,7 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
     const Score tempo = eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10};
     total += percent_of(tempo, hce_tuning().tempo);
 
+    total.eg = total.eg * hce_tuning().eg_component / 100;
     int score = tapered(total, eval.phase);
     // Opposite bishops with no other material is drawish, but not a strict
     // rule draw; damp rather than zero it so small residual imbalances survive.
