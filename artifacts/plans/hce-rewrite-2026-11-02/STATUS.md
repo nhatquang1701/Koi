@@ -20,7 +20,7 @@ bump, tag, or packaging work.
 - Tools: `koi-bench --hce`; `koi-eval-features --hce` (static eval corpus dumps);
   HCE benchmark regression test (`koi_hce_bench_process`); HCE process test.
 - Tests: `classical_evaluator_tests` (term directions, pawn-structure/tempo,
-  endgame corpus invariants, determinism, bounds, concurrency), 8/8. ASan-clean.
+  endgame corpus invariants, determinism, bounds, concurrency, seeded random-game stress), 9/9. ASan-clean.
   Controller evaluator-mode transitions (68/68), `koi_hce_process`,
   `koi_hce_bench_process` (>=60/64 depth-3 tactical matches),
   `koi_hce_eval_features_process` (HCE CSV + mode conflicts).

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -96,6 +97,29 @@ std::map<std::string, std::string> read_endgame_fixtures() {
     }
     require(!fixtures.empty(), "the endgame FEN corpus must not be empty");
     return fixtures;
+}
+
+void test_random_game_evaluations_are_bounded_and_symmetric() {
+    const ClassicalEvaluator evaluator;
+    std::mt19937 rng(20261103U);
+    for (int game = 0; game < 24; ++game) {
+        GameState state = GameState::startpos();
+        for (int ply = 0; ply < 120; ++ply) {
+            const int white = evaluator.evaluate(state, Color::white);
+            const int black = evaluator.evaluate(state, Color::black);
+            require(white == -black,
+                    "random-game evaluations must negate across perspectives");
+            require(std::abs(white) < koi::detail::kMateThreshold,
+                    "random-game evaluations must stay outside the mate range");
+            const std::vector<koi::Move> moves = state.legal_moves();
+            if (moves.empty()) {
+                break;
+            }
+            std::uniform_int_distribution<std::size_t> pick(0, moves.size() - 1);
+            require(state.make_move(moves[pick(rng)]),
+                    "random legal move must apply");
+        }
+    }
 }
 
 void test_pawn_structure_directions_and_tempo() {
@@ -216,6 +240,7 @@ int main(int argc, char** argv) {
         {"material advantage sign", test_material_advantage_has_the_expected_sign},
         {"colour-swapped negation", test_color_swapped_positions_are_negations},
         {"bounded and deterministic", test_scores_are_bounded_and_deterministic},
+        {"random game evaluations", test_random_game_evaluations_are_bounded_and_symmetric},
         {"pawn structure and tempo directions",
          test_pawn_structure_directions_and_tempo},
         {"endgame fixture invariants", test_endgame_fixture_invariants},
