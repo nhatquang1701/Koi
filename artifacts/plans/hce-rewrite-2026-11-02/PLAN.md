@@ -111,3 +111,5 @@ Round 44: passed-rank scale 120% screened +27.2 and confirmed +13.8 but was neut
 Round 45: added `koi_hce_eval_features_process` covering the HCE static-eval CSV dump and `--hce/--nnue` conflict rejection.
 
 Round 46: check-aware tempo screened exactly neutral and was reverted.
+
+Round 49: per-piece mobility knobs added; knight mobility 150% screened +43.8 but confirmed +2.8 (neutral); defaults kept.

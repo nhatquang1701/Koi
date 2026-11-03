@@ -322,3 +322,12 @@ Mac M4 arm64, 100 ms, 32 openings, 64 games.
 | Combined | 16/32/16 | **50.00%** | **0.0** | **-0.207** |
 
 Decision: exactly neutral; reverted to keep the baseline minimal.
+
+## Knight mobility 150% (v24 knob)
+
+| Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 100 ms screen | 64 | 21/30/13 | 56.25% | +43.8 | 0.716 |
+| 100 ms confirm | 126 | 34/59/33 | 50.40% | +2.8 | -0.324 |
+
+Decision: neutral in confirmation; default mobility weights kept.
