@@ -158,7 +158,8 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   `koi_protocol_broken_pipe_process` (a GUI crash closes stdout mid-search or
   stderr before a diagnostic: writes fail silently, `stop`/`quit` still shut
   down cleanly with exit 0),
-  `koi_protocol_option_churn_process` (Hash/Threads/MultiPV/EvalFile/BookFile/
+  `koi_hce_bench_process` (depth-3 HCE tactical match-rate regression plus
+  truthful evaluator identity), `koi_protocol_option_churn_process` (Hash/Threads/MultiPV/EvalFile/BookFile/
   SyzygyPath changes during an active search: the old generation is suppressed
   with no late bestmove, a malformed EvalFile is rejected once, and each
   replacement search answers legally),
