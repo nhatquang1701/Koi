@@ -24,6 +24,8 @@ bump, tag, or packaging work.
   Controller evaluator-mode transitions (68/68), `koi_hce_process`,
   `koi_hce_bench_process` (>=60/64 depth-3 tactical matches),
   `koi_hce_eval_features_process` (HCE CSV + mode conflicts).
+- ASan: full unit label 24/24 suites clean on the HCE tree (including the
+  random-game stress test), zero sanitizer reports.
 - Evidence: `BENCH.md` (depth-5 bench), `GATES.md` (Mac screen/confirm/300-game
   gates), `EVAL_CORPUS.md` (HCE-vs-NNUE static comparison), `PROFILE` note
   (search/quiescence dominates, eval is not the time bottleneck).
