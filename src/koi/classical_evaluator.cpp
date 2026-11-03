@@ -586,6 +586,35 @@ struct EvalBoard {
             score += Score{8, 6};
         }
     }
+    // Minor/major attacks on defended higher-value pieces gain time even when
+    // the target is not hanging.  Hanging targets are already counted above.
+    constexpr std::array<Score, 7> kMinorThreatBonus{
+        Score{}, Score{0, 0}, Score{0, 0}, Score{0, 0},
+        Score{18, 12}, Score{30, 18}, Score{}};
+    for (std::uint64_t attackers = eval.pieces[color][type_index(PieceType::knight)] |
+             eval.pieces[color][type_index(PieceType::bishop)];
+         attackers != 0;) {
+        const int square = std::countr_zero(attackers);
+        attackers &= attackers - 1;
+        const Piece attacker = eval.board[static_cast<std::size_t>(square)];
+        const std::uint64_t attack_map = attacker.type == PieceType::knight
+            ? detail::knight_attacks(square)
+            : detail::bishop_attacks(square, eval.occupied);
+        std::uint64_t targets = attack_map & eval.colors[enemy] &
+            ~eval.pieces[enemy][type_index(PieceType::king)] &
+            ~eval.pieces[enemy][type_index(PieceType::pawn)];
+        while (targets != 0) {
+            const int target = std::countr_zero(targets);
+            targets &= targets - 1;
+            if ((enemy_defended & bit_of(target)) == 0) {
+                continue;
+            }
+            const Piece victim = eval.board[static_cast<std::size_t>(target)];
+            if (material(victim.type).mg > material(attacker.type).mg) {
+                score += kMinorThreatBonus[type_index(victim.type)];
+            }
+        }
+    }
     return score;
 }
 
