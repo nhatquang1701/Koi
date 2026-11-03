@@ -98,6 +98,32 @@ std::map<std::string, std::string> read_endgame_fixtures() {
     return fixtures;
 }
 
+void test_pawn_structure_directions_and_tempo() {
+    const ClassicalEvaluator evaluator;
+
+    // Same two pawns: doubled on one file vs connected on adjacent files.
+    const int doubled = evaluator.evaluate(
+        state_from_fen("4k3/8/8/8/8/3P4/3P4/4K3 w - - 0 1"), Color::white);
+    const int connected = evaluator.evaluate(
+        state_from_fen("4k3/8/8/8/8/4P3/3P4/4K3 w - - 0 1"), Color::white);
+    require(connected > doubled,
+            "connected pawns must outscore doubled pawns");
+
+    // Same two pawns: isolated on opposite wings vs connected.
+    const int isolated = evaluator.evaluate(
+        state_from_fen("4k3/8/8/8/8/P6P/8/4K3 w - - 0 1"), Color::white);
+    const int connected_wing = evaluator.evaluate(
+        state_from_fen("4k3/8/8/8/8/PP6/8/4K3 w - - 0 1"), Color::white);
+    require(connected_wing > isolated,
+            "connected wing pawns must outscore isolated wing pawns");
+
+    // Tempo: the side to move gets a small positive bonus in a symmetric
+    // position, so the side-to-move score is positive.
+    const int startpos_white = evaluator.evaluate(GameState::startpos(), Color::white);
+    require(startpos_white > 0,
+            "the side to move must receive a positive tempo bonus");
+}
+
 void test_endgame_fixture_invariants() {
     const ClassicalEvaluator evaluator;
     const std::map<std::string, std::string> fixtures = read_endgame_fixtures();
@@ -190,6 +216,8 @@ int main(int argc, char** argv) {
         {"material advantage sign", test_material_advantage_has_the_expected_sign},
         {"colour-swapped negation", test_color_swapped_positions_are_negations},
         {"bounded and deterministic", test_scores_are_bounded_and_deterministic},
+        {"pawn structure and tempo directions",
+         test_pawn_structure_directions_and_tempo},
         {"endgame fixture invariants", test_endgame_fixture_invariants},
         {"pawn/king/piece directions", test_pawn_king_and_piece_terms_are_directional},
         {"concurrent evaluation", test_concurrent_evaluation_is_safe_and_stable},
