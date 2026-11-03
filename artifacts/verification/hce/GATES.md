@@ -331,3 +331,5 @@ Decision: exactly neutral; reverted to keep the baseline minimal.
 | 100 ms confirm | 126 | 34/59/33 | 50.40% | +2.8 | -0.324 |
 
 Decision: neutral in confirmation; default mobility weights kept.
+
+| rook mobility 150% | 23/19/22 (64) | 50.78% | +5.7 | -0.086 | screen neutral; default kept |
