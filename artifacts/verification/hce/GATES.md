@@ -265,3 +265,15 @@ Mac M4 arm64, 100 ms equal-time, 32 openings, 64 games.
 Decision: negative screen; reverted. Raw mobility remains the better default.
 
 | eg component 120% | 20/25/19 (64) | 50.78% | +5.4 | -0.084 | neutral; default kept |
+
+## v19 (pawn islands) vs v18
+
+Mac M4 arm64, 100 ms, 32 openings, 64 games.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 8/15/9 | 48.44% | -10.9 | -0.202 |
+| Black | 7/14/11 | 43.75% | -43.7 | -0.501 |
+| Combined | 15/29/20 | **46.09%** | **-27.3** | **-0.703** |
+
+Decision: negative screen; reverted.

@@ -99,3 +99,5 @@ scratch instead of restoring old code:
 Round 36: endgame-component scale knob (`KOI_HCE_EG_SCALE`) added; 120% screened neutral (+5.4 Elo, LLR -0.084); default kept.
 
 Round 37: fixed `EvalMode` state sync on successful `EvalFile` load (hce_active_ was left stale) and added a controller regression test; EvalFile now reports `info string evaluator nnue` as well as the enabled path.
+
+Round 39: pawn-islands term screened -27.3 Elo and was reverted.
