@@ -749,7 +749,8 @@ from the starting position (for example, `bestmove e2e4`).
 - `setoption name EvalFile value <path>` loads a Koi NNUE network for the next
   search (an empty value keeps the boot-time evaluator, so replaying defaults
   never triggers a load). A rejected or missing file leaves the current
-  evaluator in place and reports `info string EvalFile rejected: ...`. Running
+  evaluator in place and reports `info string evaluator nnue` and `info string NNUE enabled from <path>` on success,
+  or `info string EvalFile rejected: ...`. Running
   searches keep the evaluator they started with.
 - `setoption name BookRandom value false` (the default) selects the highest-
   weight legal Polyglot move, using deterministic coordinate ordering for equal

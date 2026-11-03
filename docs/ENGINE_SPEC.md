@@ -728,8 +728,8 @@ Rules for `setoption`:
   `SyzygyPath` was ever set) first emits
   `info string syzygy detected: <path> (SyzygyPath not set, using it)` when the
   tables are loaded.
-- `EvalFile` with a non-empty value reports `info string NNUE enabled from <path>`
-  or `info string EvalFile rejected: <reason>`.
+- `EvalFile` with a non-empty value reports `info string evaluator nnue` and
+  `info string NNUE enabled from <path>`, or `info string EvalFile rejected: <reason>`.
 - `Debug` can also be toggled with the standard `debug on` / `debug off` command.
   Debug output never goes to UCI stdout or normal stderr. An existing
   non-regular `DebugFile` (FIFO/named pipe, directory, device) is ignored by

@@ -1159,6 +1159,7 @@ void UciController::handle_setoption(std::istream& command) {
         try {
             auto weights = std::make_shared<const NnueNetwork>(std::move(*network));
             search_service_.set_evaluator(std::make_shared<NnueEvaluator>(weights));
+            hce_active_ = false;
         } catch (const std::exception& install_error) {
             // Installing a network allocates; a failure here must keep the
             // previous evaluator and the process alive.
@@ -1173,7 +1174,8 @@ void UciController::handle_setoption(std::istream& command) {
         debug_json_event("eval_file", "\"path\":" + debug_quoted(resolved.string()) +
                                            ",\"enabled\":true");
         std::lock_guard lock(output_mutex_);
-        output_ << "info string NNUE enabled from " << resolved.string() << '\n' << std::flush;
+        output_ << "info string evaluator nnue\n"
+                << "info string NNUE enabled from " << resolved.string() << '\n' << std::flush;
         break;
     }
 

@@ -544,6 +544,35 @@ void test_uci_handshake_has_identity_and_supported_options_in_order() {
             "uci response must match tests/data/uci/handshake.txt");
 }
 
+void test_evalfile_load_after_hce_reports_nnue_mode() {
+    const char* network_path = std::getenv("KOI_NNUE_PATH");
+    if (network_path == nullptr || *network_path == '\0') {
+        return;  // direct runs without the CTest network environment
+    }
+    const std::string transcript =
+        "uci\n"
+        "setoption name EvalMode value hce\n"
+        "setoption name EvalFile value " + std::string(network_path) + "\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "quit\n";
+    const ControllerResult result = run_controller(transcript);
+    require(result.exit_code == 0 && result.diagnostics.empty(),
+            "EvalFile after EvalMode=hce must leave the protocol clean");
+    require(result.output.find("info string evaluator hce") != std::string::npos,
+            "EvalMode=hce must report its mode");
+    require(result.output.find("info string NNUE enabled from") != std::string::npos,
+            "EvalFile must load the network after HCE mode");
+    require(result.output.find("info string evaluator nnue") != std::string::npos,
+            "a successful EvalFile load must restore/report NNUE mode");
+    const std::vector<std::string> bestmoves =
+        lines_starting_with(output_lines(result.output), "bestmove ");
+    require(bestmoves.size() == 1 &&
+                is_legal_move(Position{}, first_bestmove_move(bestmoves[0])),
+            "the search after the evaluator transition must complete legally");
+}
+
 void test_eval_mode_switches_between_hce_and_the_boot_evaluator() {
     const ControllerResult result = run_controller(
         "uci\n"
@@ -2373,6 +2402,7 @@ void test_bestmove_reports_the_ponder_move_without_the_option() {
 int main(int argc, char** argv) {
     const std::vector<koi::test::TestCase> tests{
         {"uci handshake and options", test_uci_handshake_has_identity_and_supported_options_in_order},
+        {"EvalFile restores NNUE after HCE", test_evalfile_load_after_hce_reports_nnue_mode},
         {"EvalMode evaluator selection", test_eval_mode_switches_between_hce_and_the_boot_evaluator},
         {"Syzygy option values", test_syzygy_options_accept_valid_values_and_ignore_invalid_values},
         {"legacy strength handshake", test_legacy_strength_options_are_not_advertised},
