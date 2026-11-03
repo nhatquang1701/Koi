@@ -14,10 +14,12 @@ param(
 #   * isready answers during an infinite search;
 #   * malformed commands never crash or hang the engine.
 $ErrorActionPreference = 'Stop'
+# ASan builds are roughly 2-3x slower and CI runners can be loaded; 45 s is
+# still a firm hang bound while keeping the deterministic corpus non-flaky.
 $TimeoutMilliseconds = if ($env:KOI_UCI_TIMEOUT_MS) {
     [int]$env:KOI_UCI_TIMEOUT_MS
 } else {
-    20000
+    45000
 }
 
 Import-Module ([System.IO.Path]::GetFullPath(
