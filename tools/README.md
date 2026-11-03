@@ -237,6 +237,8 @@ selectable for development/measurement:
 - `koi-bench --hce` runs the built-in tactical/positional suite with the HCE
   (no network required); `koi-bench --nnue NET` remains the NNUE path.
 - Term-level tests are in `tests/unit/evaluation/classical_evaluator_tests.cpp`.
+- `koi-eval-features --hce` dumps HCE static evaluations for a FEN corpus in
+  CSV (no network required); `--nnue NET` remains the NNUE dump mode.
 
 ## PGN extraction and oracle analysis
 

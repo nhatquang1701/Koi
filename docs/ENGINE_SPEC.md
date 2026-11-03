@@ -956,7 +956,7 @@ empty for the 1.1.5 gate.
 | `koi-bench` | 64-position fixed-depth tactical hard gate by default; `--optional` selects the 128-position positional corpus; `--threads`, `--speed`, `--timed`, `--warm-hash`, `--nodes`, `--warmup`, `--repeat`, `--depth`, `--depth-sweep`, `--fen-file`, `--nnue`, `--profile-json`, `--report` |
 | `koi-perft` | Legal-node count from startpos at a non-negative depth |
 | `koi-replay` | Replays coordinate moves from `startpos`/`fen` without exposing the vendored library; reports `legal`, `result`, `termination`, final FEN |
-| `koi-eval-features` | Dump NNUE evaluations for a position corpus (`--nnue` required) |
+| `koi-eval-features` | Dump NNUE (`--nnue NET`) or clean-HCE (`--hce`) evaluations for a position corpus |
 | `koi-nnue-fixture` | Generates NNUE fixtures for boundary/parity tests |
 | `tools/build/speed_gate.ps1` | Repeated `koi-bench --report` baseline/candidate comparison; defaults 5 runs, 2% total NPS regression, 2% row regression, rows under 20 ms excluded as timer-quantized |
 | `tools/build/performance_gate.ps1` | Older/alternate NPS comparison harness (threads 2 by default) |
