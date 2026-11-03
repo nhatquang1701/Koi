@@ -467,11 +467,52 @@ struct EvalBoard {
     const bool white = color == kWhite;
     const std::uint64_t own_pawns = eval.pieces[color][type_index(PieceType::pawn)];
 
-    const int attacker_count = eval.king_zone_attacks[color];
-    score += Score{-attacker_count * attacker_count * 3, -attacker_count * 2};
-    if (attacker_count >= 3) {
-        score += Score{-18, -8};
+    // Weighted king attack: count the enemy pieces attacking the king ring and
+    // weight majors/minors above pawn pokes.  Multiple attackers compound.
+    const std::uint64_t king_zone = detail::king_attacks(king) | bit_of(king);
+    const std::size_t enemy = 1 - color;
+    int attack_units = 0;
+    int attacker_count = 0;
+    for (std::uint64_t pieces = eval.colors[enemy]; pieces != 0;) {
+        const int square = std::countr_zero(pieces);
+        pieces &= pieces - 1;
+        const Piece piece = eval.board[static_cast<std::size_t>(square)];
+        std::uint64_t attacks = 0;
+        switch (piece.type) {
+        case PieceType::pawn:
+            attacks = detail::pawn_attacks(square, enemy == kWhite);
+            break;
+        case PieceType::knight:
+            attacks = detail::knight_attacks(square);
+            break;
+        case PieceType::bishop:
+            attacks = detail::bishop_attacks(square, eval.occupied);
+            break;
+        case PieceType::rook:
+            attacks = detail::rook_attacks(square, eval.occupied);
+            break;
+        case PieceType::queen:
+            attacks = detail::queen_attacks(square, eval.occupied);
+            break;
+        case PieceType::king:
+        case PieceType::none:
+            break;
+        }
+        if ((attacks & king_zone) == 0) {
+            continue;
+        }
+        ++attacker_count;
+        switch (piece.type) {
+        case PieceType::pawn: attack_units += 1; break;
+        case PieceType::knight:
+        case PieceType::bishop: attack_units += 2; break;
+        case PieceType::rook: attack_units += 3; break;
+        case PieceType::queen: attack_units += 5; break;
+        default: break;
+        }
     }
+    score += Score{-attacker_count * 5 - attack_units * attack_units * 2,
+                   -attacker_count * 2};
 
     // Pawn shelter and open files around the king.
     for (int file = std::max(0, king_file - 1); file <= std::min(7, king_file + 1); ++file) {
