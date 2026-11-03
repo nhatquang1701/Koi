@@ -119,3 +119,5 @@ Round 50: rook mobility 150% screened neutral (+5.7 Elo); default kept.
 Round 51: bishop mobility 150% screened neutral (-5.5 Elo); per-piece mobility matrix closed, defaults kept.
 
 Round 55: legacy-tuned PST values screened +43.8 and confirmed +27.7 but reversed in a 300-game gate (-11.6); reverted.
+
+Round 56: legacy king PST candidate screened neutral (+5.4); reverted.

@@ -7,7 +7,6 @@
 #include <cstdint>
 
 #include "koi/detail/attack_tables.hpp"
-#include "koi/detail/hce_legacy_king_pst.hpp"
 #include "koi/detail/search_constants.hpp"
 
 namespace koi {
@@ -240,8 +239,7 @@ inline constexpr std::array<int, 64> kQueenPst{
     case PieceType::queen:
         return Score{kQueenPst[index], kQueenPst[index]};
     case PieceType::king:
-        return Score{detail::hce_legacy_king::kKingMiddleGame[index],
-                     detail::hce_legacy_king::kKingEndGame[index]};
+        return Score{kKingMg[index], kKingEg[index]};
     case PieceType::none:
         return {};
     }

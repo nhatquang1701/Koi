@@ -349,3 +349,11 @@ separate header. Mac M4 arm64, HCE both sides, Threads=1, Hash=64.
 
 Decision: the large gate reverses the short-run gain; reverted. Legacy values are
 not accepted on short-run evidence.
+
+## Legacy king PSTs vs v24
+
+| Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 100 ms screen | 64 | 17/31/16 | 50.78% | +5.4 | -0.121 |
+
+Decision: neutral; reverted.
