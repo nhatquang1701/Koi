@@ -437,6 +437,24 @@ struct EvalBoard {
         }
     }
 
+    // Pawn islands: each disconnected group of pawn files is harder to defend.
+    int islands = 0;
+    bool previous_file_had_pawn = false;
+    bool any_pawn_seen = false;
+    for (int island_file = 0; island_file < 8; ++island_file) {
+        const bool present =
+            own_file_count[static_cast<std::size_t>(island_file)] != 0;
+        if (present && !previous_file_had_pawn) {
+            ++islands;
+            any_pawn_seen = true;
+        }
+        previous_file_had_pawn = present;
+    }
+    if (any_pawn_seen && islands > 1) {
+        const int extra_islands = islands - 1;
+        score += Score{-9 * extra_islands, -6 * extra_islands};
+    }
+
     constexpr std::array<int, 8> kPassedMg{0, 6, 12, 22, 38, 65, 105, 0};
     constexpr std::array<int, 8> kPassedEg{0, 10, 20, 36, 62, 105, 165, 0};
 
