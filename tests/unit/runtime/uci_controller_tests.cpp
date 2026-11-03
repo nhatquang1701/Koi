@@ -573,6 +573,36 @@ void test_evalfile_load_after_hce_reports_nnue_mode() {
             "the search after the evaluator transition must complete legally");
 }
 
+void test_eval_mode_switch_during_search_and_rejected_evalfile() {
+    const ControllerResult result = run_controller(
+        "uci\n"
+        "position startpos\n"
+        "go infinite\n"
+        "setoption name EvalMode value hce\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "setoption name EvalFile value definitely-not-a-network.nnue\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "quit\n");
+    require(result.exit_code == 0 && result.diagnostics.empty(),
+            "EvalMode/EvalFile transitions must keep the protocol clean");
+    const std::vector<std::string> lines = output_lines(result.output);
+    const std::vector<std::string> bestmoves = lines_starting_with(lines, "bestmove ");
+    require(bestmoves.size() == 2,
+            "each completed post-transition search must emit exactly one bestmove");
+    for (const std::string& bestmove : bestmoves) {
+        require(is_legal_move(Position{}, first_bestmove_move(bestmove)),
+                "post-transition searches must return legal moves");
+    }
+    require(result.output.find("info string evaluator hce") != std::string::npos,
+            "the HCE mode switch must be reported");
+    require(result.output.find("info string EvalFile rejected") != std::string::npos,
+            "a rejected EvalFile in HCE mode must be diagnosed");
+}
+
 void test_eval_mode_switches_between_hce_and_the_boot_evaluator() {
     const ControllerResult result = run_controller(
         "uci\n"
@@ -2402,6 +2432,7 @@ void test_bestmove_reports_the_ponder_move_without_the_option() {
 int main(int argc, char** argv) {
     const std::vector<koi::test::TestCase> tests{
         {"uci handshake and options", test_uci_handshake_has_identity_and_supported_options_in_order},
+        {"EvalMode during search and rejected EvalFile", test_eval_mode_switch_during_search_and_rejected_evalfile},
         {"EvalFile restores NNUE after HCE", test_evalfile_load_after_hce_reports_nnue_mode},
         {"EvalMode evaluator selection", test_eval_mode_switches_between_hce_and_the_boot_evaluator},
         {"Syzygy option values", test_syzygy_options_accept_valid_values_and_ignore_invalid_values},
