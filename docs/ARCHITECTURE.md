@@ -178,11 +178,32 @@ flowchart TD
 
 ## Optional layers
 
-  fallback.
 - `src/koi/modules/` — the optional C++26 named-module partitions (`types`,
   `position`, `eval`, `tablebase`, `search`, `runtime`).
 - `src/koi/detail/` — private implementation headers and units that do not
   establish a public ABI.
+
+## Hand-crafted evaluator (HCE)
+
+The clean HCE is an optional evaluator, not a second production default:
+
+- `classical_evaluator.{hpp,cpp}` implements the existing `Evaluator` interface;
+  it is stateless and advertises concurrent evaluation.
+- It derives its own board/attack/mobility state from
+  `GameState::copy_board_to` and the native attack tables; it does **not** use
+  the shared NNUE `PositionFeatures` container.
+- Evaluation is tapered mg/eg with explicit PST tables for every piece; the
+  internal `KOI_HCE_*_SCALE` variables are development/tuning seams and are not
+  a public UCI surface.
+- Selection: `EvalMode=hce` (stops/suppresses the active search first) or the
+  `KOI_EVALUATOR=hce` boot override, which needs no network. `EvalFile` remains
+  an NNUE loader and restores NNUE mode when it succeeds.
+- Stability rule: term changes are gated on Mac equal-time screens plus
+  independent confirmations (>=126 games; larger where possible); a candidate
+  that does not survive is reverted. No unproven evaluator change is kept.
+- Tests/evidence: `classical_evaluator_tests`, `koi_hce_process`,
+  `koi_hce_bench_process`, `koi_hce_eval_features_process`, and the HCE
+  evidence under `artifacts/` (bench, gates, eval-corpus, profile, status).
 
 ## Data flow
 
