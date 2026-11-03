@@ -103,3 +103,5 @@ Round 37: fixed `EvalMode` state sync on successful `EvalFile` load (hce_active_
 Round 39: pawn-islands term screened -27.3 Elo and was reverted.
 
 Round 40: enemy pawn-storm term screened +16.3 but confirmed -19.3; reverted.
+
+Round 42: minor-attacks-major threat term screened +32.7 but confirmed -22.2; reverted.

@@ -288,3 +288,14 @@ Mac M4 arm64, 100 ms equal-time, HCE both sides.
 | confirm | 126 | 39/41/46 | 47.22% | -19.3 | -0.894 |
 
 Decision: negative in confirmation; reverted.
+
+## v21 (minor attacks major) vs v18
+
+Mac M4 arm64, 100 ms equal-time, HCE both sides.
+
+| Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- |
+| screen | 64 | 20/30/14 | 54.69% | +32.7 | 0.435 |
+| confirm | 126 | 37/44/45 | 46.83% | -22.2 | -1.089 |
+
+Decision: negative in confirmation; reverted.
