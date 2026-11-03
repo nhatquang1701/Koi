@@ -194,3 +194,15 @@ Decision: negative screen; reverted without a confirmation run.
 | threat weight 150% | 43/38/45 (126) | 49.21% | -5.5 | -0.482 | confirm negative; default kept |
 
 | piece terms 150% | 15/32/17 (64) | 48.44% | -10.9 | -0.399 | screen negative; default kept |
+
+## v14 (weighted king-attack model) vs v13
+
+Mac M4 arm64, 100 ms equal-time, 32 openings, 64 games.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 12/7/13 | 48.44% | -10.9 | -0.137 |
+| Black | 7/13/12 | 42.19% | -54.7 | -0.579 |
+| Combined | 19/20/25 | **45.31%** | **-32.8** | **-0.716** |
+
+Decision: negative screen; reverted without a confirmation run.
