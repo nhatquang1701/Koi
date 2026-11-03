@@ -49,6 +49,7 @@ struct HceTuning {
     int threats = 100;
     int piece_terms = 100;
     int eg_component = 100;
+    int passed_rank = 100;
 };
 
 [[nodiscard]] int tuning_percent(const char* name, int fallback) noexcept {
@@ -74,7 +75,8 @@ struct HceTuning {
         tuning_percent("KOI_HCE_EVAL_SCALE", 100),
         tuning_percent("KOI_HCE_THREAT_SCALE", 100),
         tuning_percent("KOI_HCE_PIECE_TERM_SCALE", 100),
-        tuning_percent("KOI_HCE_EG_SCALE", 100)};
+        tuning_percent("KOI_HCE_EG_SCALE", 100),
+        tuning_percent("KOI_HCE_PASSED_RANK_SCALE", 100)};
     return tuning;
 }
 
@@ -459,8 +461,10 @@ struct EvalBoard {
         }
         const bool passed = (enemy_pawns & forward_mask) == 0;
         if (passed) {
-            Score bonus{kPassedMg[static_cast<std::size_t>(own_rank)],
-                        kPassedEg[static_cast<std::size_t>(own_rank)]};
+            Score bonus = percent_of(
+                Score{kPassedMg[static_cast<std::size_t>(own_rank)],
+                      kPassedEg[static_cast<std::size_t>(own_rank)]},
+                hce_tuning().passed_rank);
             // The attacking king escorts a passer while the defending king is
             // pushed away; this is mostly an endgame term.
             if (eval.kings[color] >= 0 && eval.kings[1 - color] >= 0) {
