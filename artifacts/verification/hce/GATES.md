@@ -228,3 +228,14 @@ Mac game screen, 100 ms, 32 openings, 64 games:
 
 Decision: negative game screen; reverted despite better static-corpus agreement.
 Static-fit agreement with NNUE is not a playing-strength proxy.
+
+## Tempo-weight screen
+
+| Variant | Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- | --- |
+| tempo 200% | screen | 64 | 22/27/15 | 55.47% | +41.1 | 0.624 |
+| tempo 200% | confirm | 126 | 37/51/38 | 49.60% | -2.8 | -0.433 |
+
+Decision: neutral in confirmation; default tempo weight kept. This closes the
+single-group tuning matrix (passed, mobility, king safety, pawns, tempo,
+threats, piece terms, eval scale) — no group variant survived confirmation.
