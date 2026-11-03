@@ -338,8 +338,9 @@ struct EvalBoard {
         (std::uint64_t{1} << 27) | (std::uint64_t{1} << 28) |
         (std::uint64_t{1} << 35) | (std::uint64_t{1} << 36);  // d4/e4/d5/e5
 
+    // Both pawn attack maps are needed before mobility can exclude squares
+    // controlled by enemy pawns.
     for (std::size_t color = 0; color < 2; ++color) {
-        const std::uint64_t own = eval.colors[color];
         std::uint64_t pawns = eval.pieces[color][type_index(PieceType::pawn)];
         while (pawns != 0) {
             const int square = std::countr_zero(pawns);
@@ -347,8 +348,12 @@ struct EvalBoard {
             eval.pawn_attacks[color] |=
                 detail::pawn_attacks(square, color == kWhite);
         }
-        // Pawn attacks were already accumulated into the map above; seed the
-        // aggregate with them and skip recomputing each pawn below.
+    }
+
+    for (std::size_t color = 0; color < 2; ++color) {
+        const std::uint64_t own = eval.colors[color];
+        // Pawn attacks were already accumulated above; seed the aggregate and
+        // skip recomputing each pawn below.
         std::uint64_t attacks = eval.pawn_attacks[color];
         for (int square = 0; square < 64; ++square) {
             const Piece piece = eval.board[static_cast<std::size_t>(square)];
@@ -381,8 +386,10 @@ struct EvalBoard {
                 break;
             }
             attacks |= piece_attacks;
+            // Safe mobility: do not count squares controlled by enemy pawns.
             eval.piece_mobility[static_cast<std::size_t>(square)] =
-                static_cast<std::uint8_t>(std::popcount(piece_attacks & ~own));
+                static_cast<std::uint8_t>(std::popcount(
+                    piece_attacks & ~own & ~eval.pawn_attacks[1 - color]));
         }
         eval.attacked_squares[color] = attacks;
         eval.center_control[color] =
