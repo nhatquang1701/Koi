@@ -206,3 +206,8 @@ Mac M4 arm64, 100 ms equal-time, 32 openings, 64 games.
 | Combined | 19/20/25 | **45.31%** | **-32.8** | **-0.716** |
 
 Decision: negative screen; reverted without a confirmation run.
+
+| scale 110% | screen | 64 | 14/30/20 | 45.31% | -33.5 | -0.745 |
+
+All tested output scales (80/110/125/150) are non-positive; the default 100%
+scale is final unless a different score-calibration mechanism is found.
