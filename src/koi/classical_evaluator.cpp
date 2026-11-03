@@ -534,6 +534,26 @@ struct EvalBoard {
         score += Score{-18, -8};
     }
 
+    // Enemy pawn storm: advanced pawns on the king's files are a long-term
+    // danger before they even attack the ring; this is an opening/middlegame
+    // term only.
+    if (eval.phase >= 8) {
+        const std::size_t enemy_color = 1 - color;
+        for (int file = std::max(0, king_file - 1);
+             file <= std::min(7, king_file + 1); ++file) {
+            for (int delta = 1; delta <= 2; ++delta) {
+                const int rank = king_rank + (white ? delta : -delta);
+                if (rank < 0 || rank > 7) {
+                    continue;
+                }
+                if (((eval.pieces[enemy_color][type_index(PieceType::pawn)] >>
+                      (rank * 8 + file)) & 1U) != 0) {
+                    score += Score{-8, -3};
+                }
+            }
+        }
+    }
+
     // Pawn shelter and open files around the king.
     for (int file = std::max(0, king_file - 1); file <= std::min(7, king_file + 1); ++file) {
         bool shield_pawn = false;
