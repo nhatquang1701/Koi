@@ -744,11 +744,7 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
 
     // Side-to-move tempo.  The score is White-positive, so Black's tempo
     // subtracts.
-    // Tempo is a quiet-position concept: the side to move does not "gain a
-    // move" while it is in check and must answer the threat.
-    const Score tempo = state.in_check()
-        ? Score{0, 0}
-        : (eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10});
+    const Score tempo = eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10};
     total += percent_of(tempo, hce_tuning().tempo);
 
     total.eg = total.eg * hce_tuning().eg_component / 100;

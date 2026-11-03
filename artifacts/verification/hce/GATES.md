@@ -310,3 +310,15 @@ Decision: negative in confirmation; reverted.
 
 Decision: neutral in the 300-game gate; default 100 kept. The rank-bonus gain
 does not survive a larger sample.
+
+## v23 (check-aware tempo) vs v22
+
+Mac M4 arm64, 100 ms, 32 openings, 64 games.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 9/16/7 | 53.13% | +21.7 | 0.121 |
+| Black | 7/16/9 | 46.88% | -21.7 | -0.328 |
+| Combined | 16/32/16 | **50.00%** | **0.0** | **-0.207** |
+
+Decision: exactly neutral; reverted to keep the baseline minimal.
