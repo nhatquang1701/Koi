@@ -277,3 +277,14 @@ Mac M4 arm64, 100 ms, 32 openings, 64 games.
 | Combined | 15/29/20 | **46.09%** | **-27.3** | **-0.703** |
 
 Decision: negative screen; reverted.
+
+## v20 (enemy pawn storm) vs v18
+
+Mac M4 arm64, 100 ms equal-time, HCE both sides.
+
+| Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- |
+| screen | 64 | 19/29/16 | 52.34% | +16.3 | 0.116 |
+| confirm | 126 | 39/41/46 | 47.22% | -19.3 | -0.894 |
+
+Decision: negative in confirmation; reverted.
