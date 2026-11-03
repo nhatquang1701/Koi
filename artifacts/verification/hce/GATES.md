@@ -333,3 +333,5 @@ Decision: exactly neutral; reverted to keep the baseline minimal.
 Decision: neutral in confirmation; default mobility weights kept.
 
 | rook mobility 150% | 23/19/22 (64) | 50.78% | +5.7 | -0.086 | screen neutral; default kept |
+
+| bishop mobility 150% | 16/31/17 (64) | 49.22% | -5.5 | -0.235 | screen neutral; default kept |

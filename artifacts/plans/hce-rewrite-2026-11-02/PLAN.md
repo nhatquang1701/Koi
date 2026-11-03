@@ -115,3 +115,5 @@ Round 46: check-aware tempo screened exactly neutral and was reverted.
 Round 49: per-piece mobility knobs added; knight mobility 150% screened +43.8 but confirmed +2.8 (neutral); defaults kept.
 
 Round 50: rook mobility 150% screened neutral (+5.7 Elo); default kept.
+
+Round 51: bishop mobility 150% screened neutral (-5.5 Elo); per-piece mobility matrix closed, defaults kept.
