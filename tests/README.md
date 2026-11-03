@@ -159,7 +159,8 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   stderr before a diagnostic: writes fail silently, `stop`/`quit` still shut
   down cleanly with exit 0),
   `koi_hce_bench_process` (depth-3 HCE tactical match-rate regression plus
-  truthful evaluator identity), `koi_protocol_option_churn_process` (Hash/Threads/MultiPV/EvalFile/BookFile/
+  truthful evaluator identity), `koi_hce_eval_features_process` (HCE static
+  eval CSV and mode-conflict checks), `koi_protocol_option_churn_process` (Hash/Threads/MultiPV/EvalFile/BookFile/
   SyzygyPath changes during an active search: the old generation is suppressed
   with no late bestmove, a malformed EvalFile is rejected once, and each
   replacement search answers legally),

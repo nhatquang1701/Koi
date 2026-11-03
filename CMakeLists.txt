@@ -910,6 +910,15 @@ add_test(
 koi_set_timeout(koi_hce_bench_process 240)
 
 add_test(
+    NAME koi_hce_eval_features_process
+    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tools/hce_eval_features_process_test.ps1"
+            -ToolPath "$<TARGET_FILE:koi_eval_features>"
+)
+
+koi_set_timeout(koi_hce_eval_features_process 60)
+
+add_test(
     NAME koi_protocol_fuzz_process
     COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/protocol_fuzz_test.ps1"
@@ -1365,6 +1374,7 @@ set_tests_properties(koi_protocol_broken_pipe_process
         PROPERTIES LABELS "process;uci;reliability")
     set_tests_properties(koi_hce_process PROPERTIES LABELS "process;uci")
 set_tests_properties(koi_hce_bench_process PROPERTIES LABELS "process;tools;evaluation" PROCESSORS 2)
+set_tests_properties(koi_hce_eval_features_process PROPERTIES LABELS "process;tools;evaluation")
 set_tests_properties(koi_engine_process koi_engine_perft_responsiveness PROPERTIES RUN_SERIAL TRUE)
     set_tests_properties(koi_engine_time_safety_process
         PROPERTIES LABELS "process;uci;heavy" PROCESSORS 2)

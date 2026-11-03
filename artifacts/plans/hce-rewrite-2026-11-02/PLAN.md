@@ -107,3 +107,5 @@ Round 40: enemy pawn-storm term screened +16.3 but confirmed -19.3; reverted.
 Round 42: minor-attacks-major threat term screened +32.7 but confirmed -22.2; reverted.
 
 Round 44: passed-rank scale 120% screened +27.2 and confirmed +13.8 but was neutral (+3.5) in a 300-game gate; default kept.
+
+Round 45: added `koi_hce_eval_features_process` covering the HCE static-eval CSV dump and `--hce/--nnue` conflict rejection.
