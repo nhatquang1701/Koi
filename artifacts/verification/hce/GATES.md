@@ -299,3 +299,14 @@ Mac M4 arm64, 100 ms equal-time, HCE both sides.
 | confirm | 126 | 37/44/45 | 46.83% | -22.2 | -1.089 |
 
 Decision: negative in confirmation; reverted.
+
+## Passed-rank scale 120% (v22 knob)
+
+| Gate | Games | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 100 ms screen | 64 | 22/25/17 | 53.91% | +27.2 | 0.287 |
+| 100 ms confirm | 126 | 42/47/37 | 51.98% | +13.8 | 0.154 |
+| 50 ms large | 300 | 100/103/97 | 50.50% | +3.5 | -0.430 |
+
+Decision: neutral in the 300-game gate; default 100 kept. The rank-bonus gain
+does not survive a larger sample.
