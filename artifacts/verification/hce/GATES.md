@@ -239,3 +239,15 @@ Static-fit agreement with NNUE is not a playing-strength proxy.
 Decision: neutral in confirmation; default tempo weight kept. This closes the
 single-group tuning matrix (passed, mobility, king safety, pawns, tempo,
 threats, piece terms, eval scale) — no group variant survived confirmation.
+
+## v16 (native builder restored) vs v13
+
+Behaviour screen only (architecture correction), Mac 100 ms, 64 games.
+
+| Side | W/D/L | Score | Elo | LLR |
+| --- | --- | --- | --- | --- |
+| White | 8/16/8 | 50.00% | 0.0 | -0.102 |
+| Black | 11/14/7 | 56.25% | +43.7 | 0.314 |
+| Combined | 19/30/15 | **53.13%** | **+21.8** | **0.211** |
+
+Neutral-positive; the native-input architecture is retained with no strength claim.
