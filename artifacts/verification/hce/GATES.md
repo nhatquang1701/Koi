@@ -263,3 +263,5 @@ Mac M4 arm64, 100 ms equal-time, 32 openings, 64 games.
 | Combined | 13/31/20 | **44.53%** | **-38.2** | **-0.976** |
 
 Decision: negative screen; reverted. Raw mobility remains the better default.
+
+| eg component 120% | 20/25/19 (64) | 50.78% | +5.4 | -0.084 | neutral; default kept |

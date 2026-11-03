@@ -95,3 +95,5 @@ scratch instead of restoring old code:
   when HCE runs); handshake fixture and docs updates are part of the work.
 - Performance: HCE evaluates every leaf; keep terms O(64) and avoid allocation
   in the hot path; add incremental caching only with measured benefit.
+
+Round 36: endgame-component scale knob (`KOI_HCE_EG_SCALE`) added; 120% screened neutral (+5.4 Elo, LLR -0.084); default kept.
