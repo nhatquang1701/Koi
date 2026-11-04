@@ -510,7 +510,7 @@ void accumulate_hidden_avx2(const NnueNetwork& network,
 
 void accumulate_hidden_sparse_scalar(const NnueNetwork& network,
                                      std::span<const std::uint16_t> active,
-                                     std::vector<std::int32_t>& sums) noexcept {
+                                     std::span<std::int32_t> sums) noexcept {
     const std::size_t hidden_units = network.manifest.layer_sizes[1];
     for (std::size_t hidden = 0; hidden < hidden_units; ++hidden) {
         std::int64_t activation = network.hidden_bias[hidden];
@@ -528,7 +528,7 @@ void accumulate_hidden_sparse_scalar(const NnueNetwork& network,
 #if KOI_NNUE_COMPILED_AVX2
 void accumulate_hidden_sparse_avx2(const NnueNetwork& network,
                                    std::span<const std::uint16_t> active,
-                                   std::vector<std::int32_t>& sums) noexcept {
+                                   std::span<std::int32_t> sums) noexcept {
     const std::size_t hidden_units = network.manifest.layer_sizes[1];
     if (hidden_units % 16U != 0) {
         accumulate_hidden_sparse_scalar(network, active, sums);
@@ -1004,19 +1004,42 @@ void l1_activations_scalar(const NnueNetwork& network,
     const std::size_t l1_units = network.manifest.layer_sizes[3];
     const bool use_diff = is_halfka_threat_v6(network.manifest) ||
         is_halfka_threat_v8(network.manifest);
-    accumulator.values.assign(hidden_units, 0);
-    accumulator.bottleneck_values.assign(pair_count, 0);
-    std::vector<std::int16_t> opp_values(hidden_units, 0);
+    accumulator.values.resize(hidden_units);
+    accumulator.bottleneck_values.resize(pair_count);
+    std::array<std::int16_t, 1536> opp_stack{};
+    std::vector<std::int16_t> opp_heap;
+    std::span<std::int16_t> opp_values;
+    if (hidden_units <= opp_stack.size()) {
+        opp_values = std::span<std::int16_t>(opp_stack.data(), hidden_units);
+    } else {
+        opp_heap.resize(hidden_units);
+        opp_values = opp_heap;
+    }
     fill_v5_activations(own_sums, accumulator.values);
     fill_v5_activations(opp_sums, opp_values);
     compute_cross_pair_products(accumulator.values, opp_values,
                                 accumulator.bottleneck_values);
-    std::vector<std::int16_t> diff_values;
+    std::array<std::int16_t, 1536> diff_stack{};
+    std::vector<std::int16_t> diff_heap;
+    std::span<std::int16_t> diff_values;
     if (use_diff) {
-        diff_values.resize(hidden_units);
+        if (hidden_units <= diff_stack.size()) {
+            diff_values = std::span<std::int16_t>(diff_stack.data(), hidden_units);
+        } else {
+            diff_heap.resize(hidden_units);
+            diff_values = diff_heap;
+        }
         compute_activation_diff(accumulator.values, opp_values, diff_values);
     }
-    std::vector<std::int32_t> l1(l1_units, 0);
+    std::array<std::int32_t, kKoiNnueMaximumL1Units> l1_stack{};
+    std::vector<std::int32_t> l1_heap;
+    std::span<std::int32_t> l1;
+    if (l1_units <= l1_stack.size()) {
+        l1 = std::span<std::int32_t>(l1_stack.data(), l1_units);
+    } else {
+        l1_heap.resize(l1_units);
+        l1 = l1_heap;
+    }
     l1_activations_scalar(network, accumulator.bottleneck_values, diff_values, l1);
     std::int64_t output = network.bottleneck_bias[bucket];
     const std::int8_t* head = network.bottleneck_weights.data() + bucket * l1_units;
@@ -1030,6 +1053,24 @@ void l1_activations_scalar(const NnueNetwork& network,
 }
 
 #if KOI_NNUE_COMPILED_AVX2
+void compute_activation_diff_avx2(std::span<const std::int16_t> own,
+                                  std::span<const std::int16_t> opp,
+                                  std::span<std::int16_t> diff) noexcept {
+    const std::size_t count = diff.size();
+    std::size_t index = 0;
+    for (; index + 16U <= count; index += 16U) {
+        const __m256i own_values = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(own.data() + index));
+        const __m256i opp_values = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(opp.data() + index));
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(diff.data() + index),
+                            _mm256_sub_epi16(own_values, opp_values));
+    }
+    for (; index < count; ++index) {
+        diff[index] = static_cast<std::int16_t>(own[index] - opp[index]);
+    }
+}
+
 void compute_cross_pair_products_avx2(std::span<const std::int16_t> own,
                                       std::span<const std::int16_t> opp,
                                       std::span<std::int16_t> pairs) noexcept {
@@ -1141,19 +1182,42 @@ void l1_activations_avx2(const NnueNetwork& network,
     const std::size_t l1_units = network.manifest.layer_sizes[3];
     const bool use_diff = is_halfka_threat_v6(network.manifest) ||
         is_halfka_threat_v8(network.manifest);
-    accumulator.values.assign(hidden_units, 0);
-    accumulator.bottleneck_values.assign(pair_count, 0);
-    std::vector<std::int16_t> opp_values(hidden_units, 0);
-    fill_v5_activations(own_sums, accumulator.values);
-    fill_v5_activations(opp_sums, opp_values);
+    accumulator.values.resize(hidden_units);
+    accumulator.bottleneck_values.resize(pair_count);
+    std::array<std::int16_t, 1536> opp_stack{};
+    std::vector<std::int16_t> opp_heap;
+    std::span<std::int16_t> opp_values;
+    if (hidden_units <= opp_stack.size()) {
+        opp_values = std::span<std::int16_t>(opp_stack.data(), hidden_units);
+    } else {
+        opp_heap.resize(hidden_units);
+        opp_values = opp_heap;
+    }
+    fill_v4_activations_avx2(own_sums, accumulator.values);
+    fill_v4_activations_avx2(opp_sums, opp_values);
     compute_cross_pair_products_avx2(accumulator.values, opp_values,
                                      accumulator.bottleneck_values);
-    std::vector<std::int16_t> diff_values;
+    std::array<std::int16_t, 1536> diff_stack{};
+    std::vector<std::int16_t> diff_heap;
+    std::span<std::int16_t> diff_values;
     if (use_diff) {
-        diff_values.resize(hidden_units);
-        compute_activation_diff(accumulator.values, opp_values, diff_values);
+        if (hidden_units <= diff_stack.size()) {
+            diff_values = std::span<std::int16_t>(diff_stack.data(), hidden_units);
+        } else {
+            diff_heap.resize(hidden_units);
+            diff_values = diff_heap;
+        }
+        compute_activation_diff_avx2(accumulator.values, opp_values, diff_values);
     }
-    std::vector<std::int32_t> l1(l1_units, 0);
+    std::array<std::int32_t, kKoiNnueMaximumL1Units> l1_stack{};
+    std::vector<std::int32_t> l1_heap;
+    std::span<std::int32_t> l1;
+    if (l1_units <= l1_stack.size()) {
+        l1 = std::span<std::int32_t>(l1_stack.data(), l1_units);
+    } else {
+        l1_heap.resize(l1_units);
+        l1 = l1_heap;
+    }
     l1_activations_avx2(network, accumulator.bottleneck_values, diff_values, l1);
     std::int64_t output = network.bottleneck_bias[bucket];
     const std::int8_t* head = network.bottleneck_weights.data() + bucket * l1_units;
@@ -1689,6 +1753,9 @@ int NnueWorker::evaluate(const GameState& state, const Color perspective,
     const std::size_t mover_index = mover == Color::white ? 0U : 1U;
     const std::size_t opponent_index = 1U - mover_index;
     const std::uint64_t key = state.position_key();
+    const bool use_avx2 = path == NnueInferencePath::avx2_compatible ? avx2_available() :
+        (path == NnueInferencePath::automatic && avx2_available());
+    (void)use_avx2;
     std::span<const std::int32_t> mover_sums;
     std::span<const std::int32_t> opponent_sums;
     std::size_t pieces = 0;
@@ -1713,10 +1780,18 @@ int NnueWorker::evaluate(const GameState& state, const Color perspective,
             if (threat) {
                 const NnueSparseFeaturesV5 sparse =
                     EvaluationFeatureExtractor::encode_sparse_v5(features, real);
-                accumulate_hidden_sparse_scalar(
-                    *weights_,
-                    std::span<const std::uint16_t>(sparse.indices.data(), sparse.count),
-                    scratch_values_[index]);
+                const std::span<const std::uint16_t> active(
+                    sparse.indices.data(), sparse.count);
+#if KOI_NNUE_COMPILED_AVX2
+                if (use_avx2) {
+                    accumulate_hidden_sparse_avx2(*weights_, active,
+                                                  scratch_values_[index]);
+                } else
+#endif
+                {
+                    accumulate_hidden_sparse_scalar(*weights_, active,
+                                                    scratch_values_[index]);
+                }
                 const NnueSparseFeaturesThreatV1 threats =
                     EvaluationFeatureExtractor::encode_sparse_threat_v1(features, real);
                 std::copy_n(threats.indices.data(), threats.count,
@@ -1725,10 +1800,18 @@ int NnueWorker::evaluate(const GameState& state, const Color perspective,
             } else {
                 const NnueSparseFeaturesV4 sparse =
                     EvaluationFeatureExtractor::encode_sparse_v4(features, real);
-                accumulate_hidden_sparse_scalar(
-                    *weights_,
-                    std::span<const std::uint16_t>(sparse.indices.data(), sparse.count),
-                    scratch_values_[index]);
+                const std::span<const std::uint16_t> active(
+                    sparse.indices.data(), sparse.count);
+#if KOI_NNUE_COMPILED_AVX2
+                if (use_avx2) {
+                    accumulate_hidden_sparse_avx2(*weights_, active,
+                                                  scratch_values_[index]);
+                } else
+#endif
+                {
+                    accumulate_hidden_sparse_scalar(*weights_, active,
+                                                    scratch_values_[index]);
+                }
             }
             scratch_buckets_[index] = static_cast<std::uint8_t>(
                 EvaluationFeatureExtractor::halfka_king_bucket_for(features, real));
@@ -1741,9 +1824,6 @@ int NnueWorker::evaluate(const GameState& state, const Color perspective,
         opponent_sums = std::span<const std::int32_t>(scratch_values_[opponent_index]);
         pieces = scratch_pieces_;
     }
-    const bool use_avx2 = path == NnueInferencePath::avx2_compatible ? avx2_available() :
-        (path == NnueInferencePath::automatic && avx2_available());
-    (void)use_avx2;
     const std::size_t bucket = output_bucket_for_pieces(pieces);
     int score = 0;
     if (threat) {
@@ -1824,32 +1904,42 @@ void NnueWorker::refresh_slot_perspective(const EvaluationFeatures& features,
                                           const Color perspective,
                                           const std::size_t slot) {
     const std::size_t index = perspective == Color::white ? 0U : 1U;
-    // Reuse the per-worker buffer: a full refresh runs inside the hot make/unmake
-    // path and must not heap-allocate per king-bucket crossing.
-    if (refresh_sums_.size() != hidden_units_) {
-        refresh_sums_.assign(hidden_units_, 0);
-    } else {
-        std::fill(refresh_sums_.begin(), refresh_sums_.end(), 0);
-    }
-    std::vector<std::int32_t>& sums = refresh_sums_;
+    // Write directly into the destination slot: accumulate_hidden_sparse_*
+    // initializes every element from hidden_bias before summing active rows,
+    // avoiding both an intermediate zeroing pass and a copy per king-bucket
+    // crossing.
+    const std::span<std::int32_t> sums(
+        slot_values_[index].data() + slot * hidden_units_, hidden_units_);
     if (threat_features_) {
         const NnueSparseFeaturesV5 sparse =
             EvaluationFeatureExtractor::encode_sparse_v5(features, perspective);
-        accumulate_hidden_sparse_scalar(
-            *weights_,
-            std::span<const std::uint16_t>(sparse.indices.data(), sparse.count), sums);
+        const std::span<const std::uint16_t> active(
+            sparse.indices.data(), sparse.count);
+#if KOI_NNUE_COMPILED_AVX2
+        if (avx2_available()) {
+            accumulate_hidden_sparse_avx2(*weights_, active, sums);
+        } else
+#endif
+        {
+            accumulate_hidden_sparse_scalar(*weights_, active, sums);
+        }
         store_threat_list(index, slot,
                           EvaluationFeatureExtractor::encode_sparse_threat_v1(
                               features, perspective));
     } else {
         const NnueSparseFeaturesV4 sparse =
             EvaluationFeatureExtractor::encode_sparse_v4(features, perspective);
-        accumulate_hidden_sparse_scalar(
-            *weights_,
-            std::span<const std::uint16_t>(sparse.indices.data(), sparse.count), sums);
+        const std::span<const std::uint16_t> active(
+            sparse.indices.data(), sparse.count);
+#if KOI_NNUE_COMPILED_AVX2
+        if (avx2_available()) {
+            accumulate_hidden_sparse_avx2(*weights_, active, sums);
+        } else
+#endif
+        {
+            accumulate_hidden_sparse_scalar(*weights_, active, sums);
+        }
     }
-    std::copy(sums.begin(), sums.end(),
-              slot_values_[index].data() + slot * hidden_units_);
     slot_buckets_[index][slot] = static_cast<std::uint8_t>(
         EvaluationFeatureExtractor::halfka_king_bucket_for(features, perspective));
     slot_pieces_[slot] = static_cast<std::uint8_t>(piece_count_of(features));
