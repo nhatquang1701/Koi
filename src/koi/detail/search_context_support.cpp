@@ -277,20 +277,23 @@ void build_quiet_forcing_after_view(const GameState& after, const Color mover,
     constexpr std::array<PieceType, 6> kAttackOrder{
         PieceType::pawn, PieceType::knight, PieceType::bishop,
         PieceType::rook, PieceType::queen, PieceType::king};
-    const Color enemy = opposite(mover);
+    const std::size_t mover_index = mover == Color::white ? 0U : 1U;
+    const std::size_t enemy_index = 1U - mover_index;
+    const auto& bitboards = after.piece_bitboards();
+    const auto& mover_bitboards = bitboards[mover_index];
+    const auto& enemy_bitboards = bitboards[enemy_index];
     out = QuietForcingAfterView{};
 
-    std::array<std::uint64_t, kAttackOrder.size()> mover_boards{};
     std::uint64_t own_pieces = 0;
     std::uint64_t enemy_pieces = 0;
-    for (std::size_t index = 0; index < kAttackOrder.size(); ++index) {
-        mover_boards[index] = after.piece_bitboard(kAttackOrder[index], mover);
-        own_pieces |= mover_boards[index];
-        enemy_pieces |= after.piece_bitboard(kAttackOrder[index], enemy);
+    for (const PieceType type : kAttackOrder) {
+        const std::size_t type_index = static_cast<std::size_t>(type);
+        own_pieces |= mover_bitboards[type_index];
+        enemy_pieces |= enemy_bitboards[type_index];
     }
     out.occupied = own_pieces | enemy_pieces;
     out.enemy_pieces = enemy_pieces;
-    out.enemy_pawns = after.piece_bitboard(PieceType::pawn, enemy);
+    out.enemy_pawns = enemy_bitboards[static_cast<std::size_t>(PieceType::pawn)];
 
     // attacks_after[own]: native_position_features() builds the same union
     // from these same maintained bitboards with the post-move occupancy
@@ -298,13 +301,13 @@ void build_quiet_forcing_after_view(const GameState& after, const Color mover,
     // the search observes the child).  Per-piece attack sets are identical
     // and OR is order-independent, so the unions are bit-equal.
     std::uint64_t own_attacks = 0;
-    for (std::size_t index = 0; index < kAttackOrder.size(); ++index) {
-        std::uint64_t remaining = mover_boards[index];
+    for (const PieceType type : kAttackOrder) {
+        std::uint64_t remaining = mover_bitboards[static_cast<std::size_t>(type)];
         while (remaining != 0) {
             const int square = static_cast<int>(std::countr_zero(remaining));
             remaining &= remaining - 1;
             own_attacks |= compact_feature_attacks(
-                square, kAttackOrder[index], mover, out.occupied);
+                square, type, mover, out.occupied);
         }
     }
     out.own_attacked_squares = own_attacks;
@@ -312,7 +315,8 @@ void build_quiet_forcing_after_view(const GameState& after, const Color mover,
     // after.king_zone_attacks[enemy] == popcount(attacks_after[own] &
     // king_zone_mask(enemy king square)); the full extraction computes exactly
     // this expression from the enemy king bitboard (kInvalid when absent).
-    const std::uint64_t enemy_king = after.piece_bitboard(PieceType::king, enemy);
+    const std::uint64_t enemy_king =
+        enemy_bitboards[static_cast<std::size_t>(PieceType::king)];
     const std::uint8_t enemy_king_square = enemy_king == 0
         ? Square::kInvalid
         : static_cast<std::uint8_t>(std::countr_zero(enemy_king));

@@ -505,23 +505,25 @@ struct SearchContext {
                                                             std::uint64_t pawn_key) noexcept {
         CorrectionKeys keys;
         keys.pawn = pawn_key;
+        const auto& bitboards = state.piece_bitboards();
         // Material signature: FNV-1a over the ten piece counts.  Counts, not
         // placements, so positions with the same material share experience.
         std::uint64_t signature = 0xCBF29CE484222325ULL;
         constexpr std::array<PieceType, 5> kTypes{PieceType::pawn, PieceType::knight,
                                                   PieceType::bishop, PieceType::rook,
                                                   PieceType::queen};
-        constexpr std::array<Color, 2> kColors{Color::white, Color::black};
         for (const PieceType type : kTypes) {
-            for (const Color color : kColors) {
+            const std::size_t type_index = static_cast<std::size_t>(type);
+            for (std::size_t color_index = 0; color_index < 2U; ++color_index) {
                 const std::uint64_t count = static_cast<std::uint64_t>(
-                    std::popcount(state.piece_bitboard(type, color)));
+                    std::popcount(bitboards[color_index][type_index]));
                 signature = (signature ^ count) * 0x100000001B3ULL;
             }
         }
         keys.material = signature;
+        const std::size_t mover_index = state.side_to_move() == Color::white ? 0U : 1U;
         const std::uint64_t king_bits =
-            state.piece_bitboard(PieceType::king, state.side_to_move());
+            bitboards[mover_index][static_cast<std::size_t>(PieceType::king)];
         keys.king = king_bits == 0
             ? 64ULL
             : static_cast<std::uint64_t>(std::countr_zero(king_bits));

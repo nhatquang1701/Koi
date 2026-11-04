@@ -2021,6 +2021,27 @@ std::uint64_t Position::piece_bitboard(PieceType type, Color color) const noexce
     return impl_->position.piece_bitboard(type, color);
 }
 
+const std::array<std::array<std::uint64_t, 7>, 2>& Position::piece_bitboards() const noexcept {
+    return impl_->position.state.piece_bitboards;
+}
+
+int Position::game_phase() const noexcept {
+    const auto& bitboards = impl_->position.state.piece_bitboards;
+    int phase = 0;
+    for (std::size_t color_index = 0; color_index < 2U; ++color_index) {
+        const auto& side_boards = bitboards[color_index];
+        phase += static_cast<int>(
+            std::popcount(side_boards[static_cast<std::size_t>(PieceType::knight)]));
+        phase += static_cast<int>(
+            std::popcount(side_boards[static_cast<std::size_t>(PieceType::bishop)]));
+        phase += 2 * static_cast<int>(
+            std::popcount(side_boards[static_cast<std::size_t>(PieceType::rook)]));
+        phase += 4 * static_cast<int>(
+            std::popcount(side_boards[static_cast<std::size_t>(PieceType::queen)]));
+    }
+    return std::min(phase, 24);
+}
+
 std::uint64_t Position::occupied_squares() const noexcept {
     return impl_->position.occupied_squares();
 }

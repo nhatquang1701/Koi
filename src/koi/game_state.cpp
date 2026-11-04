@@ -1161,23 +1161,11 @@ bool fill_move_metadata_from_facts(const NativeMetadataContext& context, const M
 
 void native_position_features(const Position& position,
                               PositionFeatures& features) noexcept {
-    NativeFeatureBitboards pieces{};
-    for (const Color color : {Color::white, Color::black}) {
-        const std::size_t color_index = color == Color::white ? 0U : 1U;
-        for (const PieceType type : {PieceType::pawn, PieceType::knight, PieceType::bishop,
-                                     PieceType::rook, PieceType::queen, PieceType::king}) {
-            pieces[color_index][static_cast<std::size_t>(type)] =
-                position.piece_bitboard(type, color);
-        }
-    }
+    const auto& pieces = position.piece_bitboards();
 
     features.side_to_move = position.side_to_move();
     features.fullmove_number = position.fullmove_number();
-    const std::uint64_t occupied =
-        std::accumulate(pieces[0].begin(), pieces[0].end(), std::uint64_t{0},
-                        [](std::uint64_t value, std::uint64_t board) { return value | board; }) |
-        std::accumulate(pieces[1].begin(), pieces[1].end(), std::uint64_t{0},
-                        [](std::uint64_t value, std::uint64_t board) { return value | board; });
+    const std::uint64_t occupied = position.occupied_squares();
     features.occupied = occupied;
     std::array<std::uint64_t, 2> attacks{};
 
@@ -1830,19 +1818,16 @@ std::uint64_t GameState::piece_bitboard(const PieceType type, const Color color)
     return impl_->native_position.piece_bitboard(type, color);
 }
 
+const std::array<std::array<std::uint64_t, 7>, 2>& GameState::piece_bitboards() const noexcept {
+    return impl_->native_position.piece_bitboards();
+}
+
 std::size_t GameState::piece_count() const noexcept {
     return impl_->native_position.piece_count();
 }
 
 int GameState::game_phase() const noexcept {
-    int phase = 0;
-    for (const Color color : {Color::white, Color::black}) {
-        phase += static_cast<int>(std::popcount(piece_bitboard(PieceType::knight, color)));
-        phase += static_cast<int>(std::popcount(piece_bitboard(PieceType::bishop, color)));
-        phase += 2 * static_cast<int>(std::popcount(piece_bitboard(PieceType::rook, color)));
-        phase += 4 * static_cast<int>(std::popcount(piece_bitboard(PieceType::queen, color)));
-    }
-    return std::min(phase, 24);
+    return impl_->native_position.game_phase();
 }
 
 std::uint64_t GameState::polyglot_key() const noexcept {

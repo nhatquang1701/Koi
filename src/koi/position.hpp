@@ -96,6 +96,8 @@ public:
     [[nodiscard]] std::uint64_t pawn_key() const noexcept;
     [[nodiscard]] std::size_t piece_count() const noexcept;
     [[nodiscard]] std::uint64_t piece_bitboard(PieceType type, Color color) const noexcept;
+    [[nodiscard]] const std::array<std::array<std::uint64_t, 7>, 2>& piece_bitboards() const noexcept;
+    [[nodiscard]] int game_phase() const noexcept;
     // Combined occupancy of both colors, maintained by native make/unmake.
     [[nodiscard]] std::uint64_t occupied_squares() const noexcept;
     [[nodiscard]] bool in_check() const noexcept;

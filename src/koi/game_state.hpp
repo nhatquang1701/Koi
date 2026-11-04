@@ -368,6 +368,7 @@ public:
     // search uses it for cheap material and king correction-history keys
     // without rebuilding a feature snapshot.
     [[nodiscard]] std::uint64_t piece_bitboard(PieceType type, Color color) const noexcept;
+    [[nodiscard]] const std::array<std::array<std::uint64_t, 7>, 2>& piece_bitboards() const noexcept;
     // Total piece count of both colors, kings included.  Forwards to the
     // native position's maintained bitboards.
     [[nodiscard]] std::size_t piece_count() const noexcept;
