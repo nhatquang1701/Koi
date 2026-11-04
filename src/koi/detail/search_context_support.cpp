@@ -480,12 +480,49 @@ bool quiet_move_has_direct_forcing_target(const PositionFeatures& before,
         return false;
     }
 
-    PositionFeatures projected = before;
-    projected.board[source] = {};
-    projected.board[destination] = moving;
     const std::size_t own = before.side_to_move == Color::white ? 0U : 1U;
     const std::size_t enemy = 1U - own;
     int attacked_minor_pieces = 0;
+    if (before.occupied != 0) {
+        const std::uint64_t post_occupied =
+            (before.occupied & ~(std::uint64_t{1} << source)) |
+            (std::uint64_t{1} << destination);
+        std::uint64_t attacks = compact_feature_attacks(
+            destination, moving.type, moving.color, post_occupied) &
+            before.colors[enemy] & ~(std::uint64_t{1} << source);
+        while (attacks != 0) {
+            const std::uint8_t square =
+                static_cast<std::uint8_t>(std::countr_zero(attacks));
+            attacks &= attacks - 1;
+            const Piece target = before.board[square];
+            if (target.empty() || target.type == PieceType::king ||
+                (target.color == Color::white ? 0U : 1U) != enemy) {
+                continue;
+            }
+            if (target.type == PieceType::queen || target.type == PieceType::rook) {
+                return true;
+            }
+            if (target.type == PieceType::pawn) {
+                const int target_file = square % 8;
+                const int target_rank = square / 8;
+                if (target_file >= 2 && target_file <= 5 &&
+                    (target_rank == 3 || target_rank == 4)) {
+                    return true;
+                }
+            }
+            if (target.type == PieceType::bishop || target.type == PieceType::knight) {
+                ++attacked_minor_pieces;
+                if (attacked_minor_pieces >= 2) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    PositionFeatures projected = before;
+    projected.board[source] = {};
+    projected.board[destination] = moving;
     for (std::uint8_t square = 0; square < 64; ++square) {
         const Piece target = projected.board[square];
         if (target.empty() || target.type == PieceType::king ||
@@ -537,6 +574,17 @@ bool quiet_move_has_king_ring_target(const PositionFeatures& before,
     const Piece moving = before.board[source];
     if (moving.empty()) {
         return false;
+    }
+
+    if (before.occupied != 0) {
+        const std::uint64_t post_occupied =
+            (before.occupied & ~(std::uint64_t{1} << source)) |
+            (std::uint64_t{1} << destination);
+        const std::uint64_t ring_mask =
+            compact_king_zone_mask(enemy_king) & ~(std::uint64_t{1} << enemy_king);
+        return (compact_feature_attacks(
+                    destination, moving.type, moving.color, post_occupied) &
+                ring_mask) != 0;
     }
 
     PositionFeatures projected = before;
