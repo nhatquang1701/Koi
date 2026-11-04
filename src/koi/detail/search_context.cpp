@@ -771,39 +771,74 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             stack.frame(static_cast<std::size_t>(ply + 1)).cutoff_count = 0;
         }
         MoveMetadataList moves;
-        if (ply == 0 && root_moves != nullptr) {
-            moves = *root_moves;
-        } else {
-            state.legal_moves_with_metadata(
-                moves, true, false, CheckFlagMode::quiet_moves_only);
-        }
-        if (moves.empty()) {
-            return terminal_score(state, moves.size(), ply);
-        }
-        const DrawStatus draw_status = state.draw_status(repetitions);
-        const bool claimable_draw = is_claimable_draw_status(draw_status);
-        // Automatic/dead draws are properties of the current position, not
-        // of the remaining move subset. A claimable draw is different: it is
-        // a legal zero-valued option for the side to move, so the move loop
-        // must still be allowed to discover a better continuation.
-        if (is_forced_draw_status(draw_status)) {
-            return draw_value(state);
-        }
-        if (excluded_search) {
-            // MoveMetadataList is a fixed container; compact the excluded move
-            // without allocating and without exposing an alternate generator.
-            std::size_t write_index = 0;
-            const std::size_t original_move_count = moves.size();
-            for (std::size_t read_index = 0; read_index < original_move_count; ++read_index) {
-                if (moves[read_index].move != excluded_move) {
-                    moves[write_index++] = moves[read_index];
+        bool moves_generated = false;
+        const auto ensure_moves = [&]() -> const MoveMetadataList& {
+            if (!moves_generated) {
+                moves_generated = true;
+                if (ply == 0 && root_moves != nullptr) {
+                    moves = *root_moves;
+                } else {
+                    state.legal_moves_with_metadata(
+                        moves, true, false, CheckFlagMode::quiet_moves_only);
+                }
+                if (excluded_search) {
+                    // MoveMetadataList is a fixed container; compact the excluded move
+                    // without allocating and without exposing an alternate generator.
+                    std::size_t write_index = 0;
+                    const std::size_t original_move_count = moves.size();
+                    for (std::size_t read_index = 0; read_index < original_move_count; ++read_index) {
+                        if (moves[read_index].move != excluded_move) {
+                            moves[write_index++] = moves[read_index];
+                        }
+                    }
+                    moves.resize(write_index);
                 }
             }
-            moves.resize(write_index);
-        }
-        if (moves.empty()) {
-            return claimable_draw ? draw_value(state) :
-                (excluded_search ? alpha : terminal_score(state, moves.size(), ply));
+            return moves;
+        };
+        const DrawStatus draw_status = state.draw_status(repetitions);
+        const bool claimable_draw = is_claimable_draw_status(draw_status);
+        if (ply == 0 || excluded_search) {
+            (void)ensure_moves();
+            if (moves.empty() && !excluded_search) {
+                return terminal_score(state, 0, ply);
+            }
+            // Automatic/dead draws are properties of the current position, not
+            // of the remaining move subset. A claimable draw is different: it is
+            // a legal zero-valued option for the side to move, so the move loop
+            // must still be allowed to discover a better continuation.
+            if (is_forced_draw_status(draw_status)) {
+                return draw_value(state);
+            }
+            if (moves.empty()) {
+                return claimable_draw ? draw_value(state) :
+                    (excluded_search ? alpha : terminal_score(state, 0, ply));
+            }
+        } else {
+            bool has_legal_moves_verified = false;
+            const auto ensure_has_legal_move = [&]() -> bool {
+                if (has_legal_moves_verified) {
+                    return true;
+                }
+                if (moves_generated) {
+                    has_legal_moves_verified = !moves.empty();
+                    return has_legal_moves_verified;
+                }
+                has_legal_moves_verified = state.has_legal_move();
+                return has_legal_moves_verified;
+            };
+            if (!checked && is_forced_draw_status(draw_status)) {
+                // Without check, even a zero-move stalemate returns draw_value,
+                // so a forced draw needs neither has_legal_move() nor movegen.
+                return draw_value(state);
+            }
+            if ((checked || is_forced_draw_status(draw_status) || claimable_draw) &&
+                !ensure_has_legal_move()) {
+                return terminal_score(state, 0, ply);
+            }
+            if (is_forced_draw_status(draw_status)) {
+                return draw_value(state);
+            }
         }
         if (claimable_draw) {
             // A claim is an available floor, not a forced terminal result.
@@ -834,6 +869,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // mate window can discard the very checking line the extension is
         // meant to inspect.
         if (!excluded_search && ply > 0) {
+            if (!checked && !claimable_draw && !moves_generated && !state.has_legal_move()) {
+                return terminal_score(state, 0, ply);
+            }
             alpha = std::max(alpha, -kMateScore + ply);
             beta = std::min(beta, kMateScore - ply - 1);
             if (alpha >= beta) {
@@ -871,11 +909,17 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         std::optional<bool> tactical_position_value;
         const auto tactical_position = [&]() -> bool {
             if (!tactical_position_value.has_value()) {
-                tactical_position_value = checked || std::any_of(
-                    moves.begin(), moves.end(), [](const MoveMetadata& metadata) {
-                        return metadata.is_capture() || metadata.gives_check ||
-                            metadata.move.promotion() != Promotion::none;
-                    });
+                if (checked) {
+                    tactical_position_value = true;
+                } else {
+                    const MoveMetadataList& current_moves = ensure_moves();
+                    tactical_position_value = std::any_of(
+                        current_moves.begin(), current_moves.end(),
+                        [](const MoveMetadata& metadata) {
+                            return metadata.is_capture() || metadata.gives_check ||
+                                metadata.move.promotion() != Promotion::none;
+                        });
+                }
             }
             return *tactical_position_value;
         };
@@ -927,19 +971,36 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // quiet move in the current position.
                     if (tt_entry->bound == TranspositionBound::lower &&
                         !tt_entry->best_move.is_no_move()) {
-                        const auto tt_metadata = std::find_if(
-                            moves.begin(), moves.end(), [&tt_entry](const MoveMetadata& metadata) {
-                                return metadata.move == tt_entry->best_move;
-                            });
-                        if (tt_metadata != moves.end() && !tt_metadata->is_capture() &&
-                            tt_metadata->move.promotion() == Promotion::none) {
-                            const Color moving_side = history_side(side_to_move, false);
-                            ordering.record_quiet_cutoff(
-                                history_side(moving_side, true), *tt_metadata,
-                                std::max(1, depth / 2), history);
-                            ++stats.quiet_history_updates;
-                            if (history.count > 0) {
-                                ++stats.continuation_history_updates;
+                        if (moves_generated) {
+                            const auto tt_metadata = std::find_if(
+                                moves.begin(), moves.end(), [&tt_entry](const MoveMetadata& metadata) {
+                                    return metadata.move == tt_entry->best_move;
+                                });
+                            if (tt_metadata != moves.end() && !tt_metadata->is_capture() &&
+                                tt_metadata->move.promotion() == Promotion::none) {
+                                const Color moving_side = history_side(side_to_move, false);
+                                ordering.record_quiet_cutoff(
+                                    history_side(moving_side, true), *tt_metadata,
+                                    std::max(1, depth / 2), history);
+                                ++stats.quiet_history_updates;
+                                if (history.count > 0) {
+                                    ++stats.continuation_history_updates;
+                                }
+                            }
+                        } else if (!state.is_capture(tt_entry->best_move) &&
+                                   tt_entry->best_move.promotion() == Promotion::none) {
+                            if (const std::optional<MoveMetadata> tt_metadata =
+                                    state.describe_move(tt_entry->best_move);
+                                tt_metadata.has_value() && !tt_metadata->is_capture() &&
+                                tt_metadata->move.promotion() == Promotion::none) {
+                                const Color moving_side = history_side(side_to_move, false);
+                                ordering.record_quiet_cutoff(
+                                    history_side(moving_side, true), *tt_metadata,
+                                    std::max(1, depth / 2), history);
+                                ++stats.quiet_history_updates;
+                                if (history.count > 0) {
+                                    ++stats.continuation_history_updates;
+                                }
                             }
                         }
                     }
@@ -1261,8 +1322,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             !pawn_endgame &&
             !(tt_entry.has_value() && tt_entry->depth >= probcut.depth &&
               tt_entry->score < probcut.beta)) {
+            const MoveMetadataList& current_moves = ensure_moves();
             MoveMetadataList probcut_moves;
-            for (const MoveMetadata& candidate : moves) {
+            for (const MoveMetadata& candidate : current_moves) {
                 if ((candidate.is_capture() || candidate.move.promotion() != Promotion::none) &&
                     candidate.move != excluded_move) {
                     (void)probcut_moves.push_back(candidate);
@@ -1422,6 +1484,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             }
         }
 
+        (void)ensure_moves();
         SearchMovePicker picker(
             ordering, state, moves, tt_move, &history, ply,
             checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::main,
