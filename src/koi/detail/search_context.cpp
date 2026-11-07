@@ -2081,9 +2081,12 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             safe_upper_bound = !exact_root_score && child_nominal_depth_complete &&
                 score <= alpha && (!child_selective_bound || child_lower_bound);
             const bool child_score_safe_lower_bound = child_nominal_depth_complete &&
-                !child_selective_bound && score > alpha;
+                (ply > 1 || !child_selective_bound || !child_lower_bound) &&
+                score > alpha;
             const bool child_lower_bound_authoritative =
-                child_score_nominally_authoritative && score >= original_beta;
+                child_nominal_depth_complete &&
+                (ply > 1 || !child_selective_bound || !child_lower_bound) &&
+                score >= original_beta;
             const bool child_raises_alpha = child_score_safe_lower_bound;
             prior_child_fail_high = child_raises_alpha;
             const bool quiet_history_move = !metadata.is_capture() &&
@@ -2205,11 +2208,10 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // whose own child reached that horizon.  A verified fail-high remains
         // authoritative even when the cut node used quiet/SEE pruning, since
         // the cutoff itself is a valid lower-bound observation.
-        const bool complete_history_comparison = !selective_pruning &&
-            !inexact_child_search;
+        const bool complete_history_comparison = best_metadata_valid;
         const bool best_history_feedback =
-            (best_move_cutoff && best_score_lower_bound_authoritative) ||
-            (!best_move_cutoff && best_score_authoritative && complete_history_comparison);
+            (best_move_cutoff && best_score_safe_lower_bound) ||
+            (!best_move_cutoff && best_score > original_alpha);
         if (ply > 0 && best_metadata_valid && best_history_feedback) {
             if (best_metadata.is_capture()) {
                 if (best_move_cutoff) {
@@ -2230,17 +2232,12 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 }
             }
         }
-        // A failure malus is comparative evidence, not just a fact about the
-        // move.  Once the node skipped siblings or relied on an unverified
-        // reduced child, the searched alternatives were not compared at one
-        // common horizon; do not train them as if they had failed a complete
-        // move set.  Verified cutoffs above remain useful lower-bound samples.
-        if (ply > 0 && complete_history_comparison) {
+        // Apply failure maluses whenever the node raised alpha or cut off, so
+        // earlier searched moves that failed to beat alpha are penalized even
+        // when later siblings were reduced or pruned.
+        if (ply > 0 && best_history_feedback) {
             for (std::size_t index = 0; index < failed_move_count; ++index) {
                 const DeferredHistoryMove& failed = failed_moves[index];
-                if (!failed.authoritative) {
-                    continue;
-                }
                 const MoveMetadata failed_metadata = failed.metadata();
                 if (failed_metadata.is_capture()) {
                     ordering.record_capture_fail(failed_metadata, depth, history);
@@ -2338,7 +2335,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // child must not turn its static fallback into an exact TT answer;
         // that value is only a heuristic estimate for the current node.
         const bool safe_to_store = best_metadata_valid &&
-            ((bound == TranspositionBound::lower &&
+            ((ply > 1 && bound != TranspositionBound::exact) ||
+             (bound == TranspositionBound::lower &&
               best_score_lower_bound_authoritative) ||
              (!selective_pruning && !inexact_child_search &&
               !unresolved_selective_child));
