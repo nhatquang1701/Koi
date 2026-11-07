@@ -1297,7 +1297,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // parent may promote it to nominal-depth exact information.
         const bool reverse_futility_allowed = !claimable_draw && !excluded_search && ply > 0 &&
             !repetition_sensitive &&
-            !pawn_endgame && !tactical_position() && !tt_move.has_value() &&
+            !pawn_endgame && !tt_move.has_value() &&
             static_eval_valid;
         const ReverseFutilityDecision reverse_futility =
             SearchPolicy::reverse_futility(
@@ -1321,7 +1321,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // continuation. This is the conservative counterpart of Stockfish
         // 19's no-TT IIR gate.
         if (!claimable_draw && !excluded_search && ply > 0 && !pv_node && !checked &&
-            !tactical_position() && !repetition_sensitive &&
+            !repetition_sensitive &&
             !tt_move.has_value() && depth >= kInternalIterativeReductionMinimumDepth) {
             path_selective_bound = true;
             --depth;
@@ -1462,7 +1462,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
              (tt_entry->bound == TranspositionBound::upper ||
               tt_entry->depth * 2 < depth));
         const bool true_iid = !claimable_draw && !excluded_search && pv_node && !checked &&
-            !tactical_position() && !repetition_sensitive &&
+            !repetition_sensitive &&
             ordering_source_needs_probe &&
             depth >= kTrueInternalIterativeDeepeningMinimumDepth;
         if (true_iid) {
@@ -1631,7 +1631,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             const bool root_pawn_move = ply == 0 && metadata.moving_piece == PieceType::pawn;
             const bool negative_continuation_allowed = !claimable_draw &&
                 !excluded_search && ply > 0 && !repetition_sensitive &&
-                !tactical_position() && !pawn_endgame && !parent_frame.in_check &&
+                !pawn_endgame && !parent_frame.in_check &&
                 !frame.tt_pv && best_score > -kMateThreshold;
             if (SearchPolicy::negative_continuation_history(
                     depth, next_move_number, continuation_score, pv_node, checked,
@@ -1933,7 +1933,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // already above alpha reduces the margin because the position is
             // less clearly lost.
             const bool child_futility = !claimable_draw && !pv_node && !checked &&
-                !tactical_position() && move_number > 0 && !metadata.is_capture() &&
+                move_number > 0 && !metadata.is_capture() &&
                 !metadata.gives_check &&
                 move.promotion() == Promotion::none && !is_tt_move &&
                 lmr_depth < kChildFutilityMaximumLmrDepth &&
