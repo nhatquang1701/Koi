@@ -371,23 +371,86 @@ void SearchRunner::run_impl() {
                 options.quiet_history_side_hook, tablebase_binding, root.side_to_move(),
                 options.contempt_cp);
             SearchContext& context = *context_storage;
+            context.profile_enabled = static_cast<bool>(sink.on_profile);
             // The loop below records the depth and principal variation being
             // searched so interim publications can report the in-flight
             // iteration instead of only the last completed one.
             int in_flight_depth = 0;
             PrincipalVariation pv;
+            auto last_profile_publish = started;
+            int last_profile_depth = 0;
+            bool last_profile_completed = false;
+            const auto report_profile = [&context, &sink, &started, &last_profile_publish,
+                                         &last_profile_depth, &last_profile_completed,
+                                         interval = options.interim_report_interval](
+                                            const bool completed, const bool force) {
+                if (!sink.on_profile || context.profile_depth <= 0) {
+                    return;
+                }
+                const auto now = std::chrono::steady_clock::now();
+                if (!force && now - last_profile_publish < interval) {
+                    return;
+                }
+                try {
+                    SearchIterationProfile profile;
+                    profile.depth = context.profile_depth;
+                    profile.completed = completed;
+                    profile.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now - started);
+                    profile.iteration_nodes =
+                        context.stats.nodes - context.profile_iteration_start_nodes;
+                    profile.iteration_qnodes =
+                        context.stats.qnodes - context.profile_iteration_start_qnodes;
+                    profile.stats = context.stats;
+                    profile.stats.elapsed = profile.elapsed;
+                    profile.qnodes_by_depth = context.profile_qnodes_by_depth;
+                    profile.root_moves = context.profile_root_moves;
+                    profile.current_root_move = context.profile_current_root_move;
+                    profile.current_root_move_number = context.profile_current_root_move_number;
+                    if (!profile.current_root_move.is_no_move()) {
+                        profile.current_root_move_nodes =
+                            context.stats.nodes - context.profile_current_root_move_nodes;
+                        profile.current_root_move_qnodes =
+                            context.stats.qnodes - context.profile_current_root_move_qnodes;
+                        profile.current_root_move_tt_hits =
+                            context.stats.tt_hits - context.profile_current_root_move_tt_hits;
+                        profile.current_root_move_elapsed =
+                            std::chrono::duration_cast<std::chrono::milliseconds>(
+                                now - context.profile_current_root_move_started);
+                        SearchRootMoveProfile partial;
+                        partial.pass = context.profile_root_pass;
+                        partial.move_number = profile.current_root_move_number;
+                        partial.move = profile.current_root_move;
+                        partial.nodes = profile.current_root_move_nodes;
+                        partial.qnodes = profile.current_root_move_qnodes;
+                        partial.tt_hits = profile.current_root_move_tt_hits;
+                        partial.elapsed = profile.current_root_move_elapsed;
+                        partial.completed = false;
+                        profile.root_moves.push_back(partial);
+                    }
+                    sink.on_profile(profile);
+                    last_profile_publish = now;
+                    last_profile_depth = profile.depth;
+                    last_profile_completed = completed;
+                } catch (...) {
+                    // Profile allocation and observers never alter search behavior.
+                }
+            };
             if (options.interim_report_interval.count() > 0) {
                 // Interim progress publisher for long iterations. Only this
                 // runner-thread context gets the probe; LazySMP helpers and
                 // root-parallel workers never publish protocol output.
                 context.progress_probe = [&context, &sink, &interim_state, &lazy_pool,
-                                          &in_flight_depth, &pv,
+                                          &in_flight_depth, &pv, &report_profile,
                                           interval = options.interim_report_interval] {
                     std::uint64_t live = context.stats.nodes + context.stats.qnodes;
                     if (lazy_pool != nullptr) {
                         live += lazy_pool->live_nodes() + lazy_pool->live_qnodes();
                     }
                     maybe_publish_interim(sink, interim_state, live, in_flight_depth, &pv, interval);
+                    if (sink.on_profile) {
+                        report_profile(false, false);
+                    }
                 };
             }
             if (lazy_pool == nullptr) {
@@ -482,6 +545,7 @@ void SearchRunner::run_impl() {
                 if (lazy_pool) {
                     lazy_pool->publish_depth(depth);
                 }
+                context.begin_profile_iteration(depth);
                 const std::optional<Move> previous_best_move = result.best_move;
                 const std::vector<Move> previous_pv = result.pv;
                 const bool had_completed_iteration = result.completed_depth > 0;
@@ -610,6 +674,7 @@ void SearchRunner::run_impl() {
                             result.pv = {*fallback};
                         }
                     }
+                    report_profile(false, true);
                     break;
                 }
 
@@ -631,6 +696,7 @@ void SearchRunner::run_impl() {
                             std::chrono::steady_clock::now() - started);
                     previous_iteration_elapsed = std::max(
                         std::chrono::milliseconds{1}, elapsed - previous_report_elapsed);
+                    report_profile(false, true);
                     if ((!unbounded && depth == maximum_depth) || root_is_forced_draw ||
                         time_manager.should_stop_after_iteration()) {
                         break;
@@ -1636,6 +1702,7 @@ void SearchRunner::run_impl() {
                     }
                 }
                 publish_iteration_lines(sink, interim_state, std::vector<SearchInfo>{info});
+                report_profile(true, true);
                 const int iteration_observation_score = bounded_fallback_result ?
                     searched_iteration_score : score;
                 time_manager.observe_iteration(SearchIterationObservation{
@@ -1669,6 +1736,11 @@ void SearchRunner::run_impl() {
                 }
             }
             result.stats = context.stats;
+            if (sink.on_profile && context.profile_depth > 0 &&
+                (last_profile_depth != context.profile_depth ||
+                 (!last_profile_completed && result.completed_depth >= context.profile_depth))) {
+                report_profile(result.completed_depth >= context.profile_depth, true);
+            }
         } else {
             std::atomic<std::uint64_t> global_nodes = 0;
             std::atomic<std::uint64_t>* global_nodes_ptr = time_manager.node_limit().has_value() ?

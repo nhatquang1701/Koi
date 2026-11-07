@@ -223,6 +223,79 @@ struct SearchContext {
     // exception it throws is swallowed.
     std::function<void()> progress_probe;
 
+    // Populated only when an opt-in developer profile sink is installed.
+    // Regular engine searches never allocate per-root-move profile rows.
+    bool profile_enabled = false;
+    int profile_depth = 0;
+    std::uint32_t profile_root_pass = 0;
+    std::uint64_t profile_iteration_start_nodes = 0;
+    std::uint64_t profile_iteration_start_qnodes = 0;
+    std::array<std::uint64_t, 17> profile_qnodes_by_depth{};
+    std::vector<SearchRootMoveProfile> profile_root_moves;
+    Move profile_current_root_move = Move::no_move();
+    int profile_current_root_move_number = 0;
+    std::uint64_t profile_current_root_move_nodes = 0;
+    std::uint64_t profile_current_root_move_qnodes = 0;
+    std::uint64_t profile_current_root_move_tt_hits = 0;
+    std::chrono::steady_clock::time_point profile_current_root_move_started{};
+
+    void begin_profile_iteration(const int depth) noexcept {
+        if (!profile_enabled) {
+            return;
+        }
+        profile_depth = depth;
+        profile_root_pass = 0;
+        profile_iteration_start_nodes = stats.nodes;
+        profile_iteration_start_qnodes = stats.qnodes;
+        profile_qnodes_by_depth.fill(0);
+        profile_root_moves.clear();
+        profile_current_root_move = Move::no_move();
+        profile_current_root_move_number = 0;
+    }
+
+    void begin_profile_root_pass() noexcept {
+        if (profile_enabled) {
+            ++profile_root_pass;
+            profile_current_root_move = Move::no_move();
+            profile_current_root_move_number = 0;
+        }
+    }
+
+    void begin_profile_root_move(const Move move, const int move_number) noexcept {
+        if (!profile_enabled) {
+            return;
+        }
+        profile_current_root_move = move;
+        profile_current_root_move_number = move_number;
+        profile_current_root_move_nodes = stats.nodes;
+        profile_current_root_move_qnodes = stats.qnodes;
+        profile_current_root_move_tt_hits = stats.tt_hits;
+        profile_current_root_move_started = std::chrono::steady_clock::now();
+    }
+
+    void finish_profile_root_move(const bool completed) noexcept {
+        if (!profile_enabled || profile_current_root_move.is_no_move()) {
+            return;
+        }
+        SearchRootMoveProfile row;
+        row.pass = profile_root_pass;
+        row.move_number = profile_current_root_move_number;
+        row.move = profile_current_root_move;
+        row.nodes = stats.nodes - profile_current_root_move_nodes;
+        row.qnodes = stats.qnodes - profile_current_root_move_qnodes;
+        row.tt_hits = stats.tt_hits - profile_current_root_move_tt_hits;
+        row.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - profile_current_root_move_started);
+        row.completed = completed;
+        try {
+            profile_root_moves.push_back(row);
+        } catch (...) {
+            // Diagnostic allocation failures must not change search behavior.
+        }
+        profile_current_root_move = Move::no_move();
+        profile_current_root_move_number = 0;
+    }
+
     SearchContext(const Evaluator& evaluator, TranspositionTable& table, TimeManager& time_manager,
                   std::atomic_bool& stop_requested,
                   std::atomic<std::uint64_t>* global_nodes = nullptr,

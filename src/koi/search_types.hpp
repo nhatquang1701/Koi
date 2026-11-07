@@ -163,6 +163,38 @@ struct SearchStats {
     std::chrono::milliseconds elapsed{0};
 };
 
+// Optional, developer-only search profile snapshot. The UCI writer ignores
+// this data; benchmark tooling subscribes through SearchEventSink::on_profile.
+struct SearchRootMoveProfile {
+    std::uint32_t pass = 0;
+    int move_number = 0;
+    Move move = Move::no_move();
+    std::uint64_t nodes = 0;
+    std::uint64_t qnodes = 0;
+    std::uint64_t tt_hits = 0;
+    std::chrono::milliseconds elapsed{0};
+    bool completed = false;
+};
+
+struct SearchIterationProfile {
+    int depth = 0;
+    bool completed = false;
+    std::chrono::milliseconds elapsed{0};
+    std::uint64_t iteration_nodes = 0;
+    std::uint64_t iteration_qnodes = 0;
+    SearchStats stats;
+    // Buckets 0..15 report the exact qsearch depth; bucket 16 collects
+    // qsearch nodes at the configured cap or beyond it while resolving check.
+    std::array<std::uint64_t, 17> qnodes_by_depth{};
+    Move current_root_move = Move::no_move();
+    int current_root_move_number = 0;
+    std::uint64_t current_root_move_nodes = 0;
+    std::uint64_t current_root_move_qnodes = 0;
+    std::uint64_t current_root_move_tt_hits = 0;
+    std::chrono::milliseconds current_root_move_elapsed{0};
+    std::vector<SearchRootMoveProfile> root_moves;
+};
+
 struct SearchInfo {
     // How the reported score relates to the true root value.
     //
@@ -275,6 +307,9 @@ struct SearchResult {
 struct SearchEventSink {
     std::function<void(const SearchInfo&)> on_info;
     std::function<void(const SearchResult&)> on_complete;
+    // Called only when a developer tool explicitly subscribes. Exceptions are
+    // isolated from search just like info/completion observer failures.
+    std::function<void(const SearchIterationProfile&)> on_profile;
 };
 
 // Side-to-move relative score reported by an interior tablebase probe.  A

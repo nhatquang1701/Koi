@@ -83,6 +83,11 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         if (!count_node(true)) {
             return 0;
         }
+        if (profile_enabled) {
+            const std::size_t qdepth_bucket = static_cast<std::size_t>(
+                std::clamp(qdepth, 0, 16));
+            ++profile_qnodes_by_depth[qdepth_bucket];
+        }
         record_ply(ply);
 
         const bool checked = state.in_check();
@@ -691,6 +696,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         }
         if (ply == 0 && !excluded_search) {
             root_move_score_count = 0;
+            begin_profile_root_pass();
         }
         if (depth <= 0) {
             return quiescence(state, alpha, beta, ply, 0, previous_move,
@@ -1747,7 +1753,13 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     singular_extension = -3;
                 }
             }
+            if (profile_enabled && ply == 0) {
+                begin_profile_root_move(move, next_move_number);
+            }
             if (!make_observed(state, metadata, ply)) {
+                if (profile_enabled && ply == 0) {
+                    finish_profile_root_move(false);
+                }
                 // A failed metadata application should be impossible for a
                 // generator-owned candidate, but it still consumed one move
                 // slot. Keep move-number-dependent pruning deterministic if a
@@ -2027,6 +2039,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             path_repetition_sensitive = path_repetition_sensitive ||
                 child_repetition_sensitive;
             unmake_observed(state, ply + 1);
+            if (profile_enabled && ply == 0) {
+                finish_profile_root_move(!aborted);
+            }
             if (aborted) {
                 return 0;
             }

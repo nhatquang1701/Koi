@@ -429,6 +429,58 @@ foreach ($position in $sweepJson.positions) {
     }
 }
 
+# Opt-in iteration diagnostics retain completed depths and the interrupted
+# in-flight depth, with aggregate node counts reconciling exactly.
+$iterationFenFile = Join-Path $scratchDirectory 'iteration-profile-fen.txt'
+Set-Content -LiteralPath $iterationFenFile -Value @(
+    'opening|rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+)
+$iterationProfile = Join-Path $scratchDirectory 'iteration-profile.json'
+$iterationProfileRun = Invoke-Benchmark $BenchPath `
+    "--threads 1 --nodes 100000 --fen-file `"$iterationFenFile`" --iteration-profile-json `"$iterationProfile`"" `
+    'iteration-profile'
+if ($iterationProfileRun.ExitCode -ne 0 -or $iterationProfileRun.Stderr.Length -ne 0) {
+    throw "iteration-profile benchmark failed: $($iterationProfileRun.Stderr)"
+}
+$iterationJson = Get-Content -LiteralPath $iterationProfile -Raw | ConvertFrom-Json
+if ($iterationJson.schema -cne 'koi-bench-iteration-profile-v1' -or
+    $iterationJson.positions.Count -ne 1 -or
+    $iterationJson.positions[0].id -cne 'opening') {
+    throw 'iteration profile must identify its schema and retain the requested position.'
+}
+$iterationRows = @($iterationJson.positions[0].iterations)
+if (-not @($iterationRows | Where-Object state -CEQ 'complete') -or
+    -not @($iterationRows | Where-Object state -CEQ 'in_flight')) {
+    throw 'a node-limited run must retain completed depths and the interrupted in-flight depth.'
+}
+foreach ($iteration in $iterationRows) {
+    if ($iteration.depth -lt 1 -or $iteration.elapsed_ms -lt 0 -or
+        [uint64]$iteration.visited -ne
+            ([uint64]$iteration.nodes + [uint64]$iteration.qnodes) -or
+        [uint64]$iteration.qnodes_by_depth.Count -ne 17 -or
+        ([uint64](($iteration.qnodes_by_depth | Measure-Object -Sum).Sum) -ne
+            [uint64]$iteration.iteration_qnodes) -or
+        $null -eq $iteration.aspiration_researches -or
+        $null -eq $iteration.root_selective_candidates -or
+        $null -eq $iteration.root_selective_researches -or
+        $null -eq $iteration.king_safety_extensions -or
+        $null -eq $iteration.check_extensions -or
+        $null -eq $iteration.quiet_forcing_extensions -or
+        $null -eq $iteration.qchecks -or
+        $null -eq $iteration.delta_prunes -or
+        $null -eq $iteration.see_prunes -or
+        $null -eq $iteration.root_moves) {
+        throw "iteration snapshot is incomplete or its node total does not reconcile at depth $($iteration.depth)."
+    }
+    foreach ($rootMove in $iteration.root_moves) {
+        if ($rootMove.move -notmatch '^[a-h][1-8][a-h][1-8][nbrq]?$' -or
+            $rootMove.nodes -lt 0 -or $rootMove.qnodes -lt 0 -or
+            $null -eq $rootMove.completed) {
+            throw "root-move profile row is invalid at depth $($iteration.depth)."
+        }
+    }
+}
+
 # Mutually exclusive measurement modes must be rejected instead of guessed.
 $conflict = Invoke-Benchmark $BenchPath "--fen-file `"$fenFile`" --depth 3 --depth-sweep 2..3" 'conflicting-modes'
 if ($conflict.ExitCode -eq 0) {

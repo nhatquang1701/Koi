@@ -680,13 +680,19 @@ void test_tactical_generation_skips_quiet_check_probes_when_disabled() {
 }
 
 void test_fast_quiet_check_flags_match_exhaustive_move_descriptions() {
-    const std::array<std::string_view, 6> fixtures{
+    const std::array<std::string_view, 10> fixtures{
         kInitialFen,
         "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
         "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2",
         "4k3/8/8/8/8/8/P7/4K3 w - - 0 1",
         "4k3/8/8/8/8/2N5/4N3/4R1K1 w - - 0 1",
         "4k3/7N/8/8/8/8/8/4K3 w - - 0 1",
+        // Direct slider checks, a quiet move that uncovers a rook check, and
+        // castling whose rook relocation gives check.
+        "4k3/8/8/8/8/8/R7/4K3 w - - 0 1",
+        "7k/8/7B/8/8/8/8/K7 w - - 0 1",
+        "4k3/8/8/8/4N3/8/8/K3R3 w - - 0 1",
+        "5k2/8/8/8/8/8/8/4K2R w K - 0 1",
     };
 
     const auto compare_position = [](const koi::GameState& state) {

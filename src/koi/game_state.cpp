@@ -1016,37 +1016,66 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
     const PieceType moved_type = move.promotion() == Promotion::none ? moving_piece.type :
         detail::promotion_piece_type(move.promotion());
 
+    // Direct slider checks and discovered checks both need attacks projected
+    // outward from the enemy king through the post-move occupancy. Reuse those
+    // rays when both predicates are relevant instead of looking up the same
+    // slider geometry again from the moved piece's square.
+    const int king_square = static_cast<int>(std::countr_zero(enemy_king));
+    std::uint64_t rook_rays_from_king = 0;
+    std::uint64_t bishop_rays_from_king = 0;
+    bool rook_rays_ready = false;
+    bool bishop_rays_ready = false;
+    const auto rook_rays = [&]() noexcept {
+        if (!rook_rays_ready) {
+            rook_rays_from_king = detail::rook_attacks(king_square, occupied);
+            rook_rays_ready = true;
+        }
+        return rook_rays_from_king;
+    };
+    const auto bishop_rays = [&]() noexcept {
+        if (!bishop_rays_ready) {
+            bishop_rays_from_king = detail::bishop_attacks(king_square, occupied);
+            bishop_rays_ready = true;
+        }
+        return bishop_rays_from_king;
+    };
+
     // Direct check: the moving piece attacks the king from its destination.
-    std::uint64_t direct_attacks = 0;
+    bool direct_check = false;
     switch (moved_type) {
         case PieceType::pawn:
-            direct_attacks = detail::pawn_attacks(destination, moving_color == Color::white);
+            direct_check = (detail::pawn_attacks(
+                destination, moving_color == Color::white) & enemy_king) != 0;
             break;
         case PieceType::knight:
-            direct_attacks = detail::knight_attacks(destination);
+            direct_check = (detail::knight_attacks(destination) & enemy_king) != 0;
             break;
         case PieceType::king:
-            direct_attacks = detail::king_attacks(destination);
+            direct_check = (detail::king_attacks(destination) & enemy_king) != 0;
             break;
         case PieceType::bishop:
             if (destination_on_ray) {
-                direct_attacks = detail::bishop_attacks(destination, occupied);
+                direct_check = (bishop_rays() & destination_bit) != 0;
             }
             break;
         case PieceType::rook:
             if (destination_on_ray) {
-                direct_attacks = detail::rook_attacks(destination, occupied);
+                direct_check = (rook_rays() & destination_bit) != 0;
             }
             break;
         case PieceType::queen:
             if (destination_on_ray) {
-                direct_attacks = detail::queen_attacks(destination, occupied);
+                direct_check = ((rook_rays() | bishop_rays()) & destination_bit) != 0;
             }
             break;
         default:
             break;
     }
-    if ((direct_attacks & enemy_king) != 0) {
+    if (castling && rook_destination < Square::kInvalid &&
+        (rook_rays() & (std::uint64_t{1} << rook_destination)) != 0) {
+        direct_check = true;
+    }
+    if (direct_check) {
         return true;
     }
 
@@ -1057,7 +1086,6 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
     // The vacated squares are masked out of the friendly slider bitboards so
     // the moved piece is never counted at its old square.
     if (maybe_discovered) {
-        const int king_square = static_cast<int>(std::countr_zero(enemy_king));
         std::uint64_t friendly_rook_queen = probe.friendly_rook_queen;
         std::uint64_t friendly_bishop_queen = probe.friendly_bishop_queen;
         friendly_rook_queen &= ~source_bit;
@@ -1066,17 +1094,12 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
             friendly_rook_queen &= ~castling_rook_source_bit;
             friendly_bishop_queen &= ~castling_rook_source_bit;
         }
-        if ((detail::rook_attacks(king_square, occupied) & friendly_rook_queen) != 0) {
+        if ((rook_rays() & friendly_rook_queen) != 0) {
             return true;
         }
-        if ((detail::bishop_attacks(king_square, occupied) & friendly_bishop_queen) != 0) {
+        if ((bishop_rays() & friendly_bishop_queen) != 0) {
             return true;
         }
-    }
-
-    if (castling &&
-        (detail::rook_attacks(rook_destination, occupied) & enemy_king) != 0) {
-        return true;
     }
     return false;
 }

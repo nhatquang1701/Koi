@@ -43,6 +43,7 @@ struct BenchmarkConfig {
     std::optional<std::uint8_t> fixed_depth;
     std::optional<std::pair<std::uint8_t, std::uint8_t>> depth_sweep;
     std::optional<std::string> profile_json_path;
+    std::optional<std::string> iteration_profile_json_path;
     std::optional<std::string> report_json_path;
     std::optional<std::string> nnue_path;
     bool hce = false;
@@ -89,6 +90,7 @@ struct BenchmarkRun {
     std::chrono::milliseconds wall_time{0};
     std::vector<koi::Move> pv;
     std::vector<DepthSample> samples;
+    std::vector<koi::SearchIterationProfile> iteration_profiles;
 };
 
 struct PositionProfile {
@@ -148,6 +150,13 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
                 return std::nullopt;
             }
             config.profile_json_path = argv[++index];
+            continue;
+        }
+        if (argument == "--iteration-profile-json") {
+            if (index + 1 >= argc) {
+                return std::nullopt;
+            }
+            config.iteration_profile_json_path = argv[++index];
             continue;
         }
         if (argument == "--report") {
@@ -261,6 +270,13 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
         return std::nullopt;
     }
     if (config.depth_sweep.has_value() && config.node_limit != 0) {
+        return std::nullopt;
+    }
+    if (config.iteration_profile_json_path.has_value() &&
+        (!config.fen_file_path.has_value() || config.node_limit == 0 ||
+         config.threads != 1 || config.fixed_depth.has_value() ||
+         config.depth_sweep.has_value() || config.profile_json_path.has_value() ||
+         config.report_json_path.has_value() || config.warmup != 0 || config.repeat != 1)) {
         return std::nullopt;
     }
     return config;
@@ -413,18 +429,20 @@ BenchmarkRun run_position(const BenchPosition& benchmark, const BenchmarkConfig&
     // iteration d, not a 250 ms interim refresh of it (which carries the
     // previous score and a partial node count).  Disable interim reporting so
     // the sweep table only ever sees completed iteration lines.
-    options.interim_report_interval = std::chrono::milliseconds{0};
+    options.interim_report_interval = config.iteration_profile_json_path.has_value() ?
+        std::chrono::milliseconds{250} : std::chrono::milliseconds{0};
 
     std::optional<koi::SearchResult> result;
     std::vector<koi::Move> pv;
     std::vector<DepthSample> samples;
+    std::vector<koi::SearchIterationProfile> iteration_profiles;
     // In sweep mode every iterative-deepening info line is retained so the
     // report carries the full time-to-depth table; other modes only keep the
     // completed search.
     const bool sweep = config.depth_sweep.has_value();
     const auto started = std::chrono::steady_clock::now();
-    koi::SearchHandle handle = service.start(*root, limits,
-        {.on_info = [&pv, &samples, sweep, &config](const koi::SearchInfo& info) {
+    koi::SearchEventSink sink;
+    sink.on_info = [&pv, &samples, sweep, &config](const koi::SearchInfo& info) {
              if (info.multipv != 1 || info.pv.empty()) {
                  return;
              }
@@ -461,10 +479,16 @@ BenchmarkRun run_position(const BenchPosition& benchmark, const BenchmarkConfig&
              if (existing == samples.end()) {
                  samples.push_back(std::move(sample));
              }
-         },
-         .on_complete = [&result](const koi::SearchResult& completed) {
-             result = completed;
-         }}, options);
+         };
+    sink.on_complete = [&result](const koi::SearchResult& completed) {
+        result = completed;
+    };
+    if (config.iteration_profile_json_path.has_value()) {
+        sink.on_profile = [&iteration_profiles](const koi::SearchIterationProfile& profile) {
+             iteration_profiles.push_back(profile);
+        };
+    }
+    koi::SearchHandle handle = service.start(*root, limits, std::move(sink), options);
     handle.wait();
     if (!result.has_value()) {
         throw std::runtime_error("benchmark search did not report a result");
@@ -485,7 +509,8 @@ BenchmarkRun run_position(const BenchPosition& benchmark, const BenchmarkConfig&
     std::sort(samples.begin(), samples.end(), [](const DepthSample& left, const DepthSample& right) {
         return left.depth < right.depth;
     });
-    return {*result, wall_time, std::move(pv), std::move(samples)};
+    return {*result, wall_time, std::move(pv), std::move(samples),
+            std::move(iteration_profiles)};
 }
 
 const BenchmarkRun& median_run(const std::vector<BenchmarkRun>& runs) {
@@ -668,6 +693,121 @@ void write_profile_json(const std::string& path, const BenchmarkConfig& config,
     }
 }
 
+void write_iteration_profile_json(const std::string& path,
+                                  const BenchmarkConfig& config,
+                                  const std::vector<PositionProfile>& profiles) {
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        throw std::runtime_error("unable to write iteration profile JSON");
+    }
+    output << "{\n  \"schema\": \"koi-bench-iteration-profile-v1\",\n"
+           << "  \"engine\": \"Koi\",\n"
+           << "  \"build\": \"Koi " KOI_ENGINE_BUILD_VERSION "\",\n"
+           << "  \"threads\": " << config.threads << ",\n"
+           << "  \"speed\": " << static_cast<unsigned>(config.speed_percent) << ",\n"
+           << "  \"hash_mb\": 512,\n"
+           << "  \"node_limit\": " << config.node_limit << ",\n"
+           << "  \"evaluator\": ";
+    write_json_string(output, config.evaluator);
+    if (config.nnue_path.has_value()) {
+        output << ",\n  \"nnue_path\": ";
+        write_json_string(output, *config.nnue_path);
+    }
+    output << ",\n  \"positions\": [\n";
+    for (std::size_t position_index = 0; position_index < profiles.size(); ++position_index) {
+        const PositionProfile& position = profiles[position_index];
+        const BenchmarkRun& run = position.runs.front();
+        output << "    {\"id\": ";
+        write_json_string(output, position.benchmark.name);
+        output << ", \"fen\": ";
+        write_json_string(output, position.benchmark.fen);
+        output << ", \"completed_depth\": " << run.result.completed_depth
+               << ", \"iterations\": [\n";
+        for (std::size_t iteration_index = 0;
+             iteration_index < run.iteration_profiles.size(); ++iteration_index) {
+            const koi::SearchIterationProfile& iteration =
+                run.iteration_profiles[iteration_index];
+            const koi::SearchStats& stats = iteration.stats;
+            output << "      {\"depth\": " << iteration.depth
+                   << ", \"state\": \""
+                   << (iteration.completed ? "complete" : "in_flight") << "\""
+                   << ", \"elapsed_ms\": " << iteration.elapsed.count()
+                   << ", \"iteration_nodes\": " << iteration.iteration_nodes
+                   << ", \"iteration_qnodes\": " << iteration.iteration_qnodes
+                   << ", \"nodes\": " << stats.nodes
+                   << ", \"qnodes\": " << stats.qnodes
+                   << ", \"visited\": " << stats.nodes + stats.qnodes
+                   << ", \"tt_hits\": " << stats.tt_hits
+                   << ", \"pvs_researches\": " << stats.pvs_researches
+                   << ", \"root_pvs_researches\": " << stats.root_pvs_researches
+                   << ", \"aspiration_researches\": " << stats.aspiration_researches
+                   << ", \"root_selective_candidates\": " << stats.root_selective_candidates
+                   << ", \"root_selective_researches\": " << stats.root_selective_researches
+                   << ", \"check_extensions\": " << stats.check_extensions
+                   << ", \"quiet_forcing_extensions\": " << stats.quiet_forcing_extensions
+                   << ", \"king_safety_extensions\": " << stats.king_safety_extensions
+                   << ", \"singular_searches\": " << stats.singular_searches
+                   << ", \"singular_extensions\": " << stats.singular_extensions
+                   << ", \"internal_iterative_deepening\": " << stats.internal_iterative_deepening
+                   << ", \"qchecks\": " << stats.qchecks
+                   << ", \"delta_prunes\": " << stats.delta_prunes
+                   << ", \"see_prunes\": " << stats.see_prunes
+                   << ", \"qsearch_move_generations\": " << stats.qsearch_move_generations
+                   << ", \"qsearch_tt_cutoffs\": " << stats.qsearch_tt_cutoffs
+                   << ", \"qnodes_by_depth\": [";
+            for (std::size_t qdepth = 0; qdepth < iteration.qnodes_by_depth.size(); ++qdepth) {
+                if (qdepth != 0) {
+                    output << ',';
+                }
+                output << iteration.qnodes_by_depth[qdepth];
+            }
+            output << "]"
+                   << ", \"current_root_move\": ";
+            if (iteration.current_root_move.is_no_move()) {
+                output << "null";
+            } else {
+                write_json_string(output, iteration.current_root_move.uci());
+            }
+            output << ", \"current_root_move_number\": "
+                   << iteration.current_root_move_number
+                   << ", \"current_root_move_nodes\": "
+                   << iteration.current_root_move_nodes
+                   << ", \"current_root_move_qnodes\": "
+                   << iteration.current_root_move_qnodes
+                   << ", \"current_root_move_tt_hits\": "
+                   << iteration.current_root_move_tt_hits
+                   << ", \"current_root_move_elapsed_ms\": "
+                   << iteration.current_root_move_elapsed.count()
+                   << ", \"root_moves\": [";
+            for (std::size_t move_index = 0;
+                 move_index < iteration.root_moves.size(); ++move_index) {
+                const koi::SearchRootMoveProfile& move = iteration.root_moves[move_index];
+                if (move_index != 0) {
+                    output << ',';
+                }
+                output << "{\"pass\": " << move.pass
+                       << ", \"move_number\": " << move.move_number
+                       << ", \"move\": ";
+                write_json_string(output, move.move.uci());
+                output << ", \"nodes\": " << move.nodes
+                       << ", \"qnodes\": " << move.qnodes
+                       << ", \"tt_hits\": " << move.tt_hits
+                       << ", \"elapsed_ms\": " << move.elapsed.count()
+                       << ", \"completed\": " << (move.completed ? "true" : "false") << '}';
+            }
+            output << "]}"
+                   << (iteration_index + 1 == run.iteration_profiles.size() ? '\n' : ',')
+                   << '\n';
+        }
+        output << "    ]}"
+               << (position_index + 1 == profiles.size() ? '\n' : ',') << '\n';
+    }
+    output << "  ]\n}\n";
+    if (!output) {
+        throw std::runtime_error("failed while writing iteration profile JSON");
+    }
+}
+
 // koi-bench-speed-v1: the artifact consumed by tools/build/speed_gate.ps1.
 // Every retained row is the median of the repeated runs for one
 // (position, depth) pair, so alternating-run gates can compare NPS and
@@ -771,7 +911,11 @@ void write_speed_json(const std::string& path, const BenchmarkConfig& config,
 int main(int argc, char** argv) {
     auto config = parse_arguments(argc, argv);
     if (!config.has_value()) {
-        std::cerr << "usage: koi-bench [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path | --hce] [--profile-json path] [--report path]\n";
+        std::cerr << "usage: koi-bench [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path | --hce] [--profile-json path] [--iteration-profile-json path] [--report path]\n";
+        return 2;
+    }
+    if (config->iteration_profile_json_path.has_value() && config->threads != 1) {
+        std::cerr << "koi-bench: --iteration-profile-json requires --threads 1\n";
         return 2;
     }
     if (!config->hce && !config->nnue_path.has_value()) {
@@ -982,6 +1126,10 @@ int main(int argc, char** argv) {
         }
         if (config->profile_json_path.has_value()) {
             write_profile_json(*config->profile_json_path, *config, profile_runs);
+        }
+        if (config->iteration_profile_json_path.has_value()) {
+            write_iteration_profile_json(*config->iteration_profile_json_path,
+                                         *config, profile_runs);
         }
         if (config->report_json_path.has_value()) {
             write_speed_json(*config->report_json_path, *config, profile_runs);
