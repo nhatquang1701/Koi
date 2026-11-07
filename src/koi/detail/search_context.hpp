@@ -317,7 +317,7 @@ struct SearchContext {
             // A short timed search must finish its first root iteration before
             // spending time on the deepest quiet-checking layer. Fixed-depth
             // searches remain on the full horizon.
-            quiescence_check_depth_limit = kMaximumQuiescenceCheckDepth - 1;
+            quiescence_check_depth_limit = std::max(1, kMaximumQuiescenceCheckDepth - 1);
         }
     }
 

@@ -27,7 +27,7 @@ inline constexpr int kMaximumQuiescenceDepth = 16;
 inline constexpr int kMaximumQuiescenceSafetyDepth = 16;
 inline constexpr int kMaximumCheckExtensionsPerPath = 2;
 inline constexpr int kMaximumSingularExtensionsPerPath = 2;
-inline constexpr int kMaximumQuiescenceCheckDepth = 3;
+inline constexpr int kMaximumQuiescenceCheckDepth = 2;
 // Tightened by measurement (C44): 306 -> 200 cut ~20% of visited nodes on the
 // qsearch-heavy middlegame probe while self-play scored +3.5% (68W/76D/54L
 // over 198 games), so the conservative original sat off the optimum.

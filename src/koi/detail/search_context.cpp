@@ -246,6 +246,13 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
                 path_lower_bound = true;
                 return entry.score;
             }
+            if (horizon_matches && beta - alpha <= 1 &&
+                entry.bound == TranspositionBound::upper && entry.score <= alpha) {
+                ++stats.qsearch_tt_cutoffs;
+                path_selective_bound = true;
+                path_lower_bound = false;
+                return entry.score;
+            }
         }
 
         int best = claimable_draw ? draw_value(state) : -kInfinity;
@@ -639,9 +646,13 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
                 table_access.store(qsearch_transposition_key, qsearch_table_depth(qdepth), best,
                                    TranspositionBound::exact, best_move, ply, false,
                                    qsearch_eval);
-            } else if (best_lower_bound) {
+            } else if (best_lower_bound && best > original_alpha) {
                 table_access.store(qsearch_transposition_key, qsearch_table_depth(qdepth), best,
                                    TranspositionBound::lower, best_move, ply, false,
+                                   qsearch_eval);
+            } else if (best <= original_alpha) {
+                table_access.store(qsearch_transposition_key, qsearch_table_depth(qdepth), best,
+                                   TranspositionBound::upper, best_move, ply, false,
                                    qsearch_eval);
             }
         }
