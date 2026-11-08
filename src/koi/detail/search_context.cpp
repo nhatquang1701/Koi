@@ -80,13 +80,19 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
                               bool* repetition_sensitive_path,
                               bool* selective_bound_path,
                               bool* lower_bound_path) {
-        if (!count_node(true)) {
-            return 0;
-        }
         if (profile_enabled) {
             const std::size_t qdepth_bucket = static_cast<std::size_t>(
                 std::clamp(qdepth, 0, 16));
+            // Increment before count_node(true) because count_node may invoke
+            // progress_probe() and snapshot profile_qnodes_by_depth mid-entry;
+            // roll back if the node was rejected before stats.qnodes incremented.
             ++profile_qnodes_by_depth[qdepth_bucket];
+            if (!count_node(true)) {
+                --profile_qnodes_by_depth[qdepth_bucket];
+                return 0;
+            }
+        } else if (!count_node(true)) {
+            return 0;
         }
         record_ply(ply);
 

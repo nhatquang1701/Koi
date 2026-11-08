@@ -237,7 +237,7 @@ Every test carries CTest labels; combine them with `-L`/`-LE`, for example
 ## Search failure reporting
 
 `koi_search_tests` retains `known_failures` and `intermittent` registries for
-explicit triage. Both registries are empty for the current 1.1.5 full-release gate, so
+explicit triage. Both registries are empty for the current 1.1.6 full-release gate, so
 every search behavior failure is fatal. The harness reports:
 
 - A listed test that fails prints `XFAIL` and does not fail the run.
@@ -350,7 +350,7 @@ cancellation):
   memory errors and use-after-free regressions fail CI.
 - `shadow-diff` builds with `-DKOI_BUILD_SHADOW_DIFF=ON` and runs
   `koi_shadow_diff_tests`.
-- `windows-package` builds Release, packages the `koi-engine-v1.1.5.zip` with
+- `windows-package` builds Release, packages the `koi-engine-v1.1.6.zip` with
   `tools/build/package_release.ps1`, runs the package manifest and smoke test,
   and uploads the archive with its `.sha256` sidecar.
 
@@ -364,7 +364,7 @@ cancellation):
   and time-manager suites three times with `KOI_TEST_RETRIES=1` and no
   `--repeat`, so a first-attempt flake cannot hide behind a retry.
 - `linux-tarball` builds inside an Ubuntu 22.04 container, packages the
-  portable `koi-engine-v1.1.5-linux-x86_64.tar.gz` with
+  portable `koi-engine-v1.1.6-linux-x86_64.tar.gz` with
   `tools/build/package_release.ps1`, verifies and extracts the archive, then
   runs bounded UCI smokes with the automatic and `KOI_CPU_VARIANT=generic`
   variants.
@@ -380,7 +380,7 @@ cancellation):
   the Linux legs. The x86-only AVX-512 binary smoke and the three-binary
   variant process test are omitted, and diagnostics upload on failure.
 - `macos-package` builds Release, packages the
-  `koi-engine-v1.1.5-macos-arm64.tar.gz` with
+  `koi-engine-v1.1.6-macos-arm64.tar.gz` with
   `tools/build/package_release.ps1`, verifies and extracts the archive, runs
   the bounded UCI smokes, and uploads the tarball with its `.sha256` sidecar.
 

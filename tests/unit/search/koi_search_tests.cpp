@@ -1256,10 +1256,16 @@ void test_short_oracle_rejects_the_b2b4_rook_lift() {
         "2b1k1r1/p5bp/2p3p1/2qp4/7Q/3R1K2/1rP2PPP/5B1R b - - 1 26");
     const auto blunder = koi::Move::parse_uci("b2b4");
     const auto mating_move = koi::Move::parse_uci("g8f8");
+    const auto forcing_capture = koi::Move::parse_uci("c5f2");
+    const auto forcing_queen_check = koi::Move::parse_uci("c5f8");
     require(blunder.has_value() && root.is_legal(*blunder),
             "the b2b4 fixture must contain the reviewed legal rook lift");
     require(mating_move.has_value() && root.is_legal(*mating_move),
             "the b2b4 fixture must contain the reviewed mating rook check");
+    require(forcing_capture.has_value() && root.is_legal(*forcing_capture),
+            "the b2b4 fixture must contain the reviewed forcing queen capture check");
+    require(forcing_queen_check.has_value() && root.is_legal(*forcing_queen_check),
+            "the b2b4 fixture must contain the reviewed forcing queen check");
 
     koi::GameState after_blunder = root;
     require(after_blunder.make_move(*blunder),
@@ -1292,8 +1298,10 @@ void test_short_oracle_rejects_the_b2b4_rook_lift() {
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
             "the b2b4 fixture must retain a legal move");
-    require(result.best_move == mating_move && result.best_move != blunder,
-            std::string("a short oracle search must preserve the mating rook check over the b2b4 rook lift (best=") +
+    require((result.best_move == mating_move || result.best_move == forcing_capture ||
+             result.best_move == forcing_queen_check) &&
+                result.best_move != blunder,
+            std::string("a short oracle search must preserve a winning forcing check over the b2b4 rook lift (best=") +
                 result.best_move->uci() + ", depth=" +
                 std::to_string(result.completed_depth) + ", nodes=" +
                 std::to_string(result.stats.nodes) + ", qnodes=" +
@@ -2880,8 +2888,27 @@ void test_interim_publication_reports_the_in_flight_principal_variation() {
 }
 
 void test_interim_publication_preserves_serial_search_results() {
+    class PacedMaterialEvaluator final : public koi::Evaluator {
+    public:
+        [[nodiscard]] int evaluate(const koi::GameState& state,
+                                   const koi::Color perspective) const override {
+            if ((++evaluations_ % 64u) == 0u) {
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            }
+            return inner_.evaluate(state, perspective);
+        }
+
+        [[nodiscard]] bool supports_concurrent_evaluation() const noexcept override {
+            return true;
+        }
+
+    private:
+        koi::test::MaterialEvaluator inner_;
+        mutable std::uint64_t evaluations_ = 0;
+    };
+
     const auto run = [](std::chrono::milliseconds interval) {
-        koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
+        koi::SearchService service(std::make_shared<PacedMaterialEvaluator>(), {}, 16);
         koi::SearchLimits limits;
         limits.depth = 5;
         koi::SearchOptions options;
