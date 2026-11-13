@@ -210,7 +210,7 @@ Require-LinuxWorkflowPattern '(?i)actions/upload-artifact@v5' 'test diagnostic a
 
 # The macOS arm64 leg: Homebrew LLVM, the modules-off/CPU-only fallback build,
 # the Linux label groups minus the x86-only AVX variant checks, and diagnostics.
-Require-MacOSWorkflowPattern '(?m)^\s*runs-on:\s*macos-14\s*$' 'an Apple Silicon runner'
+Require-MacOSWorkflowPattern '(?m)^\s*runs-on:\s*macos-15\s*$' 'an Apple Silicon runner'
 Require-MacOSWorkflowPattern '(?m)^\s{2}macos-arm64:\s*$' 'the macOS arm64 job'
 Require-MacOSWorkflowPattern '(?i)brew\s+install[^\r\n]*\bninja\b' 'the Homebrew Ninja install'
 Require-MacOSWorkflowPattern '(?i)brew\s+install[^\r\n]*\bllvm\b' 'the Homebrew LLVM install'

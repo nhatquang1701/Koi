@@ -12,7 +12,7 @@ on:
 # process test are not built or run here.
 jobs:
   macos-arm64:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
@@ -165,7 +165,7 @@ jobs:
   # so the macOS arm64 package follows the same manifest, checksum, and smoke
   # contract as the Windows and Linux packages.
   macos-package:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5

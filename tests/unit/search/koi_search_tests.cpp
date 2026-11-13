@@ -1016,7 +1016,17 @@ void test_short_search_rejects_the_qxa3_poisoned_pawn_capture() {
             "the poisoned capture must expose an immediate checking reply");
 
     koi::SearchLimits limits;
-    limits.movetime = 250ms;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // depth where the poisoned pawn capture is refuted.
+    limits.movetime = 3000ms;
+#else
+    // `short poisoned pawn capture depth two` below explicitly pins the 250 ms
+    // depth-two fallback band. A finite 250 ms budget leaves only a few ms after
+    // the depth-two emergency fallback and frequently expires right after depth
+    // three on shared CI hosts; give the finite budget room to search deeper.
+    limits.movetime = 400ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 16;
     options.threads = 1;
@@ -2135,13 +2145,22 @@ void test_timed_result_bestmove_matches_its_pv_after_hash_warmup() {
         "r2r2k1/p4ppp/8/2q1P3/1Q6/KP4P1/P1n4P/R6R w - - 4 24");
     const koi::GameState root = require_state(
         "r2r2k1/p4ppp/8/2q1P3/1Q6/1P4P1/PKn4P/R6R b - - 5 24");
+    koi::SearchLimits warmup_limits;
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer slows the instrumented search by an order of magnitude,
+    // so 100 ms stalls at depth three (c5d4) before depth four confirms c2b4.
+    warmup_limits.movetime = 500ms;
+    limits.movetime = 3000ms;
+#else
+    warmup_limits.movetime = 100ms;
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
     koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
-    (void)search(service, warmup, limits, options);
+    (void)search(service, warmup, warmup_limits, options);
     const koi::SearchResult result = search(service, root, limits, options);
 
     require(result.pv.empty() ||
@@ -4988,6 +5007,7 @@ int main(int argc, char** argv) {
         "ultra short timed completed root",
         "short timed threaded authoritative root",
         "hard short search deadline",
+        "short poisoned pawn capture",
         "timed poisoned capture",
         "timed PV and bestmove coherence",
         "threaded timed cancellation",
