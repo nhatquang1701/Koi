@@ -55,6 +55,27 @@ void test_root_ranking_is_score_then_stable_index() {
             "root ranking must be deterministic for equal scores");
 }
 
+void test_root_ranking_prefers_higher_score_over_lower_exact_line() {
+    std::vector<koi::detail::RootLine> lines(3);
+    lines[0].completed = true;
+    lines[0].score = 1037;
+    lines[0].exact = false;
+    lines[0].selective_bound = true;
+    lines[0].stable_index = 0;
+    lines[1].completed = true;
+    lines[1].score = 533;
+    lines[1].exact = true;
+    lines[1].stable_index = 1;
+    lines[2].completed = true;
+    lines[2].score = 533;
+    lines[2].exact = false;
+    lines[2].selective_bound = true;
+    lines[2].stable_index = 0;
+    const auto ranked = koi::detail::RootCoordinator::rank(lines);
+    require(ranked == std::vector<std::size_t>{0, 1, 2},
+            "higher score must beat lower exact lines while equal scores still prefer exact lines");
+}
+
 void test_session_snapshot_and_completion_are_single_owner_operations() {
     koi::GameState root = koi::GameState::startpos();
     koi::SearchLimits limits;
@@ -142,6 +163,7 @@ int main(int argc, char** argv) {
     const std::vector<koi::test::TestCase> tests{
         {"fixed search stack", test_stack_is_fixed_capacity_and_restores_frames},
         {"deterministic root ranking", test_root_ranking_is_score_then_stable_index},
+        {"root ranking score precedence", test_root_ranking_prefers_higher_score_over_lower_exact_line},
         {"session ownership", test_session_snapshot_and_completion_are_single_owner_operations},
         {"context stack boundary", test_search_context_exposes_fixed_stack_boundary},
         {"worker thread spawn", test_worker_thread_spawns_joinable_workers_with_stack_headroom},

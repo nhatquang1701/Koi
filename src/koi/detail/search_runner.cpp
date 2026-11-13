@@ -1891,12 +1891,11 @@ void SearchRunner::run_impl() {
                 root_ordering.order(root, parallel_moves, tt_move, 0);
                 // Keep the abort-safe fallback in step with the ordering: an
                 // interrupted first iteration must answer with the best-ordered
-                // move, never with the generation-order head.
-                if (!parallel_moves.empty()) {
+                // move, never with the generation-order head, while already
+                // completed iterations keep their published move untouched.
+                if (result.completed_depth == 0 && !parallel_moves.empty()) {
                     result.best_move = parallel_moves.front().move;
-                    if (result.completed_depth == 0) {
-                        result.pv = {*result.best_move};
-                    }
+                    result.pv = {*result.best_move};
                 }
                 if (depth > 1) {
                     std::vector<std::size_t> schedule_indices;
