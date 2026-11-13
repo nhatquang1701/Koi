@@ -29,7 +29,7 @@ The HCE is selectable for development and measurement with `EvalMode=hce` or the
 | Protocol | UCI (Universal Chess Interface) | `src/koi/uci_controller.cpp` |
 | Rules variant | Standard chess only; no Chess960 or other variants | `src/koi/position.cpp` |
 | Language | C++26 (`CMAKE_CXX_STANDARD 26`) | `CMakeLists.txt` |
-| License | MIT | `LICENSE` |
+| License | GPL-3.0 | `LICENSE` |
 | Current build version pin | `1.1.6` | `project(koi_engine VERSION 1.1.6 ...)`, `CMakeLists.txt:3` |
 | Compiled build identity | `KOI_ENGINE_BUILD_VERSION="${PROJECT_VERSION}"` | `CMakeLists.txt:412-414` |
 | UCI identity/version | `id name Koi <version>` (CMake project pin), `id author`, and `info string build <commit>`; there is no separate `uci` version field | `src/koi/uci_controller.cpp` |

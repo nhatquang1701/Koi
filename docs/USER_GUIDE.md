@@ -1041,7 +1041,7 @@ transcript but cannot automate a locally installed Lucas Chess GUI.
 The Koi v1.1.6 Windows package is `koi-engine-v1.1.6.zip`; the portable
 Linux archive is
 `koi-engine-v1.1.6-linux-x86_64.tar.gz`. Each archive retains the project README.md, the
-project MIT license, required third-party licenses, and a `package.json` manifest with per-file
+project GPLv3 license, required third-party licenses, and a `package.json` manifest with per-file
 SHA-256 hashes and source commit provenance. A `.sha256` sidecar verifies the
 archive itself. macOS arm64 (Apple Silicon) archives are published as well.
 

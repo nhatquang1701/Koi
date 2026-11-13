@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="docs/USER_GUIDE.md#supported-uci-behavior"><img src="https://img.shields.io/badge/PROTOCOL-UCI-2e9d59?style=for-the-badge" alt="Protocol: UCI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-2e9d59?style=for-the-badge" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-GPLv3-2e9d59?style=for-the-badge" alt="License: GPLv3"></a>
   <img src="https://img.shields.io/badge/LANGUAGE-C%2B%2B26-2e9d59?style=for-the-badge" alt="Language: C++26">
   <img src="https://img.shields.io/badge/PLATFORMS-Windows%20x64%20%7C%20Linux%20x86_64%20%7C%20macOS%20arm64-2e9d59?style=for-the-badge" alt="Platforms: Windows x64, Linux x86-64, and macOS arm64">
 </p>
@@ -119,4 +119,4 @@ See the [User Guide](docs/USER_GUIDE.md#build-prerequisites) for complete build 
 
 ## License
 
-Koi is released under the [MIT License](LICENSE). Release packages also include the license notices for vendored components (`Disservin/chess-library` and `Fathom`).
+Koi is free software released under the [GNU General Public License v3.0](LICENSE) (Copyright (c) 2026 Nguyễn Nhật Quang). Release packages also include the MIT license notices for vendored components (`Disservin/chess-library` and `Fathom`).

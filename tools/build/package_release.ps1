@@ -263,6 +263,10 @@ Recommended starting options:
   BookRandom=false
 
 $hardwareParagraph
+
+Koi is free software distributed under the GNU General Public License v3.0
+(see LICENSE). The corresponding source code matching this package's
+source_commit in package.json is available at https://github.com/nhatquang1701/Koi.
 "@ | Set-Content -LiteralPath (Join-Path $packageDirectory 'INSTALL.txt') -Encoding UTF8
 
 $sourceCommit = $env:GITHUB_SHA

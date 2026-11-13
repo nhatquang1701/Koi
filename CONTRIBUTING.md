@@ -120,4 +120,4 @@ On Linux and macOS, use `build/release` with forward slashes.
 
 ## License
 
-Contributions to Koi are licensed under the [MIT License](LICENSE), Copyright (c) 2026 nhatquang1701.
+Contributions to Koi are licensed under the [GNU General Public License v3.0](LICENSE), Copyright (c) 2026 Nguyễn Nhật Quang.
