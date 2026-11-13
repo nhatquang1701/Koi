@@ -1,18 +1,17 @@
-# Test layout
-
-> **HCE rewrite:** the old hand-crafted evaluator was removed 2026-10-28 and is being cleanly rewritten. NNUE remains the default; the HCE is selectable with `EvalMode=hce` or `KOI_EVALUATOR=hce`. Text below that describes the old classical evaluator as current behaviour is historical.
+# Test Suite & Layout
 
 Tests are grouped by responsibility while preserving their existing CTest
-names and executable target names.
+names and executable target names:
 
 - `unit/` contains core, rules, search, evaluation, and runtime tests.
 - `integration/` contains UCI, Cutechess, packaging, tool, and differential
   process tests.
-- `python/` contains measurement and NNUE/tuning boundary tests.
+- `python/` contains measurement, reliability fuzzer, and NNUE/tuning boundary tests.
 - `data/` contains stable opening, position, game, and metadata fixtures.
 - `support/` contains the shared C++ harness (`koi_test_support.hpp`), the
-  Polyglot book fixture helpers (`polyglot_book_support.hpp`), and the
-  PowerShell UCI/match modules (`UciSession.psm1`, `MatchSupport.psm1`).
+  Python `unittest` progress hook (`unittest_progress.py`), the Polyglot book
+  fixture helpers (`polyglot_book_support.hpp`), and the PowerShell UCI/match
+  modules (`UciSession.psm1`, `MatchSupport.psm1`).
 
 Temporary test output may use the operating-system temporary directory and must
 be cleaned up by the test. Durable reports belong under the repository's
@@ -40,8 +39,8 @@ ctest --test-dir build/release -C Release -j 8 --output-on-failure
 
 On macOS arm64 (Apple Silicon), use Homebrew LLVM clang 19+ (or AppleClang
 18+) with `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`; the CTest
-commands are identical.
-CPU NNUE path and the generated fixture network are exercised there.
+commands are identical, and both the CPU NNUE path and the generated fixture
+network are exercised there.
 
 The PowerShell process tests are registered only when `pwsh` is found; the C++
 and Python suites are registered on Windows, Linux, and macOS.
@@ -85,11 +84,15 @@ Every C++ test executable uses `tests/support/koi_test_support.hpp`: it defines
 `require`/`require_value`, `fixture_path`, environment helpers, and
 `TempDirectory`. `run_tests` provides:
 
-- one result line per case: `PASS`, `FAIL`, `XFAIL`, `XPASS`, `SKIP`, plus
-  `XFAIL-UNSEEN` for known-failure entries that are missing or were selected
-  but did not run; and a final
+- one result line per case with a `[i/n]` progress prefix: `[i/n] PASS`,
+  `[i/n] FAIL`, `[i/n] XFAIL`, `[i/n] XPASS`, `[i/n] SKIP` (where `n` is the
+  number of cases selected after filter/shard matching), plus `XFAIL-UNSEEN`
+  for known-failure entries that are missing or were selected but did not run;
+  and a final
   `koi-test-summary run=.. pass=.. fail=.. xfail=.. xpass=.. skip=.. unseen=.. intermittent=..`
-  line.
+  line. Python `unittest` suites (`tests/support/unittest_progress.py`), Python
+  reliability fuzzers, PowerShell integration scripts (`Write-TestProgress`),
+  and `tools/test/run_tests.ps1` similarly emit `[i/n]` progress lines.
 - selection: `--filter=<substring>`, `--shard=<i>/<n>` (0-based shard index),
   `--list`, `--quiet`; environment equivalents `KOI_TEST_FILTER` and
   `KOI_TEST_SHARD`.

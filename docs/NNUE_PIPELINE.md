@@ -1,11 +1,6 @@
-# NNUE training and promotion loop
+# NNUE Training and Promotion Pipeline
 
-> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
-
-NNUE is the required evaluator (the classical evaluator was removed 2026-10-28; a
-deprecated fallback, removed after at least one NNUE-primary release). This page
-shows the loop that turns self-play data into a promoted `.nnue` file bundled in
-release packages, with the exact tools in this repository.
+NNUE is Koi's default and production evaluator (a clean hand-crafted classical evaluator is also available via `EvalMode=hce` or `KOI_EVALUATOR=hce` for development and measurement). This guide documents the end-to-end pipeline that turns Stockfish self-play positions into a quantized, SPRT-gated `.nnue` network shipped in Koi release packages.
 
 ```mermaid
 flowchart TD
@@ -205,8 +200,7 @@ The first NNUE-primary promotion is a v4-container halfka network:
   vs Stockfish 19 `UCI_Elo=1600` where the classical baseline scored 34.0 %
   (unpaired, SF-limited play is noisy);
 - shipped inside release archives at `nnue/koi.nnue`; the engine discovers it at
-  boot and advertises `EvalFile` default `<autodiscovery>`. The classical
-  evaluator remains the deprecated fallback until removal.
+  boot and advertises `EvalFile` default `<autodiscovery>`.
 
 The network file is a local artifact under `artifacts/networks/` and is not
 committed; release packaging requires it plus its accepted `koi-nnue-gate-v1`

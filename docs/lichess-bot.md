@@ -1,10 +1,9 @@
-# Running Koi as a Lichess bot
-
-> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
+# Running Koi as a Lichess Bot
 
 [lichess-bot](https://github.com/lichess-bot-devs/lichess-bot) is the official
-Python bridge that plays Lichess games with any UCI engine. Koi speaks the UCI
-surface lichess-bot needs: clock-driven `go` commands, `stop`, in-place
+Python bridge that connects any UCI engine to Lichess. Koi implements the full
+UCI surface required for competitive online bot play: clock-driven `go`
+commands, adaptive network-overhead learning, `stop`, in-place
 `ponder`/`ponderhit` conversion, and `MultiPV`.
 
 `tools/bot/koi-bot.sh` wraps the whole setup so a bot can be installed, started,

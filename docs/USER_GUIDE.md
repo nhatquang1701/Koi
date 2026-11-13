@@ -1,29 +1,28 @@
-# Koi
+# Koi User Guide
 
-> **HCE rewrite:** the old hand-crafted evaluator was removed 2026-10-28 and is being cleanly rewritten. NNUE remains the default; the HCE is selectable with `EvalMode=hce` (or `KOI_EVALUATOR=hce` at boot) for development and measurement. Text below that describes the old classical evaluator as current behaviour is historical.
-
-Koi is a Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon) UCI
-chess engine for standard chess. It is
-written in C++26 and is documented and process-tested against En Croissant as
-the primary GUI workflow. It uses deterministic iterative-deepening alpha-beta search
-with a gated Koi-native NNUE as the primary evaluator (training
-tooling, a versioned container, and runtime `EvalFile` loading), and a persistent
-transposition table. Search runs on a cancellable outer worker; `Threads = 1`
-runs the deterministic serial search, while `Threads > 1` starts Lazy SMP
-helper threads that search the same root against the shared transposition table
-while the main thread publishes the result. Lazy SMP is intentionally
-nondeterministic: the deterministic guarantee is scoped to `Threads = 1`, and
-threaded runs are validated for legality and coverage instead of byte
-equality. The UCI command loop remains responsive in both configurations.
+**Koi** is a Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon) UCI
+chess engine for standard chess. Written in C++26 and process-tested against
+**En Croissant** as the primary GUI workflow, it combines iterative-deepening
+alpha-beta search and a persistent transposition table with a gated Koi-native
+NNUE as the primary evaluator (and a clean hand-crafted classical evaluator
+selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce`). Search runs on a
+cancellable outer worker: `Threads = 1` runs the deterministic serial search,
+while `Threads > 1` starts Lazy SMP helper threads that search the same root
+against the shared transposition table while the main thread publishes the
+result. Lazy SMP is intentionally nondeterministic: the deterministic guarantee
+is scoped to `Threads = 1`, and threaded runs are validated for legality and
+coverage instead of byte equality. The UCI command loop remains responsive in
+both configurations.
 
 ## Name
 
-The engine is called **Koi**. Historical releases through v1.1.4 used the name
+The engine is called **Koi**. Historical releases through v1.1.5 used the name
 "Koi Engine" in package text and documentation; the v1.1.5+ handshake already
-identifies as `Koi <version>` (e.g., `Koi 1.1.6`). Those
-historical releases are not renamed. New builds identify themselves as **Koi**
-in the UCI handshake, and this guide uses **Koi** throughout. Binary and archive
-file names keep the `koi-engine` spelling so existing scripts keep working.
+identifies as `Koi <version>` (e.g., `Koi 1.1.6`). Those historical releases are
+not renamed. New builds identify themselves as **Koi** in the UCI handshake, and
+this guide uses **Koi** throughout. Binary and archive file names keep the
+`koi-engine` spelling so existing scripts keep working.
+
 ## Architecture
 
 The engine is deliberately layered so the chess rules implementation remains a
@@ -39,7 +38,7 @@ diagnostics, and other legacy adapters; `FeatureState` owns cached
 of the public API and is covered by the opt-in `KOI_BUILD_SHADOW_DIFF`
 differential target. Search moves still update the mirror transactionally, while
 interior search skips the expensive mirror comparison; explicit validation and
-diagnostic boundaries retain it. the NNUE evaluator, time management, the
+diagnostic boundaries retain it. The NNUE evaluator, time management, the
 transposition table, and the `SearchService` build on Koi-owned types. The UCI
 controller owns the current position and worker lifecycle, and is the only layer
 that writes protocol output.
@@ -88,11 +87,11 @@ local while immutable network data remains shared. `detail::EvaluationContext`
 selects that worker path or the existing evaluator-plus-mutex fallback, so
 `SearchContext` no longer owns evaluator synchronization or a particular NNUE
 representation. NNUE is the primary evaluator in packaged releases; malformed or
-absent NNUE input is now a boot error (the classical fallback was removed on 2026-10-28)
-the transition. `EvaluatorSelection` and `make_evaluator` are the selection seam
+absent NNUE input is a boot error unless `KOI_EVALUATOR=hce` is set.
+`EvaluatorSelection` and `make_evaluator` are the selection seam
 used by the engine entry points: at boot `main.cpp` resolves `KOI_NNUE_PATH` or
-`koi.nnue` beside the executable, and the advertised `EvalFile` option swaps the
-evaluator at runtime.
+`koi.nnue` beside the executable, and the advertised `EvalFile` and `EvalMode`
+options swap the evaluator at runtime.
 
 Search runtime resources have the same ownership boundary. The private
 `detail::SearchTableAccess` view is the only TT boundary used by search code:
@@ -209,9 +208,10 @@ clear message instead of executing an unsupported instruction. Set
 unknown values keep the automatic behavior). On Windows the selector launches
 the sibling as a child process, forwards its exit code, and a job object kills
 the child if the parent disappears; on Linux it `execv`s the sibling so the
-process image is replaced). On macOS arm64 there are no AVX siblings, so the
-baseline `koi-engine` runs directly. All other tools (`koi-bench`, `koi-replay`,
-and Linux x86-64 and baseline builds on macOS arm64.
+process image is replaced. On macOS arm64 there are no AVX siblings, so the
+baseline `koi-engine` runs directly. All other developer tools (`koi-bench`,
+`koi-replay`, `koi-perft`, `koi-eval-features`) are built with AVX2 on Windows
+and Linux x86-64 and as baseline binaries on macOS arm64.
 
 For an independently reproducible release gate, run the checked-in harness from
 an x64 Visual Studio developer shell. It configures and builds fresh canonical
@@ -339,17 +339,15 @@ The PyTorch trainer (`train_nnue_koi.py`) defaults to the version 5 architecture
 group A `halfka-king-bucket-v1` (9216 inputs) plus the symmetric group B
 `threat-pairs-v1` attack relations (27648 inputs) for 36864 inputs total, both
 perspectives feeding full-width cross pair products (`p[j] = own[j] * opp[j]`) and a
-32-unit CReLU hidden layer into the eight piece-count output buckets. Pass
-`--arch v4` for the earlier version 4 `halfka-king-bucket-v1` network with CReLU
-pair products; the version 3 trainer (`train_nnue_sf.py`) remains available, and
-version 2, 3, and 4 containers still load:
-
-the same 9216-input payload as the version 4 network, so the container differs
-only in its version word. The version 8 container also still accepts the
-36864-input `threat-pairs-v1` form written by `--arch v6`, whose payload is
-otherwise identical; the input width selects the layout. The threat-input form
-measured weaker than the halfka-only nets in every match, so it is not what
-`--arch v8` trains.
+32-unit CReLU hidden layer into the eight piece-count output buckets. Pass `--arch v4` for the version 4 `halfka-king-bucket-v1` network with CReLU
+pair products, or `--arch v8` for the version 8 container, which carries the
+same 9216-input payload as the version 4 network and differs only in its version
+word. The version 8 container also accepts the 36864-input `threat-pairs-v1` form
+written by `--arch v6`, whose payload is otherwise identical; the input width
+selects the layout. The threat-input form measured weaker than the HalfKA-only
+nets in every match, so `--arch v8` trains the HalfKA-only layout. The version 3
+trainer (`train_nnue_sf.py`) remains available, and version 2, 3, and 4
+containers still load:
 
 ```powershell
 python .\tools\measurement\gen_training_data.py all --games 30000 --workers 3 --label-depth 10
@@ -400,13 +398,11 @@ pwsh -NoProfile -File .\tools\nnue\net_match.ps1 -NnueNet .\artifacts\training\k
   -OpponentNet .\artifacts\training\koi-sf-v1.nnue -Games 20
 ```
 
-Validation runs the 64-position `koi-bench --nnue` gate and a node-limited
-colour-split A/B match against the classical evaluator
-(`tools/nnue/ab_match.ps1`, schema `koi-nnue-ab-match-v1`) or against an earlier
-network (`tools/nnue/net_match.ps1`, schema `koi-nnue-net-match-v1`). Validation
-output is a local report, not an Elo claim or a CI threshold.
-
-`Threads` for multi-threaded CPU search.
+Validation runs the 64-position `koi-bench --nnue` gate and a colour-split A/B
+match against the classical evaluator (`tools/nnue/ab_match.ps1`, schema
+`koi-nnue-ab-match-v1`) or against an earlier network (`tools/nnue/net_match.ps1`,
+schema `koi-nnue-net-match-v1`). Validation output is a local report, not an Elo
+claim or a CI threshold. Use `Threads` to configure multi-threaded CPU search.
 
 For a reproducible local match against Stockfish or another UCI engine, use the
 optional PowerShell harness:
@@ -563,9 +559,9 @@ To measure a Koi NNUE network, pass `--koi-eval-file` with the network path. The
 tool reads the container header, selects the matching `nnue-v4`/`nnue-v5`
 attestation, and requires the match harness to confirm that the engine enabled
 that exact file; the report records the absolute path, SHA-256, byte size,
-container version, and attestation under `configuration.koi_evaluator`. Missing,
-malformed, or rejected networks fail with a nonzero exit. `--koi-options-json`
-and records the file hash; it must not set `EvalFile`.
+container version, and attestation under `configuration.koi_evaluator`. Missing, malformed, or rejected networks fail with a nonzero exit.
+`--koi-options-json` forwards extra non-pinned Koi options to the harness and
+records the file hash; it must not set `EvalFile`.
 
 CTest registers the standard-library-only estimator, match-option, and opening
 corpus tests when Python 3 is available; the corpus test receives the built

@@ -1,37 +1,37 @@
-# Contributing to Koi Engine
+# Contributing to Koi
 
-Koi Engine is a Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon) UCI chess engine written in C++26, built with MSVC, GCC 14+, or Clang 18+/AppleClang 18+ and CMake/Ninja. Contributions are welcome.
+**Koi** is a C++26 UCI chess engine for Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon), built with MSVC, GCC 14+, or Clang 18+ / AppleClang 18+ using CMake and Ninja. Contributions that preserve protocol purity, determinism, and verified playing strength are welcome.
+
+---
 
 ## Prerequisites
 
-- Windows x64 with an x64 MSVC toolchain, or Linux x86-64 with GCC 14+ or
-  Clang 18+, or macOS arm64 (Apple Silicon) with Homebrew LLVM clang 19+ (or
-  AppleClang 18+).
-  - On Windows, run commands from an **x64 Native Tools Command Prompt** or
-    **x64 Developer PowerShell**; GCC/Clang/MinGW are not supported there.
-  - On Linux, CMake 3.31+ is required but most distributions ship older
-    versions, so install a newer CMake (`python3 -m pip install --upgrade cmake`
-    or the Kitware APT repository) before configuring.
-  - On macOS, `brew install llvm ninja` and configure with
-    `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. The engine is CPU-only;
-    the CPU NNUE path works normally (a network is required since the classical
-    evaluator was removed on 2026-10-28).
-- CMake 3.31+
-- Ninja (required for the C++26 named-module build)
-- PowerShell (`pwsh` or `powershell`) for the process tests
-- Optional: Python 3 for measurement tooling and Python tests:
-  `python -m pip install -r ./tools/measurement/requirements.txt`
+- **Compiler & Platform:**
+  - **Windows x64:** Visual Studio 2022+ MSVC x64 toolchain (`/std:c++latest`). Run all commands from an **x64 Native Tools Command Prompt** or **x64 Developer PowerShell** (MinGW/GCC/Clang on Windows are not supported).
+  - **Linux x86-64:** GCC 14+ or Clang 18+ (`-std=c++26` / `-std=c++2c`) and a `pthreads` libc.
+  - **macOS arm64 (Apple Silicon):** Homebrew LLVM Clang 19+ (`brew install llvm ninja`) or AppleClang 18+, configured with `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`.
+- **CMake 3.31+:** On distributions that ship an older CMake (such as Ubuntu 24.04), upgrade via `python3 -m pip install --upgrade cmake` or the Kitware APT repository.
+- **Ninja:** Required for fast builds and C++26 named-module compilation.
+- **PowerShell (`pwsh`):** Enables the cross-platform UCI and process integration tests.
+- **Python 3 (Optional):** Enables the measurement, dataset, and reliability fuzzer suites:
+  ```bash
+  python -m pip install -r ./tools/measurement/requirements.txt
+  ```
 
-## Build
+---
 
-Windows:
+## Building Koi
+
+### Windows (x64)
 
 ```powershell
 cmake -S . -B build\release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl
 cmake --build build\release --config Release
 ```
 
-Linux (use `clang-18`/`clang++-18` for a Clang build):
+### Linux (x86-64)
+
+Substitute `clang-18` / `clang++-18` when building with Clang:
 
 ```bash
 cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -39,7 +39,7 @@ cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
 cmake --build build/release --config Release
 ```
 
-macOS arm64 (Apple Silicon):
+### macOS (Apple Silicon `arm64`)
 
 ```bash
 brew install llvm ninja
@@ -50,67 +50,74 @@ cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
 cmake --build build/release --config Release
 ```
 
-Debug builds: substitute `build\debug` and `Debug` (or `build/debug` and
-`Debug`). C++26 named modules are auto-detected; pass
-`-DKOI_BUILD_MODULES=OFF` when the compiler cannot build them (the documented
-macOS arm64 configuration). The engine binary is `build\release\koi-engine.exe`
-(`build/release/koi-engine` on Linux and macOS). On Windows and Linux x86-64 it
-automatically starts the AVX2 or AVX-512 sibling
-(`koi-engine-avx2` / `koi-engine-avx512`) when the CPU supports it, and
-`KOI_CPU_VARIANT=generic|avx2|avx512` forces one build; macOS arm64 has no AVX
-siblings. Keep the selector
-silent on stdout and stderr; GUIs treat engine chatter as protocol output.
+For Debug builds, replace `build\release` / `Release` with `build\debug` / `Debug`.
 
-Quick UCI smoke test:
+### CPU Dispatch & Executables
+
+The Release build produces `build\release\koi-engine.exe` (`build/release/koi-engine` on Linux and macOS). On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engine-avx512` or `koi-engine-avx2` when the host CPU supports them (and fast `PEXT`), or runs its baseline code in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary. The selector is completely silent on `stdout` and `stderr` so UCI GUIs never see non-protocol output.
+
+Quick UCI smoke check:
 
 ```powershell
 @('uci','isready','position startpos','go depth 2','stop','quit') | & .\build\release\koi-engine.exe
 ```
 
-## Test
+---
+
+## Running the Test Suite
 
 ```powershell
-ctest --test-dir build\release -C Release -j 8 --output-on-failure   # full suite
+# Full parallel Release suite
+ctest --test-dir build\release -C Release -j 8 --output-on-failure
+
+# 64-position tactical strength gate
 ctest --test-dir build\release -C Release -R koi_strength_tests --output-on-failure
-.\tools\test\run_tests.ps1 -Label unit                                # fast unit subset
+
+# Fast unit subset via the PowerShell runner (captures JUnit XML and LastTest.log)
+.\tools\test\run_tests.ps1 -Label unit
 ```
 
-On Linux and macOS the same commands use `build/release` (forward slashes). The
-PowerShell process tests run under `pwsh` when it is installed; without it the
-C++ and Python suites still run.
+On Linux and macOS, use `build/release` with forward slashes.
 
-- Do not weaken or delete assertions or `XFAIL` entries to get a green run; an unexpected pass (`XPASS`) fails the run by design.
-- `Threads = 1` is the deterministic configuration. Threaded tests must assert invariants, not byte equality.
-- Full release gate: `.\tools\build\release_verify.ps1`.
+- **Strict assertions:** Never weaken or delete test assertions or `XFAIL` entries to force a green run; an unexpected pass (`XPASS`) fails the suite by design so fixed entries are cleaned up immediately.
+- **Determinism contract:** `Threads = 1` is strictly deterministic. Multi-threaded tests (`Threads > 1`) exercise Lazy SMP and must assert invariants (legality, completion, depth, ranked MultiPV) rather than byte-for-byte PV equality.
+- **Full release verification gate:** `.\tools\build\release_verify.ps1`.
 
-## Making changes
+---
 
-- Branch from `koi-engine` (for example `codex/my-change`).
-- Commit with a descriptive imperative message (for example `Fix mate score off-by-one at root`).
-- Open a PR. CI runs on Windows (`.github/workflows/windows.yml`: Release CTest,
-  a Debug smoke subset, MSVC AddressSanitizer, the shadow-diff job, the release
-  package job, and a flake job), on Linux (`.github/workflows/linux.yml`: GCC 14
-  and Clang 18 CTest, a modules-off build, a portable tarball job, a flake job,
-  and a ThreadSanitizer job), and on macOS arm64
-  (`.github/workflows/macos.yml`: the modules-off, CPU-only Release suite with
-  Homebrew LLVM clang).
+## Submitting Changes
 
-## Rules
+1. **Branch** from `koi-engine`.
+2. **Commit** with a clear, imperative summary (e.g., `Fix mate score normalization at root`).
+3. **Verify** against the CI matrix when opening a pull request:
+   - **Windows (`.github/workflows/windows.yml`):** Full Release CTest, Debug smoke (`-LE heavy`), MSVC AddressSanitizer (`-DKOI_SANITIZE=ON`), shadow-diff oracle (`-DKOI_BUILD_SHADOW_DIFF=ON`), release package verification, and a 3-pass no-retry flake gate.
+   - **Linux (`.github/workflows/linux.yml`):** GCC 14 and Clang 18 Release suites, modules-off build, portable Ubuntu 22.04 tarball smoke, no-retry flake gate, and GCC ThreadSanitizer (`linux-tsan`).
+   - **macOS (`.github/workflows/macos.yml`):** Apple Silicon Release suite and `macos-arm64` tarball verification.
 
-- Keep the UCI handshake byte-identical unless a change explicitly modifies it; update the handshake fixture, tests, and README together.
-- stdout must stay protocol-clean: exactly one `bestmove` per search.
-- NNUE is the required evaluator; the classical evaluator was removed 2026-10-28.
-- Elo, CPL, and NPS figures are reports, never CI thresholds or claims.
-- Do not commit build trees, generated corpora, trained networks, `book.bin`, tablebase data, or `.opencode/`. Durable reports go under `artifacts/`.
-- Keep third-party licenses intact; the vendored Stockfish oracle (`third_party/stockfish-19`, GPL-3.0) must not be redistributed as part of Koi.
+---
 
-## Documentation
+## Engineering Rules
 
-- `README.md` - build, UCI behavior, tooling, measurement
-- `tests/README.md` - test inventory, labels, environment variables, determinism policy
-- `tools/README.md` - tooling and artifact workflows
-- `docs/README.md` - documentation map
+- **Handshake stability:** Keep the UCI handshake output byte-identical unless a change intentionally updates it; update `tests/data/uci/handshake.txt`, tests, and documentation together.
+- **Protocol purity:** `stdout` is reserved exclusively for valid UCI output (`UciController` is the sole protocol writer), with exactly one legal `bestmove` emitted per search.
+- **Evaluator contract:** NNUE is the default and required boot evaluator; the clean classical evaluator is selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce`.
+- **Evidence discipline:** Elo, CPL, and NPS figures are measurement reports—never unverified claims or fragile CI thresholds.
+- **Repository hygiene:** Never commit `build/`, generated corpora, trained `.nnue` files, user `book.bin` files, Syzygy tablebases, or temporary scratch directories.
+- **License compliance:** Keep all third-party license notices intact. The Stockfish measurement oracle (`third_party/stockfish-19`, GPL-3.0) is for local testing only and must never be packaged or redistributed with Koi.
+
+---
+
+## Documentation References
+
+- **[Repository README](README.md)** — Overview, quick start, and build instructions
+- **[User Guide](docs/USER_GUIDE.md)** — UCI options, time controls, GUI registration, and optional assets
+- **[System Architecture](docs/ARCHITECTURE.md)** — Module map, concurrency ownership, and 1.0.0 architecture boundaries
+- **[Test Suite](tests/README.md)** — Test targets, CTest labels, environment variables, and progress indicators
+- **[Developer Tools](tools/README.md)** — Benchmarks, PGO, oracle analysis, and match harnesses
+- **[Documentation Map](docs/README.md)** — Full index of project documentation
+
+---
 
 ## License
 
-Contributions are licensed under the MIT License (`LICENSE`), Copyright (c) 2026 nhatquang1701.
+Contributions to Koi are licensed under the [MIT License](LICENSE), Copyright (c) 2026 nhatquang1701.

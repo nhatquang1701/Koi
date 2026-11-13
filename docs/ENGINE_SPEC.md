@@ -15,9 +15,8 @@ advertised through the `EvalFile` default `<autodiscovery>`. The original hand-c
 classical evaluator was **removed on 2026-10-28** and is being cleanly rewritten
 (`src/koi/classical_evaluator.*`); NNUE stays the default and production
 evaluator, and a default boot without a usable network exits 4 with a diagnostic.
-The HCE is selectable for development/measurement with `EvalMode=hce` or the
+The HCE is selectable for development and measurement with `EvalMode=hce` or the
 `KOI_EVALUATOR=hce` boot override.
-experimental, off at runtime, and scheduled for removal.
 
 ## 1. Identity and platforms
 
@@ -55,6 +54,7 @@ script, and the documentation read `1.1.6`, so the compiled build identity is
 | --- | --- | --- | --- |
 | Windows | MSVC x64 only; `/std:c++latest`; CMake 3.31+; Ninja | x86-64 only; 64-bit required | Non-MSVC Windows compilers fail configuration; MinGW/GCC/Clang are not supported |
 | Linux | GCC 14+ or Clang 18+; CMake 3.31+; Ninja | x86-64 only; 64-bit required | Requires pthreads; `pwsh` and Python 3 enable optional process/Python tests |
+| macOS | Homebrew LLVM Clang 19+ or AppleClang 18+; CMake 3.31+; Ninja | arm64 (Apple Silicon); 64-bit required | Configure with `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`; CPU-only |
 
 Build constraints are enforced in `CMakeLists.txt:1-87`. A 64-bit toolchain is
 mandatory (`CMAKE_SIZEOF_VOID_P EQUAL 8`), the Windows compiler must be MSVC, the
@@ -342,16 +342,18 @@ The loader accepts Koi NNUE containers with magic `KOI-NNUE`, quantization
 not accepted by `validate_manifest` even though legacy v1 constants remain in the
 header. **There is no version 7 container:** no v7 constant or parser branch
 exists, and the `koi-v7-*` names under `artifacts/training/` are trainer
-experiment labels whose exports are v4 containers. Version 8 is the only
-the architecture word (v6 threat math or v4 halfka-only).
+experiment labels whose exports are v4 containers. Version 8 accepts either
+the 36864-input v6 threat layout or the 9216-input v4 HalfKA-only layout,
+selected by the input width in the header.
 
 | Version | Feature set | Inputs | Head | Notes |
 | --- | --- | --- | --- | --- |
 | 2 | `piece-square-king-pawn-v2` | 960 | 256 hidden → 32 bottleneck → 1 | Original perspective network; sparse input path |
 | 3 | `piece-square-king-pawn-v2` | 960 | Same tensor layout as v2 | Adds explicit fixed-point right shifts (hidden, bottleneck, output) |
-| 4 | `halfka-king-bucket-v1` | 9216 | even hidden 32..8192 → CReLU pair products → 8 piece-count buckets | 12 king buckets × 12 piece planes × 64 squares; reserved layer word must be 0 |
+| 4 | `halfka-king-bucket-v1` (or `+pair-mul-dual`) | 9216 | even hidden 32..8192 → CReLU pair products → 8 piece-count buckets | 12 king buckets × 12 piece planes × 64 squares; reserved layer word must be 0 |
 | 5 | `halfka-king-bucket-v1+threat-pairs-v1` | 36864 | Two-layer integer head: 8..128 L1 units → 8 buckets | Adds threat-pairs group and cross-perspective pair products |
 | 6 | Same as v5 | 36864 | Adds an antisymmetric L1 difference channel | Extra `l1_units × hidden_units` int8 matrix; split diff shift |
+| 8 | `halfka-king-bucket-v1` (9216) or `+threat-pairs-v1` (36864) | 9216 or 36864 | Same as v4 (9216) or v6 (36864) | Input width selects HalfKA-only or threat-pairs layout |
 
 Feature geometry (`src/koi/evaluation_features.hpp`):
 
@@ -406,11 +408,12 @@ The AVX2 code is only compiled on x86-64; macOS arm64 uses the scalar network
 path with the NEON clamp. An AVX2 result that would overflow is rejected and
 recomputed scalar in the bucket-dot path so the vector path stays bit-identical.
 
+The experimental GPU NNUE path was completely removed on 2026-11-02: no `GpuNnue`
 option, `KOI_GPU_*` environment variable, PTX build step, probe executable, unit
 test, or source directory remains. The engine is CPU-only; `Threads > 1` uses the
 multi-threaded CPU NNUE path.
 
-### 4.5 Automatic discovery and `EvalFile`
+### 4.4 Automatic discovery and `EvalFile`
 
 `discover_nnue_network(directory)` (`src/koi/nnue.cpp:2350-2393`) uses this order:
 
@@ -717,7 +720,7 @@ Rules for `setoption`:
   active search before the new value is committed, so the next `go` uses a coherent
   snapshot. This includes `Hash`, `Threads`, `MultiPV`, `Slow Mover`,
   `Move Overhead`, `Contempt`, `OwnBook`, book options, `Syzygy*`, `EvalFile`,
-  and join first.
+  `EvalMode`, and `Debug`.
 - `Threads` is clamped by `maximum_search_threads()` = `max(1, min(64,
   hardware_concurrency))`; an unavailable hardware count is treated as 1.
 - `Hash` requests outside 1..4096 MB are ignored. A successful resize may be
@@ -898,7 +901,7 @@ bundled or required.
 
 ### 8.3 NNUE assets
 
-See §4.5. `KOI_NNUE_PATH` is an explicit boot path; `KOI_NNUE_AUTODETECT=0`
+See §4.4. `KOI_NNUE_PATH` is an explicit boot path; `KOI_NNUE_AUTODETECT=0`
 disables discovery; `EvalFile` is the runtime override. Networks are local
 assets and are not committed to the repository.
 
@@ -1000,9 +1003,9 @@ name and version while the tag is the version alone.
 
 ## 10. Known limitations, experimental items, and deferred work
 
-- **NNUE is required.** The classical evaluator was removed on 2026-10-28; a
-  clean rewrite is planned (see
-  the strength-cycle plan Step 12).
+- **NNUE is the default and required boot evaluator.** The original classical
+  evaluator was removed on 2026-10-28 and replaced with the clean rewrite in
+  `src/koi/classical_evaluator.*` (`EvalMode=hce` / `KOI_EVALUATOR=hce`).
 - **Threat-pair (`threat-pairs-v1`) networks were rejected.** The 36864-input v5
   form lost its matches (33.75% against the official net) and its export
   saturates the L1 head; `--arch v8` writes the halfka-only layout instead.
@@ -1036,5 +1039,7 @@ name and version while the tag is the version alone.
   commit-level build identity lives in benchmark JSON and package provenance.
 - **NNUE v1 containers are not accepted** by the current loader (versions 2, 3,
   4, 5, 6, and 8 are).
-- **Documentation/test-count drift:** `tests/README.md` and `docs/USER_GUIDE.md`
-  disagree on the registered test count; `ctest -N` is authoritative.
+- **Test count depends on optional features:** both `tests/README.md` and
+  `docs/USER_GUIDE.md` document 76 registered tests in the reference Windows
+  Release + Python configuration, while `ctest -N` is authoritative for any
+  specific build tree.

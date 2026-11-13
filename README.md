@@ -1,8 +1,8 @@
 <h1 align="center">Koi</h1>
 
 <p align="center">
-  A free, open-source UCI chess engine for standard chess.<br>
-  <a href="https://nhatquang1701.github.io/Koi/"><strong>Explore the documentation »</strong></a>
+  <strong>A fast, modern C++26 UCI chess engine for standard chess.</strong><br>
+  <a href="https://nhatquang1701.github.io/Koi/"><strong>Explore the Documentation »</strong></a>
 </p>
 
 <p align="center">
@@ -13,77 +13,110 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nhatquang1701/Koi/issues/new">Report an issue</a>
-  ·
   <a href="https://github.com/nhatquang1701/Koi/releases">Releases</a>
+  ·
+  <a href="docs/USER_GUIDE.md">User Guide</a>
+  ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a>
+  ·
+  <a href="https://github.com/nhatquang1701/Koi/issues/new">Report an Issue</a>
 </p>
 
-## About Koi
+---
 
-Koi is a C++26 chess engine for Windows x64, Linux x86-64, and macOS arm64
-(Apple Silicon). Its default search
-uses iterative-deepening alpha-beta with a persistent transposition table.
-Release packages ship the gated Koi-native NNUE evaluator as the primary evaluator
-(bundled at `nnue/koi.nnue`, auto-discovered at boot). The hand-crafted classical
-evaluator was removed before v1.1.5 (a clean rewrite is planned), so a network is
-required to search: a boot without a usable network exits with a clear diagnostic.
+## Overview
 
-| Engine area | What Koi provides |
-| --- | --- |
-| Search | Alpha-beta with Lazy SMP |
-| Evaluation | Gated Koi NNUE required in release packages (bundled); NNUE is the default evaluator; clean HCE rewrite available via `EvalMode`/`KOI_EVALUATOR=hce`; GPU NNUE removed 2026-11-02 (CPU-only) |
-| Chess support | Standard chess over the UCI protocol |
-| Optional assets | Bundled CC0 Polyglot opening book, used automatically; user-installed Syzygy tablebases are auto-detected from a conventional directory beside the engine and are never packaged |
+**Koi** is an open-source Universal Chess Interface (UCI) engine written in C++26 for Windows x64, Linux x86-64, and macOS arm64 (Apple Silicon). Designed for responsive GUI analysis and competitive play, Koi pairs an iterative-deepening Principal Variation Search (PVS) with Lazy SMP parallelism, a persistent 24-byte transposition table, and a bundled HalfKA NNUE evaluator.
 
-## Name
+| Area | Capabilities |
+| :--- | :--- |
+| **Search** | Iterative-deepening alpha-beta (PVS) · Lazy SMP (`Threads > 1`) · Root-parallel `MultiPV` (up to 16 lines) · Deterministic single-thread mode (`Threads = 1`) |
+| **Evaluation** | Bundled HalfKA NNUE network (`nnue/koi.nnue`, auto-discovered at boot) · Clean tapered classical evaluator selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce` |
+| **Protocol** | Standard FIDE chess over UCI · Flag-proof time management with adaptive network-overhead learning · In-place `ponder` / `ponderhit` · `UCI_ShowWDL` |
+| **Assets** | Bundled CC0 Polyglot opening book (`book/koi.bin`) · Automatic detection of local books (`book.bin`) and Syzygy tablebases (`syzygy/`) |
+| **Hardware** | Automatic CPU dispatch on x86-64 (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon (`arm64`) support |
 
-The engine is called **Koi**. Releases up to and including v1.1.5, their package
-metadata and archived documentation used the name "Koi Engine"; those historical
-artifacts are left unchanged. New releases, the UCI identity and the current
-documentation use **Koi**. Executable and archive file names keep the
-`koi-engine` spelling for tooling compatibility.
-## Download
+---
 
-Get the Windows, Linux x86-64, and macOS arm64 packages and their checksum
-sidecars from
-[GitHub Releases](https://github.com/nhatquang1701/Koi/releases).
+## Quick Start
 
-- Windows: `koi-engine-v1.1.6.zip`
-- Linux x86-64: `koi-engine-v1.1.6-linux-x86_64.tar.gz`
-- macOS arm64: `koi-engine-v1.1.6-macos-arm64.tar.gz`
+### 1. Download a Release Package
 
-macOS arm64 (Apple Silicon) can also build from source: install Homebrew LLVM
-(clang 19+; AppleClang 18+ also works), CMake, and Ninja, then configure with
-`-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`. The engine is CPU-only
-and the CPU NNUE path works normally. NNUE is required: a boot
-without a usable network exits with a clear diagnostic.
-See the [user guide](docs/USER_GUIDE.md#build-prerequisites) for the commands.
+Prebuilt archives and `.sha256` checksum sidecars are published on [GitHub Releases](https://github.com/nhatquang1701/Koi/releases):
 
-## Get started
+- **Windows x64:** `koi-engine-v1.1.6.zip`
+- **Linux x86-64:** `koi-engine-v1.1.6-linux-x86_64.tar.gz`
+- **macOS arm64 (Apple Silicon):** `koi-engine-v1.1.6-macos-arm64.tar.gz`
 
-1. Download and extract the archive for your system (or build from source when
-   no package matches your platform).
-2. Add `koi-engine.exe` (Windows) or `koi-engine` (Linux and macOS) as a UCI
-   engine in En Croissant or another compatible chess GUI.
-3. Start with `Hash=512` and `Threads=1`.
+Each release archive is self-contained and includes the engine binaries, the gated network (`nnue/koi.nnue`), the custom CC0 opening book (`book/koi.bin`), required third-party notices, and a cryptographic `package.json` provenance manifest.
 
-Koi needs no configuration file or extra assets. `Threads=1` gives deterministic
-search; multiple threads use Lazy SMP and can produce different valid
-principal variations. `OwnBook` defaults to false, but a Polyglot book beside
-the executable is auto-detected and used (release packages bundle a custom CC0
-book). The gated NNUE network is bundled too and is required at boot; a missing
-or rejected network is a startup error (exit 4), while a runtime `EvalFile`
-rejection keeps the current evaluator and reports an `info string`.
+### 2. Register in Your Chess GUI
 
-## Explore
+1. Extract the archive to a permanent folder.
+2. Add `koi-engine.exe` (Windows) or `koi-engine` (Linux / macOS) as a UCI engine in **En Croissant**, **Lucas Chess**, **Arena**, **Cute Chess**, or any compatible UCI interface.
+3. Recommended starting options:
+   - `Hash = 512` (shared transposition table in MB)
+   - `Threads = 1` for deterministic single-thread search, or `Threads = 4` for multi-threaded Lazy SMP
 
-- [Documentation site](https://nhatquang1701.github.io/Koi/) — installation,
-  UCI options, GUI setup, development guidance, and project archive.
-- [User guide](docs/USER_GUIDE.md) — build instructions, protocol behavior,
-  optional assets, and tools.
-- [Documentation map](docs/README.md) — maintained documentation and history.
+Koi works out of the box with zero configuration files:
+
+- **NNUE network:** Automatically discovered from `nnue/koi.nnue` or `koi.nnue` beside the executable.
+- **Opening book:** Copy `book/koi.bin` beside the binary as `book.bin` to enable automatic Polyglot book lookup (or point `BookFile` at any `.bin` book and set `OwnBook = true`).
+- **Syzygy tablebases:** Place `.rtbw` and `.rtbz` files in a `syzygy/` folder beside the executable (or set `SyzygyPath`) for automatic root and interior probing.
+
+---
+
+## Building from Source
+
+Koi requires **CMake 3.31+**, **Ninja**, and a C++26 compiler (**MSVC 19.40+** on Windows, **GCC 14+** or **Clang 18+** on Linux, or **Homebrew LLVM Clang 19+ / AppleClang 18+** on macOS arm64).
+
+**Windows (x64 Visual Studio Developer PowerShell):**
+
+```powershell
+cmake -S . -B build\release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl
+cmake --build build\release --config Release
+ctest --test-dir build\release -C Release -j 8 --output-on-failure
+```
+
+**Linux (x86-64):**
+
+```bash
+cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
+cmake --build build/release --config Release
+ctest --test-dir build/release -C Release -j 8 --output-on-failure
+```
+
+**macOS (Apple Silicon `arm64`):**
+
+```bash
+brew install llvm ninja
+cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" \
+  -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" \
+  -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
+cmake --build build/release --config Release
+ctest --test-dir build/release -C Release -j 8 --output-on-failure
+```
+
+See the [User Guide](docs/USER_GUIDE.md#build-prerequisites) for complete build options, CPU variant overrides (`KOI_CPU_VARIANT`), and developer tools (`koi-bench`, `koi-perft`, `koi-replay`).
+
+---
+
+## Documentation
+
+- **[Documentation Site](https://nhatquang1701.github.io/Koi/)** — Full browsable documentation with search and interactive diagrams.
+- **[User Guide](docs/USER_GUIDE.md)** — Installation, UCI options reference, time controls, GUI workflows, and optional assets.
+- **[System Architecture](docs/ARCHITECTURE.md)** — Module boundaries, search/evaluation data flow, concurrency model, and fail-closed contracts.
+- **[Engine Specification](docs/ENGINE_SPEC.md)** — Complete technical specification of rules, search heuristics, NNUE containers, and UCI semantics.
+- **[NNUE Pipeline](docs/NNUE_PIPELINE.md)** — Self-play data generation, PyTorch/Bullet training, quantization, and SPRT promotion gates.
+- **[Developer Tools](tools/README.md) & [Test Suite](tests/README.md)** — Benchmarks, Elo measurement harnesses, fuzzers, and CTest layout.
+- **[Documentation Map](docs/README.md)** — Index of all guides, release notes, and historical records.
+
+> **Note on Naming:** The engine is called **Koi** (reporting `id name Koi <version>` in the UCI handshake). Releases through v1.1.5 used "Koi Engine" in prose; executable and archive file names retain `koi-engine` for script and GUI compatibility.
+
+---
 
 ## License
 
-Koi is released under the [MIT License](LICENSE). Release packages also
-include the required licenses for vendored components.
+Koi is released under the [MIT License](LICENSE). Release packages also include the license notices for vendored components (`Disservin/chess-library` and `Fathom`).

@@ -1,10 +1,8 @@
-# Apple Silicon (macOS arm64) worker setup
+# Apple Silicon (`macOS arm64`) Worker Setup
 
-> **HCE removed 2026-10-28:** the hand-crafted classical evaluator was removed (a clean rewrite is planned, `docs/HCE_REMOVAL_PLAN.md`). NNUE is required; text below that describes classical evaluation as current behaviour is historical.
-
-How to build, test, and measure Koi on an Apple Silicon Mac — the class of
-machine the project uses for its speed gates (benchmarks, node-count
-measurements, and self-play A/B runs).
+How to build, test, and benchmark Koi on an Apple Silicon Mac—the quiet reference
+platform used for Koi's speed gates, depth sweeps, NNUE training, and equal-time
+SPRT matches.
 
 ## Toolchain
 

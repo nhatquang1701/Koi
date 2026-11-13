@@ -1,12 +1,15 @@
-# Koi developer tools
-
-> **HCE rewrite:** the old hand-crafted evaluator was removed 2026-10-28 and is being cleanly rewritten. NNUE remains the default; the HCE is selectable with `EvalMode=hce` or `KOI_EVALUATOR=hce`. Text below that describes the old classical evaluator as current behaviour is historical.
+# Koi Developer Tools
 
 The tools are grouped by the job they perform. They resolve the repository root
 from their own location, so commands are safe to run from any working directory.
 Durable reports, match logs, and packages default under `artifacts/`; temporary
 test scratch space may use the operating-system temporary directory and must be
 cleaned up by the caller.
+
+> **Evaluator Note:** NNUE is the default and production evaluator; the clean
+> hand-crafted classical evaluator (`src/koi/classical_evaluator.*`) is
+> selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce` for development and
+> measurement.
 
 Directory map:
 

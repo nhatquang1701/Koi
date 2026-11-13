@@ -18,8 +18,8 @@ flowchart TD
     CONTEXT --> TT["transposition_table.cpp<br/>24-byte entries<br/>hazard lease · generations"]
     CONTEXT --> SEE["static_exchange.cpp<br/>bitboard SEE"]
     CONTEXT --> ORDER["search_ordering.cpp<br/>history · killers · counters"]
-    CONTEXT --> EVAL["nnue.cpp<br/>NNUE evaluator (required)"]
-    EVAL --> NNUE["nnue.cpp<br/>int16 accumulators<br/>AVX2 kernels · 8 buckets"]
+    CONTEXT --> EVAL["Evaluator boundary<br/>NNUE (default) · Clean HCE (EvalMode=hce)"]
+    EVAL --> NNUE["nnue.cpp · classical_evaluator.cpp<br/>int16 accumulators · AVX2 · tapered HCE"]
     UCI --> BOOK["opening_book.cpp<br/>optional Polyglot book"]
     UCI --> TB["syzygy_tablebase.cpp<br/>optional Syzygy probing"]
 ```
@@ -212,8 +212,9 @@ The clean HCE is an optional evaluator, not a second production default:
 2. The search service snapshots the request and hands it to the runner.
 3. The runner drives iterative deepening over the shared transposition table
    and, with `Threads > 1`, over Lazy SMP workers.
-4. Every node evaluates through the active evaluator: NNUE by default, or the clean HCE when explicitly selected
-   network, and orders moves through the shared ordering tables.
+4. Every node evaluates through the active evaluator (NNUE by default, or the
+   clean HCE when explicitly selected) and orders moves through the per-worker
+   ordering tables.
 5. Completed root iterations are published back through the UCI controller,
    which is the only component that writes protocol output.
 

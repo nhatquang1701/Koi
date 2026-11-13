@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
 
-REPOSITORY_URL = "https://github.com/nhatquang1701/Koi-engine"
+REPOSITORY_URL = "https://github.com/nhatquang1701/Koi"
 BRANCH = "koi-engine"
 SCRIPT_PATH = Path(__file__).resolve()
 REPOSITORY_ROOT = SCRIPT_PATH.parents[2]
