@@ -1123,13 +1123,7 @@ void test_short_search_preserves_the_defensive_rook_lift() {
             "the defensive-rook fixture must contain the reviewed legal moves");
 
     koi::SearchLimits limits;
-#if defined(__SANITIZE_THREAD__)
-    // ThreadSanitizer's instrumented search needs a larger budget to reach the
-    // same completed root iteration as the release build.
-    limits.movetime = 1000ms;
-#else
     limits.movetime = 100ms;
-#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1252,13 +1246,7 @@ void test_short_oracle_rejects_the_b2b1_rook_retreat() {
             "the b2b1 fixture must contain the reviewed legal rook retreat");
 
     koi::SearchLimits limits;
-#if defined(__SANITIZE_THREAD__)
-    // ThreadSanitizer's instrumented search needs a larger budget to reach the
-    // same completed root iteration as the release build.
-    limits.movetime = 1000ms;
-#else
     limits.movetime = 100ms;
-#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1458,13 +1446,7 @@ void test_short_oracle_rejects_the_d5c6_mating_blunder() {
                 queen_capture_metadata->captured_piece == koi::PieceType::queen,
             "the d5d6 replacement line must capture the white queen");
     koi::SearchLimits limits;
-#if defined(__SANITIZE_THREAD__)
-    // ThreadSanitizer's instrumented search needs a larger budget to reach the
-    // same completed root iteration as the release build.
-    limits.movetime = 1000ms;
-#else
     limits.movetime = 100ms;
-#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1542,13 +1524,7 @@ void test_short_search_avoids_the_d2c1_king_trap() {
             "the d2c1 fixture must contain both legal king escapes");
 
     koi::SearchLimits limits;
-#if defined(__SANITIZE_THREAD__)
-    // ThreadSanitizer's instrumented search needs a larger budget to reach the
-    // same completed root iteration as the release build.
-    limits.movetime = 1000ms;
-#else
     limits.movetime = 100ms;
-#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1575,13 +1551,7 @@ void test_short_search_rejects_the_c5b4_queen_check_trap() {
             "the c5b4 fixture must contain both reviewed legal moves");
 
     koi::SearchLimits limits;
-#if defined(__SANITIZE_THREAD__)
-    // ThreadSanitizer's instrumented search needs a larger budget to reach the
-    // same completed root iteration as the release build.
-    limits.movetime = 1000ms;
-#else
     limits.movetime = 100ms;
-#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1608,13 +1578,7 @@ void test_short_search_keeps_the_c5f2_forcing_capture() {
             "the c5f2 fixture must contain both reviewed legal moves");
 
     koi::SearchLimits limits;
-#if defined(__SANITIZE_THREAD__)
-    // ThreadSanitizer's instrumented search needs a larger budget to reach the
-    // same completed root iteration as the release build.
-    limits.movetime = 1000ms;
-#else
     limits.movetime = 100ms;
-#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1641,13 +1605,7 @@ void test_short_search_keeps_the_a5c5_forcing_check() {
             "the a5c5 fixture must contain both reviewed legal moves");
 
     koi::SearchLimits limits;
-#if defined(__SANITIZE_THREAD__)
-    // ThreadSanitizer's instrumented search needs a larger budget to reach the
-    // same completed root iteration as the release build.
-    limits.movetime = 1000ms;
-#else
     limits.movetime = 100ms;
-#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
