@@ -1123,7 +1123,13 @@ void test_short_search_preserves_the_defensive_rook_lift() {
             "the defensive-rook fixture must contain the reviewed legal moves");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // same completed root iteration as the release build.
+    limits.movetime = 1000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1246,7 +1252,13 @@ void test_short_oracle_rejects_the_b2b1_rook_retreat() {
             "the b2b1 fixture must contain the reviewed legal rook retreat");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // same completed root iteration as the release build.
+    limits.movetime = 1000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1446,7 +1458,13 @@ void test_short_oracle_rejects_the_d5c6_mating_blunder() {
                 queen_capture_metadata->captured_piece == koi::PieceType::queen,
             "the d5d6 replacement line must capture the white queen");
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // same completed root iteration as the release build.
+    limits.movetime = 1000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1524,7 +1542,13 @@ void test_short_search_avoids_the_d2c1_king_trap() {
             "the d2c1 fixture must contain both legal king escapes");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // same completed root iteration as the release build.
+    limits.movetime = 1000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1551,7 +1575,13 @@ void test_short_search_rejects_the_c5b4_queen_check_trap() {
             "the c5b4 fixture must contain both reviewed legal moves");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // same completed root iteration as the release build.
+    limits.movetime = 1000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1578,7 +1608,13 @@ void test_short_search_keeps_the_c5f2_forcing_capture() {
             "the c5f2 fixture must contain both reviewed legal moves");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // same completed root iteration as the release build.
+    limits.movetime = 1000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1605,7 +1641,13 @@ void test_short_search_keeps_the_a5c5_forcing_check() {
             "the a5c5 fixture must contain both reviewed legal moves");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // same completed root iteration as the release build.
+    limits.movetime = 1000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1743,7 +1785,13 @@ void test_short_search_checks_recapture_before_material_capture() {
             "the recapture-priority fixture must expose the immediate king recapture");
 
     koi::SearchLimits limits;
+#if defined(__SANITIZE_THREAD__)
+    // ThreadSanitizer's instrumented search needs a larger budget to reach the
+    // same completed root iteration as the release build.
+    limits.movetime = 3000ms;
+#else
     limits.movetime = 100ms;
+#endif
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -4433,7 +4481,7 @@ void test_service_hash_configuration_survives_default_start_and_non_default_over
     koi::SearchLimits limits;
     limits.depth = 1;
 
-    service.set_hash_size_mb(1);
+    (void)service.set_hash_size_mb(1);
     require(service.hash_size_mb() == 1, "service hash configuration must accept 1 MB");
     search(service, koi::GameState::startpos(), limits);
     require(service.hash_size_mb() == 1, "default SearchOptions must preserve the configured service hash size");
@@ -4463,7 +4511,7 @@ void test_hash_configuration_clamps_to_uci_bounds_and_clear_discards_warmed_entr
     const koi::SearchResult cleared = search(service, koi::GameState::startpos(), one_ply);
     require(cleared.stats.tt_hits == 0, "Clear Hash must remove entries used by a subsequent root search");
 
-    service.set_hash_size_mb(0);
+    (void)service.set_hash_size_mb(0);
     require(service.hash_size_mb() == 1, "hash size must clamp to the UCI lower bound of 1 MB");
 }
 
@@ -4491,7 +4539,7 @@ void test_transposition_table_stores_probes_and_clears_entries() {
 
     table.clear();
     require(!table.probe(0x0123456789abcdefULL).has_value(), "clear must remove a stored entry");
-    table.set_size_mb(1);
+    (void)table.set_size_mb(1);
     require(table.size_mb() == 1, "hash configuration must accept the lower 1 MB bound");
 }
 
@@ -4706,7 +4754,7 @@ void test_transposition_table_survives_concurrent_probe_store_and_resize() {
     }
     for (int iteration = 0; iteration < 40; ++iteration) {
         const std::size_t megabytes = iteration % 2 == 0 ? 1 : 2;
-        table.set_size_mb(megabytes);
+        (void)table.set_size_mb(megabytes);
         require(table.size_mb() == megabytes, "serialized resize must publish the requested table size");
     }
     for (std::thread& worker : workers) {
@@ -4740,7 +4788,7 @@ void test_transposition_table_survives_mixed_concurrent_maintenance() {
             table.new_generation();
             table.clear();
             const std::size_t megabytes = iteration % 2 == 0 ? 1 : 2;
-            table.set_size_mb(megabytes);
+            (void)table.set_size_mb(megabytes);
             if (table.size_mb() != megabytes) {
                 invalid_size.store(true, std::memory_order_relaxed);
             }
