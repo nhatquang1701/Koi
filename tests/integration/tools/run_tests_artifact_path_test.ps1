@@ -50,6 +50,7 @@ $global:LASTEXITCODE = 0
 Set-Content -LiteralPath $fakeCTestPath -Value $fakeCTest -Encoding utf8NoBOM
 
 try {
+    Write-Output '[1/2] invoke run_tests.ps1 with fake ctest and relative OutputDirectory'
     Push-Location $repositoryRoot
     try {
         & $powerShellPath -NoProfile -File $RunTestsPath `
@@ -63,6 +64,7 @@ try {
         Pop-Location
     }
 
+    Write-Output '[2/2] verify JUnit XML and LastTest.log artifacts'
     if (-not (Test-Path -LiteralPath $junitPath -PathType Leaf)) {
         throw "CTest did not leave ctest-junit.xml in the selected output directory '$outputDirectory'."
     }

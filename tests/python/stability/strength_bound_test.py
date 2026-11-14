@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 SCRIPT = ROOT / "tools" / "stability" / "strength_bound.py"
 CANDIDATE = "a" * 64
 BASELINE = "b" * 64

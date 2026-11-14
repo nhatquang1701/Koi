@@ -17,6 +17,9 @@
 # 15000).  Every process started here is tracked in the module so a caller's
 # trap handler can call Stop-AllUciSessions and never orphan an engine.
 
+Import-Module ([System.IO.Path]::GetFullPath(
+    (Join-Path $PSScriptRoot '../../tools/stability/EtaSupport.psm1'))) -Force
+
 $script:UciTimeoutMilliseconds = if ($env:KOI_UCI_TIMEOUT_MS) {
     [int]$env:KOI_UCI_TIMEOUT_MS
 } else {
@@ -267,6 +270,25 @@ function Test-SearchInfo {
     return $Line -match '^info depth [1-9][0-9]* seldepth [0-9]+ multipv ([1-9]|1[0-6])( currmove [a-h][1-8][a-h][1-8][nbrq]?( currmovenumber [1-9][0-9]*)?)?( score (cp|mate) -?[0-9]+( (lowerbound|upperbound))?( wdl [0-9]+ [0-9]+ [0-9]+)?)? nodes [0-9]+ nps [0-9]+ hashfull [0-9]+ time [0-9]+ pv( [a-h][1-8][a-h][1-8][nbrq]?)*( tbhits [0-9]+)?$'
 }
 
+$script:ProgressStartedUtc = $null
+$script:ProgressTotal = 0
+
+function Write-TestProgress {
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [int]$Step,
+        [Parameter(Mandatory = $true, Position = 1)]
+        [int]$Total,
+        [Parameter(Mandatory = $true, Position = 2)]
+        [string]$Label
+    )
+    if ($null -eq $script:ProgressStartedUtc -or $Step -le 1 -or $Total -ne $script:ProgressTotal) {
+        $script:ProgressStartedUtc = [DateTime]::UtcNow
+        $script:ProgressTotal = $Total
+    }
+    Write-Output (Format-StepProgress -Step $Step -Total $Total -Label $Label -StartedUtc $script:ProgressStartedUtc)
+}
+
 Export-ModuleMember -Function Start-UciSession, Stop-AllUciSessions, Send-UciCommand,
     Stop-TimedOutSession, Read-UciLine, Read-UciUntil, Complete-UciSession,
-    Stop-UciSession, Test-SearchInfo
+    Stop-UciSession, Test-SearchInfo, Write-TestProgress

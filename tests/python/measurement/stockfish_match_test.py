@@ -2,6 +2,10 @@ import contextlib
 import io
 import unittest
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 
 from tools.measurement import stockfish_match
 

@@ -3,10 +3,13 @@
 import importlib.util
 import pathlib
 import struct
+import sys
 import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 INFO_PATH = ROOT / "tools" / "measurement" / "nnue_info.py"
 TRAINER_PATH = ROOT / "tools" / "measurement" / "train_nnue_koi.py"
 

@@ -9,6 +9,7 @@ Import-Module ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../sup
 
 $session = Start-UciSession -Executable $EnginePath
 try {
+    Write-TestProgress 1 4 'UCI handshake and stopped analysis search'
     Send-UciCommand $session 'uci'
     if ((Read-UciUntil -Session $session -Description 'uciok' -ValidateUciOutput -Predicate { param($line) $line -ceq 'uciok' }) -cne 'uciok') {
         throw 'UCI handshake did not complete.'
@@ -36,6 +37,7 @@ try {
         throw 'Stopped analysis did not fence at readyok.'
     }
 
+    Write-TestProgress 2 4 'MultiPV=3 ranked search'
     Send-UciCommand $session 'position startpos moves e2e4 e7e5 g1f3'
     Send-UciCommand $session 'go depth 2'
     $secondBestmoves = [System.Collections.Generic.List[string]]::new()
@@ -57,6 +59,7 @@ try {
         throw "MultiPV search did not emit ranks 1-3 and exactly one bestmove."
     }
 
+    Write-TestProgress 3 4 'infinite analysis readiness and interim progress'
     Send-UciCommand $session 'position startpos moves e2e4 e7e5'
     Send-UciCommand $session 'go infinite'
     Send-UciCommand $session 'isready'
@@ -90,6 +93,7 @@ try {
         throw "Infinite analysis emitted an invalid bestmove: $thirdBestmove"
     }
 
+    Write-TestProgress 4 4 'shutdown and transcript verification'
     Send-UciCommand $session 'register later'
     Send-UciCommand $session 'debug on'
     $null = Complete-UciSession $session $true

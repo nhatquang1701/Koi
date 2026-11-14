@@ -7,6 +7,8 @@ from pathlib import Path
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPOSITORY_ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 REPORT_SCRIPT = REPOSITORY_ROOT / "tools" / "measurement" / "strength_report.py"
 
 

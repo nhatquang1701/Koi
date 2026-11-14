@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 sys.path.insert(0, str(ROOT / "tools" / "measurement"))
 
 import koi_chess  # noqa: E402

@@ -24,6 +24,7 @@ function Read-RepositoryFile([string]$RelativePath) {
 
 # 0a. Public value headers stay light: search_types forward-declares the rules
 # facade instead of pulling the whole GameState header.
+Write-Output '[1/4] check public headers, protocol writer purity, and detail include allowlist'
 $searchTypesHeader = Read-RepositoryFile 'src/koi/search_types.hpp'
 if ($searchTypesHeader -match '#include\s+"koi/game_state\.hpp"') {
     Fail 'search_types.hpp must forward-declare GameState instead of including game_state.hpp'
@@ -92,6 +93,7 @@ foreach ($header in $publicHeaders) {
 }
 
 # 3. Only the UCI controller itself may include its header within src/.
+Write-Output '[2/4] check UCI controller firewall, option catalog, and test-support separation'
 $controllerIncludes = Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -Recurse -File |
     Where-Object { $_.Extension -in '.hpp', '.cpp' } |
     Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match '#include\s+"koi/uci_controller\.hpp"' }
@@ -182,6 +184,7 @@ foreach ($required in @('tests/support/nnue_synthetic.cpp', 'tests/support/nnue_
 
 # 3e. The bounded root-fallback policy is its own detail unit; the driver owns
 # flow and must not reintroduce the scanners inline.
+Write-Output '[3/4] check detail units (root fallback, GameState impl, FEN validation, worker pools)'
 foreach ($required in @('src/koi/detail/root_fallback.hpp', 'src/koi/detail/root_fallback.cpp')) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
         Fail "$required is missing"
@@ -254,6 +257,7 @@ if (-not $statsHeader.Contains('inline void accumulate_stats(')) {
 }
 
 # 4. Engine core sources must not contain dead/tooling translation units.
+Write-Output '[4/4] check CMake core sources, reliability fuzzer location, and architecture docs'
 $cmake = Read-RepositoryFile 'CMakeLists.txt'
 $coreMatch = [regex]::Match($cmake, '(?s)set\(KOI_CORE_SOURCES(.*?)\n\)')
 if (-not $coreMatch.Success) {

@@ -146,6 +146,7 @@ function Invoke-EvaluatorMatch([string]$Mode, [string]$EvalFile, [string]$Output
 $outputDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("koi-match-test-" + [guid]::NewGuid().ToString('N'))
 $fenFile = Join-Path $outputDirectory 'terminal.fen'
 try {
+    Write-TestProgress 1 11 'baseline v2 UCI match report and PGN'
     $output = & $PowerShellExecutable -NoProfile -ExecutionPolicy Bypass -File $matchScript `
         -KoiPath $EnginePath -OpponentPath $EnginePath -Depth 1 -Games 1 `
         -MaxPlies 2 -OutputDirectory $outputDirectory
@@ -232,6 +233,7 @@ try {
         throw 'UCI match JSON must record the final per-move evaluation.'
     }
 
+    Write-TestProgress 2 11 'compact search info and JSON UCI option snapshots'
     $chatterDirectory = Join-Path $outputDirectory 'compact-search-info'
     New-Item -ItemType Directory -Path $chatterDirectory -Force | Out-Null
     $chatterKoi = New-ScriptedUciEngine -FixturePath $fixturePath -Directory $chatterDirectory 'info-chatter-koi'
@@ -282,6 +284,7 @@ try {
         throw 'JSON UCI options must be applied to the selected engine role and recorded in match provenance.'
     }
 
+    Write-TestProgress 3 11 'SPRT comparison color runs and option forwarding'
     $sprtCompareScript = Join-Path $repositoryRoot 'tools/stability/sprt_compare.ps1'
     $sprtOpeningPath = Join-Path $jsonOptionsDirectory 'sprt-opening.txt'
     [System.IO.File]::WriteAllText(
@@ -322,6 +325,7 @@ try {
         }
     }
 
+    Write-TestProgress 4 11 'NNUE v4/v5 evaluator attestation and rejection checks'
     $nnueDirectory = Join-Path $outputDirectory 'nnue-attestation'
     New-Item -ItemType Directory -Path $nnueDirectory -Force | Out-Null
     $nnueFixturePath = Join-Path (Split-Path -Parent $EnginePath) "koi-nnue-fixture$binarySuffix"
@@ -371,6 +375,7 @@ try {
         }
     }
 
+    Write-TestProgress 5 11 'package archive and clean-source manifest binding'
     $boundDirectory = Join-Path $outputDirectory 'package-bound'
     New-Item -ItemType Directory -Path $boundDirectory -Force | Out-Null
     $packageEnginePath = Join-Path $boundDirectory ([System.IO.Path]::GetFileName($EnginePath))
@@ -447,6 +452,7 @@ try {
             "(exit=$($rejectedMatch.exit_code), output=$($rejectedMatch.output -join ' | ')).")
     }
 
+    Write-TestProgress 6 11 'terminal checkmate, threefold repetition, and illegal move adjudication'
     New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
     Set-Content -LiteralPath $fenFile -Value 'forced-mate | 7k/6Q1/5K2/8/8/8/8/8 b - - 0 1' -Encoding UTF8
     $terminalOutputDirectory = Join-Path $outputDirectory 'terminal'
@@ -497,6 +503,7 @@ try {
         throw 'Rejected moves must not be serialized into PGN movetext.'
     }
 
+    Write-TestProgress 7 11 'opening suite, 5+3 clock accounting, and invalid-opening preflight'
     $openingDirectory = Join-Path $outputDirectory 'opening-clock-book'
     New-Item -ItemType Directory -Path $openingDirectory -Force | Out-Null
     $bookKoi = New-ScriptedUciEngine -FixturePath $fixturePath -Directory $openingDirectory 'book-koi'
@@ -606,6 +613,7 @@ try {
         throw 'Illegal opening moves must fail replay validation before either engine begins a game.'
     }
 
+    Write-TestProgress 8 11 'engine timeout retirement and SPRT win/lose/balanced stopping'
     $timeoutDirectory = Join-Path $outputDirectory 'timeout'
     New-Item -ItemType Directory -Path $timeoutDirectory -Force | Out-Null
     $slowKoi = New-ScriptedUciEngine -FixturePath $fixturePath -Directory $timeoutDirectory 'slow-koi'
@@ -676,6 +684,7 @@ try {
     # fixed color and RandomSeed, so repeated games were byte-identical.
     # Paired games must now alternate Koi's color and every game must carry
     # its own derived RandomSeed.
+    Write-TestProgress 9 11 'paired-color seed derivation and duplicate-game detection'
     $pairedDirectory = Join-Path $outputDirectory 'paired-colors'
     New-Item -ItemType Directory -Path $pairedDirectory -Force | Out-Null
     $pairedKoi = New-ScriptedUciEngine -FixturePath $fixturePath -Directory $pairedDirectory 'mate-white'
@@ -721,6 +730,7 @@ try {
         throw 'Identical deterministic play with distinct seeds must be flagged as a duplicate game, not counted twice.'
     }
 
+    Write-TestProgress 10 11 'net_match.ps1 clean and duplicate-opening attestation'
     $netMatchScript = Join-Path $repositoryRoot 'tools/nnue/net_match.ps1'
     if (-not (Test-Path -LiteralPath $netMatchScript -PathType Leaf)) {
         throw "net match script is missing: $netMatchScript"
@@ -798,6 +808,7 @@ try {
         throw 'A net match with repeated move sequences must warn loudly about duplicate games with real counts.'
     }
 
+    Write-TestProgress 11 11 'net_match.ps1 opening resolver, verdict matrix, and SPRT duplicate check'
     $netMatchTokens = $null
     $netMatchParseErrors = $null
     $netMatchAst = [System.Management.Automation.Language.Parser]::ParseFile(

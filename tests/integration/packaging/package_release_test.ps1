@@ -88,6 +88,7 @@ function Invoke-BoundedProcess {
 }
 
 try {
+    Write-Output '[1/4] build default package and verify manifest, checksums, and provenance'
     & $powerShellExecutable -NoProfile -ExecutionPolicy Bypass -File $PackageScript `
         -BuildDirectory $BuildDirectory -OutputDirectory $outputDirectory | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "package script exited with $LASTEXITCODE" }
@@ -149,6 +150,7 @@ try {
     $sidecar = (Get-Content -LiteralPath $archiveHashPath -Raw).Trim()
     Assert-True ($sidecar -match "^$archiveHash\s+\*?$([regex]::Escape($archivePathName))$") 'archive SHA-256 sidecar does not match the archive'
 
+    Write-Output '[2/4] extract archive and run replay/engine UCI smoke'
     $extractionDirectory = Join-Path $outputDirectory 'extracted'
     New-Item -ItemType Directory -Path $extractionDirectory -Force | Out-Null
     if ($isWindowsHost) {
@@ -195,6 +197,7 @@ try {
         Assert-True (@($replay.StandardOutput -split "`r?`n") -contains 'legal 1') "$label bestmove is not legal from startpos: $bestmove"
     }
 
+    Write-Output '[3/4] verify bundled NNUE network and metadata packaging'
     $netSourceDirectory = Join-Path $outputDirectory 'net-source'
     New-Item -ItemType Directory -Path $netSourceDirectory -Force | Out-Null
     $netSource = Join-Path $netSourceDirectory 'candidate.nnue'
@@ -218,6 +221,7 @@ try {
     $netPaths = @($netManifest.files | ForEach-Object { [string]$_.path })
     Assert-True ($netPaths -contains 'nnue/koi.nnue') 'manifest file list is missing the network'
 
+    Write-Output '[4/4] verify NNUE gate report acceptance and rejection enforcement'
     $gateReport = Join-Path $netSourceDirectory 'nnue-gate.json'
     [ordered]@{
         schema = 'koi-nnue-gate-test-v1'

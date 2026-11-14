@@ -23,6 +23,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'EtaSupport.psm1') -Force
+
 function Assert-File([string]$Path, [string]$Description) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "$Description is missing: $Path"
@@ -291,6 +293,7 @@ $failed = $false
 $failureRecord = $null
 
 if (-not $PlanOnly) {
+    $campaignLoopStartUtc = [DateTime]::UtcNow
     foreach ($item in $schedule) {
         $gameDirectory = Join-Path $campaignRoot $item.game_directory
         New-Item -ItemType Directory -Path $gameDirectory -Force | Out-Null
@@ -405,8 +408,11 @@ if (-not $PlanOnly) {
                 failed_games = $failedCount
                 records = @($records)
             })
-        Write-Output ("game {0}/{1} group={2} source={3} threads={4} result={5} failures={6}" -f
-            $item.ordinal, $Games, $item.group, $item.source_kind, $item.threads, $gameRecord.termination, $gameRecord.failure)
+        $campaignEta = Get-LinearEta -Completed $completedCount -Total $Games `
+            -ElapsedSeconds ([DateTime]::UtcNow - $campaignLoopStartUtc).TotalSeconds
+        Write-Output ("game {0}/{1} group={2} source={3} threads={4} result={5} failures={6} elapsed={7} eta={8}" -f
+            $item.ordinal, $Games, $item.group, $item.source_kind, $item.threads, $gameRecord.termination, $gameRecord.failure,
+            $campaignEta.elapsed_text, $campaignEta.eta_text)
         if ($runFailure) {
             $failed = $true
             $failureRecord = [ordered]@{

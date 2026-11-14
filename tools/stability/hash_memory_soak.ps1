@@ -13,6 +13,8 @@ if ([string]::IsNullOrWhiteSpace($EnginePath)) {
 
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'EtaSupport.psm1') -Force
+
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $resolvedEnginePath = [System.IO.Path]::GetFullPath($EnginePath)
 $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
@@ -166,11 +168,15 @@ function Invoke-HashProbe {
 
 $records = [System.Collections.Generic.List[object]]::new()
 $failures = [System.Collections.Generic.List[string]]::new()
+$totalProbes = $parsedHashValues.Count * $Cycles
+$probeIndex = 0
+$soakStartedUtc = [DateTime]::UtcNow
 foreach ($hash in $parsedHashValues) {
     if ($hash -lt 1 -or $hash -gt 4096) {
         throw "Hash value is outside the public UCI range: $hash"
     }
     for ($cycle = 1; $cycle -le $Cycles; ++$cycle) {
+        ++$probeIndex
         $caseDirectory = Join-Path $runDirectory ("hash-{0:D4}-cycle-{1:D2}" -f $hash, $cycle)
         New-Item -ItemType Directory -Path $caseDirectory -Force | Out-Null
         try {
@@ -182,6 +188,8 @@ foreach ($hash in $parsedHashValues) {
         } catch {
             $failures.Add("Hash=$hash cycle=$cycle exception=$($_.Exception.Message)")
         }
+        Write-Host (Format-StepProgress -Step $probeIndex -Total $totalProbes `
+            -Label "Hash=${hash}MB cycle=$cycle" -StartedUtc $soakStartedUtc -StepCompleted)
     }
 }
 

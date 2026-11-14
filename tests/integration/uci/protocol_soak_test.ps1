@@ -18,6 +18,8 @@ $TimeoutMilliseconds = if ($env:KOI_UCI_TIMEOUT_MS) {
 
 Import-Module ([System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '../../support/UciSession.psm1'))) -Force
+Import-Module ([System.IO.Path]::GetFullPath(
+    (Join-Path $PSScriptRoot '../../../tools/stability/EtaSupport.psm1'))) -Force
 
 trap {
     Stop-AllUciSessions
@@ -115,6 +117,12 @@ try {
         Send-UciCommand $session 'isready'
         [void](Read-UciUntil $session { param($candidate) $candidate -eq 'readyok' } "round $round readiness" -ValidateUciOutput)
 
+        $progressStep = [Math]::Max(1, [Math]::Min(10, [int][Math]::Floor($rounds / 5)))
+        if ((($round + 1) % $progressStep -eq 0) -or (($round + 1) -eq $rounds)) {
+            $pct = [int](($round + 1) * 100 / $rounds)
+            Write-Output (Format-StepProgress -Step ($round + 1) -Total $rounds `
+                -Label ("soak progress ({0}%)" -f $pct) -StartedUtc $started -StepCompleted)
+        }
         if (($round + 1) % 10 -eq 0) {
             $session.Process.Refresh()
             $currentBytes = $session.Process.WorkingSet64

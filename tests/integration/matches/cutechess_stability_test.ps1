@@ -136,6 +136,7 @@ function Assert-DiagnosticHarnessArtifacts {
         Set-Content -LiteralPath $fixtureOpening -Value '[Event "fixture"]' -Encoding ASCII
         Set-Content -LiteralPath $fixtureFen -Value 'start | rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' -Encoding ASCII
 
+        Write-Output '[1/6] diagnostic harness: success, odd-one, fixed-color, and FEN runs'
         New-FakeCutechess $fakeCutechess 'success'
         $successDirectory = Join-Path $fixtureRoot 'success'
         $successOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
@@ -237,6 +238,7 @@ function Assert-DiagnosticHarnessArtifacts {
             throw 'FEN provenance and converted opening artifacts must be recorded.'
         }
 
+        Write-Output '[2/6] diagnostic harness: campaign plan schedule and pairing allocation'
         $campaignPlanDirectory = Join-Path $fixtureRoot 'campaign-plan'
         $campaignOutput = @(& $CampaignScript -KoiPath $fixtureKoi -StockfishPath $fixtureOpponent `
             -CutechessPath $fakeCutechess -OutputDirectory $campaignPlanDirectory -Games 12 -PlanOnly)
@@ -266,6 +268,7 @@ function Assert-DiagnosticHarnessArtifacts {
             throw 'Campaign plan must allocate pairings, substitutions, sources, and threads deterministically.'
         }
 
+        Write-Output '[3/6] diagnostic harness: crash and disconnect classification'
         New-FakeCutechess $fakeCutechess 'crash'
         $crashDirectory = Join-Path $fixtureRoot 'crash'
         $crashOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
@@ -297,6 +300,7 @@ function Assert-DiagnosticHarnessArtifacts {
             throw 'An engine disconnect must be classified and fail the stability run.'
         }
 
+        Write-Output '[4/6] diagnostic harness: no-result, timeout, and time-forfeit classification'
         New-FakeCutechess $fakeCutechess 'no-result'
         $noResultDirectory = Join-Path $fixtureRoot 'no-result'
         $noResultOutput = @(& $StabilityScript -KoiPath $fixtureKoi -OpponentPath $fixtureOpponent `
@@ -371,6 +375,7 @@ if (-not (Test-Path -LiteralPath $EnginePath -PathType Leaf)) {
 $outputDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("koi-cutechess-stability-test-" + [guid]::NewGuid().ToString('N'))
 $fenFile = Join-Path $outputDirectory 'positions.fen'
 try {
+    Write-Output '[5/6] real Cutechess stability smoke (2 games)'
     $output = & $StabilityScript -KoiPath $EnginePath -OpponentPath $OpponentPath `
         -CutechessPath $CutechessPath -OutputDirectory $outputDirectory -Games 2 `
         -MaxMoves 4 -TimeControl '1+0' -Hash 16 -Threads 1 `
@@ -391,6 +396,7 @@ try {
         throw 'Cutechess stability smoke must complete two balanced, failure-free games.'
     }
 
+    Write-Output '[6/6] real Cutechess FEN conversion smoke (2 games)'
     New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
     Set-Content -LiteralPath $fenFile -Value @(
         '# A six-field FEN is converted to a Cutechess EPD opening.'

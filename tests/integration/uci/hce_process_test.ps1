@@ -21,6 +21,7 @@ try {
 
     $session = Start-UciSession -Executable $EnginePath
     try {
+        Write-TestProgress 1 2 'HCE handshake and readiness'
         Send-UciCommand $session 'uci'
         $uciok = Read-UciUntil -Session $session -Description 'uciok' -Predicate { param($line) $line -eq 'uciok' }
         if ($uciok -ne 'uciok') {
@@ -32,6 +33,7 @@ try {
             throw 'HCE engine did not answer isready.'
         }
 
+        Write-TestProgress 2 2 'HCE depth-4 search and clean shutdown'
         Send-UciCommand $session 'position startpos'
         Send-UciCommand $session 'go depth 4'
         $bestmove = Read-UciUntil -Session $session -Description 'bestmove' -Predicate {

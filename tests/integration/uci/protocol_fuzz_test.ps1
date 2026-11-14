@@ -100,6 +100,7 @@ function Assert-OneLegalBestmove($Result) {
 }
 
 # 1. Baseline: handshake, options, one completed search, clean shutdown.
+Write-TestProgress 1 25 'baseline handshake and oversized/malformed battery'
 $baseline = Invoke-UciTranscript "uci`nisready`nsetoption name Threads value 1`nsetoption name Hash value 8`nposition startpos`ngo depth 2`nstop`nquit`n" 'baseline'
 Assert-ProtocolGrammar $baseline
 Assert-CleanDiagnostics $baseline
@@ -219,6 +220,7 @@ foreach ($line in @($malformed.Diagnostics -split "`r?`n" | Where-Object { $_.Le
 }
 
 # 6. isready must answer while an infinite search is running.
+Write-TestProgress 2 25 'isready during infinite search'
 $interactive = Start-UciSession -Executable $EnginePath
 Send-UciCommand $interactive 'uci'
 [void](Read-UciUntil $interactive { param($line) $line -eq 'uciok' } 'uciok' -ValidateUciOutput)
@@ -239,6 +241,7 @@ Send-UciCommand $interactive 'quit'
 [void](Complete-UciSession $interactive $false)
 
 # 7. Seeded random sequences: deterministic, exit 0, no stderr, valid grammar.
+Write-TestProgress 3 25 'seeded random transcripts (60 cases)'
 $random = [System.Random]::new(20261031)
 $valid = @(
     'uci', 'isready', 'stop', 'ucinewgame',
@@ -277,6 +280,7 @@ for ($case = 0; $case -lt 60; $case++) {
 
 # 8. Lifecycle storms: the controller must stay single-writer and exactly-once
 # while searches are replaced, suppressed and stopped.
+Write-TestProgress 4 25 'lifecycle storms (interruption, ponder, hash resize)'
 function New-InteractiveSession([string]$Label) {
     $session = Start-UciSession -Executable $EnginePath
     Send-UciCommand $session 'uci'
@@ -389,6 +393,7 @@ if ((Count-Lines $ponderEof '^bestmove ') -ne 0) {
 
 # 9. Fail-closed asset matrix: malformed/missing NNUE, book and Syzygy inputs
 # must leave the engine usable, protocol-clean and crash-free.
+Write-TestProgress 5 25 'fail-closed asset matrix: malformed book/NNUE/Syzygy and hot-swap'
 $assetRoot = Join-Path (Split-Path -Parent $EnginePath) ("protocol-fuzz-assets-" + $PID)
 $assetEngine = Join-Path $assetRoot 'engine'
 $assetAuto = Join-Path $assetRoot 'engine-auto'
@@ -831,6 +836,7 @@ try {
     # 9m. Book eligibility matrix: MultiPV>1, infinite, ponder and searchmoves
     # all bypass the book; normal searches still use it (and MultiPV must return
     # to 1 for the book to come back).
+    Write-TestProgress 6 25 'fail-closed asset matrix: book eligibility and Syzygy path list'
     $assetElig = Join-Path $assetRoot 'engine-book-eligibility'
     New-Item -ItemType Directory -Path $assetElig -Force | Out-Null
     Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetElig $executableName)
@@ -945,6 +951,7 @@ try {
     # 9o. Unreadable book (ACL deny on Windows, chmod 000 on Unix): detection
     # must stay truthful (no "book detected") and the search must fall back;
     # replacing the file with a readable one is detected on the next search.
+    Write-TestProgress 7 25 'fail-closed asset matrix: unreadable book/Syzygy/EvalFile and links'
     $assetPerm = Join-Path $assetRoot 'engine-unreadable-book'
     New-Item -ItemType Directory -Path $assetPerm -Force | Out-Null
     Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetPerm $executableName)
@@ -1262,6 +1269,7 @@ try {
     # here only magic + zeros in 80 bytes): the size manifest must reject the
     # directory before Fathom maps it.  Without the gate this used to hang the
     # search with no bestmove.
+    Write-TestProgress 8 25 'fail-closed asset matrix: truncated Syzygy, FIFO/pipe paths, 16 MiB book'
     $assetTruncatedTb = Join-Path $assetRoot 'engine-truncated-syzygy'
     New-Item -ItemType Directory -Path $assetTruncatedTb -Force | Out-Null
     Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetTruncatedTb $executableName)
@@ -1616,6 +1624,7 @@ try {
 
     # 9z. Large distinct-key book (65,536 entries, none matching startpos): the
     # loader must bucket many keys without a book move or a crash.
+    Write-TestProgress 9 25 'fail-closed asset matrix: distinct-key and malformed-move books'
     $assetKeyedBook = Join-Path $assetRoot 'engine-distinct-key-book'
     New-Item -ItemType Directory -Path $assetKeyedBook -Force | Out-Null
     Copy-Item -LiteralPath $EnginePath -Destination (Join-Path $assetKeyedBook $executableName)
@@ -1705,6 +1714,7 @@ finally {
 # 10. Terminal and forced-draw roots, plus analysis mode.  Terminal roots
 # must answer `bestmove 0000`; a forced fivefold/locked draw must still produce
 # a legal move; analysis mode must publish a scored line and stay protocol-clean.
+Write-TestProgress 10 25 'terminal/forced-draw roots and MultiPV analysis mode'
 $mateRoot = Invoke-UciTranscript "uci`nisready`nposition fen 7k/6Q1/6K1/8/8/8/8/8 b - - 0 1`ngo depth 3`nstop`nquit`n" 'mate-root'
 Assert-ProtocolGrammar $mateRoot
 Assert-CleanDiagnostics $mateRoot
@@ -1757,6 +1767,7 @@ if (@($analysisLines | Where-Object { $_ -match 'book move|book detected' }).Cou
 # 11. searchmoves filtering: the completion gate must return one of the
 # requested legal moves, and an empty intersection must answer 0000 with one
 # explanatory info string (never a crash or an unrequested move).
+Write-TestProgress 11 25 'searchmoves filtering and partial-line EOF'
 $searchTwo = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo depth 3 searchmoves e2e4 d2d4`nstop`nquit`n" 'searchmoves-two'
 Assert-ProtocolGrammar $searchTwo
 Assert-CleanDiagnostics $searchTwo
@@ -1795,6 +1806,7 @@ Assert-OneLegalBestmove $partialEof
 
 # 13. A stop storm while a search is running: exactly one bestmove, then idle
 # stops stay quiet (a second bestmove would fail the readyok transcript check).
+Write-TestProgress 12 25 'active stop storm and ucinewgame during ponder'
 $stopStormActive = New-InteractiveSession 'active-stop-storm'
 Send-UciCommand $stopStormActive 'position startpos'
 Send-UciCommand $stopStormActive 'go infinite'
@@ -1838,6 +1850,7 @@ if ($ponderBestmoves.Count -ne 1) {
 # 15. Missing/minimal handshake and a huge searchmoves token list.  A GUI may
 # send commands before `uci` (or close immediately); the controller must stay
 # quiet, crash-free and still honour the later completion contract.
+Write-TestProgress 13 25 'missing handshake and 20k searchmoves tokens'
 $emptyInput = Invoke-UciTranscript "" 'empty-input'
 Assert-CleanDiagnostics $emptyInput
 if ((Count-Lines $emptyInput '^bestmove ') -ne 0) {
@@ -1869,6 +1882,7 @@ if ($hugeBest.Count -ne 1 -or $hugeBest[0] -notmatch '^bestmove e2e4( ponder [a-
 # 16. Extreme clock limits and the ponder stop/ponderhit contracts.  All of
 # these must finish with a legal (or suppressed, for the idle ponderhit) answer
 # and a clean shutdown.
+Write-TestProgress 14 25 'extreme clock limits and ponder stop/ponderhit contracts'
 foreach ($clockCommand in @(
         'go wtime 0 btime 0',
         'go wtime 1 btime 1',
@@ -1907,6 +1921,7 @@ if (@($idlePonderhitLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 0
 # 17. A very long legal reversible history (16k cycles ~ 320 KB line) must
 # parse and search promptly; halfmove-clock overflow beyond 65535 plies is
 # rejected as an invalid move while the prior position is retained.
+Write-TestProgress 15 25 '64k-ply reversible history and ponder-quit'
 $reversibleCycle = 'g1f3 g8f6 f3g1 f6g8 '
 $longMoves = (($reversibleCycle * 16000).Trim())
 $longHistory = Invoke-UciTranscript "uci`nisready`nposition startpos moves $longMoves`ngo depth 1`nstop`nquit`n" 'long-legal-history'
@@ -1927,6 +1942,7 @@ if (@($ponderQuitLines | Where-Object { $_ -match '^bestmove ' }).Count -ne 0) {
 
 # 19. Interim progress lines pair the in-flight root move with its one-based
 # currmovenumber (UCI schema); a long-enough infinite search must publish one.
+Write-TestProgress 16 25 'interim currmove/currmovenumber and contradictory go limits'
 $interim = New-InteractiveSession 'interim-currmovenumber'
 Send-UciCommand $interim 'position fen r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3'
 Send-UciCommand $interim 'go infinite'
@@ -1967,6 +1983,7 @@ foreach ($limitCase in $limitCases) {
 
 # 21. Handshake flood: repeated `uci` commands re-answer every time without
 # drift, duplicate output, or a shutdown failure.
+Write-TestProgress 17 25 '500x handshake flood'
 $handshakeFlood = "uci`n" * 500
 $flood = Invoke-UciTranscript ($handshakeFlood + "isready`nquit`n") 'handshake-flood'
 Assert-ProtocolGrammar $flood
@@ -1979,6 +1996,7 @@ if ((Count-Lines $flood '^uciok$') -ne 500) {
 # go variants, stop, ponderhit, ucinewgame, isready and resource options.  The
 # engine may publish any number of legal bestmoves; it must not crash, hang,
 # emit a malformed line, or leave stderr noise.
+Write-TestProgress 18 25 'seeded 250-command state-machine stress'
 $random = [System.Random]::new(20261031)
 $operations = @(
     'isready',
@@ -2027,6 +2045,7 @@ foreach ($bestmove in $randomBestmoves) {
 # 23. Raw-stdin and line-ending edges: CRLF transcripts, a binary-prefixed
 # transcript, and a NUL embedded in a command.  All must stay crash-free and
 # protocol-clean, and a healthy search afterwards must answer.
+Write-TestProgress 19 25 'CRLF, binary-prefix, and embedded-NUL transcripts'
 $crlfTranscript = Invoke-UciTranscript ("uci`r`nisready`r`nposition startpos`r`ngo depth 1`r`nstop`r`nquit`r`n") 'crlf-transcript'
 Assert-ProtocolGrammar $crlfTranscript
 Assert-CleanDiagnostics $crlfTranscript
@@ -2055,6 +2074,7 @@ if ((Count-Lines $nulCommand '^readyok$') -ne 1) {
 # options get non-numeric, below-minimum and (where safe) above-maximum values;
 # checks get non-boolean values; strings get empty/quoted/missing paths; buttons
 # are pressed.  The engine must stay responsive and then finish a legal search.
+Write-TestProgress 20 25 'exhaustive invalid-value option matrix'
 $optionSession = Start-UciSession -Executable $EnginePath
 Send-UciCommand $optionSession 'uci'
 [void](Read-UciUntil $optionSession { param($line) $line -eq 'uciok' } 'option-matrix uciok' -ValidateUciOutput)
@@ -2115,6 +2135,7 @@ Send-UciCommand $optionSession 'quit'
 # 26. CCRL-style profile: Hash 256, one thread, internal book and pondering off,
 # ucinewgame, then a clock-based search (wtime/btime/winc/binc/movestogo).  The
 # engine must answer one legal bestmove and stay protocol-clean.
+Write-TestProgress 21 25 'CCRL profile and NUL/control/tab option variants'
 $ccrl = Invoke-UciTranscript "uci`nisready`nsetoption name Hash value 256`nsetoption name Threads value 1`nsetoption name OwnBook value false`nsetoption name Ponder value false`nucinewgame`nisready`nposition startpos`ngo wtime 1000 btime 1000 winc 10 binc 10 movestogo 20`nstop`nquit`n" 'ccrl-profile'
 Assert-ProtocolGrammar $ccrl
 Assert-CleanDiagnostics $ccrl
@@ -2156,6 +2177,7 @@ Assert-OnlyBestmove $ponderSearchmoves 'bestmove e2e4'
 # 28. Ponder stop/ponderhit races: stopping a just-started ponder search,
 # duplicate stops, duplicate ponderhit and ponderhit-after-stop must each leave
 # exactly one legal bestmove and no protocol noise.
+Write-TestProgress 22 25 'ponder stop/ponderhit races'
 $ponderImmediate = Invoke-UciTranscript "uci`nisready`nposition startpos`ngo ponder wtime 1000 btime 1000`nstop`nquit`n" 'ponder-immediate-stop'
 Assert-ProtocolGrammar $ponderImmediate
 Assert-CleanDiagnostics $ponderImmediate
@@ -2183,6 +2205,7 @@ Assert-OneLegalBestmove $stopBeforeGo
 
 # 29. Ready-flood during an infinite search: 100 isready commands must each be
 # answered while the search runs, with exactly one bestmove after stop.
+Write-TestProgress 23 25 '100x isready flood during infinite search'
 $readyFlood = Invoke-UciTranscript ("uci`nisready`nposition startpos`ngo infinite`n" + ("isready`n" * 100) + "stop`nquit`n") 'isready-flood'
 Assert-ProtocolGrammar $readyFlood
 Assert-CleanDiagnostics $readyFlood
@@ -2194,6 +2217,7 @@ if ((Count-Lines $readyFlood '^readyok$') -ne 101) {
 # 30. Very long asset paths (100 KB values, far beyond normal filesystem limits)
 # must stay inert: the option is accepted/rejected safely and the next search is
 # clean.
+Write-TestProgress 24 25 '100 KB asset path values'
 $longPathValue = 'a' * 100000
 $longSeparatorValue = ';' * 100000
 $longPathCase = Invoke-UciTranscript ("uci`nisready`nsetoption name BookFile value " +
@@ -2207,6 +2231,7 @@ Assert-OneLegalBestmove $longPathCase
 
 # 31. Boot fail-closed matrix: a missing, directory, corrupt or unreadable
 # KOI_NNUE_PATH must exit 4 before any UCI output, with a clear diagnostic.
+Write-TestProgress 25 25 'boot fail-closed NNUE matrix'
 $bootRoot = Join-Path (Split-Path -Parent $EnginePath) ('protocol-boot-assets-' + $PID)
 New-Item -ItemType Directory -Path $bootRoot -Force | Out-Null
 $bootEngine = Join-Path $bootRoot $executableName

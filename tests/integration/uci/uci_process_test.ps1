@@ -51,6 +51,7 @@ function Write-StartPositionBook([string]$Path) {
     [System.IO.File]::WriteAllBytes($Path, $bytes)
 }
 
+Write-TestProgress 1 11 'UCI handshake and readiness'
 $session = Start-UciSession -Executable $EnginePath
 Send-UciCommand $session 'uci'
 # The handshake contract is shared with the C++ unit test through
@@ -99,6 +100,7 @@ if ((Read-UciLine $session 'initial readyok') -cne 'readyok') {
     throw 'Expected readyok after the UCI handshake.'
 }
 
+Write-TestProgress 2 11 'executable-relative opening book and MultiPV search'
 $bookFileName = "uci-process-book-$([guid]::NewGuid().ToString('N')).bin"
 $engineFileName = if ($env:OS -eq 'Windows_NT') { 'koi-engine.exe' } else { 'koi-engine' }
 $bookPath = Join-Path (Split-Path -Parent $EnginePath) $bookFileName
@@ -176,6 +178,7 @@ try {
     }
 }
 
+Write-TestProgress 3 11 'ponder MultiPV search and ponderhit'
 Send-UciCommand $session 'setoption name UCI_AnalyseMode value true'
 Send-UciCommand $session 'setoption name MultiPV value 3'
 Send-UciCommand $session 'setoption name Ponder value true'
@@ -224,6 +227,7 @@ while ($true) {
     }
 }
 
+Write-TestProgress 4 11 'ponder searchmoves filter and infinite search stop'
 Send-UciCommand $session 'position startpos'
 Send-UciCommand $session 'go ponder searchmoves e2e4'
 Send-UciCommand $session 'stop'
@@ -294,6 +298,7 @@ while ($true) {
 }
 $null = Complete-UciSession $session $true
 
+Write-TestProgress 5 11 'immediate ponderhit obligation'
 $immediatePonder = Start-UciSession -Executable $EnginePath
 Send-UciCommand $immediatePonder 'position startpos'
 $immediatePonder.Process.StandardInput.Write("go ponder depth 2`nponderhit`n")
@@ -326,6 +331,7 @@ if ($immediatePonderBestmoves.Count -ne 1) {
 # A depth-limited ponder must keep deepening until stop/ponderhit instead of
 # re-searching the same final depth forever, and it must not emit a bestmove
 # while it is still pondering.
+Write-TestProgress 6 11 'depth-limited ponder deepening and conversion'
 $deepeningPonder = Start-UciSession -Executable $EnginePath
 Send-UciCommand $deepeningPonder 'position startpos'
 Send-UciCommand $deepeningPonder 'go ponder depth 2'
@@ -377,6 +383,7 @@ if ($convertedPonderBestmoves.Count -ne 1) {
     throw "the converted ponder search emitted $($convertedPonderBestmoves.Count) bestmoves"
 }
 
+Write-TestProgress 7 11 'active search position replacement'
 $replacement = Start-UciSession -Executable $EnginePath
 Send-UciCommand $replacement 'position startpos'
 Send-UciCommand $replacement 'go infinite'
@@ -409,6 +416,7 @@ if ($replacementBestmoves.Count -ne 1 -or $replacementBestmoves[0] -cne 'bestmov
     throw "Position replacement leaked a stale result: $($replacementBestmoves -join ' | ')"
 }
 
+Write-TestProgress 8 11 'go limit variants transcript'
 $limitLines = @(Invoke-UciTranscript @'
 position startpos
 setoption name OwnBook value false
@@ -446,6 +454,7 @@ foreach ($line in $limitLines) {
     }
 }
 
+Write-TestProgress 9 11 'asymmetric clock, infinite node-limit, and ponder node-limit'
 $asymmetricClock = Start-UciSession -Executable $EnginePath
 Send-UciCommand $asymmetricClock 'position fen 4k3/8/8/8/8/8/4P3/4K3 b - - 0 1'
 Send-UciCommand $asymmetricClock 'go wtime 1000'
@@ -527,6 +536,7 @@ if ($ponderNodesBestmove -notmatch '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponde
 }
 $null = Complete-UciSession $ponderNodes $true
 
+Write-TestProgress 10 11 'quit and EOF suppression during infinite search'
 $quitSession = Start-UciSession -Executable $EnginePath
 Send-UciCommand $quitSession 'position startpos'
 Send-UciCommand $quitSession 'go infinite'
@@ -543,6 +553,7 @@ if (@($eofLines | Where-Object { $_ -like 'bestmove *' }).Count -ne 0) {
     throw "EOF emitted a late bestmove: $($eofLines -join ' | ')"
 }
 
+Write-TestProgress 11 11 'multi-ply sequential game search'
 $gameSession = Start-UciSession -Executable $EnginePath
 Send-UciCommand $gameSession 'uci'
 Assert-UciHandshake $gameSession 'multi-ply'

@@ -84,6 +84,10 @@ function Assert-BenchmarkOutput($Result) {
     }
 }
 
+Import-Module ([System.IO.Path]::GetFullPath(
+    (Join-Path $PSScriptRoot '../../support/MatchSupport.psm1'))) -Force
+
+Write-TestProgress 1 9 'single-threaded deterministic reference benchmark'
 $first = Invoke-Benchmark $BenchPath '--threads 1 --speed 100' 'reference-1'
 $second = Invoke-Benchmark $BenchPath '--threads 1 --speed 100' 'reference-2'
 Assert-BenchmarkOutput $first
@@ -105,6 +109,7 @@ if ($first.Stdout -cne $second.Stdout) {
 # allowlist; the deterministic contract asserted here is the byte-identical
 # repeat above plus the row format.
 
+Write-TestProgress 2 9 'multi-threaded verification and timed benchmark'
 $maximumThreads = [Math]::Max(1, [Math]::Min(64, [Environment]::ProcessorCount))
 $benchmarkThreads = [Math]::Max(1, [Math]::Min(2, $maximumThreads))
 $threadedVerificationThreads = if ($maximumThreads -ge 4) { 4 } else { $maximumThreads }
@@ -168,6 +173,7 @@ foreach ($line in $timedLines[2..($timedLines.Count - 1)]) {
     }
 }
 
+Write-TestProgress 3 9 'cold, warm, and timed profile JSON verification'
 $coldProfile = Join-Path $scratchDirectory 'cold-profile.json'
 $coldReplayProfile = Join-Path $scratchDirectory 'cold-replay-profile.json'
 $warmProfile = Join-Path $scratchDirectory 'warm-profile.json'
@@ -260,6 +266,7 @@ foreach ($position in $timedJson.positions) {
     }
 }
 
+Write-TestProgress 4 9 '128-position optional strength suite profile'
 $optional = Invoke-Benchmark $BenchPath "--optional --profile-json `"$optionalProfile`"" 'optional-profile'
 Assert-BenchmarkOutput $optional
 if (-not (Test-Path -LiteralPath $optionalProfile -PathType Leaf)) {
@@ -277,6 +284,7 @@ if ($optional.Stdout -notmatch '(?m)^config threads 1 speed 100 timed 0 hash col
 
 # Steady-state measurement mode: node-limited, warm hash, warmup pass, repeats
 # with per-run samples and a median-selected primary result.
+Write-TestProgress 5 9 'steady-state warm-hash node-limited repeat benchmark'
 $steadyProfile = Join-Path $scratchDirectory 'steady-profile.json'
 $steady = Invoke-Benchmark $BenchPath "--nodes 2000 --timed --warm-hash --warmup 1 --repeat 2 --profile-json `"$steadyProfile`"" 'steady-state'
 if ($steady.ExitCode -ne 0 -or $steady.Stderr.Length -ne 0) {
@@ -323,6 +331,7 @@ if ($steady.Stdout -notmatch '(?m)^repeat 2 median summary\r?$') {
 # Phase 0 speed program: external FEN corpus input, fixed-depth timed runs,
 # depth sweeps for time-to-depth tables, and the koi-bench-speed-v1 artifact
 # consumed by tools/build/speed_gate.ps1.
+Write-TestProgress 6 9 'external FEN corpus fixed-depth speed report'
 $fenFile = Join-Path $scratchDirectory 'speed-corpus.txt'
 Set-Content -LiteralPath $fenFile -Value @(
     '# speed corpus: blank lines and comments are ignored',
@@ -387,6 +396,7 @@ if ([uint64]$fixedJson.totals.nps -ne $fixedNps) {
     throw "fixed-depth speed report NPS must use elapsed_ms: expected $fixedNps, got $($fixedJson.totals.nps)"
 }
 
+Write-TestProgress 7 9 'external FEN corpus depth-sweep speed report'
 $sweepReport = Join-Path $scratchDirectory 'sweep-speed-report.json'
 $sweep = Invoke-Benchmark $BenchPath "--threads 1 --speed 100 --timed --fen-file `"$fenFile`" --depth-sweep 2..3 --report `"$sweepReport`"" 'fen-sweep'
 if ($sweep.ExitCode -ne 0 -or $sweep.Stderr.Length -ne 0) {
@@ -431,6 +441,7 @@ foreach ($position in $sweepJson.positions) {
 
 # Opt-in iteration diagnostics retain completed depths and the interrupted
 # in-flight depth, with aggregate node counts reconciling exactly.
+Write-TestProgress 8 9 'iteration-profile diagnostics and mode-conflict check'
 $iterationFenFile = Join-Path $scratchDirectory 'iteration-profile-fen.txt'
 Set-Content -LiteralPath $iterationFenFile -Value @(
     'opening|rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
@@ -489,6 +500,7 @@ if ($conflict.ExitCode -eq 0) {
 
 # The clean HCE must be selectable without any network file and report itself
 # truthfully in the profile JSON.
+Write-TestProgress 9 9 'HCE mode profile verification'
 $hceProfile = Join-Path $scratchDirectory 'hce-profile.json'
 $hce = Invoke-Benchmark $BenchPath "--hce --depth 1 --profile-json `"$hceProfile`"" 'hce-mode' -Hce
 Assert-BenchmarkOutput $hce

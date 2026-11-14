@@ -21,6 +21,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+Import-Module (Join-Path $PSScriptRoot '../stability/EtaSupport.psm1') -Force
+
 $ctest = (Get-Command $CTestPath -ErrorAction SilentlyContinue).Source
 if (-not $ctest) {
     throw "Required command '$CTestPath' was not found on PATH."
@@ -45,6 +47,7 @@ if ($CaseFilter) {
 
 $failures = 0
 $results = @()
+$probeStartedUtc = [DateTime]::UtcNow
 try {
     for ($run = 1; $run -le $Repeats; ++$run) {
         $arguments = @("--test-dir", $BuildDirectory, "-C", $Configuration, "--output-on-failure", "-j", "$Parallel")
@@ -55,7 +58,7 @@ try {
             $arguments += @("-L", $value)
         }
         $logPath = Join-Path $OutputDirectory ("run-{0:D2}.log" -f $run)
-        Write-Host ("probe {0}/{1}: {2}" -f $run, $Repeats, ($arguments -join " "))
+        Write-Host (Format-StepProgress -Step $run -Total $Repeats -Label ("probe: {0}" -f ($arguments -join " ")) -StartedUtc $probeStartedUtc)
         & $ctest @arguments 2>&1 | Tee-Object -FilePath $logPath | Out-Host
         $code = $LASTEXITCODE
         $status = if ($code -eq 0) { "pass" } else { "fail" }
@@ -63,6 +66,9 @@ try {
             ++$failures
         }
         $results += [pscustomobject]@{ Run = $run; Status = $status; ExitCode = $code }
+        $probeEta = Get-LinearEta -Completed $run -Total $Repeats `
+            -ElapsedSeconds ([DateTime]::UtcNow - $probeStartedUtc).TotalSeconds
+        Write-Host ("probe {0}/{1}: {2} | elapsed {3} | eta {4}" -f $run, $Repeats, $status, $probeEta.elapsed_text, $probeEta.eta_text)
     }
 } finally {
     if ($CaseFilter) {

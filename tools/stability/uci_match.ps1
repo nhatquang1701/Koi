@@ -132,6 +132,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'EtaSupport.psm1') -Force
+
 function Merge-UciOptionsJson([string]$Path, [hashtable]$Options, [string]$Label) {
     if ([string]::IsNullOrWhiteSpace($Path)) {
         return
@@ -1225,6 +1227,7 @@ try {
     # Initialize-UciEngine already sent the base RandomSeed; only a game whose
     # derived seed differs from the last sent value needs a new setoption line.
     $lastSentKoiRandomSeed = $koiRandomSeedBase
+    $matchStartedUtc = [DateTime]::UtcNow
 
     foreach ($position in $positions) {
         if ($stopMatches) {
@@ -1390,6 +1393,7 @@ try {
             $gameRecords.Add($gameObject)
             $pgnGames.Add((Format-Pgn $position $gameObject $whiteName $blackName $pgnTimeControl))
 
+            $elapsedSeconds = ([DateTime]::UtcNow - $matchStartedUtc).TotalSeconds
             if ($Sprt) {
                 # Sequential testing needs a decisive or drawn score for every
                 # game. Games that simply run into the ply cap are adjudicated
@@ -1410,9 +1414,19 @@ try {
                     ++$sprtAborted
                 }
                 $scoredGames = $sprtWins + $sprtDraws + $sprtLosses
+                $sprtState = Get-SprtState -Wins $sprtWins -Draws $sprtDraws -Losses $sprtLosses `
+                    -Elo0 $SprtElo0 -Elo1 $SprtElo1 -Alpha $SprtAlpha -Beta $SprtBeta
+                $effectiveDecision = if ($scoredGames -ge $SprtMinGames) { $sprtState.decision } else { 'running' }
+                $effectiveMaxGames = [Math]::Min($SprtMaxGames, $positions.Count * $Games)
+                $sprtEta = Get-SprtEta -Llr $sprtState.llr -Lower $sprtState.lower -Upper $sprtState.upper `
+                    -Games $scoredGames -MinGames $SprtMinGames -MaxGames $effectiveMaxGames `
+                    -ElapsedSeconds $elapsedSeconds -Decision $effectiveDecision
+                Write-Host ("[SPRT] Game {0}/{1} | +{2} ={3} -{4} | Elo: {5} | LLR: {6:F3} [{7:F3}, {8:F3}] | {9} ({10}) | Elapsed {11} | ETA {12}" -f `
+                    $scoredGames, $effectiveMaxGames, $sprtWins, $sprtDraws, $sprtLosses, `
+                    $(if ($null -ne $sprtState.elo) { "{0:+0.0;-0.0;0.0}" -f $sprtState.elo } else { "n/a" }), `
+                    $sprtState.llr, $sprtState.lower, $sprtState.upper, $result, $termination, `
+                    $sprtEta.elapsed_text, $sprtEta.eta_text)
                 if ($scoredGames -ge $SprtMinGames) {
-                    $sprtState = Get-SprtState -Wins $sprtWins -Draws $sprtDraws -Losses $sprtLosses `
-                        -Elo0 $SprtElo0 -Elo1 $SprtElo1 -Alpha $SprtAlpha -Beta $SprtBeta
                     if ($sprtState.decision -ne 'running') {
                         $stopMatches = $true
                     }
@@ -1420,6 +1434,12 @@ try {
                 if ($scoredGames -ge $SprtMaxGames) {
                     $stopMatches = $true
                 }
+            } else {
+                $totalPlanned = $positions.Count * $Games
+                $matchEta = Get-LinearEta -Completed $gameRecords.Count -Total $totalPlanned -ElapsedSeconds $elapsedSeconds
+                Write-Host ("[Match] Game {0}/{1} | {2} ({3}, {4}) | Elapsed {5} | ETA {6}" -f `
+                    $gameRecords.Count, $totalPlanned, $result, $gameKoiColor, $termination, `
+                    $matchEta.elapsed_text, $matchEta.eta_text)
             }
         }
     }

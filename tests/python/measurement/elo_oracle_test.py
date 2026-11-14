@@ -12,6 +12,8 @@ import tools.measurement.elo_oracle as elo_oracle
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPOSITORY_ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 ORACLE_SCRIPT = REPOSITORY_ROOT / "tools" / "measurement" / "elo_oracle.py"
 MATCH_SCRIPT = REPOSITORY_ROOT / "tools" / "measurement" / "stockfish_match.py"
 BOOK_AUDIT_SCRIPT = REPOSITORY_ROOT / "tools" / "measurement" / "book_audit.py"

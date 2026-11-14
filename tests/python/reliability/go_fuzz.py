@@ -18,8 +18,12 @@ import os
 import random
 import re
 import subprocess
-import pathlib
 import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from unittest_progress import format_progress_eta  # noqa: E402
 
 GO_TOKENS = [
     "depth", "nodes", "mate", "movetime", "wtime", "btime", "winc", "binc",
@@ -56,7 +60,7 @@ def random_go(rng: random.Random) -> str:
 FIXTURE_FENS: list[str] = []
 
 
-def _load_fixture_lines(path: pathlib.Path) -> list[str]:
+def _load_fixture_lines(path: Path) -> list[str]:
     try:
         return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     except OSError:
@@ -126,14 +130,18 @@ def main() -> int:
     engine = os.path.abspath(args.engine)
     configs = [{"case": case, "engine": engine} for case in range(args.cases)]
     results: list[dict] = []
+    step = max(1, min(25, args.cases // 5))
+    started = time.monotonic()
     with mp.Pool(processes=max(1, args.workers)) as pool:
         for done, result in enumerate(pool.imap_unordered(run_case, configs), 1):
             results.append(result)
             if result["timeout"] or result["bad_stderr"] or result["bad_stdout"]:
                 print(f"FAIL case {result['case']}: lines={result['lines']!r} "
                       f"stderr={result['bad_stderr'][:2]} stdout={result['bad_stdout'][:2]}", flush=True)
-            if done % 200 == 0 or done == args.cases:
-                print(f"progress {done}/{args.cases}", flush=True)
+            if done % step == 0 or done == args.cases:
+                pct = (done * 100) // max(1, args.cases)
+                eta = format_progress_eta(done, args.cases, time.monotonic() - started)
+                print(f"progress {done}/{args.cases} ({pct}%) | {eta}", flush=True)
     summary = {
         "engine": engine,
         "cases": args.cases,
@@ -152,6 +160,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     FIXTURE_FENS = _load_fixture_lines(
-        pathlib.Path(__file__).resolve().parents[3] / "tests/data/reliability/valid-fens.txt"
+        Path(__file__).resolve().parents[3] / "tests/data/reliability/valid-fens.txt"
     )
     sys.exit(main())

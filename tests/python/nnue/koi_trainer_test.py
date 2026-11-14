@@ -30,6 +30,8 @@ import tempfile
 import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 TOOLS_MEASUREMENT = REPO_ROOT / "tools" / "measurement"
 TRAINER = TOOLS_MEASUREMENT / "train_nnue_koi.py"
 

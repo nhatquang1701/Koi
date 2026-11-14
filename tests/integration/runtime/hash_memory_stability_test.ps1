@@ -15,6 +15,7 @@ $soakScript = Join-Path $repositoryRoot 'tools/stability/hash_memory_soak.ps1'
 $outputDirectory = Join-Path $repositoryRoot ("artifacts\stability\hash-memory-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 
+Write-Output '[1/2] run hash_memory_soak.ps1 smoke'
 & $soakScript -EnginePath $EnginePath -HashValues '1,2' -Cycles 1 -OutputDirectory $outputDirectory
 if (-not $?) {
     throw 'Hash memory stability smoke failed'
@@ -26,6 +27,7 @@ if ($null -eq $manifest) {
     throw 'Hash memory stability smoke did not produce a manifest'
 }
 
+Write-Output '[2/2] verify hash memory manifest and telemetry records'
 $report = Get-Content -LiteralPath $manifest.FullName -Raw | ConvertFrom-Json
 foreach ($record in @($report.records)) {
     if ($record.exit_code -ne 0 -or $record.bestmove_count -lt 1) {

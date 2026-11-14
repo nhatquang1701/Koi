@@ -33,6 +33,8 @@ if ([string]::IsNullOrWhiteSpace($ReplayPath)) {
 
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'EtaSupport.psm1') -Force
+
 # Combined-bounds LLR thresholds for alpha = beta = 0.05 (the same bounds the
 # per-color SPRT runs use), applied to the sum of the two independent colors.
 $acceptThreshold = [Math]::Log(19.0)   # ln((1 - beta) / alpha)
@@ -227,6 +229,38 @@ function Read-ColorResult([string]$Color) {
     }
 }
 
+function Read-LatestSprtProgress([string]$LogPath) {
+    if (-not (Test-Path -LiteralPath $LogPath -PathType Leaf)) {
+        return $null
+    }
+    try {
+        $stream = [System.IO.File]::Open($LogPath, [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8)
+            $content = $reader.ReadToEnd()
+        } finally {
+            $stream.Dispose()
+        }
+        $matches = [regex]::Matches($content, '\[SPRT\] Game (?<games>[0-9]+)/(?<max>[0-9]+) \| \+(?<wins>[0-9]+) =(?<draws>[0-9]+) -(?<losses>[0-9]+) \| Elo: [^\s|]+ \| LLR: (?<llr>-?[0-9]+(?:[.,][0-9]+)?)')
+        if ($matches.Count -eq 0) {
+            return $null
+        }
+        $last = $matches[$matches.Count - 1]
+        $llrValue = [double]::Parse($last.Groups['llr'].Value.Replace(',', '.'),
+            [System.Globalization.CultureInfo]::InvariantCulture)
+        return [pscustomobject]@{
+            games = [int]$last.Groups['games'].Value
+            wins = [int]$last.Groups['wins'].Value
+            draws = [int]$last.Groups['draws'].Value
+            losses = [int]$last.Groups['losses'].Value
+            llr = $llrValue
+        }
+    } catch {
+        return $null
+    }
+}
+
 Write-Output "sprt-compare: candidate $CandidatePath vs baseline $BaselinePath"
 if ($TimeControl -ne '') {
     Write-Output "sprt-compare: fixed time control $TimeControl, $Games game(s) per opening and color"
@@ -239,6 +273,35 @@ $whiteProcess = Start-ColorRun 'white'
 $blackProcess = Start-ColorRun 'black'
 Write-Output "sprt-compare: white pid $($whiteProcess.Id), black pid $($blackProcess.Id)"
 
+$sprtCompareStartUtc = [DateTime]::UtcNow
+$lastProgressUtc = $sprtCompareStartUtc
+while (-not $whiteProcess.HasExited -or -not $blackProcess.HasExited) {
+    if (-not $whiteProcess.HasExited) { [void]$whiteProcess.WaitForExit(250) }
+    if (-not $blackProcess.HasExited) { [void]$blackProcess.WaitForExit(250) }
+    $now = [DateTime]::UtcNow
+    if (($now - $lastProgressUtc).TotalSeconds -ge 15.0 -and (-not $whiteProcess.HasExited -or -not $blackProcess.HasExited)) {
+        $lastProgressUtc = $now
+        $wp = Read-LatestSprtProgress (Join-Path $root 'white.out.log')
+        $bp = Read-LatestSprtProgress (Join-Path $root 'black.out.log')
+        if ($null -ne $wp -or $null -ne $bp) {
+            $curGames = $(if ($null -ne $wp) { $wp.games } else { 0 }) + $(if ($null -ne $bp) { $bp.games } else { 0 })
+            $curWins = $(if ($null -ne $wp) { $wp.wins } else { 0 }) + $(if ($null -ne $bp) { $bp.wins } else { 0 })
+            $curDraws = $(if ($null -ne $wp) { $wp.draws } else { 0 }) + $(if ($null -ne $bp) { $bp.draws } else { 0 })
+            $curLosses = $(if ($null -ne $wp) { $wp.losses } else { 0 }) + $(if ($null -ne $bp) { $bp.losses } else { 0 })
+            $wLlr = if ($null -ne $wp) { $wp.llr } else { 0.0 }
+            $bLlr = if ($null -ne $bp) { $bp.llr } else { 0.0 }
+            $curCombined = Get-CombinedSprtResult -WhiteLlr $wLlr -BlackLlr $bLlr `
+                -AcceptThreshold $acceptThreshold -RejectThreshold $rejectThreshold
+            $curDecision = if ($curGames -ge (2 * $MinGames)) { $curCombined.decision } else { 'running' }
+            $curEta = Get-SprtEta -Llr $curCombined.llr -Lower $rejectThreshold -Upper $acceptThreshold `
+                -Games $curGames -MinGames (2 * $MinGames) -MaxGames (2 * $MaxGames) `
+                -ElapsedSeconds ($now - $sprtCompareStartUtc).TotalSeconds -Decision $curDecision
+            Write-Output ("sprt-compare: Game {0}/{1} | +{2} ={3} -{4} | LLR {5:F3} [{6:F3}, {7:F3}] | Elapsed {8} | ETA {9}" -f `
+                $curGames, (2 * $MaxGames), $curWins, $curDraws, $curLosses, `
+                $curCombined.llr, $rejectThreshold, $acceptThreshold, $curEta.elapsed_text, $curEta.eta_text)
+        }
+    }
+}
 $whiteProcess.WaitForExit()
 $blackProcess.WaitForExit()
 if ($whiteProcess.ExitCode -ne 0 -or $blackProcess.ExitCode -ne 0) {

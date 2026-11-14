@@ -41,6 +41,7 @@ try {
     }
 
     New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+    Write-TestProgress 1 2 '6-second bestmove accepted before 1+0 chess-clock deadline'
     $beforeKoi = New-ScriptedUciEngine -FixturePath $fixturePath -Directory $outputDirectory 'clock-before-deadline-koi'
     $beforeOpponent = New-ScriptedUciEngine -FixturePath $fixturePath -Directory $outputDirectory 'clock-before-deadline-opponent'
     $beforeReport = Invoke-ClockMatch $beforeKoi.path $beforeOpponent.path $outputDirectory 1
@@ -52,6 +53,7 @@ try {
         throw 'A 6-second bestmove must be accepted under the 1+0 chess-clock deadline despite a 1-second protocol timeout.'
     }
 
+    Write-TestProgress 2 2 'bestmove after 1+0 chess-clock deadline adjudicated as timeout'
     $afterDirectory = Join-Path $outputDirectory 'after-deadline'
     New-Item -ItemType Directory -Path $afterDirectory -Force | Out-Null
     $afterKoi = New-ScriptedUciEngine -FixturePath $fixturePath -Directory $afterDirectory 'clock-after-deadline-koi'

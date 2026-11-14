@@ -1,4 +1,5 @@
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +8,8 @@ from tools.measurement import spsa_search
 
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 
 
 class DefaultManifestTest(unittest.TestCase):
@@ -127,6 +130,27 @@ class DryRunTest(unittest.TestCase):
                                     result, out)
             header = (out / "src/koi/detail/search_constants.hpp").read_text(encoding="utf-8")
             self.assertIn("kRazorMarginPerDepthSquared = 120", header)
+
+
+class EtaSupportTest(unittest.TestCase):
+    def test_duration_and_linear_eta_formatting(self):
+        self.assertEqual(unittest_progress.format_duration(0.0), "0.0s")
+        self.assertEqual(unittest_progress.format_duration(12.4), "12s")
+        self.assertEqual(unittest_progress.format_duration(65.0), "1m05s")
+        self.assertEqual(unittest_progress.format_duration(3720.0), "1h02m")
+        self.assertEqual(unittest_progress.format_duration(90060.0), "1d01h01m")
+        self.assertEqual(unittest_progress.format_duration(-1.0), "n/a")
+        self.assertEqual(unittest_progress.format_duration(float("nan")), "n/a")
+
+        self.assertEqual(unittest_progress.estimate_linear_eta(0, 10, 5.0), (None, "calculating"))
+        self.assertEqual(unittest_progress.estimate_linear_eta(10, 10, 5.0), (0.0, "0.0s"))
+        rem, text = unittest_progress.estimate_linear_eta(25, 100, 10.0)
+        self.assertAlmostEqual(rem, 30.0)
+        self.assertEqual(text, "~30s")
+        self.assertEqual(
+            unittest_progress.format_progress_eta(25, 100, 10.0),
+            "elapsed 10s | eta ~30s",
+        )
 
 
 if __name__ == "__main__":

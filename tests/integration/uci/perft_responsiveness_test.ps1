@@ -14,6 +14,7 @@ trap {
 
 $session = Start-UciSession -Executable $EnginePath
 try {
+    Write-TestProgress 1 3 'initial handshake and depth-1 perft'
     Send-UciCommand $session 'uci'
     while ($true) {
         if ((Read-UciLine $session 'UCI handshake before perft') -ceq 'uciok') {
@@ -49,6 +50,7 @@ try {
         throw 'A completed perft did not leave the controller ready.'
     }
 
+    Write-TestProgress 2 3 'depth-10 perft responsiveness to isready and stop'
     Send-UciCommand $session 'position startpos'
     Send-UciCommand $session 'go perft 10'
     Send-UciCommand $session 'isready'
@@ -70,6 +72,7 @@ try {
         throw 'The controller did not join the stopped perft worker.'
     }
 
+    Write-TestProgress 3 3 'shutdown and perft transcript validation'
     Send-UciCommand $session 'quit'
     $lines = @(Complete-UciSession $session $false)
     if (@($lines | Where-Object { $_ -like 'bestmove *' }).Count -ne 0) {

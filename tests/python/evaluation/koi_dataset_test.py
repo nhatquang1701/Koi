@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 TOOL = ROOT / "tools" / "measurement" / "koi_dataset.py"
 sys.path.insert(0, str(TOOL.parent))
 import koi_chess as chess  # noqa: E402

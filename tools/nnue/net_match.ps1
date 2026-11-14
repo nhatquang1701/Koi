@@ -82,6 +82,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot '../stability/EtaSupport.psm1') -Force
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $binarySuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
 if ([string]::IsNullOrWhiteSpace($EnginePath)) {
@@ -419,9 +420,13 @@ function Invoke-NetLeg {
     }
 }
 
+$netMatchStartedUtc = [DateTime]::UtcNow
+Write-Host (Format-StepProgress -Step 1 -Total 2 -Label "net match leg white ($candidateWhiteGames games)" -StartedUtc $netMatchStartedUtc)
 $whiteLeg = Invoke-NetLeg -Tag 'white' -KoiColor 'white' -LegGames $candidateWhiteGames -BaseSeed 1
+Write-Host (Format-StepProgress -Step 2 -Total 2 -Label "net match leg black ($candidateBlackGames games)" -StartedUtc $netMatchStartedUtc)
 $blackLeg = Invoke-NetLeg -Tag 'black' -KoiColor 'black' -LegGames $candidateBlackGames `
     -BaseSeed ([uint64](1 + $candidateWhiteGames))
+Write-Host ("net match completed | elapsed {0}" -f (Format-DurationSeconds ([DateTime]::UtcNow - $netMatchStartedUtc).TotalSeconds))
 
 $wins = 0
 $draws = 0

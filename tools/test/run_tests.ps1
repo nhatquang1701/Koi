@@ -33,6 +33,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+Import-Module (Join-Path $PSScriptRoot '../stability/EtaSupport.psm1') -Force
+
 function Resolve-CommandPath {
     param([string]$Name)
     $command = Get-Command $Name -ErrorAction SilentlyContinue
@@ -76,8 +78,9 @@ if (-not (Test-Path -LiteralPath $BuildDirectory)) {
     throw "Build directory '$BuildDirectory' does not exist. Configure the tree first (see tests/README.md)."
 }
 
+$runnerStartedUtc = [DateTime]::UtcNow
 if (-not $NoBuild) {
-    Write-Host "build: $BuildDirectory ($Configuration)"
+    Write-Host "[1/3] build: $BuildDirectory ($Configuration)"
     if (-not $isWindowsHost) {
         & $cmake --build $BuildDirectory --config $Configuration
     } elseif (Get-Command cl.exe -ErrorAction SilentlyContinue) {
@@ -91,6 +94,8 @@ if (-not $NoBuild) {
     if ($LASTEXITCODE -ne 0) {
         throw "Build failed with exit code $LASTEXITCODE."
     }
+} else {
+    Write-Host "[1/3] build: skipped (-NoBuild)"
 }
 
 if (-not $OutputDirectory) {
@@ -100,7 +105,7 @@ if (-not $OutputDirectory) {
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
-$arguments = @("--test-dir", $BuildDirectory, "-C", $Configuration, "--output-on-failure", "-j", "$Parallel")
+$arguments = @("--test-dir", $BuildDirectory, "-C", $Configuration, "--progress", "--output-on-failure", "-j", "$Parallel")
 if ($RepeatUntilPass -gt 1) {
     $arguments += @("--repeat", "until-pass:$RepeatUntilPass")
 }
@@ -118,8 +123,24 @@ if (-not $NoJUnit) {
     $arguments += @("--output-junit", $junitPath)
 }
 
-Write-Host "ctest: $ctest $($arguments -join ' ')"
-& $ctest @arguments
+$ctestStartedUtc = [DateTime]::UtcNow
+$lastEtaReportUtc = $ctestStartedUtc
+Write-Host "[2/3] ctest: $ctest $($arguments -join ' ')"
+& $ctest @arguments | ForEach-Object {
+    $_
+    if ($_ -match '^\s*(?<done>[0-9]+)/(?<total>[0-9]+)\s+Test\s+#') {
+        $doneCount = [int]$Matches['done']
+        $totalCount = [int]$Matches['total']
+        $now = [DateTime]::UtcNow
+        if ($doneCount -eq $totalCount -or (($now - $lastEtaReportUtc).TotalSeconds -ge 10.0)) {
+            $lastEtaReportUtc = $now
+            $ctestEta = Get-LinearEta -Completed $doneCount -Total $totalCount `
+                -ElapsedSeconds ($now - $ctestStartedUtc).TotalSeconds
+            Write-Host ("[ctest {0}/{1}] elapsed {2} | eta {3}" -f `
+                $doneCount, $totalCount, $ctestEta.elapsed_text, $ctestEta.eta_text)
+        }
+    }
+}
 $exitCode = $LASTEXITCODE
 
 $lastTestLog = Join-Path $BuildDirectory "Testing/Temporary/LastTest.log"
@@ -127,7 +148,8 @@ if (Test-Path -LiteralPath $lastTestLog) {
     Copy-Item -LiteralPath $lastTestLog -Destination (Join-Path $OutputDirectory "LastTest.log") -Force
 }
 
-Write-Host "results: $OutputDirectory"
+$totalElapsedText = Format-DurationSeconds ([DateTime]::UtcNow - $runnerStartedUtc).TotalSeconds
+Write-Host "[3/3] results: $OutputDirectory | elapsed $totalElapsedText"
 if ($exitCode -ne 0) {
     throw "CTest failed with exit code $exitCode."
 }

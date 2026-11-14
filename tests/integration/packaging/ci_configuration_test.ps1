@@ -113,6 +113,7 @@ function Deny-RequirementsPattern([string]$Pattern, [string]$Description) {
     }
 }
 
+Write-Output '[1/5] verify release-candidate and Windows CI workflow configuration'
 Require-WorkflowPattern '(?m)^\s*runs-on:\s*windows-latest\s*$' 'a Windows runner'
 # Four independent jobs: a failing Debug, sanitizer, or differential leg must
 # not cancel the primary Release suite, and every leg uploads its own
@@ -149,6 +150,7 @@ Require-WorkflowPattern '(?i)-DKOI_BUILD_SHADOW_DIFF=ON' 'the opt-in differentia
 
 # The Windows packaging job builds the release zip with the shared release
 # tooling and verifies the manifest, checksums, and extracted-engine smoke.
+Write-Output '[2/5] verify Windows packaging and CMake build configuration'
 Require-WorkflowPattern '(?m)^\s{2}windows-package:\s*$' 'the Windows packaging job'
 Require-WorkflowPattern '(?i)tools/build/package_release\.ps1' 'the shared packaging script'
 Require-WorkflowPattern '(?i)tests/integration/packaging/package_release_test\.ps1' 'the packaging manifest and archive smoke test'
@@ -177,6 +179,7 @@ Require-CMakePattern '(?i)KOI_SANITIZE' 'the AddressSanitizer build option'
 Require-CMakePattern '(?i)fsanitize=address' 'the MSVC AddressSanitizer flag'
 
 # The Linux legs: GCC, Clang, the modules-off fallback, and the portable tarball.
+Write-Output '[3/5] verify Linux CI workflow configuration'
 Require-LinuxWorkflowPattern '(?m)^\s*runs-on:\s*ubuntu-24\.04\s*$' 'an Ubuntu runner'
 Require-LinuxWorkflowPattern '(?m)^\s{2}linux-gcc:\s*$' 'the GCC job'
 Require-LinuxWorkflowPattern '(?m)^\s{2}linux-clang:\s*$' 'the Clang job'
@@ -210,6 +213,7 @@ Require-LinuxWorkflowPattern '(?i)actions/upload-artifact@v5' 'test diagnostic a
 
 # The macOS arm64 leg: Homebrew LLVM, the modules-off/CPU-only fallback build,
 # the Linux label groups minus the x86-only AVX variant checks, and diagnostics.
+Write-Output '[4/5] verify macOS arm64 and packaging CI workflow configuration'
 Require-MacOSWorkflowPattern '(?m)^\s*runs-on:\s*macos-15\s*$' 'an Apple Silicon runner'
 Require-MacOSWorkflowPattern '(?m)^\s{2}macos-arm64:\s*$' 'the macOS arm64 job'
 Require-MacOSWorkflowPattern '(?i)brew\s+install[^\r\n]*\bninja\b' 'the Homebrew Ninja install'
@@ -240,6 +244,7 @@ Deny-MacOSWorkflowPattern '(?i)koi_engine_variant_process' 'the x86-only three-b
 
 # The Windows no-retry flake gate must run repeated serial CTest selections
 # independently so timing failures remain visible instead of being retried away.
+Write-Output '[5/5] verify Windows no-retry flake gate configuration'
 Require-WindowsFlakePattern '(?m)^  windows-flake:\s*$' 'the independent job identity'
 Require-WindowsFlakePattern '(?m)^    runs-on:\s*windows-latest\s*$' 'a Windows runner'
 Require-WindowsFlakePattern '(?m)^\s*call\s+"%VSDEVCMD%"\s+-arch=x64\s+-host_arch=x64\s*$' 'x64 MSVC environment setup'

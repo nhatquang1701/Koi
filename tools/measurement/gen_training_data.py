@@ -34,6 +34,9 @@ from pathlib import Path
 
 import koi_chess as chess
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "support"))
+from unittest_progress import format_progress_eta  # noqa: E402
+
 _VENDORED_STOCKFISH = (
     Path(__file__).resolve().parents[2]
     / "third_party"
@@ -200,8 +203,12 @@ def play_games(args: argparse.Namespace, positions_fh, seen: set[str], counters:
             if game_number % 25 == 0:
                 with counters["lock"]:
                     total = counters["positions"]
-                    rate = counters["positions"] / max(1e-6, time.time() - counters["start"])
-                log(f"games {game_number}/{args.games} positions {total} ({rate:.0f}/s)")
+                    elapsed = max(1e-6, time.time() - counters["start"])
+                    rate = counters["positions"] / elapsed
+                    eta = format_progress_eta(
+                        game_number, counters["games_target"], elapsed
+                    )
+                log(f"games {game_number}/{args.games} positions {total} ({rate:.0f}/s) | {eta}")
     finally:
         labeler.close()
 
@@ -309,10 +316,12 @@ def run_label_stage(args: argparse.Namespace) -> int:
             log(f"resume: {len(done)} positions already labeled")
 
     work: queue.Queue[tuple[str, str | None] | None] = queue.Queue()
+    pending = 0
     for fen, outcome in rows:
         if fen in done:
             continue
         work.put((fen, outcome))
+        pending += 1
     for _ in range(args.workers):
         work.put(None)
 
@@ -320,6 +329,7 @@ def run_label_stage(args: argparse.Namespace) -> int:
     writer_lock = threading.Lock()
     output_fh = open(output_path, "a", encoding="utf-8", buffering=1)
     target = args.limit if args.limit > 0 else len(rows)
+    label_target = min(target, pending)
 
     def worker() -> None:
         labeler = Labeler(args.stockfish, depth=args.label_depth, hash_mb=args.label_hash, threads=1)
@@ -350,7 +360,11 @@ def run_label_stage(args: argparse.Namespace) -> int:
                         counters["labeled"] += 1
                         if counters["labeled"] % 5000 == 0:
                             elapsed = time.time() - counters["start"]
-                            log(f"labeled {counters['labeled']} ({counters['labeled'] / elapsed:.0f}/s)")
+                            rate = counters["labeled"] / max(1e-6, elapsed)
+                            eta = format_progress_eta(
+                                counters["labeled"], label_target, elapsed
+                            )
+                            log(f"labeled {counters['labeled']}/{label_target} ({rate:.0f}/s) | {eta}")
                 work.task_done()
         finally:
             labeler.close()

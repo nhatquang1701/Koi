@@ -18,6 +18,8 @@ except ImportError:  # pragma: no cover - environment dependent
     BULLET_TOOLING_AVAILABLE = False
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 NNUE_DIR = REPO_ROOT / "tools" / "nnue"
 MEASUREMENT_DIR = REPO_ROOT / "tools" / "measurement"
 if str(NNUE_DIR) not in sys.path:

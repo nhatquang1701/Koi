@@ -26,6 +26,7 @@ try {
         throw "replay executable is missing: $replayPath"
     }
 
+    Write-Output '[1/2] default match without OpponentElo omits UCI_LimitStrength/UCI_Elo'
     $defaultOutput = & $powerShellExecutable -NoProfile -ExecutionPolicy Bypass -File $matchScript `
         -KoiPath $enginePath -OpponentPath $fixturePath -ReplayPath $replayPath `
         -Depth 1 -Games 1 -MaxPlies 2 -KoiOwnBook false `
@@ -40,6 +41,7 @@ try {
         throw 'omitted opponent strength must not send Stockfish strength options.'
     }
 
+    Write-Output '[2/2] explicit OpponentElo=0 enables UCI_LimitStrength and clamps UCI_Elo to 1320'
     $output = & $powerShellExecutable -NoProfile -ExecutionPolicy Bypass -File $matchScript `
         -KoiPath $enginePath -OpponentPath $fixturePath -ReplayPath $replayPath `
         -Depth 1 -Games 1 -MaxPlies 2 -KoiOwnBook false -OpponentElo 0 `

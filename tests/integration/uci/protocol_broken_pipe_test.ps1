@@ -51,7 +51,11 @@ function Complete-BrokenPipeCase($Process, [string]$Label) {
     }
 }
 
+Import-Module ([System.IO.Path]::GetFullPath(
+    (Join-Path $PSScriptRoot '../../support/MatchSupport.psm1'))) -Force
+
 # 1. Mid-search disconnect.
+Write-TestProgress 1 4 'mid-search disconnect'
 $midSearch = Start-EngineProcess
 $midSearch.StandardInput.WriteLine('uci')
 $midSearch.StandardInput.WriteLine('isready')
@@ -68,6 +72,7 @@ Complete-BrokenPipeCase $midSearch 'mid-search disconnect'
 $midSearch.Dispose()
 
 # 2. Disconnect before the handshake even completes.
+Write-TestProgress 2 4 'early disconnect'
 $early = Start-EngineProcess
 $early.StandardOutput.Close()
 $early.StandardInput.WriteLine('uci')
@@ -80,6 +85,7 @@ $early.Dispose()
 
 # 3. Closed stderr read end: trigger a diagnostic (invalid FEN) and require a
 # clean exit; POSIX SIGPIPE must stay ignored and Windows must fail closed.
+Write-TestProgress 3 4 'closed stderr diagnostic'
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $startInfo.FileName = $EnginePath
 $startInfo.UseShellExecute = $false
@@ -112,6 +118,7 @@ $stderrClosed.Dispose()
 # seconds while the engine emits high-volume MultiPV analysis; the engine may
 # block on the pipe, but must recover after the drain starts and still answer
 # stop/quit cleanly with exactly one bestmove and empty stderr.
+Write-TestProgress 4 4 'slow-consumer backpressure'
 $slowStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $slowStartInfo.FileName = $EnginePath
 $slowStartInfo.UseShellExecute = $false

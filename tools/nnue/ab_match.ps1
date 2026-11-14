@@ -64,6 +64,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot '../stability/EtaSupport.psm1') -Force
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $binarySuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
 if ([string]::IsNullOrWhiteSpace($EnginePath)) {
@@ -173,8 +174,12 @@ function Invoke-AbLeg {
     }
 }
 
+$abMatchStartedUtc = [DateTime]::UtcNow
+Write-Host (Format-StepProgress -Step 1 -Total 2 -Label "ab match leg white ($nnueWhiteGames games)" -StartedUtc $abMatchStartedUtc)
 $whiteLeg = Invoke-AbLeg -Tag 'white' -KoiColor 'white' -LegGames $nnueWhiteGames
+Write-Host (Format-StepProgress -Step 2 -Total 2 -Label "ab match leg black ($nnueBlackGames games)" -StartedUtc $abMatchStartedUtc)
 $blackLeg = Invoke-AbLeg -Tag 'black' -KoiColor 'black' -LegGames $nnueBlackGames
+Write-Host ("ab match completed | elapsed {0}" -f (Format-DurationSeconds ([DateTime]::UtcNow - $abMatchStartedUtc).TotalSeconds))
 
 $wins = 0
 $draws = 0

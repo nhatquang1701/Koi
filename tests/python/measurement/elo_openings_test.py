@@ -1,10 +1,13 @@
 import os
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPOSITORY_ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 CORPUS_PATH = REPOSITORY_ROOT / "tests" / "data" / "openings" / "openings-curated-32.txt"
 _BINARY_SUFFIX = ".exe" if os.name == "nt" else ""
 REPLAY_CANDIDATES = (

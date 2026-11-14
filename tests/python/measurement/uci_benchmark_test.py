@@ -11,6 +11,8 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 MODULE_PATH = ROOT / "tools" / "measurement" / "uci_benchmark.py"
 SPEC = importlib.util.spec_from_file_location("uci_benchmark", MODULE_PATH)
 uci_benchmark = importlib.util.module_from_spec(SPEC)

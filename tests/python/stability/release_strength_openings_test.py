@@ -7,6 +7,8 @@ import sys
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 sys.path.insert(0, str(ROOT / "tools" / "stability"))
 sys.path.insert(0, str(ROOT / "tools" / "measurement"))
 

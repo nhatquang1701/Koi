@@ -33,7 +33,11 @@ import random
 import re
 import subprocess
 import sys
+import time
 from dataclasses import asdict, dataclass
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "tests" / "support"))
+from unittest_progress import format_progress_eta  # noqa: E402
 
 REPORT_SCHEMA = "koi-spsa-report-v1"
 MANIFEST_SCHEMA = "koi-spsa-manifest-v1"
@@ -271,6 +275,7 @@ def run(
     rng = random.Random(seed)
     values = {parameter.name: parameter.value for parameter in parameters}
     history: list[dict[str, object]] = []
+    started = time.monotonic()
 
     for iteration in range(iterations):
         delta = {parameter.name: rng.choice((-1, 1)) for parameter in parameters}
@@ -342,6 +347,12 @@ def run(
         }
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(
+            f"[SPSA] iter {iteration + 1}/{iterations} "
+            f"plus={scores['plus']:.3f} minus={scores['minus']:.3f} | "
+            f"{format_progress_eta(iteration + 1, iterations, time.monotonic() - started)}",
+            flush=True,
+        )
 
     final = {
         "schema": REPORT_SCHEMA,

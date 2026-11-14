@@ -51,4 +51,26 @@ function New-ScriptedUciEngine {
     }
 }
 
-Export-ModuleMember -Function Get-PowerShellExecutable, New-ScriptedUciEngine
+Import-Module ([System.IO.Path]::GetFullPath(
+    (Join-Path $PSScriptRoot '../../tools/stability/EtaSupport.psm1'))) -Force
+
+$script:ProgressStartedUtc = $null
+$script:ProgressTotal = 0
+
+function Write-TestProgress {
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [int]$Step,
+        [Parameter(Mandatory = $true, Position = 1)]
+        [int]$Total,
+        [Parameter(Mandatory = $true, Position = 2)]
+        [string]$Label
+    )
+    if ($null -eq $script:ProgressStartedUtc -or $Step -le 1 -or $Total -ne $script:ProgressTotal) {
+        $script:ProgressStartedUtc = [DateTime]::UtcNow
+        $script:ProgressTotal = $Total
+    }
+    Write-Output (Format-StepProgress -Step $Step -Total $Total -Label $Label -StartedUtc $script:ProgressStartedUtc)
+}
+
+Export-ModuleMember -Function Get-PowerShellExecutable, New-ScriptedUciEngine, Write-TestProgress

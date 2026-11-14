@@ -13,6 +13,7 @@ New-Item -ItemType Directory -Path $scratchDirectory -Force | Out-Null
 $profilePath = Join-Path $scratchDirectory 'hce-profile.json'
 
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+Write-Output '[1/2] run koi-bench --hce --depth 3'
 $startInfo.FileName = $BenchPath
 $startInfo.UseShellExecute = $false
 $startInfo.CreateNoWindow = $true
@@ -42,6 +43,7 @@ if ($stderr.Length -ne 0) {
 
 # Every built-in position prints `match 0|1`; enforce a regression threshold on
 # the deterministic Threads=1 depth-3 suite rather than an exact count.
+Write-Output '[2/2] verify HCE tactical match rate and profile JSON'
 $matchLines = @($stdout -split "`r?`n" | Where-Object { $_ -match ' match [01]$' })
 if ($matchLines.Count -lt 64) {
     throw "koi-bench --hce must report a match result for every suite position (got $($matchLines.Count))."

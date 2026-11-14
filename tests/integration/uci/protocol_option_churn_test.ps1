@@ -64,12 +64,14 @@ try {
     Send-AndExpect $session 'isready' 'readyok' 'initial readiness'
 
     # 1. Hash resize during an active search.
+    Write-TestProgress 1 9 'Hash resize during active search'
     Start-Search $session
     Send-UciCommand $session 'setoption name Hash value 32'
     Stop-Expect-Suppressed $session 'hash-change readiness'
     [void](Search-Expect-Bestmove $session 'startpos moves e2e4' 'hash-change replacement search')
 
     # 2. Threads and MultiPV changes during an active search.
+    Write-TestProgress 2 9 'Threads and MultiPV changes during active search'
     Start-Search $session
     Send-UciCommand $session 'setoption name Threads value 2'
     Stop-Expect-Suppressed $session 'threads-change readiness'
@@ -80,12 +82,14 @@ try {
     [void](Search-Expect-Bestmove $session 'startpos moves d2d4' 'threads/multipv replacement search')
 
     # 3. Malformed EvalFile swapped in during a search.
+    Write-TestProgress 3 9 'Malformed EvalFile swap during active search'
     Start-Search $session
     Send-UciCommand $session "setoption name EvalFile value $badNet"
     Send-AndExpect $session 'isready' 'readyok' 'bad-evalfile readiness'
     [void](Search-Expect-Bestmove $session 'startpos moves g1f3' 'post-bad-evalfile search')
 
     # 4. BookFile/SyzygyPath churn during a search.
+    Write-TestProgress 4 9 'BookFile and SyzygyPath churn during active search'
     Start-Search $session
     Send-UciCommand $session ("setoption name BookFile value " + (Join-Path $missing 'book.bin'))
     Stop-Expect-Suppressed $session 'bookfile-change readiness'
@@ -94,6 +98,7 @@ try {
     [void](Search-Expect-Bestmove $session 'startpos moves c2c4' 'post-asset-churn search')
 
     # 5. Burst of Hash resizes while one search is active.
+    Write-TestProgress 5 9 'Burst of Hash resizes during active search'
     Start-Search $session
     foreach ($hash in @(8, 16, 24, 48, 64)) {
         Send-UciCommand $session "setoption name Hash value $hash"
@@ -103,6 +108,7 @@ try {
 
     # 6. Threads=4 with a Hash resize while the search is active (Lazy SMP
     # helper join + TT reallocation race).
+    Write-TestProgress 6 9 'Threads=4 with Hash resize during active search'
     Send-UciCommand $session 'setoption name Threads value 4'
     Stop-Expect-Suppressed $session 'threads4 readiness'
     Start-Search $session
@@ -112,6 +118,7 @@ try {
 
     # 7. Option change during a ponder search: the pondering generation must be
     # suppressed and the next real search must answer.
+    Write-TestProgress 7 9 'Option change during ponder search'
     Send-UciCommand $session 'setoption name Threads value 1'
     Stop-Expect-Suppressed $session 'threads1 readiness'
     Send-UciCommand $session 'position startpos'
@@ -122,6 +129,7 @@ try {
 
     # 8. Valid EvalFile swap during an active search: the evaluator installs
     # (reported once) and the next search answers legally.
+    Write-TestProgress 8 9 'Valid EvalFile swap during active search'
     if (-not [string]::IsNullOrWhiteSpace($env:KOI_NNUE_PATH) -and
         (Test-Path -LiteralPath $env:KOI_NNUE_PATH -PathType Leaf)) {
         $validNet = Join-Path $scratchRoot 'valid-swap.nnue'
@@ -135,6 +143,7 @@ try {
     # 9. Book/RandomSeed options during an active search.  Whether a given
     # option stops the search or only takes effect for the next one, no stray
     # completion is allowed and the replacement search must answer.
+    Write-TestProgress 9 9 'Book and RandomSeed options during active search'
     Start-Search $session
     foreach ($bookOption in @(
             'setoption name OwnBook value true',

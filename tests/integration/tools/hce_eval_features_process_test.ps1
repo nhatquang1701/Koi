@@ -41,6 +41,7 @@ function Invoke-Tool([string[]]$Arguments) {
     }
 }
 
+Write-Output '[1/2] run koi-eval-features --hce CSV evaluation'
 $result = Invoke-Tool @('--hce', '--input', $inputPath, '--output', $outputPath)
 if ($result.ExitCode -ne 0) { throw "koi-eval-features --hce failed: $($result.Stderr)" }
 if ($result.Stderr.Length -ne 0) { throw "koi-eval-features --hce wrote stderr: $($result.Stderr)" }
@@ -53,6 +54,7 @@ if ($scores.Count -ne 2 -or ($scores | ForEach-Object { [Math]::Abs($_) -lt 9900
     throw "HCE eval CSV scores are outside the expected range: $($scores -join ', ')"
 }
 
+Write-Output '[2/2] verify --hce and --nnue conflict rejection'
 $conflict = Invoke-Tool @('--hce', '--nnue', 'missing.nnue')
 if ($conflict.ExitCode -eq 0) {
     throw 'koi-eval-features must reject --hce together with --nnue.'

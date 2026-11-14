@@ -21,6 +21,11 @@ import random
 import re
 import subprocess
 import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "support"))
+from unittest_progress import format_progress_eta  # noqa: E402
 
 SAFE_NAMES = [
     "BookFile",
@@ -191,6 +196,8 @@ def main() -> int:
     engine = os.path.abspath(args.engine)
     configs = [{"case": case, "engine": engine} for case in range(args.cases)]
     results: list[dict] = []
+    step = max(1, min(25, args.cases // 5))
+    started = time.monotonic()
     with mp.Pool(processes=max(1, args.workers)) as pool:
         for done, result in enumerate(pool.imap_unordered(run_case, configs), 1):
             results.append(result)
@@ -200,8 +207,10 @@ def main() -> int:
                     f"stderr={result['bad_stderr'][:2]} stdout={result['bad_stdout'][:2]}",
                     flush=True,
                 )
-            if done % 200 == 0 or done == args.cases:
-                print(f"progress {done}/{args.cases}", flush=True)
+            if done % step == 0 or done == args.cases:
+                pct = (done * 100) // max(1, args.cases)
+                eta = format_progress_eta(done, args.cases, time.monotonic() - started)
+                print(f"progress {done}/{args.cases} ({pct}%) | {eta}", flush=True)
     summary = {
         "engine": engine,
         "cases": args.cases,

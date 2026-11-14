@@ -27,6 +27,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 
+Import-Module (Join-Path $PSScriptRoot 'EtaSupport.psm1') -Force
+
 function Get-ExecutableHash([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
 }
@@ -116,6 +118,13 @@ function Add-CutechessLine($State, [string]$Stream, [string]$Line) {
         Add-ArtifactLine $State.StdoutWriter $Line
         Add-ArtifactLine $State.TranscriptWriter $Line
         [Console]::Out.WriteLine($Line)
+        if ($State.TotalGames -gt 1 -and $Line -match '^Finished game ') {
+            ++$State.FinishedGames
+            $eta = Get-LinearEta -Completed $State.FinishedGames -Total $State.TotalGames `
+                -ElapsedSeconds $State.Stopwatch.Elapsed.TotalSeconds
+            [Console]::Out.WriteLine(("[Cutechess] Game {0}/{1} | Elapsed {2} | ETA {3}" -f `
+                $State.FinishedGames, $State.TotalGames, $eta.elapsed_text, $eta.eta_text))
+        }
     } else {
         Add-ArtifactLine $State.StderrWriter $Line
         Add-ArtifactLine $State.TranscriptWriter ("[stderr] " + $Line)
@@ -144,18 +153,22 @@ function Stop-CutechessProcess($Process) {
 
 function Invoke-Cutechess([string]$Executable, [string[]]$Arguments, [string]$TranscriptPath,
                            [string]$StdoutPath, [string]$StderrPath,
-                           [string]$ProtocolPath, [int]$TimeoutMs) {
+                           [string]$ProtocolPath, [int]$TimeoutMs, [int]$TotalGames = 1) {
     $lines = [System.Collections.Generic.List[string]]::new()
     $transcriptWriter = [System.IO.StreamWriter]::new($TranscriptPath, $false, [System.Text.UTF8Encoding]::new($false))
     $stdoutWriter = [System.IO.StreamWriter]::new($StdoutPath, $false, [System.Text.UTF8Encoding]::new($false))
     $stderrWriter = [System.IO.StreamWriter]::new($StderrPath, $false, [System.Text.UTF8Encoding]::new($false))
     $protocolWriter = [System.IO.StreamWriter]::new($ProtocolPath, $false, [System.Text.UTF8Encoding]::new($false))
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $state = [pscustomobject]@{
         Lines = $lines
         TranscriptWriter = $transcriptWriter
         StdoutWriter = $stdoutWriter
         StderrWriter = $stderrWriter
         ProtocolWriter = $protocolWriter
+        TotalGames = $TotalGames
+        FinishedGames = 0
+        Stopwatch = $stopwatch
     }
     $process = $null
     $timedOut = $false
@@ -182,7 +195,6 @@ function Invoke-Cutechess([string]$Executable, [string[]]$Arguments, [string]$Tr
         $stderrTask = $process.StandardError.ReadLineAsync()
         $stdoutOpen = $true
         $stderrOpen = $true
-        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         while ($stdoutOpen -or $stderrOpen -or -not $process.HasExited) {
             if ($stdoutOpen -and $stdoutTask.IsCompleted) {
                 $line = $stdoutTask.GetAwaiter().GetResult()
@@ -573,7 +585,7 @@ $stdoutCaptureNote | ConvertTo-Json -Compress | Set-Content -LiteralPath $koiStd
 $stdoutCaptureNote | ConvertTo-Json -Compress | Set-Content -LiteralPath $opponentStdoutPath -Encoding UTF8
 
 $run = Invoke-Cutechess $cutechess $arguments $transcriptPath $stdoutPath $stderrPath `
-    $protocolEventsPath $TimeoutMilliseconds
+    $protocolEventsPath $TimeoutMilliseconds $Games
 $lines = @($run.lines)
 $exitCode = $run.exit_code
 

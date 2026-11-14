@@ -33,6 +33,7 @@ function Send-Line([string]$line) {
     $proc.StandardInput.Flush()
 }
 
+Write-Output '[1/2] launch engine under RLIMIT_AS and send UCI resize transcript'
 Send-Line 'uci'
 Send-Line 'isready'
 Send-Line 'setoption name Hash value 512'
@@ -52,6 +53,7 @@ $err = $errTask.GetAwaiter().GetResult()
 $exitCode = $proc.ExitCode
 $proc.Dispose()
 
+Write-Output '[2/2] verify memory-limit allocation failure and search completion'
 Write-Output '--- engine stdout ---'
 Write-Output $out
 Write-Output '--- engine stderr ---'

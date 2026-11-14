@@ -11,6 +11,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 TOOL = ROOT / "tools" / "measurement" / "tune_eval.py"
 ROWS = {
     "train": "4k3/8/8/8/8/8/P7/4K3 w - - 0 1,1-0\n",
@@ -132,6 +134,10 @@ class NnueTrainingBoundaryTest(unittest.TestCase):
         self.assertEqual(version, module.V8_VERSION)
         self.assertEqual(module.V8_VERSION, 8)
         self.assertEqual(len(payload_hash), 64)
+        dual_container, _ = module.nnue_container_v4(
+            b"\x00" * 16, 32, 7, 12, dual=True)
+        layer3 = struct.unpack_from("<I", dual_container, 24)[0]
+        self.assertEqual(layer3, 2)
 
     def test_manifest_input_resolves_relative_split_paths(self):
         with tempfile.TemporaryDirectory() as temporary:

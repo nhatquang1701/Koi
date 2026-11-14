@@ -16,6 +16,8 @@ import tempfile
 import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT / "tests" / "support"))
+import unittest_progress  # noqa: E402,F401
 sys.path.insert(0, str(REPO_ROOT / "tools" / "measurement"))
 
 import koi_chess as chess  # noqa: E402

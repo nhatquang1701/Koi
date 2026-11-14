@@ -41,6 +41,7 @@ function Get-TestSha256 {
     }
 }
 
+Write-Output '[1/4] verify install_book.ps1 source contract'
 Assert-True (Test-Path -LiteralPath $installerPath -PathType Leaf) 'install_book.ps1 must exist.'
 
 if (Test-Path -LiteralPath $installerPath -PathType Leaf) {
@@ -62,6 +63,7 @@ if (Test-Path -LiteralPath $installerPath -PathType Leaf) {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
     try {
+        Write-Output '[2/4] verify missing EnginePath and overwrite refusal'
         $missingEngine = Join-Path $tempRoot 'missing.exe'
         $missingFailed = $false
         $missingOutput = ''
@@ -97,6 +99,7 @@ if (Test-Path -LiteralPath $installerPath -PathType Leaf) {
         Assert-True ($currentHash -eq $originalHash) 'Overwrite refusal must leave the existing book unchanged.'
 
         # Successful offline install using the documented test seams.
+        Write-Output '[3/4] verify offline verified install and repeat no-op'
         $successRoot = Join-Path $tempRoot 'success'
         New-Item -ItemType Directory -Path $successRoot | Out-Null
         $successEngine = Join-Path $successRoot 'koi-engine.exe'
@@ -118,6 +121,7 @@ if (Test-Path -LiteralPath $installerPath -PathType Leaf) {
         Assert-Contains ($repeatOutput | Out-String) 'already installed' 'Reinstalling a verified book must be a no-op.'
 
         # Force must replace a different existing book with the verified asset.
+        Write-Output '[4/4] verify -Force overwrite replacement'
         [System.IO.File]::WriteAllBytes($installedPath, [byte[]](0xAA, 0xBB))
         $forceOutput = & $installerPath -EnginePath $successEngine -SourceFile $fixturePath -ExpectedSha256 $fixtureHash -Force
         Assert-True ((Get-TestSha256 -Path $installedPath) -eq $fixtureHash) 'Force must replace a different existing book.'

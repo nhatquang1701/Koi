@@ -27,11 +27,11 @@
 //                          but does not fail the run (transitional escape hatch)
 //
 // Result contract (stable, machine-readable):
-//     PASS <name>
-//     FAIL <name>: <message>
-//     XFAIL <name>: <message>
-//     XPASS <name>: <message>
-//     SKIP <name>: <reason>
+//     [i/n] PASS <name>
+//     [i/n] FAIL <name>: <message>
+//     [i/n] XFAIL <name>: <message>
+//     [i/n] XPASS <name>: <message>
+//     [i/n] SKIP <name>: <reason>
 //     XFAIL-UNSEEN <name>
 //     koi-test-summary run=<n> pass=<n> fail=<n> xfail=<n> xpass=<n> skip=<n> unseen=<n> intermittent=<n>
 //
@@ -41,14 +41,17 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <expected>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <span>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -327,6 +330,59 @@ inline bool contains(std::span<const std::string_view> values, std::string_view 
     return std::find(values.begin(), values.end(), name) != values.end();
 }
 
+inline std::string format_duration(double seconds) {
+    if (!std::isfinite(seconds) || seconds < 0.0) {
+        return "n/a";
+    }
+    if (seconds < 10.0) {
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(1) << seconds << 's';
+        return out.str();
+    }
+    const auto whole = static_cast<long long>(std::llround(seconds));
+    if (whole < 60) {
+        return std::to_string(whole) + "s";
+    }
+    const auto minutes = whole / 60;
+    const auto rem_seconds = whole % 60;
+    if (whole < 3600) {
+        std::ostringstream out;
+        out << minutes << 'm' << std::setw(2) << std::setfill('0') << rem_seconds << 's';
+        return out.str();
+    }
+    const auto hours = whole / 3600;
+    const auto rem_minutes = (whole % 3600) / 60;
+    if (whole < 86400) {
+        std::ostringstream out;
+        out << hours << 'h' << std::setw(2) << std::setfill('0') << rem_minutes << 'm';
+        return out.str();
+    }
+    const auto days = whole / 86400;
+    const auto rem_hours = (whole % 86400) / 3600;
+    std::ostringstream out;
+    out << days << 'd' << std::setw(2) << std::setfill('0') << rem_hours << 'h'
+        << std::setw(2) << std::setfill('0') << rem_minutes << 'm';
+    return out.str();
+}
+
+inline std::string format_progress_eta(std::size_t completed, std::size_t total,
+                                       double elapsed_seconds) {
+    const double clamped = std::max(0.0, elapsed_seconds);
+    const std::string elapsed_text = format_duration(clamped);
+    if (total == 0) {
+        return "elapsed " + elapsed_text + " | eta n/a";
+    }
+    if (completed >= total) {
+        return "elapsed " + elapsed_text + " | eta 0.0s";
+    }
+    if (completed == 0 || clamped <= 0.0 || !std::isfinite(clamped)) {
+        return "elapsed " + elapsed_text + " | eta calculating";
+    }
+    const double remaining = clamped *
+        static_cast<double>(total - completed) / static_cast<double>(completed);
+    return "elapsed " + elapsed_text + " | eta ~" + format_duration(remaining);
+}
+
 } // namespace detail
 
 inline int run_tests(std::span<const TestCase> tests, int argc = 0, char** argv = nullptr,
@@ -357,6 +413,19 @@ inline int run_tests(std::span<const TestCase> tests, int argc = 0, char** argv 
     const std::size_t retries = std::max<std::size_t>(1, environment_uint("KOI_TEST_RETRIES", 1));
     const bool allow_xpass = environment_flag("KOI_ALLOW_XPASS", false);
 
+    std::size_t total_selected = 0;
+    for (std::size_t index = 0; index < tests.size(); ++index) {
+        const TestCase& test = tests[index];
+        if (selection.filter.has_value() &&
+            test.name.find(*selection.filter) == std::string_view::npos) {
+            continue;
+        }
+        if (index % selection.shard_count != selection.shard_index) {
+            continue;
+        }
+        ++total_selected;
+    }
+
     std::size_t run = 0;
     std::size_t passed = 0;
     std::size_t failed = 0;
@@ -365,6 +434,7 @@ inline int run_tests(std::span<const TestCase> tests, int argc = 0, char** argv 
     std::size_t intermittent_observed = 0;
     std::size_t skipped = 0;
     std::vector<std::string_view> seen_known_failures;
+    const auto suite_start = std::chrono::steady_clock::now();
 
     for (std::size_t index = 0; index < tests.size(); ++index) {
         const TestCase& test = tests[index];
@@ -377,6 +447,8 @@ inline int run_tests(std::span<const TestCase> tests, int argc = 0, char** argv 
             continue;
         }
         ++run;
+        const std::string progress_prefix =
+            "[" + std::to_string(run) + "/" + std::to_string(total_selected) + "] ";
 
         const bool intermittent = detail::contains(options.intermittent, name);
         const bool known_failure = detail::contains(options.known_failures, name) || intermittent;
@@ -404,26 +476,33 @@ inline int run_tests(std::span<const TestCase> tests, int argc = 0, char** argv 
                 message = "unknown non-standard exception";
             }
             if (attempt < attempts) {
-                std::cout << "RETRY " << name << " (attempt " << attempt << "/" << attempts
-                          << "): " << message << '\n';
+                std::cout << progress_prefix << "RETRY " << name << " (attempt " << attempt << "/"
+                          << attempts << "): " << message << '\n';
             }
         }
 
+        const double elapsed_seconds = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - suite_start).count();
+        const std::string eta_suffix = total_selected > 1
+            ? (" | " + detail::format_progress_eta(run, total_selected, elapsed_seconds))
+            : std::string{};
+
         if (case_skipped) {
-            std::cout << "SKIP " << name << ": " << message << '\n';
+            std::cout << progress_prefix << "SKIP " << name << ": " << message << eta_suffix << '\n';
             ++skipped;
             continue;
         }
         if (succeeded) {
             if (known_failure) {
                 if (intermittent) {
-                    std::cout << "XPASS " << name
-                              << ": intermittent known failure now passes\n";
+                    std::cout << progress_prefix << "XPASS " << name
+                              << ": intermittent known failure now passes" << eta_suffix << '\n';
                     ++xpassed;
                     ++intermittent_observed;
                 } else {
-                    std::cout << "XPASS " << name
-                              << ": known failure now passes; remove it from the known_failures list\n";
+                    std::cout << progress_prefix << "XPASS " << name
+                              << ": known failure now passes; remove it from the known_failures list"
+                              << eta_suffix << '\n';
                     if (allow_xpass) {
                         ++xpassed;
                     } else {
@@ -433,16 +512,16 @@ inline int run_tests(std::span<const TestCase> tests, int argc = 0, char** argv 
             } else {
                 ++passed;
                 if (!selection.quiet) {
-                    std::cout << "PASS " << name << '\n';
+                    std::cout << progress_prefix << "PASS " << name << eta_suffix << '\n';
                 }
             }
             continue;
         }
         if (known_failure) {
-            std::cout << "XFAIL " << name << ": " << message << '\n';
+            std::cout << progress_prefix << "XFAIL " << name << ": " << message << eta_suffix << '\n';
             ++xfailed;
         } else {
-            std::cerr << "FAIL " << name << ": " << message << '\n';
+            std::cerr << progress_prefix << "FAIL " << name << ": " << message << eta_suffix << '\n';
             ++failed;
         }
     }

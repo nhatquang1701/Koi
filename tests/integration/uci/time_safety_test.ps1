@@ -48,6 +48,7 @@ try {
     }
 
     # 6+1 is the control that lost on time before the fix.
+    Write-TestProgress 1 7 '6+1 clock safety (8 moves)'
     $remaining = 6000
     $increment = 1000
     for ($move = 1; $move -le 8; $move++) {
@@ -65,6 +66,7 @@ try {
     }
 
     # 1+0 is the tightest increment-less control.
+    Write-TestProgress 2 7 '1+0 clock safety (12 moves)'
     $remaining = 1000
     for ($move = 1; $move -le 12; $move++) {
         $safety = Get-HardSafetyMilliseconds -RemainingMs $remaining
@@ -83,6 +85,7 @@ try {
     # An explicit movetime must be honoured without overrunning.
     Send-UciCommand -Session $session -Command 'position startpos'
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    Write-TestProgress 3 7 'explicit movetime 500 bound'
     Send-UciCommand -Session $session -Command 'go movetime 500'
     $null = Read-UciUntil -Session $session -Predicate { param($value) $value.StartsWith('bestmove') } `
         -Description 'a bestmove after go movetime 500'
@@ -92,6 +95,7 @@ try {
     }
 
     # Slow Mover tunes clock allocation; it must not extend a movetime request.
+    Write-TestProgress 4 7 'Slow Mover 300 with movetime 300'
     Send-UciCommand -Session $session -Command 'setoption name Slow Mover value 300'
     Send-UciCommand -Session $session -Command 'position startpos'
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -107,6 +111,7 @@ try {
     # Fixed-depth searches are not governed by the clock and must stay fast.
     Send-UciCommand -Session $session -Command 'position startpos'
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    Write-TestProgress 5 7 'fixed-depth search bound'
     Send-UciCommand -Session $session -Command 'go depth 2'
     $null = Read-UciUntil -Session $session -Predicate { param($value) $value.StartsWith('bestmove') } `
         -Description 'a bestmove after go depth 2'
@@ -118,6 +123,7 @@ try {
     # Mixed depth/node and clock limits: depth and nodes stay strict upper
     # bounds, but a supplied clock must still bound the search. Before the fix
     # these commands ignored the clock entirely and ran for several seconds.
+    Write-TestProgress 6 7 'mixed depth/node and clock limits'
     foreach ($mixed in @(
             @{ Command = 'go depth 6 wtime 200 btime 200'; Label = 'go depth 6 with a 200 ms clock' },
             @{ Command = 'go nodes 2000000 wtime 200 btime 200'; Label = 'go nodes 2000000 with a 200 ms clock' })) {
@@ -135,6 +141,7 @@ try {
     # A ponderhit must always be answered with a bestmove. The controller used to
     # stop the ponder search and return silently when its prediction could not be
     # validated, which leaves the GUI waiting and flags the engine.
+    Write-TestProgress 7 7 'ponderhit conversion time bound'
     Send-UciCommand -Session $session -Command 'setoption name Ponder value true'
     Send-UciCommand -Session $session -Command 'position startpos moves e2e4'
     Send-UciCommand -Session $session -Command 'go ponder wtime 2500 btime 2500 winc 0 binc 0'
