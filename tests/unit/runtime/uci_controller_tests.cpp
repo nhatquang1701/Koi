@@ -2427,6 +2427,66 @@ void test_bestmove_reports_the_ponder_move_without_the_option() {
             "the reported ponder move must be legal after the bestmove");
 }
 
+void test_uci_annotate_move_and_game_commands() {
+    const std::string transcript =
+        "uci\n"
+        "isready\n"
+        "annotate\n"
+        "annotate z9z9\n"
+        "annotate e2e4 nodes 0\n"
+        "annotate game\n"
+        "position startpos moves f2f3 e7e5 g2g4 d8h4\n"
+        "annotate game depth 3\n"
+        "position startpos\n"
+        "annotate e2e4 depth 2\n"
+        "ucinewgame\n"
+        "annotate game\n"
+        "quit\n";
+
+    const ControllerResult result = run_controller(transcript);
+    require(result.exit_code == 0, "annotate transcript must exit 0");
+    require(result.diagnostics.empty(),
+            "annotate errors must report via UCI info strings, not stderr");
+
+    const std::vector<std::string> lines = output_lines(result.output);
+    const std::vector<std::string> annotate_lines =
+        lines_starting_with(lines, "info string annotate ");
+    require(annotate_lines.size() == 12,
+            "expected 4 errors + 4 game moves + 2 summaries + 1 single move + 1 post-reset error");
+
+    require(annotate_lines[0].find("annotate error: missing move or game target") !=
+                std::string::npos,
+            "missing annotate target diagnostic expected");
+    require(annotate_lines[1].find("annotate error: invalid move z9z9") != std::string::npos,
+            "invalid move diagnostic expected");
+    require(annotate_lines[2].find("annotate error: annotation nodes must be positive") !=
+                std::string::npos,
+            "invalid limit diagnostic expected");
+    require(annotate_lines[3].find("annotate error: no moves in current position") !=
+                std::string::npos,
+            "empty position move history diagnostic expected");
+
+    require(annotate_lines[4].find("annotate move f2f3 ply 0 side white ") != std::string::npos,
+            "first ply annotation expected");
+    require(annotate_lines[6].find("annotate move g2g4 ply 2 side white ") != std::string::npos &&
+                annotate_lines[6].find("classification blunder ") != std::string::npos &&
+                annotate_lines[6].find(" glyph ??") != std::string::npos &&
+                annotate_lines[6].find(" nag 4") != std::string::npos,
+            "g2g4 Fool's Mate blunder line must carry classification, glyph, and NAG");
+    require(annotate_lines[7].find("annotate move d8h4 ply 3 side black ") != std::string::npos,
+            "fourth ply annotation expected");
+    require(annotate_lines[8].find("annotate summary white moves 2 ") != std::string::npos &&
+                annotate_lines[8].find(" blunder 1") != std::string::npos,
+            "white summary must report 2 moves and 1 blunder");
+    require(annotate_lines[9].find("annotate summary black moves 2 ") != std::string::npos,
+            "black summary must report 2 moves");
+    require(annotate_lines[10].find("annotate move e2e4 ply 0 side white ") != std::string::npos,
+            "single-move annotate after position reset expected");
+    require(result.output.find("annotate error: no moves in current position",
+                               result.output.find("annotate move e2e4")) != std::string::npos,
+            "ucinewgame must clear stored game moves before subsequent annotate game");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2503,6 +2563,7 @@ int main(int argc, char** argv) {
         {"same-value option reapplication", test_reapplying_the_current_option_value_keeps_the_search_alive},
         {"ponder move without the option", test_bestmove_reports_the_ponder_move_without_the_option},
         {"network overhead estimator", test_network_overhead_estimator_tracks_gui_latency},
+        {"uci annotate commands", test_uci_annotate_move_and_game_commands},
     };
 
     return koi::test::run_tests(tests, argc, argv);

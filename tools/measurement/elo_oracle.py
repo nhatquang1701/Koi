@@ -33,6 +33,33 @@ DEFAULT_THREADS = 4
 DEFAULT_ENGINE_TIMEOUT_SECONDS = 30
 BOOK_DEPTH = 16
 BOOK_RANDOM = False
+WIN_PROB_SCALE = 0.00368208
+CLASSIFICATION_GLYPHS = {
+    "brilliant": "!!",
+    "great": "!",
+    "best": "",
+    "excellent": "",
+    "good": "",
+    "book": "",
+    "forced": "",
+    "inaccuracy": "?!",
+    "mistake": "?",
+    "miss": "?",
+    "blunder": "??",
+}
+CLASSIFICATION_NAGS = {
+    "brilliant": 3,
+    "great": 1,
+    "best": None,
+    "excellent": None,
+    "good": None,
+    "book": None,
+    "forced": 7,
+    "inaccuracy": 6,
+    "mistake": 2,
+    "miss": 2,
+    "blunder": 4,
+}
 ENGINE_VERSION_RE = re.compile(r"\b(?:v)?(\d+(?:\.\d+)+(?:[-+._A-Za-z0-9]*)?)\b")
 UCI_MOVE_RE = re.compile(r"^(?:[a-h][1-8][a-h][1-8](?:[nbrq])?|0000)$")
 BOOK_INFO_RE = re.compile(
@@ -131,6 +158,254 @@ def classify_cpl(cpl: Optional[int]) -> Optional[str]:
     if loss < 300:
         return "mistake"
     return "blunder"
+
+
+def _effective_side_cp(score_cp: int, mate: Optional[int]) -> int:
+    if mate is not None:
+        clamped = min(abs(int(mate)), 1000)
+        return (MATE_SCORE_CP - clamped) if int(mate) > 0 else (-MATE_SCORE_CP + clamped)
+    return max(-MATE_SCORE_CP + 1001, min(MATE_SCORE_CP - 1001, int(score_cp)))
+
+
+def compute_eval_cpl(
+    best_cp: int,
+    played_cp: int,
+    best_mate: Optional[int] = None,
+    played_mate: Optional[int] = None,
+) -> int:
+    """Return non-negative centipawn loss between side-to-move normalized evaluations."""
+
+    return max(0, _effective_side_cp(best_cp, best_mate) - _effective_side_cp(played_cp, played_mate))
+
+
+def win_probability_from_cp(score_cp: int) -> float:
+    """Convert side-to-move centipawns to expected score in [0.0, 1.0]."""
+
+    clamped = max(-10000.0, min(10000.0, float(score_cp)))
+    return 1.0 / (1.0 + math.exp(-WIN_PROB_SCALE * clamped))
+
+
+def win_probability_from_eval(score_cp: int, mate: Optional[int] = None) -> float:
+    """Convert a side-to-move score or mate distance into expected win probability."""
+
+    if mate is not None:
+        return 1.0 if int(mate) > 0 else 0.0
+    return win_probability_from_cp(score_cp)
+
+
+def move_accuracy_percent(win_prob_before: float, win_prob_after: float) -> float:
+    """Return Lichess/CAPS-style move accuracy in [0.0, 100.0] from win-probability drop."""
+
+    before = max(0.0, min(1.0, float(win_prob_before)))
+    after = max(0.0, min(1.0, float(win_prob_after)))
+    drop = max(0.0, before - after)
+    if drop <= 1e-12:
+        return 100.0
+    raw = 103.1668 * math.exp(-0.04354 * (drop * 100.0)) - 3.1669
+    return max(0.0, min(100.0, raw))
+
+
+def classify_move_annotation(
+    best_cp: int,
+    played_cp: int,
+    *,
+    best_mate: Optional[int] = None,
+    played_mate: Optional[int] = None,
+    second_best_cp: Optional[int] = None,
+    second_best_mate: Optional[int] = None,
+    legal_move_count: int = 2,
+    played_move: Optional[str] = None,
+    best_move: Optional[str] = None,
+    is_book_move: bool = False,
+    is_sacrifice: bool = False,
+    is_capture_move: bool = False,
+    in_check: bool = False,
+    gives_check: bool = False,
+) -> str:
+    """Classify a move into brilliant/great/best/excellent/good/book/forced/inaccuracy/mistake/miss/blunder."""
+
+    if legal_move_count == 1:
+        return "forced"
+
+    cpl = compute_eval_cpl(best_cp, played_cp, best_mate=best_mate, played_mate=played_mate)
+    best_wp = win_probability_from_eval(best_cp, best_mate)
+    played_wp = win_probability_from_eval(played_cp, played_mate)
+    delta_wp = max(0.0, best_wp - played_wp)
+
+    has_winning_mate = best_mate is not None and int(best_mate) > 0
+    played_winning_mate = played_mate is not None and int(played_mate) > 0
+    played_allows_mate = played_mate is not None and int(played_mate) <= 0
+
+    if (
+        is_book_move
+        and not played_allows_mate
+        and delta_wp < 0.10
+        and (not has_winning_mate or played_winning_mate)
+    ):
+        return "book"
+
+    if has_winning_mate and played_allows_mate:
+        return "blunder"
+    if has_winning_mate and not played_winning_mate:
+        return "blunder" if played_wp < 0.60 else "miss"
+    if (
+        not played_allows_mate
+        and best_wp >= 0.75
+        and played_wp >= 0.47
+        and delta_wp >= 0.12
+        and delta_wp < 0.40
+    ):
+        return "miss"
+    if (
+        played_allows_mate
+        or (delta_wp >= 0.20 and played_wp < 0.45)
+        or delta_wp >= 0.30
+        or (not has_winning_mate and best_wp < 0.75 and cpl >= 300)
+    ):
+        return "blunder"
+    if delta_wp >= 0.10 or (cpl >= 100 and delta_wp >= 0.06):
+        return "mistake"
+    if delta_wp >= 0.05 or (cpl >= 50 and delta_wp >= 0.03):
+        return "inaccuracy"
+
+    exact_best = bool(best_move and played_move and played_move == best_move)
+    equal_mate_best = (not has_winning_mate) or (
+        played_winning_mate and int(played_mate) <= int(best_mate)
+    )
+    is_top_choice = exact_best or (cpl == 0 and delta_wp <= 0.005 and equal_mate_best)
+
+    has_second = second_best_cp is not None or second_best_mate is not None
+    second_wp = (
+        win_probability_from_eval(int(second_best_cp or 0), second_best_mate)
+        if has_second
+        else 0.0
+    )
+    second_gap_wp = max(0.0, best_wp - second_wp) if has_second else 0.0
+    second_is_winning_mate = (
+        has_second and second_best_mate is not None and int(second_best_mate) > 0
+    )
+
+    forced_defensive_capture = (
+        is_capture_move
+        and has_second
+        and second_wp < 0.25
+        and not played_winning_mate
+        and not gives_check
+        and best_wp < 0.80
+    )
+    overwhelming_position = (
+        has_second and second_wp > 0.80 and not played_winning_mate
+    ) or (best_wp > 0.90 and (not played_winning_mate or second_is_winning_mate))
+
+    if (
+        is_sacrifice
+        and not in_check
+        and not forced_defensive_capture
+        and not overwhelming_position
+        and (is_top_choice or (cpl <= 10 and delta_wp <= 0.015))
+        and played_wp >= 0.45
+        and (not has_second or second_gap_wp >= 0.025)
+    ):
+        return "brilliant"
+
+    unique_winning_mate = (
+        played_winning_mate and not second_is_winning_mate and second_wp <= 0.92
+    )
+    if (
+        is_top_choice
+        and has_second
+        and (
+            (second_gap_wp >= 0.10 and played_wp >= 0.25 and second_wp <= 0.85)
+            or unique_winning_mate
+        )
+    ):
+        return "great"
+    if is_top_choice:
+        return "best"
+    if delta_wp <= 0.02 and (
+        cpl <= 25 or (best_wp >= 0.85 and delta_wp <= 0.015 and cpl <= 60)
+    ):
+        return "excellent"
+    return "good"
+
+
+def annotate_move_eval(
+    best_cp: int,
+    played_cp: int,
+    *,
+    best_mate: Optional[int] = None,
+    played_mate: Optional[int] = None,
+    second_best_cp: Optional[int] = None,
+    second_best_mate: Optional[int] = None,
+    legal_move_count: int = 2,
+    played_move: Optional[str] = None,
+    best_move: Optional[str] = None,
+    is_book_move: bool = False,
+    is_sacrifice: bool = False,
+    is_capture_move: bool = False,
+    in_check: bool = False,
+    gives_check: bool = False,
+) -> Dict[str, Any]:
+    """Return full move annotation metrics (classification, glyph, NAG, CPL, win%, accuracy%)."""
+
+    cpl = compute_eval_cpl(best_cp, played_cp, best_mate=best_mate, played_mate=played_mate)
+    wp_before = win_probability_from_eval(best_cp, best_mate)
+    wp_after = win_probability_from_eval(played_cp, played_mate)
+    accuracy = move_accuracy_percent(wp_before, wp_after)
+    annotation = classify_move_annotation(
+        best_cp,
+        played_cp,
+        best_mate=best_mate,
+        played_mate=played_mate,
+        second_best_cp=second_best_cp,
+        second_best_mate=second_best_mate,
+        legal_move_count=legal_move_count,
+        played_move=played_move,
+        best_move=best_move,
+        is_book_move=is_book_move,
+        is_sacrifice=is_sacrifice,
+        is_capture_move=is_capture_move,
+        in_check=in_check,
+        gives_check=gives_check,
+    )
+    if annotation in {"book", "forced"}:
+        accuracy = 100.0
+        if annotation == "forced":
+            cpl = 0
+    return {
+        "annotation": annotation,
+        "glyph": CLASSIFICATION_GLYPHS[annotation],
+        "nag": CLASSIFICATION_NAGS[annotation],
+        "cpl": cpl,
+        "win_prob_before": round(wp_before, 4),
+        "win_prob_after": round(wp_after, 4),
+        "accuracy_percent": round(accuracy, 2),
+    }
+
+
+def format_pgn_move_annotation(
+    san: str,
+    annotation: str,
+    *,
+    comment: str = "",
+    include_nag: bool = True,
+    include_glyph: bool = False,
+) -> str:
+    """Format one SAN move with optional PGN suffix glyph, NAG ($N), and {comment}."""
+
+    parts = [san]
+    if include_glyph:
+        glyph = CLASSIFICATION_GLYPHS.get(annotation, "")
+        if glyph:
+            parts[0] = f"{san}{glyph}"
+    if include_nag:
+        nag = CLASSIFICATION_NAGS.get(annotation)
+        if nag is not None:
+            parts.append(f"${nag}")
+    if comment:
+        sanitized_comment = comment.replace("}", ")")
+        parts.append(f"{{{sanitized_comment}}}")
+    return " ".join(parts)
 
 
 def parse_info_line(line: str, root_side: str) -> Optional[ParsedInfo]:
@@ -670,6 +945,17 @@ class UciEngine:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+        for reader in (self._stdout_thread, self._stderr_thread):
+            if reader is not None and reader.is_alive():
+                reader.join(timeout=1.0)
+        for pipe in (process.stdin, process.stdout, process.stderr):
+            if pipe is not None:
+                try:
+                    pipe.close()
+                except OSError:
+                    pass
+        self._stdout_thread = None
+        self._stderr_thread = None
         self.process = None
 
 
@@ -901,18 +1187,57 @@ def run_search_analysis(
                 root_score = _scored_result(root_result, "Stockfish root search")
                 actual_score = _scored_result(actual_result, "Stockfish actual-move search")
                 koi_score = _scored_result(koi_child_result, "Stockfish Koi-move search")
+                moving_side = position["side"]
                 actual_cpl = calculate_cpl(
                     root_score.normalized_cp,
                     actual_score.normalized_cp,
-                    position["side"],
+                    moving_side,
                 )
                 koi_cpl = calculate_cpl(
                     root_score.normalized_cp,
                     koi_score.normalized_cp,
-                    position["side"],
+                    moving_side,
                 )
                 actual_cpls.append(actual_cpl)
                 koi_cpls.append(koi_cpl)
+
+                def _mover_eval(score: UciScore, is_child: bool) -> Tuple[int, Optional[int]]:
+                    mover_cp = (
+                        score.normalized_cp if moving_side == "white" else -score.normalized_cp
+                    )
+                    if score.score_type != "mate":
+                        return mover_cp, None
+                    if not is_child:
+                        return mover_cp, score.value
+                    return mover_cp, (1 if score.value == 0 else -score.value)
+
+                sf_best_move = (
+                    root_result.final_info.pv[0]
+                    if root_result.final_info and root_result.final_info.pv
+                    else root_result.bestmove
+                )
+                best_side_cp, best_side_mate = _mover_eval(root_score, False)
+                actual_side_cp, actual_side_mate = _mover_eval(actual_score, True)
+                koi_side_cp, koi_side_mate = _mover_eval(koi_score, True)
+                legal_count = len(chess.Board(fen).legal_moves)
+                actual_annotation = annotate_move_eval(
+                    best_side_cp,
+                    actual_side_cp,
+                    best_mate=best_side_mate,
+                    played_mate=actual_side_mate,
+                    legal_move_count=legal_count,
+                    played_move=position["actual_move_uci"],
+                    best_move=sf_best_move,
+                )
+                koi_annotation = annotate_move_eval(
+                    best_side_cp,
+                    koi_side_cp,
+                    best_mate=best_side_mate,
+                    played_mate=koi_side_mate,
+                    legal_move_count=legal_count,
+                    played_move=koi_result.bestmove,
+                    best_move=sf_best_move,
+                )
 
                 record = _position_record(position)
                 record["search"] = {
@@ -925,6 +1250,12 @@ def run_search_analysis(
                         "stockfish_resulting_position": _result_dict(actual_result),
                         "cpl": actual_cpl,
                         "classification": classify_cpl(actual_cpl),
+                        "annotation": actual_annotation["annotation"],
+                        "glyph": actual_annotation["glyph"],
+                        "nag": actual_annotation["nag"],
+                        "win_prob_before": actual_annotation["win_prob_before"],
+                        "win_prob_after": actual_annotation["win_prob_after"],
+                        "accuracy_percent": actual_annotation["accuracy_percent"],
                     },
                     "koi_suggested_move": {
                         "uci": koi_result.bestmove,
@@ -933,6 +1264,12 @@ def run_search_analysis(
                         "stockfish_resulting_position": _result_dict(koi_child_result),
                         "cpl": koi_cpl,
                         "classification": classify_cpl(koi_cpl),
+                        "annotation": koi_annotation["annotation"],
+                        "glyph": koi_annotation["glyph"],
+                        "nag": koi_annotation["nag"],
+                        "win_prob_before": koi_annotation["win_prob_before"],
+                        "win_prob_after": koi_annotation["win_prob_after"],
+                        "accuracy_percent": koi_annotation["accuracy_percent"],
                     },
                     "timings_ms": {
                         "koi_search": koi_result.elapsed_ms,

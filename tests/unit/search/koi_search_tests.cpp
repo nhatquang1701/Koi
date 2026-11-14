@@ -2,6 +2,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
@@ -23,6 +24,7 @@
 #include "koi/detail/search_context.hpp"
 #include "koi/detail/search_ordering.hpp"
 #include "koi/detail/search_policy.hpp"
+#include "koi/move_annotation.hpp"
 #include "koi/search_service.hpp"
 #include "koi/time_manager.hpp"
 #include "koi/transposition_table.hpp"
@@ -4841,6 +4843,317 @@ void test_contempt_biases_draw_scores_against_the_root_side() {
         }
     }
 }
+
+void test_move_annotation_classifications_and_metrics() {
+    using koi::Move;
+    using koi::MoveAnnotation;
+    using koi::MoveClassificationInput;
+    using koi::MoveScoreEval;
+
+    const std::array<std::pair<MoveAnnotation, std::string_view>, 11> expected_names{{
+        {MoveAnnotation::brilliant, "brilliant"},
+        {MoveAnnotation::great, "great"},
+        {MoveAnnotation::best, "best"},
+        {MoveAnnotation::excellent, "excellent"},
+        {MoveAnnotation::good, "good"},
+        {MoveAnnotation::book, "book"},
+        {MoveAnnotation::forced, "forced"},
+        {MoveAnnotation::inaccuracy, "inaccuracy"},
+        {MoveAnnotation::mistake, "mistake"},
+        {MoveAnnotation::miss, "miss"},
+        {MoveAnnotation::blunder, "blunder"},
+    }};
+    for (const auto& [kind, name] : expected_names) {
+        require(koi::move_annotation_name(kind) == name,
+                "annotation name mismatch");
+        require(koi::parse_move_annotation(name) == kind,
+                "parse_move_annotation must round-trip every name");
+    }
+    require(koi::parse_move_annotation("BLUNDER") == MoveAnnotation::blunder,
+            "parse_move_annotation should be ASCII case-insensitive");
+    require(!koi::parse_move_annotation("unknown").has_value(),
+            "parse_move_annotation must reject unknown labels");
+
+    require(koi::move_annotation_glyph(MoveAnnotation::brilliant) == "!!", "brilliant glyph");
+    require(koi::move_annotation_nag(MoveAnnotation::brilliant) == 3, "brilliant NAG");
+    require(koi::move_annotation_glyph(MoveAnnotation::great) == "!", "great glyph");
+    require(koi::move_annotation_nag(MoveAnnotation::great) == 1, "great NAG");
+    require(koi::move_annotation_nag(MoveAnnotation::forced) == 7, "forced NAG");
+    require(koi::move_annotation_glyph(MoveAnnotation::inaccuracy) == "?!", "inaccuracy glyph");
+    require(koi::move_annotation_nag(MoveAnnotation::inaccuracy) == 6, "inaccuracy NAG");
+    require(koi::move_annotation_glyph(MoveAnnotation::mistake) == "?", "mistake glyph");
+    require(koi::move_annotation_nag(MoveAnnotation::mistake) == 2, "mistake NAG");
+    require(koi::move_annotation_glyph(MoveAnnotation::miss) == "?", "miss glyph");
+    require(koi::move_annotation_nag(MoveAnnotation::miss) == 2, "miss NAG");
+    require(koi::move_annotation_glyph(MoveAnnotation::blunder) == "??", "blunder glyph");
+    require(koi::move_annotation_nag(MoveAnnotation::blunder) == 4, "blunder NAG");
+    require(koi::move_annotation_nag(MoveAnnotation::best) == 0, "best has no NAG");
+
+    require(std::abs(koi::win_probability_from_cp(0) - 0.5) < 1e-6, "equal eval = 0.5 wp");
+    require(koi::win_probability_from_cp(300) > koi::win_probability_from_cp(0),
+            "positive eval must raise win probability");
+    require(koi::win_probability_from_cp(-300) < koi::win_probability_from_cp(0),
+            "negative eval must lower win probability");
+    require(koi::win_probability_from_eval(MoveScoreEval{0, 3}) == 1.0,
+            "winning mate = 1.0 wp");
+    require(koi::win_probability_from_eval(MoveScoreEval{0, -2}) == 0.0,
+            "losing mate = 0.0 wp");
+
+    require(koi::compute_centipawn_loss(MoveScoreEval{80, std::nullopt},
+                                        MoveScoreEval{120, std::nullopt}) == 0,
+            "better played eval clamps CPL to 0");
+    require(koi::compute_centipawn_loss(MoveScoreEval{0, 2},
+                                        MoveScoreEval{0, 4}) == 2,
+            "slower mate counts positive mate distance delta");
+
+    require(koi::move_accuracy_percent(0.5, 0.5) == 100.0,
+            "zero win-prob loss gives 100.0% accuracy");
+    require(koi::move_accuracy_percent(0.6, 0.4) < 50.0,
+            "large win-prob drop reduces accuracy sharply");
+
+    const Move m1 = *Move::parse_uci("e2e4");
+    const Move m2 = *Move::parse_uci("d2d4");
+
+    MoveClassificationInput forced{};
+    forced.legal_move_count = 1;
+    forced.played_move = m1;
+    forced.best_move = m1;
+    require(koi::classify_move_annotation(forced) == MoveAnnotation::forced,
+            "single legal move classifies as forced");
+
+    MoveClassificationInput book{};
+    book.legal_move_count = 20;
+    book.is_book_move = true;
+    book.played_move = m1;
+    require(koi::classify_move_annotation(book) == MoveAnnotation::book,
+            "book flag classifies as book");
+
+    MoveClassificationInput brilliant{};
+    brilliant.legal_move_count = 20;
+    brilliant.played_move = m1;
+    brilliant.best_move = m1;
+    brilliant.best_eval = {60, std::nullopt};
+    brilliant.played_eval = {60, std::nullopt};
+    brilliant.second_best_eval = {10, std::nullopt};
+    brilliant.is_sacrifice = true;
+    require(koi::classify_move_annotation(brilliant) == MoveAnnotation::brilliant,
+            "sound sacrifice improving over alternatives classifies as brilliant");
+
+    MoveClassificationInput great{};
+    great.legal_move_count = 20;
+    great.played_move = m1;
+    great.best_move = m1;
+    great.best_eval = {120, std::nullopt};
+    great.played_eval = {120, std::nullopt};
+    great.second_best_eval = {-40, std::nullopt};
+    require(koi::classify_move_annotation(great) == MoveAnnotation::great,
+            "sole strong find with >=10% WP margin classifies as great");
+
+    MoveClassificationInput best{};
+    best.legal_move_count = 20;
+    best.played_move = m1;
+    best.best_move = m1;
+    best.best_eval = {30, std::nullopt};
+    best.played_eval = {30, std::nullopt};
+    best.second_best_eval = {20, std::nullopt};
+    require(koi::classify_move_annotation(best) == MoveAnnotation::best,
+            "top engine move with small margin classifies as best");
+
+    MoveClassificationInput excellent{};
+    excellent.legal_move_count = 20;
+    excellent.played_move = m2;
+    excellent.best_move = m1;
+    excellent.best_eval = {30, std::nullopt};
+    excellent.played_eval = {18, std::nullopt};
+    require(koi::classify_move_annotation(excellent) == MoveAnnotation::excellent,
+            "near-equal non-best move classifies as excellent");
+
+    MoveClassificationInput good{};
+    good.legal_move_count = 20;
+    good.played_move = m2;
+    good.best_move = m1;
+    good.best_eval = {30, std::nullopt};
+    good.played_eval = {-5, std::nullopt};
+    require(koi::classify_move_annotation(good) == MoveAnnotation::good,
+            "small slip (<50 cp, >2% WP) classifies as good");
+
+    MoveClassificationInput inaccuracy{};
+    inaccuracy.legal_move_count = 20;
+    inaccuracy.played_move = m2;
+    inaccuracy.best_move = m1;
+    inaccuracy.best_eval = {0, std::nullopt};
+    inaccuracy.played_eval = {-65, std::nullopt};
+    require(koi::classify_move_annotation(inaccuracy) == MoveAnnotation::inaccuracy,
+            "65 cp loss around equality classifies as inaccuracy");
+
+    MoveClassificationInput mistake{};
+    mistake.legal_move_count = 20;
+    mistake.played_move = m2;
+    mistake.best_move = m1;
+    mistake.best_eval = {0, std::nullopt};
+    mistake.played_eval = {-150, std::nullopt};
+    require(koi::classify_move_annotation(mistake) == MoveAnnotation::mistake,
+            "150 cp loss around equality classifies as mistake");
+
+    MoveClassificationInput miss{};
+    miss.legal_move_count = 20;
+    miss.played_move = m2;
+    miss.best_move = m1;
+    miss.best_eval = {400, std::nullopt};
+    miss.played_eval = {50, std::nullopt};
+    require(koi::classify_move_annotation(miss) == MoveAnnotation::miss,
+            "dropping clear winning chance to equality classifies as miss");
+
+    MoveClassificationInput missed_rook_tactic{};
+    missed_rook_tactic.legal_move_count = 20;
+    missed_rook_tactic.played_move = m2;
+    missed_rook_tactic.best_move = m1;
+    missed_rook_tactic.best_eval = {550, std::nullopt};
+    missed_rook_tactic.played_eval = {50, std::nullopt};
+    require(koi::classify_move_annotation(missed_rook_tactic) == MoveAnnotation::miss,
+            "dropping +550 winning tactic to +50 classifies as miss, not blunder");
+
+    MoveClassificationInput missed_mate{};
+    missed_mate.legal_move_count = 20;
+    missed_mate.played_move = m2;
+    missed_mate.best_move = m1;
+    missed_mate.best_eval = {0, 2};
+    missed_mate.played_eval = {500, std::nullopt};
+    require(koi::classify_move_annotation(missed_mate) == MoveAnnotation::miss,
+            "missing forced mate while staying clearly winning classifies as miss");
+
+    MoveClassificationInput check_evasion_capture{};
+    check_evasion_capture.legal_move_count = 6;
+    check_evasion_capture.played_move = m1;
+    check_evasion_capture.best_move = m1;
+    check_evasion_capture.best_eval = {40, std::nullopt};
+    check_evasion_capture.played_eval = {40, std::nullopt};
+    check_evasion_capture.second_best_eval = {-150, std::nullopt};
+    check_evasion_capture.is_sacrifice = true;
+    check_evasion_capture.is_capture_move = true;
+    check_evasion_capture.in_check = true;
+    require(koi::classify_move_annotation(check_evasion_capture) != MoveAnnotation::brilliant,
+            "check-evasion capture must not classify as brilliant");
+
+    MoveClassificationInput forced_defensive_capture{};
+    forced_defensive_capture.legal_move_count = 20;
+    forced_defensive_capture.played_move = m1;
+    forced_defensive_capture.best_move = m1;
+    forced_defensive_capture.best_eval = {20, std::nullopt};
+    forced_defensive_capture.played_eval = {20, std::nullopt};
+    forced_defensive_capture.second_best_eval = {-400, std::nullopt};
+    forced_defensive_capture.is_sacrifice = true;
+    forced_defensive_capture.is_capture_move = true;
+    require(koi::classify_move_annotation(forced_defensive_capture) == MoveAnnotation::great,
+            "forced defensive capture when alternatives lose must classify as great, not brilliant");
+
+    MoveClassificationInput crushing_sacrifice{};
+    crushing_sacrifice.legal_move_count = 20;
+    crushing_sacrifice.played_move = m1;
+    crushing_sacrifice.best_move = m1;
+    crushing_sacrifice.best_eval = {600, std::nullopt};
+    crushing_sacrifice.played_eval = {600, std::nullopt};
+    crushing_sacrifice.second_best_eval = {520, std::nullopt};
+    crushing_sacrifice.is_sacrifice = true;
+    require(koi::classify_move_annotation(crushing_sacrifice) == MoveAnnotation::best,
+            "sacrifice in already-crushing position must not classify as brilliant");
+
+    MoveClassificationInput unique_mate_find{};
+    unique_mate_find.legal_move_count = 20;
+    unique_mate_find.played_move = m1;
+    unique_mate_find.best_move = m1;
+    unique_mate_find.best_eval = {0, 2};
+    unique_mate_find.played_eval = {0, 2};
+    unique_mate_find.second_best_eval = {480, std::nullopt};
+    require(koi::classify_move_annotation(unique_mate_find) == MoveAnnotation::great,
+            "unique forced checkmate over strong non-mate alternative classifies as great");
+
+    MoveClassificationInput blunder{};
+    blunder.legal_move_count = 20;
+    blunder.played_move = m2;
+    blunder.best_move = m1;
+    blunder.best_eval = {0, std::nullopt};
+    blunder.played_eval = {-350, std::nullopt};
+    require(koi::classify_move_annotation(blunder) == MoveAnnotation::blunder,
+            "350 cp collapse classifies as blunder");
+
+    MoveClassificationInput walked_into_mate{};
+    walked_into_mate.legal_move_count = 20;
+    walked_into_mate.played_move = m2;
+    walked_into_mate.best_move = m1;
+    walked_into_mate.best_eval = {0, std::nullopt};
+    walked_into_mate.played_eval = {0, -2};
+    require(koi::classify_move_annotation(walked_into_mate) == MoveAnnotation::blunder,
+            "walking into forced mate classifies as blunder");
+}
+
+void test_analyze_and_annotate_move_and_game_with_search_service() {
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>(),
+                               koi::HashMemoryPolicy{}, 8);
+    koi::MoveAnnotationOptions opts;
+    opts.depth = 3;
+
+    const koi::GameState start = koi::GameState::startpos();
+    const auto illegal = koi::analyze_and_annotate_move(
+        service, start, *koi::Move::parse_uci("e2e5"), opts);
+    require(!illegal.has_value(), "illegal move annotation must fail");
+
+    koi::MoveAnnotationOptions bad_opts;
+    bad_opts.depth = 0;
+    const auto invalid_depth = koi::analyze_and_annotate_move(
+        service, start, *koi::Move::parse_uci("e2e4"), bad_opts);
+    require(!invalid_depth.has_value(), "non-positive depth must fail");
+
+    const koi::GameState forced_pos =
+        require_state("R5k1/5ppp/8/2b5/8/8/8/7K b - - 0 1");
+    require(forced_pos.legal_moves().size() == 1, "fixture must have 1 legal move");
+    const auto forced_res = koi::analyze_and_annotate_move(
+        service, forced_pos, *koi::Move::parse_uci("c5f8"), opts);
+    require(forced_res.has_value() &&
+                forced_res->annotation == koi::MoveAnnotation::forced &&
+                forced_res->centipawn_loss == 0,
+            "single-legal-move position must classify as forced");
+
+    const std::vector<koi::Move> fools_mate{
+        *koi::Move::parse_uci("f2f3"),
+        *koi::Move::parse_uci("e7e5"),
+        *koi::Move::parse_uci("g2g4"),
+        *koi::Move::parse_uci("d8h4"),
+    };
+    const auto game_res = koi::annotate_game(service, start, fools_mate, opts);
+    require(game_res.has_value(), "annotate_game must succeed on Fool's Mate");
+    require(game_res->moves.size() == 4, "Fool's Mate must annotate 4 plies");
+    require(game_res->moves[2].played_move == *koi::Move::parse_uci("g2g4") &&
+                game_res->moves[2].annotation == koi::MoveAnnotation::blunder,
+            "2. g4 walking into Qh4# must classify as blunder");
+    require(game_res->moves[3].played_move == *koi::Move::parse_uci("d8h4") &&
+                (game_res->moves[3].annotation == koi::MoveAnnotation::best ||
+                 game_res->moves[3].annotation == koi::MoveAnnotation::great),
+            "2... Qh4# must classify as best or great");
+    require(game_res->white.move_count == 2 && game_res->black.move_count == 2,
+            "white and black summaries must each count 2 moves");
+    require(game_res->white.blunder >= 1 && game_res->white.average_accuracy < 60.0,
+            "white summary must reflect Fool's Mate blunder and reduced accuracy");
+
+    const koi::GameState pinned_defender_pos =
+        require_state("3r2k1/1pq3p1/7p/8/8/7Q/1PP3R1/1K6 w - - 0 1");
+    const auto pinned_res = koi::analyze_and_annotate_move(
+        service, pinned_defender_pos, *koi::Move::parse_uci("h3h6"), opts);
+    require(pinned_res.has_value() &&
+                !pinned_res->is_sacrifice &&
+                pinned_res->annotation != koi::MoveAnnotation::brilliant,
+            "capturing a pawn guarded only by a pinned defender must not be flagged as a sacrifice or brilliant");
+
+    const koi::GameState desperado_pos =
+        require_state("1r1n2k1/ppp2ppp/7R/7P/8/B1N5/PPP5/2R3K1 w - - 0 1");
+    const auto desperado_res = koi::analyze_and_annotate_move(
+        service, desperado_pos, *koi::Move::parse_uci("h6h7"), opts);
+    require(desperado_res.has_value() &&
+                !desperado_res->is_sacrifice &&
+                desperado_res->annotation != koi::MoveAnnotation::brilliant,
+            "trapped-rook desperado capture must not be flagged as a sacrifice or brilliant");
+}
+
 int main(int argc, char** argv) {
     const std::vector<koi::test::TestCase> tests{
         {"classical evaluator", test_evaluator_returns_material_and_pst_from_requested_perspective},
@@ -4988,6 +5301,8 @@ int main(int argc, char** argv) {
         {"transposition table concurrency", test_transposition_table_survives_concurrent_probe_store_and_maintenance},
         {"transposition table resize concurrency", test_transposition_table_survives_concurrent_probe_store_and_resize},
         {"transposition table mixed maintenance", test_transposition_table_survives_mixed_concurrent_maintenance},
+        {"move annotation metrics", test_move_annotation_classifications_and_metrics},
+        {"move annotation search and game", test_analyze_and_annotate_move_and_game_with_search_service},
     };
 
     // Every prior known failure now runs as an ordinary fatal behavior test.

@@ -267,6 +267,7 @@ set(KOI_CORE_SOURCES
     src/koi/evaluation_features.cpp
     src/koi/game_state.cpp
     src/koi/move.cpp
+    src/koi/move_annotation.cpp
     src/koi/nnue.cpp
     src/koi/opening_book.cpp
     src/koi/perft.cpp

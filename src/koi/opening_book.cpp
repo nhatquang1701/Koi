@@ -402,4 +402,33 @@ std::optional<BookChoice> OpeningBook::choose(
     return selected;
 }
 
+bool OpeningBook::contains_move(
+    const GameState& state, const Move move, const std::uint32_t root_ply, const bool enabled,
+    const std::uint8_t maximum_depth, const bool safety_enabled,
+    const std::uint8_t safety_depth) const {
+    if (!enabled || move.is_no_move() || (maximum_depth != 0 && root_ply >= maximum_depth)) {
+        return false;
+    }
+
+    const std::shared_ptr<const Impl::Cache> cache = impl_->load();
+    if (!cache || !cache->usable) {
+        return false;
+    }
+    const auto entries = cache->records.find(state.polyglot_key());
+    if (entries == cache->records.end()) {
+        return false;
+    }
+
+    for (const Record& entry : entries->second) {
+        if (entry.weight == 0) {
+            continue;
+        }
+        const std::optional<Move> decoded = decode_move(entry.move, state);
+        if (decoded.has_value() && *decoded == move) {
+            return !safety_enabled || safe_book_move(state, move, safety_depth);
+        }
+    }
+    return false;
+}
+
 } // namespace koi

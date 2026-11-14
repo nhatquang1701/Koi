@@ -8,6 +8,7 @@ import textwrap
 import unittest
 from pathlib import Path
 
+import tools.measurement.annotate_pgn as annotate_pgn
 import tools.measurement.elo_oracle as elo_oracle
 
 
@@ -548,6 +549,224 @@ class EloOracleExtractionTests(unittest.TestCase):
         self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["mode"], "book-audit")
 
         report_path.unlink(missing_ok=True)
+
+
+class MoveAnnotationTests(unittest.TestCase):
+    def test_win_probability_and_accuracy_curves(self):
+        self.assertAlmostEqual(elo_oracle.win_probability_from_cp(0), 0.5, places=6)
+        self.assertGreater(
+            elo_oracle.win_probability_from_cp(300),
+            elo_oracle.win_probability_from_cp(0),
+        )
+        self.assertEqual(elo_oracle.win_probability_from_eval(0, mate=2), 1.0)
+        self.assertEqual(elo_oracle.win_probability_from_eval(0, mate=-1), 0.0)
+        self.assertEqual(elo_oracle.move_accuracy_percent(0.5, 0.5), 100.0)
+        self.assertLess(elo_oracle.move_accuracy_percent(0.6, 0.4), 50.0)
+
+    def test_classify_move_annotation_covers_all_eleven_categories(self):
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(0, 0, legal_move_count=1),
+            "forced",
+        )
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(20, 0, is_book_move=True),
+            "book",
+        )
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(
+                60,
+                60,
+                second_best_cp=10,
+                played_move="b5f7",
+                best_move="b5f7",
+                is_sacrifice=True,
+            ),
+            "brilliant",
+        )
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(
+                120,
+                120,
+                second_best_cp=-40,
+                played_move="e2e4",
+                best_move="e2e4",
+            ),
+            "great",
+        )
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(
+                30,
+                30,
+                second_best_cp=20,
+                played_move="e2e4",
+                best_move="e2e4",
+            ),
+            "best",
+        )
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(30, 18, played_move="d2d4", best_move="e2e4"),
+            "excellent",
+        )
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(30, -5, played_move="c2c4", best_move="e2e4"),
+            "good",
+        )
+        self.assertEqual(elo_oracle.classify_move_annotation(0, -65), "inaccuracy")
+        self.assertEqual(elo_oracle.classify_move_annotation(0, -150), "mistake")
+        self.assertEqual(elo_oracle.classify_move_annotation(400, 50), "miss")
+        self.assertEqual(elo_oracle.classify_move_annotation(550, 50), "miss")
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(0, 500, best_mate=2, played_mate=None),
+            "miss",
+        )
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(
+                0, 2, best_mate=2, played_mate=2, second_best_cp=480, played_move="d1h5", best_move="d1h5"
+            ),
+            "great",
+        )
+        self.assertNotEqual(
+            elo_oracle.classify_move_annotation(
+                40,
+                40,
+                second_best_cp=-150,
+                played_move="e2e4",
+                best_move="e2e4",
+                is_sacrifice=True,
+                is_capture_move=True,
+                in_check=True,
+            ),
+            "brilliant",
+        )
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(
+                20,
+                20,
+                second_best_cp=-400,
+                played_move="f3e4",
+                best_move="f3e4",
+                is_sacrifice=True,
+                is_capture_move=True,
+            ),
+            "great",
+        )
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(
+                600,
+                600,
+                second_best_cp=520,
+                played_move="b5f7",
+                best_move="b5f7",
+                is_sacrifice=True,
+            ),
+            "best",
+        )
+        self.assertEqual(elo_oracle.classify_move_annotation(0, -350), "blunder")
+        self.assertEqual(
+            elo_oracle.classify_move_annotation(0, 0, best_mate=None, played_mate=-2),
+            "blunder",
+        )
+
+    def test_annotate_move_eval_and_pgn_formatting(self):
+        annotated = elo_oracle.annotate_move_eval(0, -350)
+        self.assertEqual(annotated["annotation"], "blunder")
+        self.assertEqual(annotated["glyph"], "??")
+        self.assertEqual(annotated["nag"], 4)
+        self.assertEqual(annotated["cpl"], 350)
+        self.assertLess(annotated["accuracy_percent"], 40.0)
+        self.assertEqual(
+            elo_oracle.format_pgn_move_annotation(
+                "g4",
+                "blunder",
+                comment="[blunder] [%eval #-1]",
+                include_nag=True,
+                include_glyph=True,
+            ),
+            "g4?? $4 {[blunder] [%eval #-1]}",
+        )
+
+    def test_annotate_pgn_parsers_and_cli_with_fake_koi(self):
+        parsed_move = annotate_pgn.parse_annotate_move_line(
+            "info string annotate move g2g4 ply 2 side white best d2d4 classification blunder "
+            "cpl 99990 accuracy 0.0 wp_before 0.450 wp_after 0.000 eval mate -1 best_eval cp -20 "
+            "depth 3 glyph ?? nag 4 pv d2d4 d7d5"
+        )
+        self.assertIsNotNone(parsed_move)
+        assert parsed_move is not None
+        self.assertEqual(parsed_move["classification"], "blunder")
+        self.assertEqual(parsed_move["eval_mate"], -1)
+        self.assertEqual(parsed_move["nag"], 4)
+        self.assertEqual(parsed_move["pv"], ["d2d4", "d7d5"])
+        self.assertEqual(annotate_pgn.format_pgn_eval_tag(0, -1, "white"), "#-1")
+        self.assertEqual(annotate_pgn.format_pgn_eval_tag(125, None, "black"), "-1.25")
+
+        fake_koi_source = textwrap.dedent(
+            """
+            import sys
+            for raw in sys.stdin:
+                line = raw.strip()
+                if line == "uci":
+                    print("id name Fake Koi 1.1.5", flush=True)
+                    print("uciok", flush=True)
+                elif line == "isready":
+                    print("readyok", flush=True)
+                elif line.startswith("annotate game"):
+                    print("info string annotate move f2f3 ply 0 side white best e2e4 classification inaccuracy cpl 75 accuracy 72.1 wp_before 0.520 wp_after 0.450 eval cp -55 best_eval cp 20 depth 3 glyph ?! nag 6 pv e2e4 e7e5", flush=True)
+                    print("info string annotate move e7e5 ply 1 side black best e7e5 classification best cpl 0 accuracy 100.0 wp_before 0.550 wp_after 0.550 eval cp 55 best_eval cp 55 depth 3 pv e7e5", flush=True)
+                    print("info string annotate move g2g4 ply 2 side white best d2d4 classification blunder cpl 99900 accuracy 0.0 wp_before 0.450 wp_after 0.000 eval mate -1 best_eval cp -40 depth 3 glyph ?? nag 4 pv d2d4 d7d5", flush=True)
+                    print("info string annotate move d8h4 ply 3 side black best d8h4 classification great cpl 0 accuracy 100.0 wp_before 1.000 wp_after 1.000 eval mate 1 best_eval mate 1 depth 3 glyph ! nag 1 pv d8h4", flush=True)
+                    print("info string annotate summary white moves 2 accuracy 36.0 avg_cpl 49987.5 brilliant 0 great 0 best 0 excellent 0 good 0 book 0 forced 0 inaccuracy 1 mistake 0 miss 0 blunder 1", flush=True)
+                    print("info string annotate summary black moves 2 accuracy 100.0 avg_cpl 0.0 brilliant 0 great 1 best 1 excellent 0 good 0 book 0 forced 0 inaccuracy 0 mistake 0 miss 0 blunder 0", flush=True)
+                elif line == "quit":
+                    break
+            """
+        )
+
+        with tempfile.TemporaryDirectory(prefix="koi annotate ") as temporary_directory:
+            tmp = Path(temporary_directory)
+            script = tmp / "fake_koi_annot.py"
+            script.write_text(fake_koi_source, encoding="utf-8")
+            if os.name == "nt":
+                engine_cmd = tmp / "fake_koi.cmd"
+                engine_cmd.write_text(f'@"{sys.executable}" "{script}"\n', encoding="utf-8")
+            else:
+                engine_cmd = tmp / "fake_koi.sh"
+                engine_cmd.write_text(
+                    f'#!/bin/sh\nexec "{sys.executable}" "{script}"\n',
+                    encoding="utf-8",
+                )
+                engine_cmd.chmod(0o755)
+            pgn_path = tmp / "game.pgn"
+            out_pgn = tmp / "annotated.pgn"
+            out_json = tmp / "annotated.json"
+            pgn_path.write_text('[Result "0-1"]\n\n1. f3 e5 2. g4 Qh4# 0-1\n', encoding="utf-8")
+
+            exit_code = annotate_pgn.main(
+                [
+                    "--pgn",
+                    str(pgn_path),
+                    "--koi",
+                    str(engine_cmd),
+                    "--depth",
+                    "3",
+                    "--output-pgn",
+                    str(out_pgn),
+                    "--output-json",
+                    str(out_json),
+                ]
+            )
+            self.assertEqual(exit_code, 0)
+            pgn_text = out_pgn.read_text(encoding="utf-8")
+            payload = json.loads(out_json.read_text(encoding="utf-8"))
+
+        self.assertIn('[WhiteAccuracy "36.0%"]', pgn_text)
+        self.assertIn('[BlackAccuracy "100.0%"]', pgn_text)
+        self.assertIn("$6", pgn_text)
+        self.assertIn("$4", pgn_text)
+        self.assertIn("[%eval #-1]", pgn_text)
+        self.assertEqual(payload["game_count"], 1)
+        self.assertEqual(payload["games"][0]["white_summary"]["blunder"], 1)
+        self.assertEqual(payload["games"][0]["moves"][2]["classification"], "blunder")
 
 
 if __name__ == "__main__":

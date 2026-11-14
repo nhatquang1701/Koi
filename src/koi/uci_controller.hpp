@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 #include "koi/game_state.hpp"
 #include "koi/completion_gate.hpp"
@@ -80,6 +81,7 @@ private:
     void handle_setoption(std::istream& command);
     void handle_go(std::istream& command);
     void handle_ponderhit();
+    void handle_annotate(std::istream& command);
     void start_search(GameState root, SearchLimits limits, bool skip_book = false);
     // Records the clock baseline for the previous/current timed move and folds
     // the observed GUI round trip into `observed_gui_overhead_ms_`.
@@ -117,6 +119,8 @@ private:
     std::mutex output_mutex_;
     std::filesystem::path executable_directory_;
     GameState position_;
+    GameState position_origin_;
+    std::vector<Move> position_moves_;
 
     OpeningBook opening_book_;
     SearchService search_service_;

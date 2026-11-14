@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "koi/classical_evaluator.hpp"
+#include "koi/move_annotation.hpp"
 #include "koi/nnue.hpp"
 #include "koi/perft.hpp"
 #include "koi/time_manager.hpp"
@@ -230,6 +231,65 @@ bool parse_milliseconds(const std::string& value, std::chrono::milliseconds& dur
 std::uint32_t root_ply(const GameState& state) {
     const std::uint32_t completed_fullmoves = static_cast<std::uint32_t>(state.fullmove_number() - 1);
     return completed_fullmoves * 2 + (state.side_to_move() == Color::black ? 1U : 0U);
+}
+
+std::string format_eval_tokens(const MoveScoreEval& eval) {
+    if (eval.mate.has_value()) {
+        return "mate " + std::to_string(*eval.mate);
+    }
+    return "cp " + std::to_string(eval.score_cp);
+}
+
+std::string format_annotate_move_line(const MoveAnnotationResult& result) {
+    std::ostringstream line;
+    line << std::fixed;
+    line << "info string annotate move " << result.played_move.uci()
+         << " ply " << result.ply
+         << " side " << (result.side_to_move == Color::white ? "white" : "black")
+         << " best " << result.best_move.uci()
+         << " classification " << move_annotation_name(result.annotation)
+         << " cpl " << result.centipawn_loss
+         << " accuracy " << std::setprecision(1) << result.accuracy_percent
+         << " wp_before " << std::setprecision(3) << result.win_prob_before
+         << " wp_after " << std::setprecision(3) << result.win_prob_after
+         << " eval " << format_eval_tokens(result.played_eval)
+         << " best_eval " << format_eval_tokens(result.best_eval)
+         << " depth " << result.depth;
+    if (const std::string_view glyph = move_annotation_glyph(result.annotation); !glyph.empty()) {
+        line << " glyph " << glyph;
+    }
+    if (const int nag = move_annotation_nag(result.annotation); nag > 0) {
+        line << " nag " << nag;
+    }
+    if (!result.best_pv.empty()) {
+        line << " pv";
+        for (const Move& pv_move : result.best_pv) {
+            line << ' ' << pv_move.uci();
+        }
+    }
+    return line.str();
+}
+
+std::string format_annotate_summary_line(const char* side_name,
+                                         const PlayerAnnotationSummary& summary) {
+    std::ostringstream line;
+    line << std::fixed;
+    line << "info string annotate summary " << side_name
+         << " moves " << summary.move_count
+         << " accuracy " << std::setprecision(1) << summary.average_accuracy
+         << " avg_cpl " << std::setprecision(1) << summary.average_cpl
+         << " brilliant " << summary.brilliant
+         << " great " << summary.great
+         << " best " << summary.best
+         << " excellent " << summary.excellent
+         << " good " << summary.good
+         << " book " << summary.book
+         << " forced " << summary.forced
+         << " inaccuracy " << summary.inaccuracy
+         << " mistake " << summary.mistake
+         << " miss " << summary.miss
+         << " blunder " << summary.blunder;
+    return line.str();
 }
 
 struct Wdl {
@@ -635,12 +695,16 @@ int UciController::run() {
             previous_clock_search_start_ = {};
             debug_json_event("ucinewgame", "\"hash_cleared\":true");
             position_ = GameState::startpos();
+            position_origin_ = GameState::startpos();
+            position_moves_.clear();
         } else if (name == "position") {
             handle_position(command, line);
         } else if (name == "setoption") {
             handle_setoption(command);
         } else if (name == "go") {
             handle_go(command);
+        } else if (name == "annotate") {
+            handle_annotate(command);
         } else if (name == "ponderhit") {
             handle_ponderhit();
         } else if (name == "debug") {
@@ -723,6 +787,8 @@ void UciController::handle_position(std::istream& command, std::string_view comm
         return;
     }
 
+    GameState origin = candidate;
+    std::vector<Move> parsed_moves;
     if (next < tokens.size()) {
         if (tokens[next] != "moves") {
             write_position_error("invalid position");
@@ -735,9 +801,12 @@ void UciController::handle_position(std::istream& command, std::string_view comm
                 write_position_error("invalid move");
                 return;
             }
+            parsed_moves.push_back(*move);
         }
     }
 
+    position_origin_ = std::move(origin);
+    position_moves_ = std::move(parsed_moves);
     position_ = std::move(candidate);
     const std::vector<Move> legal = position_.legal_moves();
     debug_event("position accepted generation " + std::to_string(generation_) +
@@ -1230,6 +1299,79 @@ void UciController::handle_go(std::istream& command) {
         active_ponder_ = true;
     }
     start_search(position_, std::move(limits));
+}
+
+void UciController::handle_annotate(std::istream& command) {
+    stop_and_suppress_active_search();
+    ensure_auto_syzygy_loaded();
+
+    const std::vector<std::string> tokens = remaining_tokens(command);
+    if (tokens.empty()) {
+        std::lock_guard lock(output_mutex_);
+        output_ << "info string annotate error: missing move or game target\n" << std::flush;
+        return;
+    }
+
+    SearchLimits limits;
+    if (tokens.size() > 1) {
+        limits = uci::parse_go_limits(join_tokens(tokens, 1, tokens.size()));
+    }
+
+    MoveAnnotationOptions options;
+    options.depth = limits.depth;
+    options.movetime = limits.movetime;
+    options.nodes = limits.nodes;
+    options.threads = threads_;
+    options.analyse_mode = true;
+    options.contempt_cp = static_cast<int>(contempt_cp_);
+    options.random_seed = random_seed_;
+    options.syzygy = syzygy_;
+    options.syzygy_interior_depth = syzygy_interior_depth_;
+    options.opening_book = &opening_book_;
+    options.book_enabled = own_book_ || (!own_book_explicit_ && book_is_available());
+    options.book_depth = book_depth_;
+    options.book_safety = book_safety_;
+    options.book_safety_depth = book_safety_depth_;
+
+    if (tokens[0] == "game") {
+        if (position_moves_.empty()) {
+            std::lock_guard lock(output_mutex_);
+            output_ << "info string annotate error: no moves in current position\n"
+                    << std::flush;
+            return;
+        }
+        const auto annotated =
+            annotate_game(search_service_, position_origin_, position_moves_, options);
+        if (!annotated) {
+            std::lock_guard lock(output_mutex_);
+            output_ << "info string annotate error: " << annotated.error() << '\n' << std::flush;
+            return;
+        }
+        std::lock_guard lock(output_mutex_);
+        for (const MoveAnnotationResult& entry : annotated->moves) {
+            output_ << format_annotate_move_line(entry) << '\n';
+        }
+        output_ << format_annotate_summary_line("white", annotated->white) << '\n'
+                << format_annotate_summary_line("black", annotated->black) << '\n'
+                << std::flush;
+        return;
+    }
+
+    const std::optional<Move> played_move = Move::parse_uci(tokens[0]);
+    if (!played_move.has_value()) {
+        std::lock_guard lock(output_mutex_);
+        output_ << "info string annotate error: invalid move " << tokens[0] << '\n' << std::flush;
+        return;
+    }
+
+    const auto annotated =
+        analyze_and_annotate_move(search_service_, position_, *played_move, options);
+    std::lock_guard lock(output_mutex_);
+    if (!annotated) {
+        output_ << "info string annotate error: " << annotated.error() << '\n' << std::flush;
+        return;
+    }
+    output_ << format_annotate_move_line(*annotated) << '\n' << std::flush;
 }
 
 void UciController::handle_ponderhit() {
