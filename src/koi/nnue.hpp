@@ -207,12 +207,25 @@ private:
     void ensure_incremental_storage();
     [[nodiscard]] bool prepare_child_slot(int ply, int child_slot,
                                           std::uint64_t parent_key);
+    [[nodiscard]] bool prepare_child_slot_metadata(
+        int ply, int child_slot, std::uint64_t parent_key,
+        std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values);
     void copy_slot_forward(std::size_t from_slot, std::size_t to_slot);
     void refresh_slot_perspective(const EvaluationFeatures&, Color perspective,
                                   std::size_t slot);
+    void refresh_slot_perspective_v4_finny(const GameState&, Color perspective,
+                                           std::size_t slot);
+    void refresh_finny_bucket_v4(const GameState&, Color perspective,
+                                 std::size_t bucket, std::int32_t* target_sums);
     void apply_feature_delta(std::size_t perspective, std::size_t slot,
                              std::uint16_t index, int sign);
-    void apply_move_deltas(const GameState&, const MoveMetadata&, std::size_t slot);
+    void apply_fused_perspective_deltas(const std::int32_t* parent_values,
+                                        std::int32_t* target_values,
+                                        std::span<const std::uint16_t> removed,
+                                        std::span<const std::uint16_t> added);
+    void apply_move_deltas(
+        const GameState&, const MoveMetadata&, std::size_t slot,
+        const std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values);
     // v5 only: stores one perspective's sorted group B set for a slot.
     void store_threat_list(std::size_t perspective, std::size_t slot,
                            const NnueSparseFeaturesThreatV1& list);
@@ -243,6 +256,14 @@ private:
     std::uint8_t scratch_pieces_ = 0;
     std::uint64_t scratch_key_ = 0;
     bool scratch_valid_ = false;
+    // Finny Table for HalfKA v4 king-bucket refreshes: caches the accumulator
+    // sums and 12 piece bitboards per (perspective, king_bucket).
+    std::array<std::vector<std::int32_t>, kIncrementalPerspectives> finny_values_;
+    std::array<std::array<std::array<std::array<std::uint64_t, 7>, 2>, kNnueKingBucketCount>,
+               kIncrementalPerspectives>
+        finny_bitboards_{};
+    std::array<std::array<std::uint8_t, kNnueKingBucketCount>, kIncrementalPerspectives>
+        finny_valid_{};
     // v5 group B sets, flattened per perspective as slot * capacity entries.
     static constexpr std::size_t kThreatListCapacity = 128;
     std::array<std::vector<std::uint16_t>, kIncrementalPerspectives> slot_threats_;

@@ -1770,6 +1770,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     singular_extension = -3;
                 }
             }
+            const std::uint64_t root_move_start_visited =
+                ply == 0 ? (stats.nodes + stats.qnodes) : 0;
             if (profile_enabled && ply == 0) {
                 begin_profile_root_move(move, next_move_number);
             }
@@ -2164,10 +2166,13 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 }
             }
             if (ply == 0 && root_move_score_count < root_move_scores.size()) {
+                const std::uint64_t root_move_visited =
+                    (stats.nodes + stats.qnodes) >= root_move_start_visited ?
+                        (stats.nodes + stats.qnodes) - root_move_start_visited : 0;
                 root_move_scores[root_move_score_count++] =
                     RootMoveScore{move, score, exact_root_score && child_nominal_depth_complete,
                                   root_score_inexact, safe_upper_bound,
-                                  child_selective_upper};
+                                  child_selective_upper, root_move_visited};
             }
             // Advance the PVS window for every child so later siblings are
             // searched with a narrow window, but only allow a fail-high cutoff

@@ -47,6 +47,8 @@ private:
     // A hard position may run past the soft budget only while the clock can
     // still pay for several more hard moves; near the end the soft budget wins.
     [[nodiscard]] bool hard_extension_affordable() const noexcept;
+    [[nodiscard]] std::chrono::milliseconds effective_soft_budget() const noexcept;
+    void update_optimum_budget() noexcept;
     void initialize(Color side_to_move, std::uint8_t speed_percent, std::uint32_t move_overhead_ms,
                     std::uint32_t slow_mover_percent, bool dynamic_move_overhead);
 
@@ -55,7 +57,15 @@ private:
     TimePointProvider now_;
     TimeManagementStats timing_;
     std::optional<int> previous_score_;
+    std::optional<int> average_score_;
     std::uint32_t stable_observations_ = 0;
+    std::uint32_t best_move_stability_ = 0;
+    int last_observed_depth_ = 0;
+    int score_drop_cp_ = 0;
+    int score_gain_cp_ = 0;
+    std::uint32_t best_move_effort_permille_ = 0;
+    bool has_effort_sample_ = false;
+    bool last_aspiration_researched_ = false;
     bool hard_position_ = false;
     bool clock_mode_ = false;
     bool dynamic_move_overhead_ = false;

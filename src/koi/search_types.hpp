@@ -53,6 +53,10 @@ struct RootTimingContext {
     std::uint32_t legal_move_count = 0;
     std::uint32_t forcing_move_count = 0;
     bool in_check = false;
+    // Optional game-phase and fullmove-number context for phase-aware horizon
+    // pacing; negative game_phase / zero fullmove_number keeps default horizon.
+    int game_phase = -1;
+    std::uint16_t fullmove_number = 0;
 };
 
 struct SearchIterationObservation {
@@ -62,6 +66,9 @@ struct SearchIterationObservation {
     bool pv_changed = false;
     bool aspiration_researched = false;
     std::uint64_t nodes = 0;
+    // Nodes spent searching the root best move during this iteration (0 when
+    // unavailable). Used by dynamic node-effort scaling in clock mode.
+    std::uint64_t best_move_nodes = 0;
 };
 
 struct TimeManagementStats {
@@ -70,6 +77,9 @@ struct TimeManagementStats {
     std::chrono::milliseconds overhead{0};
     std::chrono::milliseconds usable{0};
     std::chrono::milliseconds soft_budget{0};
+    // Dynamic soft target after best-move stability, node-effort, and falling
+    // evaluation scaling (clamped inside [soft_budget / 2, hard_budget]).
+    std::chrono::milliseconds optimum_budget{0};
     std::chrono::milliseconds hard_budget{0};
     std::uint32_t horizon = 20;
     int initial_hardness = 0;

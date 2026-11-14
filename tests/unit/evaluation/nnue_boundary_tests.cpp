@@ -2057,6 +2057,114 @@ void test_v6_incremental_wide_accumulation_deltas() {
                               {"e2e4", "e7e5", "g1f3", "b8c6", "f1b5"}, weights);
 }
 
+int reference_v4_dual_score(const koi::NnueNetwork& network,
+                            const koi::EvaluationFeatures& features,
+                            koi::Color perspective) {
+    const std::size_t hidden = network.manifest.layer_sizes[1];
+    const std::size_t pair_count = hidden / 2U;
+    const auto activations_for = [&](koi::Color side) {
+        const koi::NnueSparseFeaturesV4 sparse =
+            koi::EvaluationFeatureExtractor::encode_sparse_v4(features, side);
+        std::vector<int> activations(hidden, 0);
+        for (std::size_t hidden_index = 0; hidden_index < hidden; ++hidden_index) {
+            std::int64_t value = network.hidden_bias[hidden_index];
+            for (std::size_t index = 0; index < sparse.count; ++index) {
+                value += network.feature_weights[
+                    static_cast<std::size_t>(sparse.indices[index]) * hidden + hidden_index];
+            }
+            value = std::clamp<std::int64_t>(value, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+            activations[hidden_index] = std::clamp<int>(static_cast<int>(value), 0,
+                                                        koi::kKoiNnueClippedReluMaximum);
+        }
+        return activations;
+    };
+    const koi::Color mover = features.position.side_to_move;
+    const std::vector<int> own = activations_for(mover);
+    const std::vector<int> opp = activations_for(koi::opposite(mover));
+    const std::size_t bucket = reference_v4_bucket(features);
+    std::int64_t output = network.bottleneck_bias[bucket];
+    for (std::size_t pair = 0; pair < pair_count; ++pair) {
+        output += static_cast<std::int64_t>(
+                      network.bottleneck_weights[bucket * hidden + pair]) *
+            own[pair] * own[pair + pair_count];
+        output += static_cast<std::int64_t>(
+                      network.bottleneck_weights[bucket * hidden + pair_count + pair]) *
+            opp[pair] * opp[pair + pair_count];
+    }
+    if (network.output_shift > 0) {
+        output >>= network.output_shift;
+    }
+    const int score = static_cast<int>(std::clamp<std::int64_t>(
+        output, std::numeric_limits<int>::min(), std::numeric_limits<int>::max()));
+    return perspective == mover ? score : -score;
+}
+
+void test_v4_dual_round_trip_and_incremental_parity() {
+    koi::NnueNetwork network = koi::test::synthetic_network_v4();
+    network.manifest.layer_sizes[3] = 2U;
+    const std::size_t hidden = network.manifest.layer_sizes[1];
+    const std::size_t output_buckets = network.manifest.layer_sizes[2];
+    for (std::size_t index = 0; index < network.feature_weights.size(); ++index) {
+        network.feature_weights[index] =
+            static_cast<std::int16_t>(static_cast<int>(index * 37U % 2001U) - 1000);
+    }
+    for (std::size_t index = 0; index < network.hidden_bias.size(); ++index) {
+        network.hidden_bias[index] =
+            static_cast<std::int32_t>(static_cast<int>(index * 97U % 251U) - 125);
+    }
+    network.bottleneck_weights.resize(output_buckets * hidden);
+    for (std::size_t index = 0; index < network.bottleneck_weights.size(); ++index) {
+        network.bottleneck_weights[index] =
+            static_cast<std::int8_t>(static_cast<int>(index * 29U % 255U) - 127);
+    }
+    for (std::size_t index = 0; index < network.bottleneck_bias.size(); ++index) {
+        network.bottleneck_bias[index] =
+            static_cast<std::int32_t>(static_cast<int>(index * 13U) - 50);
+    }
+    network.output_shift = 12;
+
+    const auto encoded = koi::NnueLoader::serialize(network);
+    require(encoded.has_value(), "v4-dual NNUE network must serialize");
+    const auto decoded = koi::NnueLoader::load(*encoded);
+    require(decoded.has_value(), "serialized v4-dual NNUE network must load");
+    require(decoded->manifest.layer_sizes == koi::NnueLayerSizes{9216, 32, 8, 2} &&
+                decoded->bottleneck_weights == network.bottleneck_weights,
+            "v4-dual layer sizes and dual head weights must survive a round trip");
+
+    const auto weights = std::make_shared<const koi::NnueNetwork>(std::move(*decoded));
+    koi::NnueWorker scalar_worker(weights);
+    koi::NnueWorker avx2_worker(weights);
+    const std::vector<koi::GameState> states{
+        koi::GameState::startpos(),
+        require_state("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 4 4"),
+        require_state("4k3/8/8/8/8/8/P7/4K3 w - - 0 1"),
+    };
+    for (const koi::GameState& state : states) {
+        const koi::EvaluationFeatures features =
+            koi::EvaluationFeatureExtractor::extract(state);
+        const koi::Color mover = features.position.side_to_move;
+        const int expected = reference_v4_dual_score(*weights, features, mover);
+        const int scalar = scalar_worker.evaluate(features, mover,
+                                                  koi::NnueInferencePath::scalar);
+        const int avx2 = avx2_worker.evaluate(features, mover,
+                                              koi::NnueInferencePath::avx2_compatible);
+        require(scalar == expected && avx2 == expected &&
+                    scalar_worker.evaluate(features, koi::opposite(mover),
+                                           koi::NnueInferencePath::scalar) == -expected &&
+                    avx2_worker.accumulator().values == scalar_worker.accumulator().values &&
+                    avx2_worker.accumulator().bottleneck_values ==
+                        scalar_worker.accumulator().bottleneck_values,
+                "v4-dual scalar and SIMD paths must match the independent reference: " +
+                    std::to_string(scalar) + "/" + std::to_string(avx2) + " != " +
+                    std::to_string(expected));
+    }
+
+    walk_incremental_game("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 28,
+                          0xA5A5A5A5ULL, weights);
+    walk_incremental_game("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", 12, 0xC0FFEEULL, weights);
+}
+
 void test_nnue_auto_discovery_prefers_bundled_layout() {
     const std::filesystem::path base =
         std::filesystem::path(KOI_TEST_DATA_DIR) / "nnue-discovery";
@@ -2421,6 +2529,7 @@ int main(int argc, char** argv) {
         {"NNUE v2 shifts rejected", test_v1_v2_serialization_rejects_nonzero_shifts},
         {"NNUE invalid network unusable", test_invalid_in_memory_network_is_unusable},
         {"NNUE one-shot stateless", test_one_shot_evaluation_matches_stateless_inference},
+        {"NNUE v4 dual perspective", test_v4_dual_round_trip_and_incremental_parity},
         {"external NNUE container", test_external_v2_container},
         {"NNUE auto discovery", test_nnue_auto_discovery_prefers_bundled_layout},
     };

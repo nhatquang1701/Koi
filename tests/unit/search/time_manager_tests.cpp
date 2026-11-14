@@ -348,6 +348,71 @@ void test_soft_budget_stops_a_stable_quiet_position() {
             "a stable quiet position must stop once the soft budget is reached");
 }
 
+void test_dynamic_optimum_budget_scales_with_effort_and_falling_eval() {
+    const SearchLimits limits = clock_limits(milliseconds{300'000}, milliseconds{0});
+    TimeManager calm(limits, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    TimeManager contested(limits, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    TimeManager falling(limits, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    TimeManager rising(limits, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+
+    for (int depth = 5; depth <= 8; ++depth) {
+        SearchIterationObservation calm_obs;
+        calm_obs.depth = depth;
+        calm_obs.score_cp = 25;
+        calm_obs.nodes = 10000;
+        calm_obs.best_move_nodes = 9200;
+        calm.observe_iteration(calm_obs);
+
+        SearchIterationObservation contested_obs;
+        contested_obs.depth = depth;
+        contested_obs.score_cp = 25;
+        contested_obs.best_move_changed = (depth == 8);
+        contested_obs.nodes = 10000;
+        contested_obs.best_move_nodes = 2200;
+        contested.observe_iteration(contested_obs);
+
+        SearchIterationObservation falling_obs;
+        falling_obs.depth = depth;
+        falling_obs.score_cp = depth == 8 ? -90 : 30;
+        falling_obs.nodes = 10000;
+        falling_obs.best_move_nodes = 5000;
+        falling.observe_iteration(falling_obs);
+
+        SearchIterationObservation rising_obs;
+        rising_obs.depth = depth;
+        rising_obs.score_cp = depth == 8 ? 150 : 30;
+        rising_obs.nodes = 10000;
+        rising_obs.best_move_nodes = 5000;
+        rising.observe_iteration(rising_obs);
+    }
+
+    require(calm.diagnostics().optimum_budget < calm.diagnostics().soft_budget,
+            "high best-move node concentration and stability must reduce the optimum budget");
+    require(contested.diagnostics().optimum_budget > calm.diagnostics().optimum_budget,
+            "low best-move node effort and a late move change must allocate more time than a calm move");
+    require(falling.diagnostics().optimum_budget > rising.diagnostics().optimum_budget,
+            "a falling evaluation must allocate more defensive time than an equal score gain");
+}
+
+void test_single_legal_move_paces_fast_in_clock_mode() {
+    auto fake_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits limits = clock_limits(milliseconds{60'000}, milliseconds{0});
+    RootTimingContext single_reply = warm_context();
+    single_reply.legal_move_count = 1;
+    TimeManager manager(limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                        single_reply, [fake_now] { return *fake_now; });
+    const TimeManagementStats stats = manager.diagnostics();
+    require(stats.optimum_budget <= stats.soft_budget / 4,
+            "a forced single-reply position must scale down the optimum budget");
+    SearchIterationObservation obs;
+    obs.depth = 4;
+    obs.score_cp = 0;
+    manager.observe_iteration(obs);
+    *fake_now += stats.optimum_budget + milliseconds{1};
+    require(manager.should_stop_after_iteration(),
+            "a forced single-reply position must stop once the reduced optimum budget is reached");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -362,6 +427,8 @@ int main(int argc, char** argv) {
         {"synthetic games never flag", test_synthetic_games_never_reach_the_flag},
         {"soft budget stops stable quiet positions", test_soft_budget_stops_a_stable_quiet_position},
         {"dynamic move overhead", test_dynamic_move_overhead_tracks_the_time_control},
+        {"dynamic optimum budget scaling", test_dynamic_optimum_budget_scales_with_effort_and_falling_eval},
+        {"single legal move fast pacing", test_single_legal_move_paces_fast_in_clock_mode},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

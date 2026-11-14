@@ -91,13 +91,14 @@ struct SearchContext {
         Move move = Move::no_move();
         int score = -kInfinity;
         bool exact = false;
-        // An inexact/selective child can still be a safe upper bound for the
+        // A selective child can still be a safe upper bound for the
         // root move when it failed low against the incumbent. Keep that
         // direction separate from `exact`: the serial root may ignore such a
         // move while an unresolved selective challenger must block authority.
         bool selective_bound = false;
         bool safe_upper_bound = false;
         bool selective_upper_bound = false;
+        std::uint64_t visited_nodes = 0;
     };
 
     struct RootVerification {

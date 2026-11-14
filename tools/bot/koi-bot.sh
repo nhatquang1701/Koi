@@ -13,6 +13,8 @@
 #                                        autostart only when the Mac is idle
 #   koi-bot.sh autostart                 start when idle/light, pause under
 #                                        heavy load unless a game is in progress
+#   koi-bot.sh sprt-mode [on|off|status] toggle SPRT match lock (disables autostart
+#                                        and stops the bot once any game finishes)
 #   koi-bot.sh uninstall-launchd         remove those agents
 #
 # The lichess-bot bridge itself is https://github.com/lichess-bot-devs/lichess-bot
@@ -40,6 +42,7 @@ UPDATE_PLIST="$HOME/Library/LaunchAgents/$UPDATE_LABEL.plist"
 AUTOSTART_LABEL="org.koi.lichess-bot-autostart"
 AUTOSTART_PLIST="$HOME/Library/LaunchAgents/$AUTOSTART_LABEL.plist"
 AUTOSTART_LOG="$LOG_DIR/autostart.log"
+SPRT_HOLD_FILE="$BOT_HOME/sprt-hold"
 THREADS="${KOI_BOT_THREADS:-4}"
 HASH_MB="${KOI_BOT_HASH:-512}"
 PYTHON_PIN_FILE="$BOT_HOME/python-bin"
@@ -343,16 +346,61 @@ write_status_window_script() {
 # the window) when the bot process disappears.
 BOT_HOME="${KOI_BOT_HOME:-$HOME/koi-bot}"
 CONFIG="$BOT_HOME/config.yml"
+BOT_LOG="$BOT_HOME/logs/bot.log"
+BOT_ENGINE="$BOT_HOME/engines/koi-engine"
 printf '\033]0;LICHESS BOT RUNNING\007'
 printf '\n\033[1;32m  LICHESS BOT RUNNING\033[0m\n\n'
 printf 'engine: %s\n' "$(cat "$BOT_HOME/engines/VERSION" 2>/dev/null || echo unknown)"
 printf 'config: %s\n' "$CONFIG"
-printf 'log:    %s\n\n' "$BOT_HOME/logs/bot.log"
-printf 'This window closes when the bot stops.\n'
+printf 'log:    %s\n\n' "$BOT_LOG"
+printf 'This window closes when the bot stops.\n\n'
+
+active_game_summary() {
+    [ -f "$BOT_LOG" ] || return 1
+    tail -n 500 "$BOT_LOG" 2>/dev/null | awk '
+        /You'\''re now connected|Welcome koi_engine/ { count = 0; ids = "" }
+        /Process (Used|Queued|Freed)\. Count: [0-9]+\./ {
+            line = $0
+            sub(/.*Count: /, "", line)
+            sub(/\..*/, "", line)
+            count = line + 0
+            want_ids = (count > 0)
+            if (count == 0) ids = ""
+            next
+        }
+        want_ids && /IDs:/ {
+            line = $0
+            sub(/.*IDs:[[:space:]]*/, "", line)
+            gsub(/[{}'\'' ]/, "", line)
+            if (line != "" && line != "None") ids = line
+            want_ids = 0
+        }
+        END {
+            if (count > 0) {
+                if (ids != "") printf "%d (%s)", count, ids
+                else printf "%d", count
+                exit 0
+            }
+            exit 1
+        }'
+}
+
+last_state=""
 while pgrep -f "lichess-bot.py --config $CONFIG" >/dev/null 2>&1; do
-    sleep 5
+    ts="$(date '+%H:%M:%S')"
+    game_info="$(active_game_summary || true)"
+    if [ -n "$game_info" ] || pgrep -f "$BOT_ENGINE" >/dev/null 2>&1; then
+        state="PLAYING:${game_info:-active}"
+        printf '\r\033[K[%s] \033[1;33mstatus: PLAYING A GAME\033[0m%s' \
+            "$ts" "${game_info:+ (games: $game_info)}"
+    else
+        state="IDLE"
+        printf '\r\033[K[%s] \033[1;36mstatus: IDLE (awaiting challenges)\033[0m' "$ts"
+    fi
+    last_state="$state"
+    sleep 3
 done
-printf '\n\033[1;31m  LICHESS BOT OFFLINE\033[0m\n'
+printf '\n\n\033[1;31m  LICHESS BOT OFFLINE\033[0m\n'
 sleep 2
 ( osascript -e 'tell application "Terminal" to close (every window whose name contains "LICHESS BOT RUNNING")' >/dev/null 2>&1 & )
 sleep 1
@@ -379,13 +427,21 @@ close_status_window() {
     ( osascript -e 'tell application "Terminal" to close (every window whose name contains "LICHESS BOT RUNNING")' >/dev/null 2>&1 & ) || true
 }
 
-# True while lichess-bot is inside a game: the last game-id line is newer than
-# the last "Game over"/"Process Freed" marker in the recent log.
+# True while lichess-bot is inside a game: an engine subprocess is active or the
+# latest Process Used/Queued/Freed count in the recent log is > 0.
 bot_is_playing() {
+    if pgrep -f "$ENGINE" >/dev/null 2>&1; then
+        return 0
+    fi
     [ -f "$BOT_LOG" ] || return 1
-    tail -n 400 "$BOT_LOG" 2>/dev/null | awk '
-        /Game over|Process Freed/ { active = 0 }
-        /game [A-Za-z0-9]+/ { active = 1 }
+    tail -n 500 "$BOT_LOG" 2>/dev/null | awk '
+        /You'\''re now connected|Welcome koi_engine/ { active = 0 }
+        /Process (Used|Queued|Freed)\. Count: [0-9]+\./ {
+            line = $0
+            sub(/.*Count: /, "", line)
+            sub(/\..*/, "", line)
+            active = (line + 0) > 0 ? 1 : 0
+        }
         END { exit active ? 0 : 1 }'
 }
 
@@ -396,7 +452,10 @@ cmd_autostart() {
     ncpu="$(sysctl -n hw.ncpu 2>/dev/null || echo 1)"
     load1="$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')"
     [ -n "$load1" ] || load1=0
-    if pgrep -f "koi-bench|ctest|ninja|cmake --build|python.*train|elo_estimate|uci_match|net_match|release_verify|koi_search_tests|koi_strength_tests" >/dev/null 2>&1; then
+    if [ -f "$SPRT_HOLD_FILE" ]; then
+        heavy=1
+    fi
+    if pgrep -f "koi-bench|ctest|ninja|cmake --build|python.*train|elo_estimate|uci_match|net_match|run_nnue_gate|run_code_gate|release_verify|koi_search_tests|koi_strength_tests" >/dev/null 2>&1; then
         heavy=1
     fi
     if ! awk -v l="$load1" -v c="$ncpu" 'BEGIN { exit !(l < 0.6 * c) }'; then
@@ -405,12 +464,16 @@ cmd_autostart() {
     if bot_loaded || [ -n "$(bot_processes)" ]; then
         if [ "$heavy" = "1" ]; then
             if bot_is_playing; then
-                log "autostart: heavy work detected but a game is in progress; leaving the bot running"
+                log "autostart: heavy work / SPRT hold active but a game is in progress; leaving the bot running until game ends"
             else
-                log "autostart: heavy work detected and no game in progress; pausing the bot"
+                log "autostart: heavy work / SPRT hold active and no game in progress; pausing the bot"
                 cmd_stop
             fi
         fi
+        return 0
+    fi
+    if [ -f "$SPRT_HOLD_FILE" ]; then
+        log "autostart: SPRT mode is ON ($(cat "$SPRT_HOLD_FILE" 2>/dev/null || echo active)); not starting the bot"
         return 0
     fi
     if [ "$heavy" = "1" ]; then
@@ -419,6 +482,53 @@ cmd_autostart() {
     fi
     log "autostart: Mac is idle or lightly loaded (load ${load1}/${ncpu}); starting the bot"
     cmd_start
+}
+
+# Toggle SPRT match mode: while ON, autostart is suppressed and the bot is
+# stopped as soon as any active game finishes (or immediately with --force).
+cmd_sprt_mode() {
+    local mode="${1:-toggle}" force="${2:-}"
+    ensure_dirs
+    if [ "$mode" = "toggle" ]; then
+        if [ -f "$SPRT_HOLD_FILE" ]; then mode="off"; else mode="on"; fi
+    fi
+    case "$mode" in
+        on|enable|1|true)
+            printf '%s' "locked at $(date '+%Y-%m-%d %H:%M:%S')" > "$SPRT_HOLD_FILE"
+            launchctl bootout "gui/$UID/$AUTOSTART_LABEL" >/dev/null 2>&1 || true
+            log "sprt-mode: ON (autostart disabled)"
+            if bot_loaded || [ -n "$(bot_processes)" ]; then
+                if bot_is_playing && [ "$force" != "--force" ]; then
+                    log "sprt-mode: a game is currently in progress; waiting for it to finish before stopping the bot..."
+                    (
+                        while bot_is_playing; do sleep 3; done
+                        log "sprt-mode: active game finished; stopping the bot now"
+                        "$0" stop
+                    ) </dev/null >>"$AUTOSTART_LOG" 2>&1 &
+                else
+                    cmd_stop
+                fi
+            fi
+            ;;
+        off|disable|0|false)
+            rm -f "$SPRT_HOLD_FILE"
+            if [ -f "$AUTOSTART_PLIST" ]; then
+                launchctl bootstrap "gui/$UID" "$AUTOSTART_PLIST" >/dev/null 2>&1 || true
+            fi
+            log "sprt-mode: OFF (autostart re-enabled)"
+            cmd_autostart
+            ;;
+        status)
+            if [ -f "$SPRT_HOLD_FILE" ]; then
+                printf 'sprt-mode: ON (%s)\n' "$(cat "$SPRT_HOLD_FILE" 2>/dev/null || echo active)"
+            else
+                printf 'sprt-mode: OFF\n'
+            fi
+            ;;
+        *)
+            die "usage: $0 sprt-mode [on|off|toggle|status] [--force]"
+            ;;
+    esac
 }
 
 cmd_start() {
@@ -552,11 +662,26 @@ cmd_restart() {
 cmd_status() {
     printf 'engine:   %s (%s)\n' "$(installed_version)" "$ENGINE"
     if [ -f "$NET" ]; then printf 'net:      %s\n' "$NET"; else printf 'net:      missing\n'; fi
+    if [ -f "$SPRT_HOLD_FILE" ]; then
+        printf 'sprt-mode: ON (%s)\n' "$(cat "$SPRT_HOLD_FILE" 2>/dev/null || echo active)"
+    else
+        printf 'sprt-mode: OFF\n'
+    fi
     if bot_loaded; then
         printf 'service:  launchd %s\n' "$LABEL"
         printf 'autostart: %s (idle-only, every 120 s)\n' "$AUTOSTART_LABEL"
+        if bot_is_playing; then
+            printf 'game:     playing\n'
+        else
+            printf 'game:     idle (awaiting challenges)\n'
+        fi
     elif [ -n "$(bot_processes)" ]; then
         printf 'service:  running, pid(s) %s\n' "$(bot_processes | tr '\n' ' ')"
+        if bot_is_playing; then
+            printf 'game:     playing\n'
+        else
+            printf 'game:     idle (awaiting challenges)\n'
+        fi
     else
         printf 'service:  stopped\n'
     fi
@@ -665,6 +790,7 @@ main() {
         stop) cmd_stop "$@" ;;
         restart) cmd_restart "$@" ;;
         autostart) cmd_autostart "$@" ;;
+        sprt-mode|sprt) cmd_sprt_mode "$@" ;;
         status) cmd_status "$@" ;;
         logs) cmd_logs "$@" ;;
         run) run_foreground ;;

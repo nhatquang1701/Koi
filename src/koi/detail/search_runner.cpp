@@ -180,6 +180,8 @@ void SearchRunner::run_impl() {
                     metadata.move.promotion() != Promotion::none;
             }));
         timing_context.in_check = root.in_check();
+        timing_context.game_phase = root.game_phase();
+        timing_context.fullmove_number = root.fullmove_number();
 
         MoveMetadataList legal_moves = all_legal_moves;
         if (limits.search_moves_specified) {
@@ -191,6 +193,7 @@ void SearchRunner::run_impl() {
                 }
             }
             legal_moves = filtered_moves;
+            timing_context.legal_move_count = static_cast<std::uint32_t>(legal_moves.size());
         }
         table_access.new_generation();
         TimeManager time_manager(limits, root.side_to_move(), options.speed_percent,
@@ -516,6 +519,7 @@ void SearchRunner::run_impl() {
             std::optional<int> previous_score;
             std::chrono::milliseconds previous_iteration_elapsed{1};
             std::chrono::milliseconds previous_report_elapsed{0};
+            std::uint64_t previous_report_main_visited = 0;
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
                 in_flight_depth = depth;
                 pv.clear();
@@ -796,6 +800,16 @@ void SearchRunner::run_impl() {
                     }
                 }
 
+                std::uint64_t best_move_iteration_nodes = 0;
+                if (result.best_move.has_value()) {
+                    for (std::size_t index = 0; index < context.root_move_score_count; ++index) {
+                        if (context.root_move_scores[index].move == *result.best_move) {
+                            best_move_iteration_nodes =
+                                context.root_move_scores[index].visited_nodes;
+                            break;
+                        }
+                    }
+                }
                 // Selective root checks below may run another negamax call,
                 // which refreshes the context's root-score scratch buffer.
                 // Preserve the completed full-width scores before any such
@@ -1705,6 +1719,11 @@ void SearchRunner::run_impl() {
                 report_profile(true, true);
                 const int iteration_observation_score = bounded_fallback_result ?
                     searched_iteration_score : score;
+                const std::uint64_t main_visited = context.stats.nodes + context.stats.qnodes;
+                const std::uint64_t iteration_main_visited =
+                    main_visited >= previous_report_main_visited ?
+                        main_visited - previous_report_main_visited : main_visited;
+                previous_report_main_visited = main_visited;
                 time_manager.observe_iteration(SearchIterationObservation{
                     depth,
                     iteration_observation_score,
@@ -1713,7 +1732,8 @@ void SearchRunner::run_impl() {
                     bounded_fallback_result ? searched_pv_changed :
                         (had_completed_iteration && previous_pv != result.pv),
                     aspiration_researched,
-                    visited});
+                    iteration_main_visited,
+                    best_move_iteration_nodes});
                 result.timing = time_manager.diagnostics();
                 // Keep a bounded safety score visible in the result, but
                 // anchor the next aspiration window to the full-width
@@ -1834,6 +1854,7 @@ void SearchRunner::run_impl() {
             std::optional<int> previous_score;
             std::chrono::milliseconds previous_iteration_elapsed{1};
             std::chrono::milliseconds previous_report_elapsed{0};
+            std::uint64_t previous_report_main_visited = 0;
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
                 in_flight_depth = depth;
                 if (auto conversion = session->take_ponderhit_limits(); conversion.has_value()) {

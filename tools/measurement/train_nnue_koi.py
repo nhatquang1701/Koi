@@ -140,9 +140,85 @@ def _require_dataset_module():
     return koi_dataset
 
 
+_FEN_PIECE_MAP = {
+    "P": (1, True), "N": (2, True), "B": (3, True), "R": (4, True), "Q": (5, True), "K": (6, True),
+    "p": (1, False), "n": (2, False), "b": (3, False), "r": (4, False), "q": (5, False), "k": (6, False),
+}
+
+
+def _king_bucket_for_sq(king_sq: int | None, perspective_white: bool) -> int:
+    if king_sq is None:
+        return 0
+    sq = king_sq if perspective_white else (king_sq ^ 56)
+    file = sq & 7
+    rank = sq >> 3
+    mirrored_file = file + 4 if file < 4 else file
+    zone = 0 if rank <= 2 else (1 if rank <= 5 else 2)
+    return zone * 4 + (mirrored_file - 4)
+
+
+def encode_fen_halfka_dual(fen: str) -> tuple[list[int], list[int], int] | None:
+    """Fast pure-Python HalfKA encoder for ``halfka-king-bucket-v1`` (own & opp)."""
+    fields = fen.split()
+    if len(fields) < 2:
+        return None
+    board_str, turn_str = fields[0], fields[1]
+    if turn_str not in ("w", "b"):
+        return None
+    stm_white = turn_str == "w"
+    ranks = board_str.split("/")
+    if len(ranks) != 8:
+        return None
+    pieces: list[tuple[int, int, bool]] = []
+    w_king = None
+    b_king = None
+    for r_idx, rank_str in enumerate(ranks):
+        rank = 7 - r_idx
+        file = 0
+        for ch in rank_str:
+            if "1" <= ch <= "8":
+                file += ord(ch) - 48
+            elif ch in _FEN_PIECE_MAP:
+                if file >= 8:
+                    return None
+                pt, is_white = _FEN_PIECE_MAP[ch]
+                sq = rank * 8 + file
+                pieces.append((sq, pt, is_white))
+                if pt == 6:
+                    if is_white:
+                        w_king = sq
+                    else:
+                        b_king = sq
+                file += 1
+            else:
+                return None
+        if file != 8:
+            return None
+    if w_king is None or b_king is None:
+        return None
+    own_king = w_king if stm_white else b_king
+    opp_king = b_king if stm_white else w_king
+    own_base = _king_bucket_for_sq(own_king, stm_white) * 768
+    opp_base = _king_bucket_for_sq(opp_king, not stm_white) * 768
+    own_mirror = not stm_white
+    opp_mirror = stm_white
+    own_idx: list[int] = []
+    opp_idx: list[int] = []
+    for sq, pt, is_white in pieces:
+        own_plane = (pt - 1) if (is_white == stm_white) else (pt + 5)
+        opp_plane = (pt - 1) if (is_white != stm_white) else (pt + 5)
+        own_idx.append(own_base + own_plane * 64 + (sq ^ 56 if own_mirror else sq))
+        opp_idx.append(opp_base + opp_plane * 64 + (sq ^ 56 if opp_mirror else sq))
+    own_idx.sort()
+    opp_idx.sort()
+    n_pieces = len(pieces)
+    bucket = 0 if n_pieces > 32 else min(7, (32 - n_pieces) // 4)
+    return own_idx, opp_idx, bucket
+
+
 def load_text_corpus(path: pathlib.Path, limit: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Encode a ``FEN;cp;best_move`` corpus with the shared Python encoder."""
-    module = _require_dataset_module()
+    """Encode a ``FEN;cp;best_move`` corpus into HalfKA sparse indices."""
+    max_abs_cp = koi_dataset.MAX_ABS_CP if koi_dataset is not None else 4000
     if not path.exists():
         raise TrainerError(f"corpus not found: {path}")
     chunks: list[list[int]] = []
@@ -156,19 +232,124 @@ def load_text_corpus(path: pathlib.Path, limit: int) -> tuple[np.ndarray, np.nda
                 cp = int(parts[1])
             except ValueError:
                 continue
-            if abs(cp) > module.MAX_ABS_CP:
+            if abs(cp) > max_abs_cp:
                 continue
-            try:
-                import koi_chess as chess
-
-                board = chess.Board(parts[0])
-            except ValueError:
+            encoded = encode_fen_halfka_dual(parts[0])
+            if encoded is None:
                 continue
-            chunks.append(module.halfka_king_bucket_indices(board))
+            own_idx, _, _ = encoded
+            chunks.append(own_idx)
             scores.append(cp)
             if limit and len(scores) >= limit:
                 break
     return _pack_rows(chunks, scores)
+
+
+def load_text_corpus_v4_dual(
+    path: pathlib.Path, limit: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Encode one or more ``FEN;cp;best_move`` files into own/opp HalfKA indices."""
+    max_abs_cp = koi_dataset.MAX_ABS_CP if koi_dataset is not None else 4000
+    if not path.exists():
+        raise TrainerError(f"corpus not found: {path}")
+    own_rows: list[list[int]] = []
+    opp_rows: list[list[int]] = []
+    scores: list[int] = []
+    buckets: list[int] = []
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            raw = line.strip()
+            if not raw or raw.startswith("#"):
+                continue
+            parts = raw.split(";")
+            if len(parts) < 2:
+                continue
+            try:
+                cp = int(parts[1])
+            except ValueError:
+                continue
+            if abs(cp) > max_abs_cp:
+                continue
+            encoded = encode_fen_halfka_dual(parts[0])
+            if encoded is None:
+                continue
+            own_idx, opp_idx, bucket = encoded
+            own_rows.append(own_idx)
+            opp_rows.append(opp_idx)
+            scores.append(cp)
+            buckets.append(bucket)
+            if limit and len(scores) >= limit:
+                break
+    if not scores:
+        raise TrainerError(f"corpus {path} produced no usable rows")
+    own_flat, own_offsets, _ = _pack_rows(own_rows, scores)
+    opp_flat, opp_offsets, packed_scores = _pack_rows(opp_rows, scores)
+    return (own_flat, own_offsets, opp_flat, opp_offsets, packed_scores,
+            np.asarray(buckets, dtype=np.int64))
+
+
+def load_binary_dataset_v4_dual(
+    path: pathlib.Path, limit: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Read a ``koi-dataset-v2`` file, keeping only group A (HalfKA < 9216) indices."""
+    if not path.exists():
+        raise TrainerError(f"dataset not found: {path}")
+    cache_path = path.with_suffix(path.suffix + ".npz")
+    if not limit and cache_path.exists() and cache_path.stat().st_mtime >= path.stat().st_mtime:
+        cached = np.load(cache_path)
+        return (cached["own_indices"], cached["own_offsets"],
+                cached["opp_indices"], cached["opp_offsets"],
+                cached["scores"], cached["buckets"])
+    data = path.read_bytes()
+    if len(data) < 8 + 4 + 2:
+        raise TrainerError(f"{path} is too small to be a koi-dataset file")
+    magic, version, group_count = struct.unpack_from("<8sIH", data, 0)
+    if magic != b"KOI-DATA":
+        raise TrainerError(f"{path} has magic {magic!r}; expected b'KOI-DATA'")
+    if version != 2:
+        raise TrainerError(f"{path} has dataset version {version}; expected 2 for v4-dual")
+    position = 14
+    for _ in range(group_count):
+        length = struct.unpack_from("<H", data, position)[0]
+        position += 2 + length
+    count = struct.unpack_from("<Q", data, position)[0]
+    position += 8
+    if limit and limit < count:
+        count = limit
+    capacity = 32
+    own_indices = np.empty(count * capacity, dtype=np.int32)
+    own_offsets = np.zeros(count + 1, dtype=np.int64)
+    opp_indices = np.empty(count * capacity, dtype=np.int32)
+    opp_offsets = np.zeros(count + 1, dtype=np.int64)
+    scores = np.zeros(count, dtype=np.int32)
+    buckets = np.zeros(count, dtype=np.int64)
+    own_written = 0
+    opp_written = 0
+    loaded = 0
+    for row in range(count):
+        if position + 8 > len(data):
+            break
+        c0, c1, c2, c3 = struct.unpack_from("<4H", data, position)
+        position += 8
+        total_own = c0 + c1
+        total_opp = c2 + c3
+        values = struct.unpack_from(f"<{total_own + total_opp}H", data, position)
+        position += (total_own + total_opp) * 2
+        scores[row] = struct.unpack_from("<i", data, position)[0]
+        position += 4
+        a_own = values[:c0]
+        a_opp = values[total_own : total_own + c2]
+        own_indices[own_written : own_written + c0] = a_own
+        own_written += c0
+        own_offsets[row + 1] = own_written
+        opp_indices[opp_written : opp_written + c2] = a_opp
+        opp_written += c2
+        opp_offsets[row + 1] = opp_written
+        buckets[row] = min(7, (32 - min(c0, 32)) // 4)
+        loaded = row + 1
+    return (own_indices[:own_written], own_offsets[: loaded + 1],
+            opp_indices[:opp_written], opp_offsets[: loaded + 1],
+            scores[:loaded], buckets[:loaded])
 
 
 def load_binary_dataset(path: pathlib.Path, limit: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -192,6 +373,10 @@ def load_binary_dataset(path: pathlib.Path, limit: int) -> tuple[np.ndarray, np.
     count = struct.unpack_from("<Q", data, 14 + feature_length)[0]
     if count > len(data):
         raise TrainerError(f"{path} claims {count} records but is only {len(data)} bytes")
+    cache_path = path.with_suffix(path.suffix + ".npz")
+    if not limit and cache_path.exists() and cache_path.stat().st_mtime >= path.stat().st_mtime:
+        cached = np.load(cache_path)
+        return cached["indices"], cached["offsets"], cached["scores"]
     indices = np.empty(count * 32, dtype=np.int32)
     offsets = np.zeros(count + 1, dtype=np.int64)
     scores = np.zeros(count, dtype=np.int32)
@@ -397,6 +582,42 @@ if nn is not None:
             bias = self.output_bias[buckets]
             return (pairs * weight).sum(dim=1) + bias
 
+    class KoiNetV4Dual(nn.Module):
+        """Dual-perspective HalfKA (``[9216 -> H]x2 -> 8``) with intra-perspective CReLU pairs."""
+
+        def __init__(self, hidden_units: int) -> None:
+            super().__init__()
+            if hidden_units < 32 or hidden_units % 2 != 0:
+                raise TrainerError("hidden units must be even and at least 32")
+            self.hidden_units = hidden_units
+            self.half = hidden_units // 2
+            self.feature = nn.EmbeddingBag(INPUT_UNITS, hidden_units, mode="sum")
+            nn.init.uniform_(self.feature.weight, -0.1, 0.1)
+            self.hidden_bias = nn.Parameter(torch.zeros(hidden_units))
+            self.output_weight = nn.Parameter(torch.empty(OUTPUT_BUCKETS, hidden_units))
+            nn.init.uniform_(self.output_weight, -0.05, 0.05)
+            self.output_bias = nn.Parameter(torch.zeros(OUTPUT_BUCKETS))
+
+        def forward(self, own_flat: torch.Tensor, own_weights: torch.Tensor,
+                    opp_flat: torch.Tensor, opp_weights: torch.Tensor,
+                    buckets: torch.Tensor) -> torch.Tensor:
+            own = torch.clamp(
+                self.feature(own_flat, per_sample_weights=own_weights) + self.hidden_bias,
+                0.0,
+                1.0,
+            )
+            opp = torch.clamp(
+                self.feature(opp_flat, per_sample_weights=opp_weights) + self.hidden_bias,
+                0.0,
+                1.0,
+            )
+            own_pairs = own[:, : self.half] * own[:, self.half :]
+            opp_pairs = opp[:, : self.half] * opp[:, self.half :]
+            both_pairs = torch.cat([own_pairs, opp_pairs], dim=1)
+            weight = self.output_weight[buckets]
+            bias = self.output_bias[buckets]
+            return (both_pairs * weight).sum(dim=1) + bias
+
     class KoiNetV5(nn.Module):
         """Shared feature layer for both perspectives, full-width cross pairs, L1 head."""
 
@@ -503,6 +724,10 @@ else:  # pragma: no cover - only without PyTorch
         def __init__(self, hidden_units: int) -> None:
             raise TrainerError("PyTorch is required for training; install torch")
 
+    class KoiNetV4Dual:  # type: ignore[no-redef]
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ARG002
+            raise TrainerError("PyTorch is required for training; install torch")
+
     class KoiNetV5:  # type: ignore[no-redef]
         def __init__(self, *args, **kwargs) -> None:  # noqa: ARG002
             raise TrainerError("PyTorch is required for training; install torch")
@@ -512,8 +737,43 @@ else:  # pragma: no cover - only without PyTorch
             raise TrainerError("PyTorch is required for training; install torch")
 
 
+def _prepack_padded(indices: np.ndarray, offsets: np.ndarray,
+                    pad_length: int) -> tuple[np.ndarray, np.ndarray]:
+    """Vectorized conversion of CSR (indices, offsets) into (N, pad_length) arrays."""
+    count = offsets.size - 1
+    flat = np.zeros((count, pad_length), dtype=np.int64)
+    weights = np.zeros((count, pad_length), dtype=np.float32)
+    if count == 0 or indices.size == 0:
+        return flat, weights
+    lengths = (offsets[1:] - offsets[:-1]).astype(np.int64)
+    row_idx = np.repeat(np.arange(count, dtype=np.int64), lengths)
+    col_idx = np.arange(indices.size, dtype=np.int64) - np.repeat(offsets[:-1], lengths)
+    valid = col_idx < pad_length
+    if not np.all(valid):
+        row_idx = row_idx[valid]
+        col_idx = col_idx[valid]
+        flat[row_idx, col_idx] = indices[valid]
+    else:
+        flat[row_idx, col_idx] = indices
+    weights[row_idx, col_idx] = 1.0
+    return flat, weights
+
+
 def batches(indices: np.ndarray, offsets: np.ndarray, buckets: np.ndarray,
-            targets: np.ndarray, order: np.ndarray, batch_size: int, pad_length: int):
+            targets: np.ndarray, order: np.ndarray, batch_size: int, pad_length: int,
+            prepacked: tuple[np.ndarray, np.ndarray] | None = None):
+    if prepacked is not None:
+        all_flat, all_weights = prepacked
+        targets_f32 = np.asarray(targets, dtype=np.float32)
+        for start in range(0, order.size, batch_size):
+            rows = order[start : start + batch_size]
+            yield (
+                torch.from_numpy(all_flat[rows]),
+                torch.from_numpy(all_weights[rows]),
+                torch.from_numpy(buckets[rows]),
+                torch.from_numpy(targets_f32[rows]),
+            )
+        return
     for start in range(0, order.size, batch_size):
         rows = order[start : start + batch_size]
         lengths = (offsets[rows + 1] - offsets[rows]).astype(np.int64)
@@ -534,22 +794,43 @@ def batches(indices: np.ndarray, offsets: np.ndarray, buckets: np.ndarray,
 
 def validate(model: "KoiNet", indices: np.ndarray, offsets: np.ndarray,
              buckets: np.ndarray, scores: np.ndarray, order: np.ndarray,
-             batch_size: int, pad_length: int) -> np.ndarray:
+             batch_size: int, pad_length: int, device=None,
+             prepacked: tuple[np.ndarray, np.ndarray] | None = None) -> np.ndarray:
     model.eval()
     prediction = np.empty(order.size, dtype=np.float64)
     position = 0
     with torch.no_grad():
         for flat, weights, batch_buckets, _ in batches(
-            indices, offsets, buckets, scores, order, batch_size, pad_length
+            indices, offsets, buckets, scores, order, batch_size, pad_length,
+            prepacked=prepacked
         ):
+            if device is not None:
+                flat = flat.to(device)
+                weights = weights.to(device)
+                batch_buckets = batch_buckets.to(device)
             value = model(flat, weights, batch_buckets)
-            prediction[position : position + flat.shape[0]] = value.numpy()
+            prediction[position : position + flat.shape[0]] = value.cpu().numpy()
             position += flat.shape[0]
     return prediction * TARGET_SCALE
 
 
 def batches_dual(own_indices, own_offsets, opp_indices, opp_offsets, buckets, targets,
-                 order, batch_size, pad_length):
+                 order, batch_size, pad_length,
+                 prepacked_dual: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None):
+    if prepacked_dual is not None:
+        all_own_flat, all_own_w, all_opp_flat, all_opp_w = prepacked_dual
+        targets_f32 = np.asarray(targets, dtype=np.float32)
+        for start in range(0, order.size, batch_size):
+            rows = order[start : start + batch_size]
+            yield (
+                torch.from_numpy(all_own_flat[rows]),
+                torch.from_numpy(all_own_w[rows]),
+                torch.from_numpy(all_opp_flat[rows]),
+                torch.from_numpy(all_opp_w[rows]),
+                torch.from_numpy(buckets[rows]),
+                torch.from_numpy(targets_f32[rows]),
+            )
+        return
     for start in range(0, order.size, batch_size):
         rows = order[start : start + batch_size]
         own_flat = np.zeros((rows.size, pad_length), dtype=np.int64)
@@ -570,14 +851,15 @@ def batches_dual(own_indices, own_offsets, opp_indices, opp_offsets, buckets, ta
 
 
 def validate_v5(model, own_indices, own_offsets, opp_indices, opp_offsets, buckets,
-                scores, order, batch_size, pad_length, device=None) -> np.ndarray:
+                scores, order, batch_size, pad_length, device=None,
+                prepacked_dual=None) -> np.ndarray:
     model.eval()
     prediction = np.empty(order.size, dtype=np.float64)
     position = 0
     with torch.no_grad():
         for own_flat, own_weights, opp_flat, opp_weights, batch_buckets, _ in batches_dual(
             own_indices, own_offsets, opp_indices, opp_offsets, buckets, scores,
-            order, batch_size, pad_length
+            order, batch_size, pad_length, prepacked_dual=prepacked_dual
         ):
             if device is not None:
                 own_flat = own_flat.to(device)
@@ -589,6 +871,99 @@ def validate_v5(model, own_indices, own_offsets, opp_indices, opp_offsets, bucke
             prediction[position : position + own_flat.shape[0]] = value.cpu().numpy()
             position += own_flat.shape[0]
     return prediction * TARGET_SCALE
+
+
+def load_nnue_v4_float_params(path: pathlib.Path) -> dict[str, np.ndarray | int]:
+    """Load a v4 or v4-dual .nnue container and dequantize to float64 model units."""
+    data = path.read_bytes()
+    if len(data) < 76:
+        raise TrainerError(f"{path} is too small to be a KOI-NNUE container")
+    (magic, version, input_units, hidden_units, output_buckets, layer3,
+     hidden_shift, output_shift, q_len, f_len, payload_len) = struct.unpack_from(
+        "<8sIIIIIBB2xHHQ", data, 0
+    )
+    if magic != MAGIC or version not in (VERSION, V8_VERSION):
+        raise TrainerError(f"{path} is not a v4/v8 KOI-NNUE container (version={version})")
+    if input_units != INPUT_UNITS or output_buckets != OUTPUT_BUCKETS:
+        raise TrainerError(f"{path} has incompatible dimensions ({input_units}, {hidden_units}, {output_buckets})")
+    if layer3 not in (0, 2):
+        raise TrainerError(f"{path} has unsupported layer_sizes[3]={layer3}")
+    offset = 76 + q_len + f_len
+    payload = data[offset : offset + payload_len]
+    head_inputs = hidden_units if layer3 == 2 else (hidden_units // 2)
+    fw_count = input_units * hidden_units
+    hb_count = hidden_units
+    ow_count = output_buckets * head_inputs
+    ob_count = output_buckets
+    pos = 0
+    fw_q = np.frombuffer(payload, dtype="<i2", count=fw_count, offset=pos).reshape(input_units, hidden_units)
+    pos += fw_count * 2
+    hb_q = np.frombuffer(payload, dtype="<i4", count=hb_count, offset=pos)
+    pos += hb_count * 4
+    ow_q = np.frombuffer(payload, dtype="<i1", count=ow_count, offset=pos).reshape(output_buckets, head_inputs)
+    pos += ow_count
+    ob_q = np.frombuffer(payload, dtype="<i4", count=ob_count, offset=pos)
+
+    scale = float(2 ** hidden_shift)
+    out_scale = float(2 ** output_shift)
+    return {
+        "hidden_units": int(hidden_units),
+        "layer3": int(layer3),
+        "hidden_shift": int(hidden_shift),
+        "output_shift": int(output_shift),
+        "feature_weight": fw_q.astype(np.float64) / scale,
+        "hidden_bias": hb_q.astype(np.float64) / scale,
+        "output_weight": ow_q.astype(np.float64) * (scale * scale) / (TARGET_SCALE * out_scale),
+        "output_bias": ob_q.astype(np.float64) / (TARGET_SCALE * out_scale),
+    }
+
+
+def init_model_from_nnue_files(
+    model, paths: list[pathlib.Path], *, dual: bool = False, dual_opp_scale: float = 0.25
+) -> None:
+    """Warm-start KoiNet or KoiNetV4Dual from one or more v4/v4-dual .nnue containers (weight soup)."""
+    loaded = [load_nnue_v4_float_params(pathlib.Path(p)) for p in paths]
+    hidden_units = model.hidden_units
+    for item, p in zip(loaded, paths):
+        if item["hidden_units"] != hidden_units:
+            raise TrainerError(
+                f"{p} has hidden_units={item['hidden_units']}, expected {hidden_units}"
+            )
+    fw = np.mean([item["feature_weight"] for item in loaded], axis=0)
+    hb = np.mean([item["hidden_bias"] for item in loaded], axis=0)
+    ob = np.mean([item["output_bias"] for item in loaded], axis=0)
+    half = hidden_units // 2
+    ow_list = []
+    for item in loaded:
+        ow = item["output_weight"]
+        if not dual:
+            if ow.shape[1] == hidden_units:
+                ow = ow[:, :half] - ow[:, half:]
+            ow_list.append(ow)
+        else:
+            if ow.shape[1] == half:
+                own_part = ow * (1.0 - dual_opp_scale)
+                opp_part = -ow * dual_opp_scale
+                ow = np.concatenate([own_part, opp_part], axis=1)
+            ow_list.append(ow)
+    ow_mean = np.mean(ow_list, axis=0)
+    with torch.no_grad():
+        model.feature.weight.copy_(torch.from_numpy(fw.astype(np.float32)))
+        model.hidden_bias.copy_(torch.from_numpy(hb.astype(np.float32)))
+        model.output_weight.copy_(torch.from_numpy(ow_mean.astype(np.float32)))
+        model.output_bias.copy_(torch.from_numpy(ob.astype(np.float32)))
+
+
+def compute_training_loss(prediction: torch.Tensor, batch_targets: torch.Tensor,
+                          loss_name: str, wdl_scale: float, wdl_power: float,
+                          smooth_l1_fn) -> torch.Tensor:
+    """Compute either SmoothL1 loss or WDL Sigmoid power loss."""
+    if loss_name == "wdl-sigmoid":
+        k = TARGET_SCALE / max(wdl_scale, 1.0)
+        pred_wdl = torch.sigmoid(prediction * k)
+        target_wdl = torch.sigmoid(batch_targets * k)
+        return torch.mean(torch.abs(pred_wdl - target_wdl) ** wdl_power)
+    return smooth_l1_fn(prediction, batch_targets)
 
 
 # ---------------------------------------------------------------------------
@@ -790,6 +1165,17 @@ def hidden_activations(params: dict, indices: np.ndarray, offsets: np.ndarray,
     return hidden
 
 
+def hidden_activations_v4_dual(
+    params: dict, own_indices: np.ndarray, own_offsets: np.ndarray,
+    opp_indices: np.ndarray, opp_offsets: np.ndarray,
+    samples: np.ndarray, hidden_units: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Own and opponent CReLU activations for v4-dual (INPUT_UNITS = 9216)."""
+    own = hidden_activations(params, own_indices, own_offsets, samples, hidden_units)
+    opp = hidden_activations(params, opp_indices, opp_offsets, samples, hidden_units)
+    return own, opp
+
+
 def integer_scores(params: dict, hidden: np.ndarray, buckets: np.ndarray,
                    hidden_units: int) -> np.ndarray:
     half = hidden_units // 2
@@ -797,6 +1183,18 @@ def integer_scores(params: dict, hidden: np.ndarray, buckets: np.ndarray,
     weight = params["output_weights"]
     bias = params["output_bias"]
     y = bias[buckets] + (pairs * weight[buckets]).sum(axis=1)
+    return y >> int(params["output_shift"])
+
+
+def integer_scores_v4_dual(params: dict, own: np.ndarray, opp: np.ndarray,
+                           buckets: np.ndarray, hidden_units: int) -> np.ndarray:
+    half = hidden_units // 2
+    own_pairs = own[:, :half] * own[:, half:]
+    opp_pairs = opp[:, :half] * opp[:, half:]
+    both_pairs = np.concatenate([own_pairs, opp_pairs], axis=1)
+    weight = params["output_weights"]
+    bias = params["output_bias"]
+    y = bias[buckets] + (both_pairs * weight[buckets]).sum(axis=1)
     return y >> int(params["output_shift"])
 
 
@@ -823,12 +1221,9 @@ def nnue_payload_v4(params: dict, hidden_units: int) -> bytes:
 
 
 def nnue_container_v4(payload: bytes, hidden_units: int, hidden_shift: int,
-                      output_shift: int, version: int = VERSION) -> tuple[bytes, str]:
-    """Halfka-only container.
-
-    ``version`` 8 selects the v8 dispatch header, which keeps the v4 payload
-    byte for byte: the only difference is the version word the loader reads.
-    """
+                      output_shift: int, version: int = VERSION,
+                      dual: bool = False) -> tuple[bytes, str]:
+    """Halfka-only container (single-perspective layer3=0 or dual-perspective layer3=2)."""
     payload_hash = hashlib.sha256(payload).hexdigest()
     header = struct.pack(
         "<8sIIIIIBB2xHHQ",
@@ -837,7 +1232,7 @@ def nnue_container_v4(payload: bytes, hidden_units: int, hidden_shift: int,
         INPUT_UNITS,
         hidden_units,
         OUTPUT_BUCKETS,
-        0,
+        2 if dual else 0,
         hidden_shift,
         output_shift,
         len(QUANTIZATION),
@@ -938,7 +1333,21 @@ def build_parser() -> argparse.ArgumentParser:
                         help="optional path for a float checkpoint after training")
     parser.add_argument("--float-in", type=pathlib.Path, default=None,
                         help="load a float checkpoint and skip training (quantize only)")
-    parser.add_argument("--arch", choices=["v4", "v5", "v6", "v8"], default="v5",
+    parser.add_argument("--init-nnue", type=pathlib.Path, nargs="+", default=None,
+                        help="warm-start from one or more existing v4/v4-dual .nnue files (weight soup)")
+    parser.add_argument("--dual-opp-scale", type=float, default=0.25,
+                        help="initial opponent head fraction when warm-starting v4-dual from v4")
+    parser.add_argument("--loss", choices=["smooth-l1", "wdl-sigmoid"], default="smooth-l1",
+                        help="training loss function (default: smooth-l1)")
+    parser.add_argument("--wdl-scale", type=float, default=400.0,
+                        help="WDL sigmoid centipawn scaling factor (default: 400.0)")
+    parser.add_argument("--wdl-power", type=float, default=2.5,
+                        help="WDL sigmoid loss power exponent (default: 2.5)")
+    parser.add_argument("--output-scales", type=float, nargs="+", default=[1.0],
+                        help="output scale multipliers searched during quantization")
+    parser.add_argument("--feature-lr-scale", type=float, default=1.0,
+                        help="learning rate multiplier for the feature transformer when warm-starting")
+    parser.add_argument("--arch", choices=["v4", "v4-dual", "v5", "v6", "v8"], default="v5",
                         help="network architecture to train (default: v5)")
     parser.add_argument("--l1-units", type=int, default=V5_L1_UNITS,
                         help="v5/v6 hidden L1 width (8..128)")
@@ -1424,6 +1833,226 @@ def main_v6(args, rng, *, format_version: int = V6_VERSION,
     return 0
 
 
+def main_v4_dual(args, rng) -> int:
+    """Train, quantize, and export a Dual-Perspective HalfKA v4 network ([9216 -> H]x2 -> 8)."""
+    if torch is None:  # pragma: no cover - environment dependent
+        raise TrainerError("PyTorch is required for training; install torch")
+    if not args.dataset and not args.corpus:
+        raise TrainerError("either --dataset or --corpus is required")
+    torch.set_num_threads(max(1, args.threads))
+    device = resolve_training_device()
+    log(f"training device {device} (torch {torch.__version__}, cuda {torch.version.cuda})")
+    hidden_units = args.hidden_units
+    if hidden_units < 32 or hidden_units % 2 != 0:
+        raise TrainerError("hidden units must be even and at least 32")
+    started = time.perf_counter()
+    limit = args.rows if args.rows > 0 else 0
+    if args.dataset is not None:
+        (own_indices, own_offsets, opp_indices, opp_offsets, scores,
+         buckets) = load_binary_dataset_v4_dual(pathlib.Path(args.dataset), limit)
+    else:
+        (own_indices, own_offsets, opp_indices, opp_offsets, scores,
+         buckets) = load_text_corpus_v4_dual(pathlib.Path(args.corpus), limit)
+    rows = own_offsets.size - 1
+    if rows <= 0:
+        raise TrainerError("no training rows were loaded")
+    buckets = np.asarray(buckets, dtype=np.int64)
+    own_active = int(np.max(own_offsets[1:] - own_offsets[:-1]))
+    opp_active = int(np.max(opp_offsets[1:] - opp_offsets[:-1]))
+    pad_length = max(own_active, opp_active, 1)
+    all_own_flat, all_own_w = _prepack_padded(own_indices, own_offsets, pad_length)
+    all_opp_flat, all_opp_w = _prepack_padded(opp_indices, opp_offsets, pad_length)
+    prepacked_dual = (all_own_flat, all_own_w, all_opp_flat, all_opp_w)
+    log(f"loaded {rows} rows ({own_active} own, {opp_active} opp, pad {pad_length}) "
+        f"in {time.perf_counter() - started:.2f}s")
+    order = rng.permutation(rows)
+    val_count = max(1, int(rows * args.val_fraction))
+    val_order = order[:val_count]
+    train_order = order[val_count:]
+    targets = scores.astype(np.float32) / TARGET_SCALE
+
+    model = KoiNetV4Dual(hidden_units)
+    if args.init_nnue is not None:
+        init_model_from_nnue_files(
+            model, args.init_nnue, dual=True, dual_opp_scale=args.dual_opp_scale
+        )
+        log(f"warm-started v4-dual from {[str(p) for p in args.init_nnue]} "
+            f"(dual_opp_scale={args.dual_opp_scale})")
+    if args.float_in is not None:
+        model.load_state_dict(torch.load(args.float_in, map_location="cpu"))
+        log(f"loaded float checkpoint from {args.float_in}")
+    model.to(device)
+    epochs = 0 if args.float_in is not None else max(0, args.epochs)
+    param_groups = [
+        {"params": [model.feature.weight, model.hidden_bias],
+         "lr": args.learning_rate * args.feature_lr_scale},
+        {"params": [model.output_weight, model.output_bias],
+         "lr": args.learning_rate},
+    ]
+    optimizer = torch.optim.AdamW(param_groups, lr=args.learning_rate,
+                                  weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs))
+    smooth_l1_fn = torch.nn.SmoothL1Loss()
+    best_state = None
+    best_epoch = 0
+    best_val_mae = float("inf")
+    epochs_without_improvement = 0
+    for epoch in range(1, epochs + 1):
+        model.train()
+        epoch_started = time.perf_counter()
+        loss_total = 0.0
+        seen = 0
+        permutation = rng.permutation(train_order)
+        for (own_flat, own_weights, opp_flat, opp_weights, batch_buckets,
+             batch_targets) in batches_dual(
+                own_indices, own_offsets, opp_indices, opp_offsets, buckets, targets,
+                permutation, args.batch_size, pad_length, prepacked_dual=prepacked_dual):
+            own_flat = own_flat.to(device)
+            own_weights = own_weights.to(device)
+            opp_flat = opp_flat.to(device)
+            opp_weights = opp_weights.to(device)
+            batch_buckets = batch_buckets.to(device)
+            batch_targets = batch_targets.to(device)
+            optimizer.zero_grad(set_to_none=True)
+            prediction = model(own_flat, own_weights, opp_flat, opp_weights, batch_buckets)
+            loss = compute_training_loss(
+                prediction, batch_targets, args.loss, args.wdl_scale,
+                args.wdl_power, smooth_l1_fn
+            )
+            loss.backward()
+            optimizer.step()
+            with torch.no_grad():
+                model.feature.weight.clamp_(-255.0, 255.0)
+            loss_total += float(loss.detach()) * int(own_flat.shape[0])
+            seen += int(own_flat.shape[0])
+        scheduler.step()
+        train_loss = loss_total / max(1, seen)
+        val_prediction = validate_v5(
+            model, own_indices, own_offsets, opp_indices, opp_offsets, buckets,
+            targets, val_order, args.batch_size, pad_length, device,
+            prepacked_dual=prepacked_dual
+        )
+        val_loss = float(np.mean(np.abs(val_prediction / TARGET_SCALE - targets[val_order])))
+        val_mae = float(np.mean(np.abs(val_prediction - scores[val_order])))
+        log(f"epoch {epoch}/{epochs} train_loss {train_loss:.5f} val_loss {val_loss:.5f} "
+            f"val_mae_cp {val_mae:.2f} time {time.perf_counter() - epoch_started:.1f}s")
+        if val_mae < best_val_mae:
+            best_val_mae = val_mae
+            best_epoch = epoch
+            best_state = {name: value.detach().cpu().clone()
+                          for name, value in model.state_dict().items()}
+            epochs_without_improvement = 0
+            log(f"best val epoch {epoch} mae {val_mae:.2f}")
+        else:
+            epochs_without_improvement += 1
+            if (args.early_stop_patience > 0
+                    and epochs_without_improvement >= args.early_stop_patience):
+                log(f"early stop at epoch {epoch} (best epoch {best_epoch})")
+                break
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    model.to("cpu")
+    if best_state is not None:
+        model.load_state_dict(best_state)
+        log(f"exporting best-val checkpoint (epoch {best_epoch}, mae {best_val_mae:.2f})")
+    if args.float_out is not None:
+        pathlib.Path(args.float_out).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(model.state_dict(), args.float_out)
+        log(f"saved float checkpoint to {args.float_out}")
+
+    tune_order = val_order if val_order.size <= args.tune_samples else \
+        rng.choice(val_order, size=args.tune_samples, replace=False)
+    best = None
+    output_weight = model.output_weight.detach().numpy().astype(np.float64)
+    output_bias = model.output_bias.detach().numpy().astype(np.float64)
+    for hidden_shift in args.hidden_shifts:
+        params = quantize_v4(model, hidden_shift, 0)
+        own_hidden, opp_hidden = hidden_activations_v4_dual(
+            params, own_indices, own_offsets, opp_indices, opp_offsets,
+            tune_order, hidden_units
+        )
+        for output_shift in args.output_shifts:
+            for out_scale in args.output_scales:
+                eff_scale = TARGET_SCALE * float(out_scale)
+                params["output_weights"] = np.clip(
+                    np.rint(output_weight * eff_scale * (2.0**output_shift)
+                            / (2.0 ** (2 * hidden_shift))),
+                    -W2_LIMIT, W2_LIMIT
+                ).astype(np.int64)
+                params["output_bias"] = np.rint(
+                    output_bias * eff_scale * (2.0**output_shift)
+                ).astype(np.int64)
+                params["output_shift"] = output_shift
+                candidate = integer_scores_v4_dual(
+                    params, own_hidden, opp_hidden, buckets[tune_order], hidden_units
+                )
+                mae = float(np.mean(np.abs(candidate - scores[tune_order])))
+                w1_sat, w2_sat = saturation_fractions(params, hidden_units)
+                output_saturated = w2_sat > 0.0
+                log(f"quantization v4-dual s1={hidden_shift} k3={output_shift} "
+                    f"scale={out_scale:.2f} val_mae_cp {mae:.2f} sat {w1_sat:.4f},{w2_sat:.4f}")
+                key_tuple = (output_saturated, mae)
+                if best is None or key_tuple < best[0]:
+                    best = (key_tuple, mae, hidden_shift, output_shift, out_scale, {
+                        k: (v.copy() if isinstance(v, np.ndarray) else v)
+                        for k, v in params.items()
+                    })
+    assert best is not None
+    _, mae, hidden_shift, output_shift, best_out_scale, params = best
+    log(f"selected v4-dual s1={hidden_shift} k3={output_shift} scale={best_out_scale:.2f} "
+        f"val_mae_cp {mae:.2f}")
+    float_prediction = validate_v5(
+        model, own_indices, own_offsets, opp_indices, opp_offsets, buckets,
+        targets, val_order, args.batch_size, pad_length, prepacked_dual=prepacked_dual
+    )
+    float_mae = float(np.mean(np.abs(float_prediction - scores[val_order])))
+    w1_saturation, w2_saturation = saturation_fractions(params, hidden_units)
+    payload = nnue_payload_v4(params, hidden_units)
+    container, payload_hash = nnue_container_v4(
+        payload, hidden_units, hidden_shift, output_shift, version=VERSION, dual=True
+    )
+    args.net_out.parent.mkdir(parents=True, exist_ok=True)
+    args.net_out.write_bytes(container)
+    metadata = {
+        "schema": "koi-nnue-training-metadata-v2",
+        "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "corpus": str(args.dataset if args.dataset is not None else args.corpus),
+        "rows_used": int(rows),
+        "val_rows": int(val_order.size),
+        "feature_set": FEATURE_SET.decode(),
+        "quantization": QUANTIZATION.decode(),
+        "arch": "v4-dual",
+        "format_version": VERSION,
+        "architecture": {
+            "input": INPUT_UNITS,
+            "hidden": hidden_units,
+            "output_buckets": OUTPUT_BUCKETS,
+            "perspectives": 2,
+        },
+        "activation": "crelu-pair-dual",
+        "hidden_shift": hidden_shift,
+        "output_shift": output_shift,
+        "output_scale": best_out_scale,
+        "loss": args.loss,
+        "epochs": epochs,
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "seed": args.seed,
+        "target_scale": TARGET_SCALE,
+        "val_mae_cp": float_mae,
+        "val_round_trip_mae_cp": mae,
+        "w1_saturation": w1_saturation,
+        "w2_saturation": w2_saturation,
+        "payload_sha256": payload_hash,
+        "network_sha256": hashlib.sha256(container).hexdigest(),
+        "command": " ".join(sys.argv),
+    }
+    args.meta_out.parent.mkdir(parents=True, exist_ok=True)
+    args.meta_out.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    log(f"wrote {args.net_out} ({len(container)} bytes) and {args.meta_out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if torch is None:
@@ -1440,11 +2069,15 @@ def main(argv: list[str] | None = None) -> int:
     # threat-input form (v6 math) lost three straight matches against the
     # halfka-only nets, so it is no longer what "v8" means.
     v8_halfka = args.arch == "v8"
+    if args.arch == "v4-dual":
+        return main_v4_dual(args, rng)
     if args.arch == "v6":
         return main_v6(args, rng)
     if args.arch == "v5":
         return main_v5(args, rng)
 
+    device = resolve_training_device()
+    log(f"training device {device} (torch {torch.__version__}, cuda {torch.version.cuda})")
     started = time.time()
     try:
         limit = args.rows if args.rows > 0 else 0
@@ -1460,6 +2093,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     buckets = piece_count_buckets(offsets)
     pad_length = int((offsets[1:] - offsets[:-1]).max())
+    prepacked = _prepack_padded(indices, offsets, pad_length)
     log(
         f"loaded {offsets.size - 1} rows ({indices.size / max(offsets.size - 1, 1):.1f} "
         f"active, pad {pad_length}) in {time.time() - started:.1f}s"
@@ -1472,12 +2106,22 @@ def main(argv: list[str] | None = None) -> int:
     targets = scores.astype(np.float64) / TARGET_SCALE
 
     model = KoiNet(args.hidden_units)
+    if args.init_nnue is not None:
+        init_model_from_nnue_files(model, args.init_nnue, dual=False)
+        log(f"warm-started v4 from {[str(p) for p in args.init_nnue]}")
     if args.float_in is not None:
         model.load_state_dict(torch.load(args.float_in, map_location="cpu"))
         log(f"loaded float checkpoint {args.float_in}; skipping training")
+    model.to(device)
 
+    v4_param_groups = [
+        {"params": [model.feature.weight, model.hidden_bias],
+         "lr": args.learning_rate * args.feature_lr_scale},
+        {"params": [model.output_weight, model.output_bias],
+         "lr": args.learning_rate},
+    ]
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
+        v4_param_groups, lr=args.learning_rate, weight_decay=args.weight_decay
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=max(1, args.epochs)
@@ -1495,17 +2139,27 @@ def main(argv: list[str] | None = None) -> int:
         seen = 0
         permutation = rng.permutation(train_order)
         for flat, weights, batch_buckets, batch_targets in batches(
-            indices, offsets, buckets, targets, permutation, args.batch_size, pad_length
+            indices, offsets, buckets, targets, permutation, args.batch_size, pad_length,
+            prepacked=prepacked
         ):
+            flat = flat.to(device)
+            weights = weights.to(device)
+            batch_buckets = batch_buckets.to(device)
+            batch_targets = batch_targets.to(device)
             optimizer.zero_grad(set_to_none=True)
             prediction = model(flat, weights, batch_buckets)
-            loss = loss_fn(prediction, batch_targets)
+            loss = compute_training_loss(
+                prediction, batch_targets, args.loss, args.wdl_scale,
+                args.wdl_power, loss_fn
+            )
             loss.backward()
             optimizer.step()
+            with torch.no_grad():
+                model.feature.weight.clamp_(-255.0, 255.0)
             total += float(loss.detach()) * flat.shape[0]
             seen += flat.shape[0]
         prediction = validate(model, indices, offsets, buckets, scores, val_order,
-                              args.batch_size, pad_length)
+                              args.batch_size, pad_length, device=device, prepacked=prepacked)
         val_mae = float(np.mean(np.abs(prediction - scores[val_order])))
         val_loss = float(np.mean(np.abs(prediction / TARGET_SCALE -
                                         scores[val_order] / TARGET_SCALE)))
@@ -1529,6 +2183,9 @@ def main(argv: list[str] | None = None) -> int:
                 log(f"early stop at epoch {epoch + 1} (best epoch {best_epoch})")
                 break
 
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    model.to("cpu")
     if best_state is not None:
         model.load_state_dict(best_state)
         log(f"exporting best-val checkpoint (epoch {best_epoch}, mae {best_val_mae:.2f})")
@@ -1544,31 +2201,33 @@ def main(argv: list[str] | None = None) -> int:
         params = quantize_v4(model, hidden_shift, 0)
         hidden = hidden_activations(params, indices, offsets, tune_order, args.hidden_units)
         for output_shift in args.output_shifts:
-            params["output_weights"] = np.clip(
-                np.rint(model.output_weight.detach().numpy().astype(np.float64)
-                        * TARGET_SCALE * (2.0**output_shift) / (2.0 ** (2 * hidden_shift))),
-                -W2_LIMIT, W2_LIMIT,
-            ).astype(np.int64)
-            params["output_bias"] = np.rint(
-                model.output_bias.detach().numpy().astype(np.float64)
-                * TARGET_SCALE * (2.0**output_shift)
-            ).astype(np.int64)
-            params["output_shift"] = output_shift
-            candidate = integer_scores(params, hidden, buckets[tune_order], args.hidden_units)
-            mae = float(np.mean(np.abs(candidate - scores[tune_order])))
-            log(f"quantization v4 s1={hidden_shift} k3={output_shift} val_mae_cp {mae:.1f}")
-            if best is None or mae < best[0]:
-                best = (mae, hidden_shift, output_shift, {
-                    key: (value.copy() if isinstance(value, np.ndarray) else value)
-                    for key, value in params.items()
-                })
+            for out_scale in args.output_scales:
+                eff_scale = TARGET_SCALE * float(out_scale)
+                params["output_weights"] = np.clip(
+                    np.rint(model.output_weight.detach().numpy().astype(np.float64)
+                            * eff_scale * (2.0**output_shift) / (2.0 ** (2 * hidden_shift))),
+                    -W2_LIMIT, W2_LIMIT,
+                ).astype(np.int64)
+                params["output_bias"] = np.rint(
+                    model.output_bias.detach().numpy().astype(np.float64)
+                    * eff_scale * (2.0**output_shift)
+                ).astype(np.int64)
+                params["output_shift"] = output_shift
+                candidate = integer_scores(params, hidden, buckets[tune_order], args.hidden_units)
+                mae = float(np.mean(np.abs(candidate - scores[tune_order])))
+                log(f"quantization v4 s1={hidden_shift} k3={output_shift} scale={out_scale:.2f} val_mae_cp {mae:.1f}")
+                if best is None or mae < best[0]:
+                    best = (mae, hidden_shift, output_shift, {
+                        key: (value.copy() if isinstance(value, np.ndarray) else value)
+                        for key, value in params.items()
+                    })
     assert best is not None
     mae, hidden_shift, output_shift, params = best
     log(f"selected v4 s1={hidden_shift} k3={output_shift} val_mae_cp {mae:.1f}")
 
     float_mae = float(np.mean(np.abs(
         validate(model, indices, offsets, buckets, scores, val_order,
-                 args.batch_size, pad_length) - scores[val_order]
+                 args.batch_size, pad_length, prepacked=prepacked) - scores[val_order]
     )))
     w1_saturation, w2_saturation = saturation_fractions(params, args.hidden_units)
     payload = nnue_payload_v4(params, args.hidden_units)

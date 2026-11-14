@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -221,6 +222,21 @@ template <typename Integer>
         manifest.layer_sizes[0] == kKoiNnueHalfkaKingBucketV1FeatureCount;
 }
 
+// Dual-perspective HalfKA v4 (`layer_sizes[3] == 2`): concatenates the
+// side-to-move's `hidden / 2` CReLU pair products and the opponent's
+// `hidden / 2` CReLU pair products into a `hidden`-wide vector feeding the
+// 8 piece-count output buckets.
+[[nodiscard]] constexpr bool is_halfka_dual_v4(
+    const NnueManifest& manifest) noexcept {
+    return is_halfka_king_bucket_v1(manifest) && manifest.layer_sizes[3] == 2U;
+}
+
+[[nodiscard]] constexpr std::size_t halfka_v4_head_inputs(
+    const NnueManifest& manifest) noexcept {
+    const std::size_t hidden_units = manifest.layer_sizes[1];
+    return is_halfka_dual_v4(manifest) ? hidden_units : (hidden_units / 2U);
+}
+
 [[nodiscard]] constexpr bool is_halfka_threat_v5(
     const NnueManifest& manifest) noexcept {
     return manifest.version == kKoiNnueHalfkaThreatV5FormatVersion;
@@ -272,9 +288,10 @@ template <typename Integer>
         const std::size_t input_units = manifest.layer_sizes[0];
         const std::size_t hidden_units = manifest.layer_sizes[1];
         const std::size_t output_buckets = manifest.layer_sizes[2];
+        const std::size_t head_inputs = halfka_v4_head_inputs(manifest);
         return input_units * hidden_units * sizeof(std::int16_t) +
             hidden_units * sizeof(std::int32_t) +
-            output_buckets * (hidden_units / 2U) * sizeof(std::int8_t) +
+            output_buckets * head_inputs * sizeof(std::int8_t) +
             output_buckets * sizeof(std::int32_t);
     }
     if (manifest.feature_set == kKoiNnueFeatureSet &&
@@ -342,13 +359,13 @@ template <typename Integer>
         const std::uint32_t hidden_units = manifest.layer_sizes[1];
         if (manifest.layer_sizes[0] != kKoiNnueHalfkaKingBucketV1FeatureCount ||
             manifest.layer_sizes[2] != kKoiNnueOutputBucketCount ||
-            manifest.layer_sizes[3] != 0 ||
+            (manifest.layer_sizes[3] != 0 && manifest.layer_sizes[3] != 2U) ||
             hidden_units < kKoiNnueMinimumHiddenUnits ||
             hidden_units > kKoiNnueMaximumHiddenUnits || hidden_units % 2U != 0) {
             return make_error(
                 NnueErrorCode::invalid_dimensions,
                 "NNUE v4 layer manifest must be 9216 inputs, even hidden units in [32, 8192], "
-                "8 output buckets, and a zero reserved word");
+                "8 output buckets, and a 0 (single) or 2 (dual-perspective) head word");
         }
         if (manifest.quantization != kKoiNnueQuantization) {
             return make_error(NnueErrorCode::unsupported_quantization,
@@ -409,11 +426,12 @@ template <typename Integer>
             network.output_weights.empty();
     }
     if (is_halfka_king_bucket_v1(network.manifest)) {
+        const std::size_t head_inputs = halfka_v4_head_inputs(network.manifest);
         return network.feature_weights.size() ==
                 static_cast<std::size_t>(sizes[0]) * sizes[1] &&
             network.hidden_bias.size() == sizes[1] &&
             network.bottleneck_weights.size() ==
-                static_cast<std::size_t>(sizes[2]) * (sizes[1] / 2U) &&
+                static_cast<std::size_t>(sizes[2]) * head_inputs &&
             network.bottleneck_bias.size() == sizes[2] &&
             network.output_weights.empty();
     }
@@ -771,22 +789,27 @@ void fill_v4_activations_neon(std::span<const std::int32_t> hidden_sums,
 }
 #endif
 
-void fill_v4_activations(std::span<const std::int32_t> hidden_sums,
-                         NnueAccumulator& accumulator) noexcept {
+void fill_v4_activations_span(std::span<const std::int32_t> hidden_sums,
+                              std::span<std::int16_t> values) noexcept {
 #if KOI_NNUE_COMPILED_NEON
-    fill_v4_activations_neon(hidden_sums, accumulator.values);
+    fill_v4_activations_neon(hidden_sums, values);
     return;
 #endif
 #if KOI_NNUE_COMPILED_AVX2
     if (avx2_available()) {
-        fill_v4_activations_avx2(hidden_sums, accumulator.values);
+        fill_v4_activations_avx2(hidden_sums, values);
         return;
     }
 #endif
     for (std::size_t hidden = 0; hidden < hidden_sums.size(); ++hidden) {
-        accumulator.values[hidden] = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+        values[hidden] = static_cast<std::int16_t>(std::clamp<std::int32_t>(
             hidden_sums[hidden], 0, kKoiNnueClippedReluMaximum));
     }
+}
+
+void fill_v4_activations(std::span<const std::int32_t> hidden_sums,
+                         NnueAccumulator& accumulator) noexcept {
+    fill_v4_activations_span(hidden_sums, accumulator.values);
 }
 
 [[nodiscard]] int finish_inference_v4_scalar(const NnueNetwork& network,
@@ -808,6 +831,120 @@ void fill_v4_activations(std::span<const std::int32_t> hidden_sums,
     }
     return clamp_score(output);
 }
+
+[[nodiscard]] int finish_inference_v4_dual_scalar(const NnueNetwork& network,
+                                                  std::span<const std::int32_t> own_sums,
+                                                  std::span<const std::int32_t> opp_sums,
+                                                  const std::size_t bucket,
+                                                  NnueAccumulator& accumulator) noexcept {
+    const std::size_t hidden_units = network.manifest.layer_sizes[1];
+    const std::size_t pair_count = hidden_units / 2U;
+    std::span<std::int16_t> own_act(accumulator.values.data(), hidden_units);
+    std::span<std::int16_t> opp_act(accumulator.values.data() + hidden_units, hidden_units);
+    fill_v4_activations_span(own_sums, own_act);
+    fill_v4_activations_span(opp_sums, opp_act);
+    const auto* weights = network.bottleneck_weights.data() + bucket * hidden_units;
+    std::int64_t output = network.bottleneck_bias[bucket];
+    for (std::size_t pair = 0; pair < pair_count; ++pair) {
+        const std::int16_t own_product = static_cast<std::int16_t>(
+            own_act[pair] * own_act[pair + pair_count]);
+        const std::int16_t opp_product = static_cast<std::int16_t>(
+            opp_act[pair] * opp_act[pair + pair_count]);
+        accumulator.bottleneck_values[pair] = own_product;
+        accumulator.bottleneck_values[pair + pair_count] = opp_product;
+        output += static_cast<std::int64_t>(weights[pair]) * own_product;
+        output += static_cast<std::int64_t>(weights[pair + pair_count]) * opp_product;
+    }
+    if (network.output_shift > 0) {
+        output >>= network.output_shift;
+    }
+    return clamp_score(output);
+}
+
+#if KOI_NNUE_COMPILED_NEON
+void compute_pair_products_neon(std::span<const std::int16_t> activations,
+                                std::span<std::int16_t> pairs) noexcept {
+    const std::size_t pair_count = pairs.size();
+    std::size_t pair = 0;
+    for (; pair + 8U <= pair_count; pair += 8U) {
+        const int16x8_t low = vld1q_s16(activations.data() + pair);
+        const int16x8_t high = vld1q_s16(activations.data() + pair + pair_count);
+        vst1q_s16(pairs.data() + pair, vmulq_s16(low, high));
+    }
+    for (; pair < pair_count; ++pair) {
+        pairs[pair] = static_cast<std::int16_t>(
+            activations[pair] * activations[pair + pair_count]);
+    }
+}
+
+[[nodiscard]] std::int64_t bucket_dot_neon(const NnueNetwork& network,
+                                           const std::size_t bucket,
+                                           std::span<const std::int16_t> pairs) noexcept {
+    const std::size_t pair_count = pairs.size();
+    const auto* weights = network.bottleneck_weights.data() + bucket * pair_count;
+    constexpr std::int64_t kMaximumPairProduct = 127 * 127;
+    if (static_cast<std::int64_t>(pair_count) * 127 * kMaximumPairProduct >
+        std::numeric_limits<std::int32_t>::max()) {
+        std::int64_t output = 0;
+        for (std::size_t pair = 0; pair < pair_count; ++pair) {
+            output += static_cast<std::int64_t>(weights[pair]) * pairs[pair];
+        }
+        return output;
+    }
+    int32x4_t acc_low = vdupq_n_s32(0);
+    int32x4_t acc_high = vdupq_n_s32(0);
+    std::size_t pair = 0;
+    for (; pair + 8U <= pair_count; pair += 8U) {
+        const int16x8_t pair_values = vld1q_s16(pairs.data() + pair);
+        const int16x8_t weight_values = vmovl_s8(vld1_s8(weights + pair));
+        acc_low = vmlal_s16(acc_low, vget_low_s16(pair_values), vget_low_s16(weight_values));
+        acc_high = vmlal_s16(acc_high, vget_high_s16(pair_values), vget_high_s16(weight_values));
+    }
+    std::int64_t output = static_cast<std::int64_t>(vaddvq_s32(vaddq_s32(acc_low, acc_high)));
+    for (; pair < pair_count; ++pair) {
+        output += static_cast<std::int64_t>(weights[pair]) * pairs[pair];
+    }
+    return output;
+}
+
+[[nodiscard]] int finish_inference_v4_neon(const NnueNetwork& network,
+                                           std::span<const std::int32_t> hidden_sums,
+                                           const std::size_t bucket,
+                                           NnueAccumulator& accumulator) noexcept {
+    fill_v4_activations(hidden_sums, accumulator);
+    compute_pair_products_neon(accumulator.values, accumulator.bottleneck_values);
+    std::int64_t output = network.bottleneck_bias[bucket] +
+        bucket_dot_neon(network, bucket, accumulator.bottleneck_values);
+    if (network.output_shift > 0) {
+        output >>= network.output_shift;
+    }
+    return clamp_score(output);
+}
+
+[[nodiscard]] int finish_inference_v4_dual_neon(const NnueNetwork& network,
+                                                std::span<const std::int32_t> own_sums,
+                                                std::span<const std::int32_t> opp_sums,
+                                                const std::size_t bucket,
+                                                NnueAccumulator& accumulator) noexcept {
+    const std::size_t hidden_units = network.manifest.layer_sizes[1];
+    const std::size_t pair_count = hidden_units / 2U;
+    std::span<std::int16_t> own_act(accumulator.values.data(), hidden_units);
+    std::span<std::int16_t> opp_act(accumulator.values.data() + hidden_units, hidden_units);
+    fill_v4_activations_neon(own_sums, own_act);
+    fill_v4_activations_neon(opp_sums, opp_act);
+    compute_pair_products_neon(
+        own_act, std::span<std::int16_t>(accumulator.bottleneck_values.data(), pair_count));
+    compute_pair_products_neon(
+        opp_act,
+        std::span<std::int16_t>(accumulator.bottleneck_values.data() + pair_count, pair_count));
+    std::int64_t output = network.bottleneck_bias[bucket] +
+        bucket_dot_neon(network, bucket, accumulator.bottleneck_values);
+    if (network.output_shift > 0) {
+        output >>= network.output_shift;
+    }
+    return clamp_score(output);
+}
+#endif
 
 #if KOI_NNUE_COMPILED_AVX2
 void compute_pair_products_avx2(std::span<const std::int16_t> activations,
@@ -882,13 +1019,38 @@ void compute_pair_products_avx2(std::span<const std::int16_t> activations,
     }
     return clamp_score(output);
 }
+
+[[nodiscard]] int finish_inference_v4_dual_avx2(const NnueNetwork& network,
+                                                std::span<const std::int32_t> own_sums,
+                                                std::span<const std::int32_t> opp_sums,
+                                                const std::size_t bucket,
+                                                NnueAccumulator& accumulator) noexcept {
+    const std::size_t hidden_units = network.manifest.layer_sizes[1];
+    const std::size_t pair_count = hidden_units / 2U;
+    std::span<std::int16_t> own_act(accumulator.values.data(), hidden_units);
+    std::span<std::int16_t> opp_act(accumulator.values.data() + hidden_units, hidden_units);
+    fill_v4_activations_avx2(own_sums, own_act);
+    fill_v4_activations_avx2(opp_sums, opp_act);
+    compute_pair_products_avx2(
+        own_act, std::span<std::int16_t>(accumulator.bottleneck_values.data(), pair_count));
+    compute_pair_products_avx2(
+        opp_act,
+        std::span<std::int16_t>(accumulator.bottleneck_values.data() + pair_count, pair_count));
+    std::int64_t output = network.bottleneck_bias[bucket] +
+        bucket_dot_avx2(network, bucket, accumulator.bottleneck_values);
+    if (network.output_shift > 0) {
+        output >>= network.output_shift;
+    }
+    return clamp_score(output);
+}
 #endif
 
 [[nodiscard]] int infer_network_sparse_v4(const NnueNetwork& network,
                                           std::span<const std::uint16_t> active,
                                           const std::size_t bucket,
                                           NnueAccumulator& accumulator,
-                                          const bool use_avx2) noexcept {
+                                          const bool use_avx2,
+                                          const bool use_simd = true) noexcept {
     const std::size_t hidden_units = network.manifest.layer_sizes[1];
     if (!arrays_match_manifest(network) || bucket >= network.manifest.layer_sizes[2]) {
         accumulator.values.clear();
@@ -907,7 +1069,52 @@ void compute_pair_products_avx2(std::span<const std::int16_t> activations,
     (void)use_avx2;
 #endif
     accumulate_hidden_sparse_scalar(network, active, hidden_sums);
+#if KOI_NNUE_COMPILED_NEON
+    if (use_simd) {
+        return finish_inference_v4_neon(network, hidden_sums, bucket, accumulator);
+    }
+#else
+    (void)use_simd;
+#endif
     return finish_inference_v4_scalar(network, hidden_sums, bucket, accumulator);
+}
+
+[[nodiscard]] int infer_network_sparse_v4_dual(const NnueNetwork& network,
+                                               std::span<const std::uint16_t> own_active,
+                                               std::span<const std::uint16_t> opp_active,
+                                               const std::size_t bucket,
+                                               NnueAccumulator& accumulator,
+                                               const bool use_avx2,
+                                               const bool use_simd = true) noexcept {
+    const std::size_t hidden_units = network.manifest.layer_sizes[1];
+    if (!arrays_match_manifest(network) || bucket >= network.manifest.layer_sizes[2]) {
+        accumulator.values.clear();
+        accumulator.bottleneck_values.clear();
+        return 0;
+    }
+    accumulator.values.assign(hidden_units * 2U, 0);
+    accumulator.bottleneck_values.assign(hidden_units, 0);
+    std::vector<std::int32_t> own_sums(hidden_units, 0);
+    std::vector<std::int32_t> opp_sums(hidden_units, 0);
+#if KOI_NNUE_COMPILED_AVX2
+    if (use_avx2) {
+        accumulate_hidden_sparse_avx2(network, own_active, own_sums);
+        accumulate_hidden_sparse_avx2(network, opp_active, opp_sums);
+        return finish_inference_v4_dual_avx2(network, own_sums, opp_sums, bucket, accumulator);
+    }
+#else
+    (void)use_avx2;
+#endif
+    accumulate_hidden_sparse_scalar(network, own_active, own_sums);
+    accumulate_hidden_sparse_scalar(network, opp_active, opp_sums);
+#if KOI_NNUE_COMPILED_NEON
+    if (use_simd) {
+        return finish_inference_v4_dual_neon(network, own_sums, opp_sums, bucket, accumulator);
+    }
+#else
+    (void)use_simd;
+#endif
+    return finish_inference_v4_dual_scalar(network, own_sums, opp_sums, bucket, accumulator);
 }
 
 // v5 inference: both perspective accumulators feed cross-perspective pair
@@ -1302,6 +1509,130 @@ void apply_delta_avx2(std::int32_t* values, const std::int16_t* weights,
             std::numeric_limits<std::int32_t>::max()));
     }
 }
+
+void apply_fused_sub1_add1_avx2(const std::int32_t* parent, std::int32_t* target,
+                                const std::int16_t* w_sub0,
+                                const std::int16_t* w_add0,
+                                const std::size_t count) noexcept {
+    const __m256i zero = _mm256_setzero_si256();
+    for (std::size_t index = 0; index + 8U <= count; index += 8U) {
+        const __m256i cur =
+            _mm256_loadu_si256(reinterpret_cast<const __m256i*>(parent + index));
+        const __m256i s0 = _mm256_cvtepi16_epi32(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_sub0 + index)));
+        const __m256i a0 = _mm256_cvtepi16_epi32(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_add0 + index)));
+        const __m256i delta = _mm256_sub_epi32(a0, s0);
+        const __m256i sum = _mm256_add_epi32(cur, delta);
+        const __m256i differing_operands =
+            _mm256_cmpgt_epi32(zero, _mm256_xor_si256(cur, delta));
+        const __m256i differing_result =
+            _mm256_cmpgt_epi32(zero, _mm256_xor_si256(cur, sum));
+        const __m256i overflow = _mm256_andnot_si256(differing_operands, differing_result);
+        if (_mm256_movemask_epi8(overflow) != 0) {
+            for (std::size_t lane = index; lane < index + 8U; ++lane) {
+                std::int64_t v = static_cast<std::int64_t>(parent[lane]) - w_sub0[lane];
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v += w_add0[lane];
+                target[lane] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    v, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
+            }
+            continue;
+        }
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(target + index), sum);
+    }
+}
+
+void apply_fused_sub2_add1_avx2(const std::int32_t* parent, std::int32_t* target,
+                                const std::int16_t* w_sub0,
+                                const std::int16_t* w_sub1,
+                                const std::int16_t* w_add0,
+                                const std::size_t count) noexcept {
+    const __m256i zero = _mm256_setzero_si256();
+    for (std::size_t index = 0; index + 8U <= count; index += 8U) {
+        const __m256i cur =
+            _mm256_loadu_si256(reinterpret_cast<const __m256i*>(parent + index));
+        const __m256i s0 = _mm256_cvtepi16_epi32(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_sub0 + index)));
+        const __m256i s1 = _mm256_cvtepi16_epi32(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_sub1 + index)));
+        const __m256i a0 = _mm256_cvtepi16_epi32(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_add0 + index)));
+        const __m256i delta = _mm256_sub_epi32(_mm256_sub_epi32(a0, s0), s1);
+        const __m256i sum = _mm256_add_epi32(cur, delta);
+        const __m256i differing_operands =
+            _mm256_cmpgt_epi32(zero, _mm256_xor_si256(cur, delta));
+        const __m256i differing_result =
+            _mm256_cmpgt_epi32(zero, _mm256_xor_si256(cur, sum));
+        const __m256i overflow = _mm256_andnot_si256(differing_operands, differing_result);
+        if (_mm256_movemask_epi8(overflow) != 0) {
+            for (std::size_t lane = index; lane < index + 8U; ++lane) {
+                std::int64_t v = static_cast<std::int64_t>(parent[lane]) - w_sub0[lane];
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v -= w_sub1[lane];
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v += w_add0[lane];
+                target[lane] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    v, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
+            }
+            continue;
+        }
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(target + index), sum);
+    }
+}
+
+void apply_fused_sub2_add2_avx2(const std::int32_t* parent, std::int32_t* target,
+                                const std::int16_t* w_sub0,
+                                const std::int16_t* w_sub1,
+                                const std::int16_t* w_add0,
+                                const std::int16_t* w_add1,
+                                const std::size_t count) noexcept {
+    const __m256i zero = _mm256_setzero_si256();
+    for (std::size_t index = 0; index + 8U <= count; index += 8U) {
+        const __m256i cur =
+            _mm256_loadu_si256(reinterpret_cast<const __m256i*>(parent + index));
+        const __m256i s0 = _mm256_cvtepi16_epi32(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_sub0 + index)));
+        const __m256i s1 = _mm256_cvtepi16_epi32(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_sub1 + index)));
+        const __m256i a0 = _mm256_cvtepi16_epi32(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_add0 + index)));
+        const __m256i a1 = _mm256_cvtepi16_epi32(
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(w_add1 + index)));
+        const __m256i delta =
+            _mm256_sub_epi32(_mm256_add_epi32(a0, a1), _mm256_add_epi32(s0, s1));
+        const __m256i sum = _mm256_add_epi32(cur, delta);
+        const __m256i differing_operands =
+            _mm256_cmpgt_epi32(zero, _mm256_xor_si256(cur, delta));
+        const __m256i differing_result =
+            _mm256_cmpgt_epi32(zero, _mm256_xor_si256(cur, sum));
+        const __m256i overflow = _mm256_andnot_si256(differing_operands, differing_result);
+        if (_mm256_movemask_epi8(overflow) != 0) {
+            for (std::size_t lane = index; lane < index + 8U; ++lane) {
+                std::int64_t v = static_cast<std::int64_t>(parent[lane]) - w_sub0[lane];
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v += w_add0[lane];
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v -= w_sub1[lane];
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v += w_add1[lane];
+                target[lane] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    v, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
+            }
+            continue;
+        }
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(target + index), sum);
+    }
+}
 #endif
 
 } // namespace
@@ -1604,9 +1935,10 @@ std::expected<NnueNetwork, NnueError> NnueLoader::load(
             bias = static_cast<std::int32_t>(encoded);
         }
     }
+    const std::size_t v4_head_inputs = halfka_v4_head_inputs(network.manifest);
     network.bottleneck_weights.resize(
         threat ? output_units * l1_units :
-        (halfka_v4 ? output_units * (hidden_units / 2U) : hidden_units * output_units));
+        (halfka_v4 ? output_units * v4_head_inputs : hidden_units * output_units));
     for (std::int8_t& weight : network.bottleneck_weights) {
         if (payload_offset >= payload.size()) {
             return std::unexpected(invalid_file_size_error());
@@ -1687,9 +2019,10 @@ NnueWorker::NnueWorker(std::shared_ptr<const NnueNetwork> weights)
         const std::size_t hidden_units = weights_->manifest.layer_sizes[1];
         const bool threat = uses_halfka_threat_features(weights_->manifest);
         const bool halfka_v4 = is_halfka_king_bucket_v1(weights_->manifest);
-        accumulator_.values.resize(hidden_units);
+        const bool dual_v4 = is_halfka_dual_v4(weights_->manifest);
+        accumulator_.values.resize(dual_v4 ? hidden_units * 2U : hidden_units);
         accumulator_.bottleneck_values.resize(threat ? hidden_units :
-            (halfka_v4 ? hidden_units / 2U : weights_->manifest.layer_sizes[2]));
+            (halfka_v4 ? halfka_v4_head_inputs(weights_->manifest) : weights_->manifest.layer_sizes[2]));
     }
 }
 
@@ -1699,11 +2032,13 @@ int NnueWorker::evaluate(const EvaluationFeatures& features, const Color perspec
         return 0;
     }
     const bool use_halfka = is_halfka_king_bucket_v1(weights_->manifest);
+    const bool use_dual_halfka = is_halfka_dual_v4(weights_->manifest);
     const bool use_threat = uses_halfka_threat_features(weights_->manifest);
     const bool use_v2 = weights_->manifest.feature_set ==
         kKoiNnuePieceSquareKingPawnV2FeatureSet;
     const bool use_avx2 = path == NnueInferencePath::avx2_compatible ? avx2_available() :
         (path == NnueInferencePath::automatic && avx2_available());
+    const bool use_simd = path != NnueInferencePath::scalar;
     int score = 0;
     if (use_threat) {
         // Both perspectives feed the head: own is the side to move, opponent
@@ -1719,12 +2054,22 @@ int NnueWorker::evaluate(const EvaluationFeatures& features, const Color perspec
             *weights_, std::span<const std::uint16_t>(own.indices.data(), own.count),
             std::span<const std::uint16_t>(opp.indices.data(), opp.count),
             piece_count_bucket(features), accumulator_, use_avx2);
+    } else if (use_dual_halfka) {
+        const Color mover = features.position.side_to_move;
+        const NnueSparseFeaturesV4 own =
+            EvaluationFeatureExtractor::encode_sparse_v4(features, mover);
+        const NnueSparseFeaturesV4 opp =
+            EvaluationFeatureExtractor::encode_sparse_v4(features, opposite(mover));
+        score = infer_network_sparse_v4_dual(
+            *weights_, std::span<const std::uint16_t>(own.indices.data(), own.count),
+            std::span<const std::uint16_t>(opp.indices.data(), opp.count),
+            piece_count_bucket(features), accumulator_, use_avx2, use_simd);
     } else if (use_halfka) {
         const NnueSparseFeaturesV4 sparse =
             EvaluationFeatureExtractor::encode_sparse_v4(features);
         score = infer_network_sparse_v4(
             *weights_, std::span<const std::uint16_t>(sparse.indices.data(), sparse.count),
-            piece_count_bucket(features), accumulator_, use_avx2);
+            piece_count_bucket(features), accumulator_, use_avx2, use_simd);
     } else if (use_v2) {
         const NnueSparseFeatures sparse =
             EvaluationFeatureExtractor::encode_sparse_v2(features);
@@ -1773,11 +2118,26 @@ int NnueWorker::evaluate(const GameState& state, const Color perspective,
         opponent_sums = std::span<const std::int32_t>(scratch_values_[opponent_index]);
         pieces = scratch_pieces_;
     } else {
-        // Full rebuild: the only path that materializes the feature view.
-        const EvaluationFeatures features = EvaluationFeatureExtractor::extract(state);
-        for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
-            const Color real = index == 0U ? Color::white : Color::black;
-            if (threat) {
+        if (!threat) {
+            for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
+                const Color real = index == 0U ? Color::white : Color::black;
+                const std::size_t color_idx = real == Color::white ? 0U : 1U;
+                const std::uint64_t king_bb =
+                    state.piece_bitboards()[color_idx][static_cast<std::size_t>(PieceType::king)];
+                const Square king_sq = king_bb != 0 ?
+                    Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
+                    Square{};
+                const std::size_t bucket =
+                    EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, real);
+                refresh_finny_bucket_v4(state, real, bucket, scratch_values_[index].data());
+                scratch_buckets_[index] = static_cast<std::uint8_t>(bucket);
+            }
+            scratch_pieces_ = static_cast<std::uint8_t>(state.piece_count());
+        } else {
+            // Full rebuild: the only path that materializes the feature view.
+            const EvaluationFeatures features = EvaluationFeatureExtractor::extract(state);
+            for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
+                const Color real = index == 0U ? Color::white : Color::black;
                 const NnueSparseFeaturesV5 sparse =
                     EvaluationFeatureExtractor::encode_sparse_v5(features, real);
                 const std::span<const std::uint16_t> active(
@@ -1797,34 +2157,21 @@ int NnueWorker::evaluate(const GameState& state, const Color perspective,
                 std::copy_n(threats.indices.data(), threats.count,
                             scratch_threats_[index].data());
                 scratch_threat_counts_[index] = static_cast<std::uint8_t>(threats.count);
-            } else {
-                const NnueSparseFeaturesV4 sparse =
-                    EvaluationFeatureExtractor::encode_sparse_v4(features, real);
-                const std::span<const std::uint16_t> active(
-                    sparse.indices.data(), sparse.count);
-#if KOI_NNUE_COMPILED_AVX2
-                if (use_avx2) {
-                    accumulate_hidden_sparse_avx2(*weights_, active,
-                                                  scratch_values_[index]);
-                } else
-#endif
-                {
-                    accumulate_hidden_sparse_scalar(*weights_, active,
-                                                    scratch_values_[index]);
-                }
+                scratch_buckets_[index] = static_cast<std::uint8_t>(
+                    EvaluationFeatureExtractor::halfka_king_bucket_for(features, real));
             }
-            scratch_buckets_[index] = static_cast<std::uint8_t>(
-                EvaluationFeatureExtractor::halfka_king_bucket_for(features, real));
+            scratch_pieces_ = static_cast<std::uint8_t>(piece_count_of(features));
         }
         scratch_key_ = key;
         scratch_valid_ = true;
-        scratch_pieces_ = static_cast<std::uint8_t>(piece_count_of(features));
         ++incremental_fallback_count_;
         mover_sums = std::span<const std::int32_t>(scratch_values_[mover_index]);
         opponent_sums = std::span<const std::int32_t>(scratch_values_[opponent_index]);
         pieces = scratch_pieces_;
     }
     const std::size_t bucket = output_bucket_for_pieces(pieces);
+    const bool use_simd = path != NnueInferencePath::scalar;
+    (void)use_simd;
     int score = 0;
     if (threat) {
 #if KOI_NNUE_COMPILED_AVX2
@@ -1837,10 +2184,32 @@ int NnueWorker::evaluate(const GameState& state, const Color perspective,
             score = finish_inference_v5_scalar(*weights_, mover_sums, opponent_sums,
                                                bucket, accumulator_);
         }
+    } else if (is_halfka_dual_v4(weights_->manifest)) {
+#if KOI_NNUE_COMPILED_AVX2
+        if (use_avx2) {
+            score = finish_inference_v4_dual_avx2(*weights_, mover_sums, opponent_sums,
+                                                  bucket, accumulator_);
+        } else
+#endif
+#if KOI_NNUE_COMPILED_NEON
+        if (use_simd) {
+            score = finish_inference_v4_dual_neon(*weights_, mover_sums, opponent_sums,
+                                                  bucket, accumulator_);
+        } else
+#endif
+        {
+            score = finish_inference_v4_dual_scalar(*weights_, mover_sums, opponent_sums,
+                                                    bucket, accumulator_);
+        }
     } else {
 #if KOI_NNUE_COMPILED_AVX2
         if (use_avx2) {
             score = finish_inference_v4_avx2(*weights_, mover_sums, bucket, accumulator_);
+        } else
+#endif
+#if KOI_NNUE_COMPILED_NEON
+        if (use_simd) {
+            score = finish_inference_v4_neon(*weights_, mover_sums, bucket, accumulator_);
         } else
 #endif
         {
@@ -1871,6 +2240,10 @@ void NnueWorker::ensure_incremental_storage() {
         slot_values_[index].assign(slot_entries, 0);
         slot_buckets_[index].assign(kIncrementalSlotCount, 0);
         scratch_values_[index].assign(hidden_units_, 0);
+        if (!threat_features_) {
+            finny_values_[index].assign(kNnueKingBucketCount * hidden_units_, 0);
+            finny_valid_[index].fill(0);
+        }
         if (threat_features_) {
             slot_threats_[index].assign(kIncrementalSlotCount * kThreatListCapacity, 0);
             slot_threat_counts_[index].assign(kIncrementalSlotCount, 0);
@@ -1945,6 +2318,187 @@ void NnueWorker::refresh_slot_perspective(const EvaluationFeatures& features,
     slot_pieces_[slot] = static_cast<std::uint8_t>(piece_count_of(features));
 }
 
+void NnueWorker::refresh_finny_bucket_v4(const GameState& state,
+                                         const Color perspective,
+                                         const std::size_t bucket,
+                                         std::int32_t* const target_sums) {
+    const std::size_t index = perspective == Color::white ? 0U : 1U;
+    const auto& current_bbs = state.piece_bitboards();
+    std::int32_t* const cached_sums =
+        finny_values_[index].data() + bucket * hidden_units_;
+
+    if (finny_valid_[index][bucket] == 0) {
+        std::array<std::uint16_t, kNnueSparseFeatureCapacityV4> active_buf{};
+        std::size_t active_count = 0;
+        const std::size_t base = bucket * kNnuePieceSquareV1FeatureCount;
+        const std::size_t own_c = perspective == Color::white ? 0U : 1U;
+        const std::size_t opp_c = 1U - own_c;
+        const std::array<std::size_t, 2> color_order{own_c, opp_c};
+        for (std::size_t plane_group = 0; plane_group < 2U; ++plane_group) {
+            const std::size_t c = color_order[plane_group];
+            for (std::size_t pt = 1U; pt <= 6U; ++pt) {
+                const std::size_t plane = plane_group * 6U + (pt - 1U);
+                const std::size_t plane_base = base + plane * 64U;
+                std::uint64_t bb = current_bbs[c][pt];
+                if (perspective == Color::white) {
+                    while (bb != 0 && active_count < active_buf.size()) {
+                        const std::size_t sq = static_cast<std::size_t>(std::countr_zero(bb));
+                        bb &= bb - 1U;
+                        active_buf[active_count++] = static_cast<std::uint16_t>(plane_base + sq);
+                    }
+                } else {
+                    while (bb != 0 && active_count < active_buf.size()) {
+                        const std::size_t sq = static_cast<std::size_t>(std::countr_zero(bb));
+                        bb &= bb - 1U;
+                        active_buf[active_count++] =
+                            static_cast<std::uint16_t>(plane_base + (sq ^ 56U));
+                    }
+                }
+            }
+        }
+        const std::span<const std::uint16_t> active(active_buf.data(), active_count);
+        const std::span<std::int32_t> cached_span(cached_sums, hidden_units_);
+#if KOI_NNUE_COMPILED_AVX2
+        if (avx2_available()) {
+            accumulate_hidden_sparse_avx2(*weights_, active, cached_span);
+        } else
+#endif
+        {
+            accumulate_hidden_sparse_scalar(*weights_, active, cached_span);
+        }
+        finny_bitboards_[index][bucket] = current_bbs;
+        finny_valid_[index][bucket] = 1;
+        std::copy_n(cached_sums, hidden_units_, target_sums);
+        return;
+    }
+
+    auto& cached_bbs = finny_bitboards_[index][bucket];
+    std::array<std::uint16_t, 64> removed{};
+    std::array<std::uint16_t, 64> added{};
+    std::size_t removed_count = 0;
+    std::size_t added_count = 0;
+    const std::size_t base = bucket * kNnuePieceSquareV1FeatureCount;
+    const std::size_t own_c = perspective == Color::white ? 0U : 1U;
+    const std::size_t opp_c = 1U - own_c;
+    const std::array<std::size_t, 2> color_order{own_c, opp_c};
+    for (std::size_t plane_group = 0; plane_group < 2U; ++plane_group) {
+        const std::size_t c = color_order[plane_group];
+        for (std::size_t pt = 1U; pt <= 6U; ++pt) {
+            const std::uint64_t old_bb = cached_bbs[c][pt];
+            const std::uint64_t new_bb = current_bbs[c][pt];
+            if (old_bb == new_bb) {
+                continue;
+            }
+            cached_bbs[c][pt] = new_bb;
+            const std::size_t plane = plane_group * 6U + (pt - 1U);
+            const std::size_t plane_base = base + plane * 64U;
+            std::uint64_t rem_bb = old_bb & ~new_bb;
+            std::uint64_t add_bb = new_bb & ~old_bb;
+            if (perspective == Color::white) {
+                while (rem_bb != 0 && removed_count < removed.size()) {
+                    const std::size_t sq = static_cast<std::size_t>(std::countr_zero(rem_bb));
+                    rem_bb &= rem_bb - 1U;
+                    removed[removed_count++] = static_cast<std::uint16_t>(plane_base + sq);
+                }
+                while (add_bb != 0 && added_count < added.size()) {
+                    const std::size_t sq = static_cast<std::size_t>(std::countr_zero(add_bb));
+                    add_bb &= add_bb - 1U;
+                    added[added_count++] = static_cast<std::uint16_t>(plane_base + sq);
+                }
+            } else {
+                while (rem_bb != 0 && removed_count < removed.size()) {
+                    const std::size_t sq = static_cast<std::size_t>(std::countr_zero(rem_bb));
+                    rem_bb &= rem_bb - 1U;
+                    removed[removed_count++] =
+                        static_cast<std::uint16_t>(plane_base + (sq ^ 56U));
+                }
+                while (add_bb != 0 && added_count < added.size()) {
+                    const std::size_t sq = static_cast<std::size_t>(std::countr_zero(add_bb));
+                    add_bb &= add_bb - 1U;
+                    added[added_count++] =
+                        static_cast<std::uint16_t>(plane_base + (sq ^ 56U));
+                }
+            }
+        }
+    }
+
+    if ((removed_count == 1U && added_count == 1U) ||
+        (removed_count == 2U && added_count == 1U) ||
+        (removed_count == 2U && added_count == 2U)) {
+        apply_fused_perspective_deltas(
+            cached_sums, cached_sums,
+            std::span<const std::uint16_t>(removed.data(), removed_count),
+            std::span<const std::uint16_t>(added.data(), added_count));
+        std::copy_n(cached_sums, hidden_units_, target_sums);
+        return;
+    }
+
+    const std::int16_t* const w_base = weights_->feature_weights.data();
+    const std::size_t count = hidden_units_;
+    std::size_t pair_idx = 0;
+    for (; pair_idx < std::min(removed_count, added_count); ++pair_idx) {
+        const std::uint16_t r_feat = removed[pair_idx];
+        const std::uint16_t a_feat = added[pair_idx];
+        apply_fused_perspective_deltas(
+            cached_sums, cached_sums,
+            std::span<const std::uint16_t>(&r_feat, 1U),
+            std::span<const std::uint16_t>(&a_feat, 1U));
+    }
+    for (std::size_t r = pair_idx; r < removed_count; ++r) {
+        const std::int16_t* const w =
+            w_base + static_cast<std::size_t>(removed[r]) * count;
+#if KOI_NNUE_COMPILED_AVX2
+        if (avx2_available() && count % 16U == 0U) {
+            apply_delta_avx2(cached_sums, w, count, -1);
+            continue;
+        }
+#endif
+        for (std::size_t hidden = 0; hidden < count; ++hidden) {
+            const std::int64_t updated =
+                static_cast<std::int64_t>(cached_sums[hidden]) - w[hidden];
+            cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                updated, std::numeric_limits<std::int32_t>::min(),
+                std::numeric_limits<std::int32_t>::max()));
+        }
+    }
+    for (std::size_t a = pair_idx; a < added_count; ++a) {
+        const std::int16_t* const w =
+            w_base + static_cast<std::size_t>(added[a]) * count;
+#if KOI_NNUE_COMPILED_AVX2
+        if (avx2_available() && count % 16U == 0U) {
+            apply_delta_avx2(cached_sums, w, count, 1);
+            continue;
+        }
+#endif
+        for (std::size_t hidden = 0; hidden < count; ++hidden) {
+            const std::int64_t updated =
+                static_cast<std::int64_t>(cached_sums[hidden]) + w[hidden];
+            cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                updated, std::numeric_limits<std::int32_t>::min(),
+                std::numeric_limits<std::int32_t>::max()));
+        }
+    }
+    std::copy_n(cached_sums, hidden_units_, target_sums);
+}
+
+void NnueWorker::refresh_slot_perspective_v4_finny(const GameState& state,
+                                                   const Color perspective,
+                                                   const std::size_t slot) {
+    const std::size_t index = perspective == Color::white ? 0U : 1U;
+    const std::uint64_t king_bb =
+        state.piece_bitboards()[index][static_cast<std::size_t>(PieceType::king)];
+    const Square king_sq = king_bb != 0 ?
+        Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
+        Square{};
+    const std::size_t bucket =
+        EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, perspective);
+    refresh_finny_bucket_v4(
+        state, perspective, bucket,
+        slot_values_[index].data() + slot * hidden_units_);
+    slot_buckets_[index][slot] = static_cast<std::uint8_t>(bucket);
+    slot_pieces_[slot] = static_cast<std::uint8_t>(state.piece_count());
+}
+
 void NnueWorker::apply_feature_delta(const std::size_t perspective,
                                      const std::size_t slot,
                                      const std::uint16_t index, const int sign) {
@@ -1967,6 +2521,127 @@ void NnueWorker::apply_feature_delta(const std::size_t perspective,
         values[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
             updated, std::numeric_limits<std::int32_t>::min(),
             std::numeric_limits<std::int32_t>::max()));
+    }
+}
+
+void NnueWorker::apply_fused_perspective_deltas(
+    const std::int32_t* const parent_values,
+    std::int32_t* const target_values,
+    const std::span<const std::uint16_t> removed,
+    const std::span<const std::uint16_t> added) {
+    const std::int16_t* const base = weights_->feature_weights.data();
+    const std::size_t count = hidden_units_;
+    if (removed.size() == 1U && added.size() == 1U) {
+        const std::int16_t* const w_sub0 =
+            base + static_cast<std::size_t>(removed[0]) * count;
+        const std::int16_t* const w_add0 =
+            base + static_cast<std::size_t>(added[0]) * count;
+#if KOI_NNUE_COMPILED_AVX2
+        if (avx2_available() && count % 16U == 0U) {
+            apply_fused_sub1_add1_avx2(parent_values, target_values, w_sub0, w_add0, count);
+            return;
+        }
+#endif
+        constexpr std::int32_t kSafeLimit =
+            std::numeric_limits<std::int32_t>::max() - 131072;
+        for (std::size_t hidden = 0; hidden < count; ++hidden) {
+            const std::int32_t p = parent_values[hidden];
+            const std::int32_t s0 = w_sub0[hidden];
+            const std::int32_t a0 = w_add0[hidden];
+            if (p > -kSafeLimit && p < kSafeLimit) [[likely]] {
+                target_values[hidden] = p - s0 + a0;
+            } else {
+                std::int64_t v = static_cast<std::int64_t>(p) - s0;
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v += a0;
+                target_values[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    v, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
+            }
+        }
+        return;
+    }
+    if (removed.size() == 2U && added.size() == 1U) {
+        const std::int16_t* const w_sub0 =
+            base + static_cast<std::size_t>(removed[0]) * count;
+        const std::int16_t* const w_sub1 =
+            base + static_cast<std::size_t>(removed[1]) * count;
+        const std::int16_t* const w_add0 =
+            base + static_cast<std::size_t>(added[0]) * count;
+#if KOI_NNUE_COMPILED_AVX2
+        if (avx2_available() && count % 16U == 0U) {
+            apply_fused_sub2_add1_avx2(parent_values, target_values, w_sub0, w_sub1,
+                                       w_add0, count);
+            return;
+        }
+#endif
+        constexpr std::int32_t kSafeLimit =
+            std::numeric_limits<std::int32_t>::max() - 131072;
+        for (std::size_t hidden = 0; hidden < count; ++hidden) {
+            const std::int32_t p = parent_values[hidden];
+            const std::int32_t s0 = w_sub0[hidden];
+            const std::int32_t s1 = w_sub1[hidden];
+            const std::int32_t a0 = w_add0[hidden];
+            if (p > -kSafeLimit && p < kSafeLimit) [[likely]] {
+                target_values[hidden] = p - s0 - s1 + a0;
+            } else {
+                std::int64_t v = static_cast<std::int64_t>(p) - s0;
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v -= s1;
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v += a0;
+                target_values[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    v, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
+            }
+        }
+        return;
+    }
+    if (removed.size() == 2U && added.size() == 2U) {
+        const std::int16_t* const w_sub0 =
+            base + static_cast<std::size_t>(removed[0]) * count;
+        const std::int16_t* const w_sub1 =
+            base + static_cast<std::size_t>(removed[1]) * count;
+        const std::int16_t* const w_add0 =
+            base + static_cast<std::size_t>(added[0]) * count;
+        const std::int16_t* const w_add1 =
+            base + static_cast<std::size_t>(added[1]) * count;
+#if KOI_NNUE_COMPILED_AVX2
+        if (avx2_available() && count % 16U == 0U) {
+            apply_fused_sub2_add2_avx2(parent_values, target_values, w_sub0, w_sub1,
+                                       w_add0, w_add1, count);
+            return;
+        }
+#endif
+        constexpr std::int32_t kSafeLimit =
+            std::numeric_limits<std::int32_t>::max() - 131072;
+        for (std::size_t hidden = 0; hidden < count; ++hidden) {
+            const std::int32_t p = parent_values[hidden];
+            const std::int32_t s0 = w_sub0[hidden];
+            const std::int32_t s1 = w_sub1[hidden];
+            const std::int32_t a0 = w_add0[hidden];
+            const std::int32_t a1 = w_add1[hidden];
+            if (p > -kSafeLimit && p < kSafeLimit) [[likely]] {
+                target_values[hidden] = p - s0 + a0 - s1 + a1;
+            } else {
+                std::int64_t v = static_cast<std::int64_t>(p) - s0;
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v += a0;
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v -= s1;
+                v = std::clamp<std::int64_t>(v, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max());
+                v += a1;
+                target_values[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    v, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
+            }
+        }
     }
 }
 
@@ -2008,9 +2683,11 @@ void NnueWorker::apply_threat_deltas(const EvaluationFeatures& child_features,
     store_threat_list(index, slot, child_list);
 }
 
-void NnueWorker::apply_move_deltas(const GameState& child,
-                                   const MoveMetadata& metadata,
-                                   const std::size_t slot) {
+void NnueWorker::apply_move_deltas(
+    const GameState& child,
+    const MoveMetadata& metadata,
+    const std::size_t slot,
+    const std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values) {
     // The child's feature view is needed when a perspective's own king
     // crosses a bucket boundary and, for v5, to diff the threat feature set.
     // Everything else is derived from the move metadata, which keeps the hot
@@ -2020,9 +2697,9 @@ void NnueWorker::apply_move_deltas(const GameState& child,
     const Square to = metadata.move.to();
     const MoveKind kind = metadata.kind;
     const PieceType moving = metadata.moving_piece;
-    // The slot was copied forward from the parent, so its piece count is the
-    // parent count.  A refresh stores the exact child count, so the decrement
-    // below is skipped in that case.
+    // The slot metadata was initialized from the parent, so its piece count is
+    // the parent count.  A refresh stores the exact child count, so the
+    // decrement below is skipped in that case.
     const std::uint8_t parent_pieces = slot_pieces_[slot];
     std::array<bool, kIncrementalPerspectives> refreshed{};
     for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
@@ -2035,16 +2712,24 @@ void NnueWorker::apply_move_deltas(const GameState& child,
             const std::size_t child_bucket =
                 EvaluationFeatureExtractor::halfka_king_bucket_for_square(to, real);
             if (child_bucket != slot_buckets_[index][slot]) {
-                refresh_slot_perspective(
-                    EvaluationFeatureExtractor::extract(child), real, slot);
+                if (!threat_features_) {
+                    refresh_slot_perspective_v4_finny(child, real, slot);
+                } else {
+                    refresh_slot_perspective(
+                        EvaluationFeatureExtractor::extract(child), real, slot);
+                }
                 refreshed[index] = true;
                 continue;
             }
         }
         const std::size_t bucket = slot_buckets_[index][slot];
-        apply_feature_delta(index, slot,
+        std::array<std::uint16_t, 2> removed{};
+        std::array<std::uint16_t, 2> added{};
+        std::size_t removed_count = 0;
+        std::size_t added_count = 0;
+        removed[removed_count++] =
             EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                bucket, real, Piece{moving, mover}, from), -1);
+                bucket, real, Piece{moving, mover}, from);
         if (metadata.captured_piece != PieceType::none) {
             Square captured = to;
             if (kind == MoveKind::en_passant) {
@@ -2052,16 +2737,16 @@ void NnueWorker::apply_move_deltas(const GameState& child,
                     Square::from_index(static_cast<std::uint8_t>(to.index() - 8U)) :
                     Square::from_index(static_cast<std::uint8_t>(to.index() + 8U));
             }
-            apply_feature_delta(index, slot,
+            removed[removed_count++] =
                 EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
                     bucket, real, Piece{metadata.captured_piece, opposite(mover)},
-                    captured), -1);
+                    captured);
         }
         const PieceType placed = kind == MoveKind::promotion ?
             promotion_piece_type(metadata.move.promotion()) : moving;
-        apply_feature_delta(index, slot,
+        added[added_count++] =
             EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                bucket, real, Piece{placed, mover}, to), 1);
+                bucket, real, Piece{placed, mover}, to);
         if (kind == MoveKind::castling) {
             const bool king_side = mover == Color::white ? to.index() == 6U :
                                                            to.index() == 62U;
@@ -2069,15 +2754,20 @@ void NnueWorker::apply_move_deltas(const GameState& child,
                 (king_side ? 7U : 0U) : (king_side ? 63U : 56U);
             const std::uint8_t rook_to = mover == Color::white ?
                 (king_side ? 5U : 3U) : (king_side ? 61U : 59U);
-            apply_feature_delta(index, slot,
+            removed[removed_count++] =
                 EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
                     bucket, real, Piece{PieceType::rook, mover},
-                    Square::from_index(rook_from)), -1);
-            apply_feature_delta(index, slot,
+                    Square::from_index(rook_from));
+            added[added_count++] =
                 EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
                     bucket, real, Piece{PieceType::rook, mover},
-                    Square::from_index(rook_to)), 1);
+                    Square::from_index(rook_to));
         }
+        apply_fused_perspective_deltas(
+            parent_values[index],
+            slot_values_[index].data() + slot * hidden_units_,
+            std::span<const std::uint16_t>(removed.data(), removed_count),
+            std::span<const std::uint16_t>(added.data(), added_count));
     }
     if (!refreshed[0] && !refreshed[1]) {
         slot_pieces_[slot] = static_cast<std::uint8_t>(
@@ -2093,6 +2783,46 @@ void NnueWorker::apply_move_deltas(const GameState& child,
             }
         }
     }
+}
+
+bool NnueWorker::prepare_child_slot_metadata(
+    const int ply, const int child_slot, const std::uint64_t parent_key,
+    std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values) {
+    const std::size_t child = static_cast<std::size_t>(child_slot);
+    if (scratch_valid_ && scratch_key_ == parent_key) {
+        for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
+            parent_values[index] = scratch_values_[index].data();
+            slot_buckets_[index][child] = scratch_buckets_[index];
+            if (threat_features_) {
+                slot_threat_counts_[index][child] = scratch_threat_counts_[index];
+                std::copy_n(scratch_threats_[index].data(), kThreatListCapacity,
+                            slot_threats_[index].data() + child * kThreatListCapacity);
+            }
+        }
+        slot_pieces_[child] = scratch_pieces_;
+        return true;
+    }
+    if (slot_cursor_ == ply && slot_valid_[static_cast<std::size_t>(ply)] != 0 &&
+        slot_keys_[static_cast<std::size_t>(ply)] == parent_key) {
+        const std::size_t from_slot = static_cast<std::size_t>(ply);
+        for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
+            parent_values[index] = slot_values_[index].data() + from_slot * hidden_units_;
+            slot_buckets_[index][child] = slot_buckets_[index][from_slot];
+            if (threat_features_) {
+                slot_threat_counts_[index][child] = slot_threat_counts_[index][from_slot];
+                std::copy_n(slot_threats_[index].data() + from_slot * kThreatListCapacity,
+                            kThreatListCapacity,
+                            slot_threats_[index].data() + child * kThreatListCapacity);
+            }
+        }
+        slot_pieces_[child] = slot_pieces_[from_slot];
+        return true;
+    }
+    slot_valid_[child] = 0;
+    slot_cursor_ = -1;
+    scratch_valid_ = false;
+    ++incremental_fallback_count_;
+    return false;
 }
 
 bool NnueWorker::prepare_child_slot(const int ply, const int child_slot,
@@ -2137,10 +2867,11 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
         ++incremental_fallback_count_;
         return;
     }
-    if (!prepare_child_slot(ply, child_slot, parent_key)) {
+    std::array<const std::int32_t*, kIncrementalPerspectives> parent_values{};
+    if (!prepare_child_slot_metadata(ply, child_slot, parent_key, parent_values)) {
         return;
     }
-    apply_move_deltas(child, metadata, static_cast<std::size_t>(child_slot));
+    apply_move_deltas(child, metadata, static_cast<std::size_t>(child_slot), parent_values);
     slot_keys_[static_cast<std::size_t>(child_slot)] = child.position_key();
     slot_valid_[static_cast<std::size_t>(child_slot)] = 1;
     slot_cursor_ = child_slot;
