@@ -2108,6 +2108,12 @@ int NnueWorker::evaluate(const GameState& state, const Color perspective,
         slot_valid_[static_cast<std::size_t>(slot_cursor_)] != 0 &&
         slot_keys_[static_cast<std::size_t>(slot_cursor_)] == key) {
         const std::size_t slot = static_cast<std::size_t>(slot_cursor_);
+        if (!threat) {
+            materialize_slot_perspective_v4(state, mover_index, slot);
+            if (is_halfka_dual_v4(weights_->manifest)) {
+                materialize_slot_perspective_v4(state, opponent_index, slot);
+            }
+        }
         mover_sums = std::span<const std::int32_t>(
             slot_values_[mover_index].data() + slot * hidden_units_, hidden_units_);
         opponent_sums = std::span<const std::int32_t>(
@@ -2239,6 +2245,8 @@ void NnueWorker::ensure_incremental_storage() {
     for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
         slot_values_[index].assign(slot_entries, 0);
         slot_buckets_[index].assign(kIncrementalSlotCount, 0);
+        slot_computed_[index].assign(kIncrementalSlotCount, 0);
+        slot_pending_[index].assign(kIncrementalSlotCount, PendingSlotDelta{});
         scratch_values_[index].assign(hidden_units_, 0);
         if (!threat_features_) {
             finny_values_[index].assign(kNnueKingBucketCount * hidden_units_, 0);
@@ -2253,6 +2261,17 @@ void NnueWorker::ensure_incremental_storage() {
     slot_keys_.assign(kIncrementalSlotCount, 0);
     slot_valid_.assign(kIncrementalSlotCount, 0);
     slot_pieces_.assign(kIncrementalSlotCount, 0);
+    // All active piece counts (<= 32) plus up to kIncrementalSlotCount plies of
+    // signed int16 deltas stay strictly within int32 range whenever every bias
+    // lies within +/- 1e9, letting hot fused-delta loops skip per-element
+    // clamping and auto-vectorize cleanly.
+    overflow_safe_ = true;
+    for (const std::int32_t bias : weights_->hidden_bias) {
+        if (bias < -1'000'000'000 || bias > 1'000'000'000) {
+            overflow_safe_ = false;
+            break;
+        }
+    }
     storage_ready_ = true;
 }
 
@@ -2453,12 +2472,18 @@ void NnueWorker::refresh_finny_bucket_v4(const GameState& state,
             continue;
         }
 #endif
-        for (std::size_t hidden = 0; hidden < count; ++hidden) {
-            const std::int64_t updated =
-                static_cast<std::int64_t>(cached_sums[hidden]) - w[hidden];
-            cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
-                updated, std::numeric_limits<std::int32_t>::min(),
-                std::numeric_limits<std::int32_t>::max()));
+        if (overflow_safe_) {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                cached_sums[hidden] -= w[hidden];
+            }
+        } else {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                const std::int64_t updated =
+                    static_cast<std::int64_t>(cached_sums[hidden]) - w[hidden];
+                cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    updated, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
+            }
         }
     }
     for (std::size_t a = pair_idx; a < added_count; ++a) {
@@ -2470,12 +2495,18 @@ void NnueWorker::refresh_finny_bucket_v4(const GameState& state,
             continue;
         }
 #endif
-        for (std::size_t hidden = 0; hidden < count; ++hidden) {
-            const std::int64_t updated =
-                static_cast<std::int64_t>(cached_sums[hidden]) + w[hidden];
-            cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
-                updated, std::numeric_limits<std::int32_t>::min(),
-                std::numeric_limits<std::int32_t>::max()));
+        if (overflow_safe_) {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                cached_sums[hidden] += w[hidden];
+            }
+        } else {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                const std::int64_t updated =
+                    static_cast<std::int64_t>(cached_sums[hidden]) + w[hidden];
+                cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    updated, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
+            }
         }
     }
     std::copy_n(cached_sums, hidden_units_, target_sums);
@@ -2542,6 +2573,13 @@ void NnueWorker::apply_fused_perspective_deltas(
             return;
         }
 #endif
+        if (overflow_safe_) {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                target_values[hidden] =
+                    parent_values[hidden] - w_sub0[hidden] + w_add0[hidden];
+            }
+            return;
+        }
         constexpr std::int32_t kSafeLimit =
             std::numeric_limits<std::int32_t>::max() - 131072;
         for (std::size_t hidden = 0; hidden < count; ++hidden) {
@@ -2576,6 +2614,13 @@ void NnueWorker::apply_fused_perspective_deltas(
             return;
         }
 #endif
+        if (overflow_safe_) {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                target_values[hidden] =
+                    parent_values[hidden] - w_sub0[hidden] - w_sub1[hidden] + w_add0[hidden];
+            }
+            return;
+        }
         constexpr std::int32_t kSafeLimit =
             std::numeric_limits<std::int32_t>::max() - 131072;
         for (std::size_t hidden = 0; hidden < count; ++hidden) {
@@ -2616,6 +2661,14 @@ void NnueWorker::apply_fused_perspective_deltas(
             return;
         }
 #endif
+        if (overflow_safe_) {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                target_values[hidden] =
+                    parent_values[hidden] - w_sub0[hidden] + w_add0[hidden] -
+                    w_sub1[hidden] + w_add1[hidden];
+            }
+            return;
+        }
         constexpr std::int32_t kSafeLimit =
             std::numeric_limits<std::int32_t>::max() - 131072;
         for (std::size_t hidden = 0; hidden < count; ++hidden) {
@@ -2854,6 +2907,71 @@ bool NnueWorker::prepare_child_slot(const int ply, const int child_slot,
     return false;
 }
 
+bool NnueWorker::prepare_lazy_parent_slot_v4(const int ply, const std::size_t child,
+                                             const std::uint64_t parent_key) {
+    const std::size_t from_slot = static_cast<std::size_t>(ply);
+    if (scratch_valid_ && scratch_key_ == parent_key) {
+        if (slot_valid_[from_slot] == 0 || slot_keys_[from_slot] != parent_key ||
+            slot_computed_[0][from_slot] == 0 || slot_computed_[1][from_slot] == 0) {
+            for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
+                std::copy_n(scratch_values_[index].data(), hidden_units_,
+                            slot_values_[index].data() + from_slot * hidden_units_);
+                slot_buckets_[index][from_slot] = scratch_buckets_[index];
+                slot_computed_[index][from_slot] = 1;
+            }
+            slot_pieces_[from_slot] = scratch_pieces_;
+            slot_keys_[from_slot] = parent_key;
+            slot_valid_[from_slot] = 1;
+        }
+        return true;
+    }
+    if (slot_cursor_ == ply && slot_valid_[from_slot] != 0 &&
+        slot_keys_[from_slot] == parent_key) {
+        return true;
+    }
+    slot_valid_[child] = 0;
+    slot_cursor_ = -1;
+    scratch_valid_ = false;
+    ++incremental_fallback_count_;
+    return false;
+}
+
+void NnueWorker::materialize_slot_perspective_v4(const GameState& state,
+                                                 const std::size_t index,
+                                                 const std::size_t slot) {
+    if (slot_computed_[index][slot] != 0) {
+        return;
+    }
+    std::size_t s = slot;
+    while (slot_computed_[index][s] == 0) {
+        if (slot_pending_[index][s].needs_finny_refresh != 0 || s == 0) {
+            const Color real = index == 0U ? Color::white : Color::black;
+            refresh_finny_bucket_v4(
+                state, real, slot_buckets_[index][slot],
+                slot_values_[index].data() + slot * hidden_units_);
+            slot_computed_[index][slot] = 1;
+            return;
+        }
+        --s;
+    }
+    for (std::size_t cur = s + 1U; cur <= slot; ++cur) {
+        const PendingSlotDelta& d = slot_pending_[index][cur];
+        const std::int32_t* const parent_ptr =
+            slot_values_[index].data() + (cur - 1U) * hidden_units_;
+        std::int32_t* const target_ptr =
+            slot_values_[index].data() + cur * hidden_units_;
+        if (d.removed_count == 0U && d.added_count == 0U) {
+            std::copy_n(parent_ptr, hidden_units_, target_ptr);
+        } else {
+            apply_fused_perspective_deltas(
+                parent_ptr, target_ptr,
+                std::span<const std::uint16_t>(d.removed.data(), d.removed_count),
+                std::span<const std::uint16_t>(d.added.data(), d.added_count));
+        }
+        slot_computed_[index][cur] = 1;
+    }
+}
+
 void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metadata,
                               const int ply, const std::uint64_t parent_key) {
     if (!supports_incremental()) {
@@ -2867,13 +2985,88 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
         ++incremental_fallback_count_;
         return;
     }
+    const std::size_t child_idx = static_cast<std::size_t>(child_slot);
+    if (!threat_features_) {
+        if (!prepare_lazy_parent_slot_v4(ply, child_idx, parent_key)) {
+            return;
+        }
+        const std::size_t from_slot = static_cast<std::size_t>(ply);
+        const Color mover = opposite(child.side_to_move());
+        const Square from = metadata.move.from();
+        const Square to = metadata.move.to();
+        const MoveKind kind = metadata.kind;
+        const PieceType moving = metadata.moving_piece;
+        for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
+            const Color real = index == 0U ? Color::white : Color::black;
+            const std::size_t parent_bucket = slot_buckets_[index][from_slot];
+            PendingSlotDelta delta{};
+            if (moving == PieceType::king && mover == real) {
+                const std::size_t child_bucket =
+                    EvaluationFeatureExtractor::halfka_king_bucket_for_square(to, real);
+                if (child_bucket != parent_bucket) {
+                    slot_buckets_[index][child_idx] =
+                        static_cast<std::uint8_t>(child_bucket);
+                    delta.needs_finny_refresh = 1;
+                    slot_pending_[index][child_idx] = delta;
+                    slot_computed_[index][child_idx] = 0;
+                    continue;
+                }
+            }
+            slot_buckets_[index][child_idx] = static_cast<std::uint8_t>(parent_bucket);
+            delta.removed[delta.removed_count++] =
+                EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
+                    parent_bucket, real, Piece{moving, mover}, from);
+            if (metadata.captured_piece != PieceType::none) {
+                Square captured = to;
+                if (kind == MoveKind::en_passant) {
+                    captured = mover == Color::white ?
+                        Square::from_index(static_cast<std::uint8_t>(to.index() - 8U)) :
+                        Square::from_index(static_cast<std::uint8_t>(to.index() + 8U));
+                }
+                delta.removed[delta.removed_count++] =
+                    EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
+                        parent_bucket, real, Piece{metadata.captured_piece, opposite(mover)},
+                        captured);
+            }
+            const PieceType placed = kind == MoveKind::promotion ?
+                promotion_piece_type(metadata.move.promotion()) : moving;
+            delta.added[delta.added_count++] =
+                EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
+                    parent_bucket, real, Piece{placed, mover}, to);
+            if (kind == MoveKind::castling) {
+                const bool king_side = mover == Color::white ? to.index() == 6U :
+                                                               to.index() == 62U;
+                const std::uint8_t rook_from = mover == Color::white ?
+                    (king_side ? 7U : 0U) : (king_side ? 63U : 56U);
+                const std::uint8_t rook_to = mover == Color::white ?
+                    (king_side ? 5U : 3U) : (king_side ? 61U : 59U);
+                delta.removed[delta.removed_count++] =
+                    EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
+                        parent_bucket, real, Piece{PieceType::rook, mover},
+                        Square::from_index(rook_from));
+                delta.added[delta.added_count++] =
+                    EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
+                        parent_bucket, real, Piece{PieceType::rook, mover},
+                        Square::from_index(rook_to));
+            }
+            slot_pending_[index][child_idx] = delta;
+            slot_computed_[index][child_idx] = 0;
+        }
+        slot_pieces_[child_idx] = static_cast<std::uint8_t>(
+            slot_pieces_[from_slot] - (metadata.captured_piece != PieceType::none ? 1U : 0U));
+        slot_keys_[child_idx] = child.position_key();
+        slot_valid_[child_idx] = 1;
+        slot_cursor_ = child_slot;
+        ++incremental_make_count_;
+        return;
+    }
     std::array<const std::int32_t*, kIncrementalPerspectives> parent_values{};
     if (!prepare_child_slot_metadata(ply, child_slot, parent_key, parent_values)) {
         return;
     }
-    apply_move_deltas(child, metadata, static_cast<std::size_t>(child_slot), parent_values);
-    slot_keys_[static_cast<std::size_t>(child_slot)] = child.position_key();
-    slot_valid_[static_cast<std::size_t>(child_slot)] = 1;
+    apply_move_deltas(child, metadata, child_idx, parent_values);
+    slot_keys_[child_idx] = child.position_key();
+    slot_valid_[child_idx] = 1;
     slot_cursor_ = child_slot;
     ++incremental_make_count_;
 }
@@ -2901,11 +3094,29 @@ void NnueWorker::on_make_null_move(const GameState& child, const int ply,
         ++incremental_fallback_count_;
         return;
     }
+    const std::size_t child_idx = static_cast<std::size_t>(child_slot);
+    if (!threat_features_) {
+        if (!prepare_lazy_parent_slot_v4(ply, child_idx, parent_key)) {
+            return;
+        }
+        const std::size_t from_slot = static_cast<std::size_t>(ply);
+        for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
+            slot_buckets_[index][child_idx] = slot_buckets_[index][from_slot];
+            slot_computed_[index][child_idx] = 0;
+            slot_pending_[index][child_idx] = PendingSlotDelta{};
+        }
+        slot_pieces_[child_idx] = slot_pieces_[from_slot];
+        slot_keys_[child_idx] = child.position_key();
+        slot_valid_[child_idx] = 1;
+        slot_cursor_ = child_slot;
+        ++incremental_make_count_;
+        return;
+    }
     if (!prepare_child_slot(ply, child_slot, parent_key)) {
         return;
     }
-    slot_keys_[static_cast<std::size_t>(child_slot)] = child.position_key();
-    slot_valid_[static_cast<std::size_t>(child_slot)] = 1;
+    slot_keys_[child_idx] = child.position_key();
+    slot_valid_[child_idx] = 1;
     slot_cursor_ = child_slot;
     ++incremental_make_count_;
 }

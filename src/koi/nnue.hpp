@@ -210,6 +210,8 @@ private:
     [[nodiscard]] bool prepare_child_slot_metadata(
         int ply, int child_slot, std::uint64_t parent_key,
         std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values);
+    [[nodiscard]] bool prepare_lazy_parent_slot_v4(
+        int ply, std::size_t child, std::uint64_t parent_key);
     void copy_slot_forward(std::size_t from_slot, std::size_t to_slot);
     void refresh_slot_perspective(const EvaluationFeatures&, Color perspective,
                                   std::size_t slot);
@@ -223,6 +225,8 @@ private:
                                         std::int32_t* target_values,
                                         std::span<const std::uint16_t> removed,
                                         std::span<const std::uint16_t> added);
+    void materialize_slot_perspective_v4(const GameState&, std::size_t index,
+                                         std::size_t slot);
     void apply_move_deltas(
         const GameState&, const MoveMetadata&, std::size_t slot,
         const std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values);
@@ -242,9 +246,19 @@ private:
     bool network_usable_ = false;
     NnueAccumulator accumulator_;
 
+    struct PendingSlotDelta {
+        std::array<std::uint16_t, 2> removed{};
+        std::array<std::uint16_t, 2> added{};
+        std::uint8_t removed_count = 0;
+        std::uint8_t added_count = 0;
+        std::uint8_t needs_finny_refresh = 0;
+    };
+
     std::size_t hidden_units_ = 0;
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> slot_values_;
     std::array<std::vector<std::uint8_t>, kIncrementalPerspectives> slot_buckets_;
+    std::array<std::vector<std::uint8_t>, kIncrementalPerspectives> slot_computed_;
+    std::array<std::vector<PendingSlotDelta>, kIncrementalPerspectives> slot_pending_;
     std::vector<std::uint64_t> slot_keys_;
     std::vector<std::uint8_t> slot_valid_;
     // Piece count per slot (capped at 32).  Cached so an incremental
@@ -273,6 +287,7 @@ private:
     // v4 halfka networks do not carry threat features; allocating or copying
     // the per-slot threat buffers on the make path is pure overhead there.
     bool threat_features_ = false;
+    bool overflow_safe_ = false;
     bool storage_ready_ = false;
     std::size_t incremental_make_count_ = 0;
     std::size_t incremental_fallback_count_ = 0;
