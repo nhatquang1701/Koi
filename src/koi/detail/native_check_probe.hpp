@@ -27,6 +27,13 @@ struct NativeCheckProbe {
     // a non-probing path); the per-move probe then runs the full computation
     // instead of trusting the prefilter.
     std::uint64_t king_slider_rays = 0;
+    std::uint64_t rook_rays_pre = 0;
+    std::uint64_t bishop_rays_pre = 0;
+    std::uint64_t pawn_check_squares = 0;
+    std::uint64_t knight_check_squares = 0;
+    std::uint64_t king_check_squares = 0;
+    int king_square = -1;
+    bool already_checking_sliders = false;
     Color moving_color = Color::white;
 };
 

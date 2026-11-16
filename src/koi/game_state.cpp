@@ -895,7 +895,21 @@ std::uint64_t native_feature_attacks(const NativeFeatureBitboards& pieces,
         position.piece_bitboard(PieceType::queen, probe.moving_color);
     probe.friendly_bishop_queen = position.piece_bitboard(PieceType::bishop, probe.moving_color) |
         position.piece_bitboard(PieceType::queen, probe.moving_color);
-    if (probe.enemy_king != 0) {
+    if (probe.enemy_king != 0 && (probe.enemy_king & (probe.enemy_king - 1)) == 0) {
+        const int king_square = static_cast<int>(std::countr_zero(probe.enemy_king));
+        probe.king_square = king_square;
+        probe.king_slider_rays = detail::rook_attacks(king_square, 0) |
+            detail::bishop_attacks(king_square, 0);
+        probe.rook_rays_pre = detail::rook_attacks(king_square, probe.occupied);
+        probe.bishop_rays_pre = detail::bishop_attacks(king_square, probe.occupied);
+        probe.pawn_check_squares =
+            detail::pawn_attackers_of(king_square, probe.moving_color == Color::white);
+        probe.knight_check_squares = detail::knight_attacks(king_square);
+        probe.king_check_squares = detail::king_attacks(king_square);
+        probe.already_checking_sliders =
+            ((probe.rook_rays_pre & probe.friendly_rook_queen) |
+             (probe.bishop_rays_pre & probe.friendly_bishop_queen)) != 0;
+    } else if (probe.enemy_king != 0) {
         const int king_square = static_cast<int>(std::countr_zero(probe.enemy_king));
         probe.king_slider_rays = detail::rook_attacks(king_square, 0) |
             detail::bishop_attacks(king_square, 0);
@@ -952,17 +966,8 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
         return false;
     }
 
-    // The native position maintains combined occupancy through make and
-    // unmake, so reuse it instead of rebuilding it from the piece bitboards.
-    std::uint64_t occupied = probe.occupied;
-
     const std::uint64_t source_bit = std::uint64_t{1} << source;
     const std::uint64_t destination_bit = std::uint64_t{1} << destination;
-    occupied &= ~source_bit;
-    if (facts.occupied_to) {
-        occupied &= ~destination_bit;
-    }
-
     const Piece moving_piece = facts.from;
     std::uint64_t en_passant_victim_bit = 0;
     if (moving_piece.type == PieceType::pawn && facts.en_passant_target &&
@@ -971,10 +976,44 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
             (moving_color == Color::white ? -8 : 8);
         if (captured_square >= 0 && captured_square < 64) {
             en_passant_victim_bit = std::uint64_t{1} << captured_square;
-            occupied &= ~en_passant_victim_bit;
         }
     }
-    occupied |= destination_bit;
+
+    const PieceType moved_type = move.promotion() == Promotion::none ? moving_piece.type :
+        detail::promotion_piece_type(move.promotion());
+
+    // Common-case fast path: when a single enemy king is present, this move is
+    // not castling, no friendly slider already sees the king, and no actually
+    // vacated square (source or en-passant victim -- never destination, which
+    // stays occupied post-move) sits on the king's current rook/bishop attack
+    // rays, discovered check is impossible and pre-move rays give exact direct
+    // slider checks without rebuilding occupancy or probing magic tables.
+    const bool single_king_probe = probe.king_square >= 0;
+    if (single_king_probe && !castling && !probe.already_checking_sliders) {
+        const std::uint64_t real_vacated = source_bit | en_passant_victim_bit;
+        const std::uint64_t pre_rays = probe.rook_rays_pre | probe.bishop_rays_pre;
+        if ((real_vacated & pre_rays) == 0) {
+            switch (moved_type) {
+                case PieceType::pawn:
+                    return (destination_bit & probe.pawn_check_squares) != 0;
+                case PieceType::knight:
+                    return (destination_bit & probe.knight_check_squares) != 0;
+                case PieceType::king:
+                    return (destination_bit & probe.king_check_squares) != 0;
+                case PieceType::bishop:
+                    return (destination_bit & probe.bishop_rays_pre) != 0;
+                case PieceType::rook:
+                    return (destination_bit & probe.rook_rays_pre) != 0;
+                case PieceType::queen:
+                    return (destination_bit & pre_rays) != 0;
+                default:
+                    return false;
+            }
+        }
+    }
+
+    // Fallback path: rebuild post-move occupancy and query outward king rays.
+    std::uint64_t occupied = (probe.occupied & ~source_bit & ~en_passant_victim_bit) | destination_bit;
 
     std::uint8_t rook_source = Square::kInvalid;
     std::uint8_t rook_destination = Square::kInvalid;
@@ -988,39 +1027,16 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
         occupied |= std::uint64_t{1} << rook_destination;
     }
 
-    // Feasibility prefilter, bit-identical to the unguarded computation:
-    //  (a) a discovered (revealed) check requires the move to vacate a square
-    //      on a rank/file/diagonal line between a friendly slider and the
-    //      enemy king, and every square on such a line lies on the enemy
-    //      king's open-board rays, so `vacated & king_slider_rays` is a
-    //      conservative superset of every square whose clearing can reveal a
-    //      check (source, en-passant victim, castling rook source; a captured
-    //      destination square is included as well, which is conservative);
-    //  (b) a sliding direct check from the destination requires the
-    //      destination to lie on an open-board king ray, because occupancy can
-    //      only shorten a ray, never extend it;
-    //  (c) pawn, knight, and king direct checks keep their unguarded attack
-    //      tables, and a knight promotion keeps the knight table;
-    //  (d) every skipped computation could not have produced a hit, so the
-    //      returned bool is identical for every input.
     const std::uint64_t king_slider_rays = probe.king_slider_rays;
-    // A zero ray set means the probe was not fully built; run the full work.
     const bool rays_known = king_slider_rays != 0;
-    const std::uint64_t vacated = source_bit |
-        (facts.occupied_to ? destination_bit : std::uint64_t{0}) |
-        en_passant_victim_bit | castling_rook_source_bit;
-    const bool maybe_discovered = !rays_known || (vacated & king_slider_rays) != 0;
+    const std::uint64_t real_vacated =
+        source_bit | en_passant_victim_bit | castling_rook_source_bit;
+    const bool maybe_discovered = !rays_known || (real_vacated & king_slider_rays) != 0;
     const bool destination_on_ray = !rays_known ||
         (destination_bit & king_slider_rays) != 0;
 
-    const PieceType moved_type = move.promotion() == Promotion::none ? moving_piece.type :
-        detail::promotion_piece_type(move.promotion());
-
-    // Direct slider checks and discovered checks both need attacks projected
-    // outward from the enemy king through the post-move occupancy. Reuse those
-    // rays when both predicates are relevant instead of looking up the same
-    // slider geometry again from the moved piece's square.
-    const int king_square = static_cast<int>(std::countr_zero(enemy_king));
+    const int king_square = single_king_probe ?
+        probe.king_square : static_cast<int>(std::countr_zero(enemy_king));
     std::uint64_t rook_rays_from_king = 0;
     std::uint64_t bishop_rays_from_king = 0;
     bool rook_rays_ready = false;
@@ -1044,14 +1060,19 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
     bool direct_check = false;
     switch (moved_type) {
         case PieceType::pawn:
-            direct_check = (detail::pawn_attacks(
-                destination, moving_color == Color::white) & enemy_king) != 0;
+            direct_check = single_king_probe ?
+                (destination_bit & probe.pawn_check_squares) != 0 :
+                (detail::pawn_attacks(destination, moving_color == Color::white) & enemy_king) != 0;
             break;
         case PieceType::knight:
-            direct_check = (detail::knight_attacks(destination) & enemy_king) != 0;
+            direct_check = single_king_probe ?
+                (destination_bit & probe.knight_check_squares) != 0 :
+                (detail::knight_attacks(destination) & enemy_king) != 0;
             break;
         case PieceType::king:
-            direct_check = (detail::king_attacks(destination) & enemy_king) != 0;
+            direct_check = single_king_probe ?
+                (destination_bit & probe.king_check_squares) != 0 :
+                (detail::king_attacks(destination) & enemy_king) != 0;
             break;
         case PieceType::bishop:
             if (destination_on_ray) {
@@ -1079,12 +1100,7 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
         return true;
     }
 
-    // Discovered check: an unmoved friendly slider now sees the king.  The
-    // rays are traced from the enemy king through the post-move occupancy, so
-    // any line opened by the move (source square, en-passant capture square,
-    // castling rook square) is handled in O(1) without rescanning the board.
-    // The vacated squares are masked out of the friendly slider bitboards so
-    // the moved piece is never counted at its old square.
+    // Discovered check: an unmoved friendly slider now sees the king.
     if (maybe_discovered) {
         std::uint64_t friendly_rook_queen = probe.friendly_rook_queen;
         std::uint64_t friendly_bishop_queen = probe.friendly_bishop_queen;
@@ -1464,6 +1480,7 @@ bool GameState::legal_tactical_moves_with_metadata(MoveMetadataList& moves,
             // gives check, and the discarded entries are never read.  Resolve
             // that here so the metadata build below runs only for kept moves
             // (the fill recomputes the same flag for the retained quiet checks).
+            bool quiet_prechecked = false;
             if (include_quiet_checks && !checked && !capture_or_promotion &&
                 facts.valid && facts.own_piece_on_from) {
                 const bool castling_shape = facts.from.type == PieceType::king &&
@@ -1472,13 +1489,17 @@ bool GameState::legal_tactical_moves_with_metadata(MoveMetadataList& moves,
                 if (!native_move_gives_check(move, facts, probe, castling_shape)) {
                     continue;
                 }
+                quiet_prechecked = true;
             }
             const CheckFlagMode probe_mode = checked || capture_or_promotion ?
                 CheckFlagMode::all_moves : CheckFlagMode::quiet_moves_only;
             MoveMetadata metadata;
-            if (!fill_move_metadata_from_facts(context, move, facts, probe, true,
-                                               probe_mode, metadata)) {
+            if (!fill_move_metadata_from_facts(context, move, facts, probe,
+                                               !quiet_prechecked, probe_mode, metadata)) {
                 continue;
+            }
+            if (quiet_prechecked) {
+                metadata.gives_check = true;
             }
             if (checked || capture_or_promotion || metadata.gives_check) {
                 if (!include_see) {

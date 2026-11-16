@@ -39,4 +39,12 @@ inline constexpr int kAttackDirections = 8;
 // the ray is empty or leaves the board.
 [[nodiscard]] int nearest_blocker(int square, int direction, std::uint64_t occupied) noexcept;
 
+// Full board-to-board line (rank, file, or diagonal) passing through both
+// `sq1` and `sq2` when `sq1 != sq2` are aligned, or 0 otherwise.
+[[nodiscard]] std::uint64_t line_mask(int sq1, int sq2) noexcept;
+
+// Squares strictly between `sq1` and `sq2` on a shared rank, file, or
+// diagonal, or 0 when `sq1` and `sq2` are not aligned or are adjacent/equal.
+[[nodiscard]] std::uint64_t between_mask(int sq1, int sq2) noexcept;
+
 } // namespace koi::detail

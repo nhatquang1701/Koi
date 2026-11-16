@@ -33,6 +33,8 @@ struct Tables {
     std::array<std::array<U64, 64>, 2> pawn{};
     std::array<std::array<U64, 64>, 2> pawn_attackers{};
     std::array<std::array<U64, 64>, kAttackDirections> rays{};
+    std::array<std::array<U64, 64>, 64> line{};
+    std::array<std::array<U64, 64>, 64> between{};
 
     constexpr Tables() noexcept {
         for (int square = 0; square < 64; ++square) {
@@ -108,6 +110,24 @@ struct Tables {
                     target_rank += rank_delta;
                 }
                 rays[index][static_cast<std::size_t>(square)] = mask;
+            }
+        }
+
+        for (int s1 = 0; s1 < 64; ++s1) {
+            const std::size_t i1 = static_cast<std::size_t>(s1);
+            for (int direction = 0; direction < kAttackDirections; ++direction) {
+                const std::size_t dir_idx = static_cast<std::size_t>(direction);
+                const std::size_t opp_idx = static_cast<std::size_t>((direction + 4) & 7);
+                const U64 dir_ray = rays[dir_idx][i1];
+                const U64 full_line = (U64{1} << s1) | dir_ray | rays[opp_idx][i1];
+                U64 targets = dir_ray;
+                while (targets != 0) {
+                    const int s2 = std::countr_zero(targets);
+                    targets &= targets - 1;
+                    const std::size_t i2 = static_cast<std::size_t>(s2);
+                    line[i1][i2] = full_line;
+                    between[i1][i2] = dir_ray & rays[opp_idx][i2];
+                }
             }
         }
     }
@@ -341,6 +361,16 @@ int nearest_blocker(int square, int direction, std::uint64_t occupied) noexcept 
     if (blockers == 0) return -1;
     const int step = kSteps[static_cast<std::size_t>(direction)];
     return step > 0 ? std::countr_zero(blockers) : 63 - std::countl_zero(blockers);
+}
+
+std::uint64_t line_mask(int sq1, int sq2) noexcept {
+    if (sq1 < 0 || sq1 >= 64 || sq2 < 0 || sq2 >= 64) return 0;
+    return kTables.line[static_cast<std::size_t>(sq1)][static_cast<std::size_t>(sq2)];
+}
+
+std::uint64_t between_mask(int sq1, int sq2) noexcept {
+    if (sq1 < 0 || sq1 >= 64 || sq2 < 0 || sq2 >= 64) return 0;
+    return kTables.between[static_cast<std::size_t>(sq1)][static_cast<std::size_t>(sq2)];
 }
 
 } // namespace koi::detail

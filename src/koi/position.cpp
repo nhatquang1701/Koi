@@ -2,7 +2,6 @@
 
 #include "koi/game_state.hpp"
 #include "koi/detail/attack_tables.hpp"
-#include "koi/detail/no_init_array.hpp"
 
 #include <algorithm>
 #include <array>
@@ -32,47 +31,40 @@ constexpr std::size_t kMaximumHistory = 256;
 
 using Board = std::array<Piece, 64>;
 
-class MoveBuffer {
+// Sink adapters for materializing legal moves directly without an
+// intermediate pseudo-legal buffer.
+class VectorMoveSink {
 public:
-    template <typename... Arguments>
-    void emplace_back(Arguments&&... arguments) noexcept {
-        if (size_ >= storage_.size()) {
-            return;
-        }
-        storage_[size_++] = Move(std::forward<Arguments>(arguments)...);
-    }
-
-    [[nodiscard]] std::size_t size() const noexcept { return size_; }
-    [[nodiscard]] const Move* begin() const noexcept { return storage_.data(); }
-    [[nodiscard]] const Move* end() const noexcept { return storage_.data() + size_; }
-
-private:
-    // Uninitialized on purpose: every read is bounded by size_ and every write
-    // goes through emplace_back, which stores the element before counting it.
-    // NoInitArray defers each entry's construction to that store, so a
-    // generation call never writes 256 no-move sentinels (1 KiB).
-    // The generator fills this with *pseudo-legal* moves (a strict superset of
-    // legal moves); 256 is only the legal-move bound, so promotion-rich
-    // positions could silently truncate legal moves.  Use a real pseudo bound.
-    detail::NoInitArray<Move, 512> storage_;
-    std::size_t size_ = 0;
-};
-
-// Sink adapter for the materializing callers: every append accepts the move
-// and reports "continue" (a constant, so the generator's early-out checks fold
-// away and those paths keep today's full-list code).
-class AddAllMoves {
-public:
-    explicit AddAllMoves(MoveBuffer& moves) noexcept : moves_(moves) {}
+    explicit VectorMoveSink(std::vector<Move>& moves) noexcept : moves_(moves) {}
 
     template <typename... Arguments>
-    [[nodiscard]] bool emplace_back(Arguments&&... arguments) noexcept {
+    [[nodiscard]] bool emplace_back(Arguments&&... arguments) {
         moves_.emplace_back(std::forward<Arguments>(arguments)...);
         return true;
     }
 
 private:
-    MoveBuffer& moves_;
+    std::vector<Move>& moves_;
+};
+
+class SpanMoveSink {
+public:
+    explicit SpanMoveSink(std::span<Move> output) noexcept : output_(output) {}
+
+    template <typename... Arguments>
+    [[nodiscard]] bool emplace_back(Arguments&&... arguments) noexcept {
+        if (count_ < output_.size()) {
+            output_[count_] = Move(std::forward<Arguments>(arguments)...);
+        }
+        ++count_;
+        return true;
+    }
+
+    [[nodiscard]] std::size_t count() const noexcept { return count_; }
+
+private:
+    std::span<Move> output_;
+    std::size_t count_ = 0;
 };
 
 struct ZobristKeys {
@@ -576,24 +568,24 @@ void refresh_king_masks(NativeState& state) noexcept {
     // N, NE, E, SE, S, SW, W, NW, so odd indices are the diagonals.
     std::uint64_t pinned = 0;
     for (int direction = 0; direction < detail::kAttackDirections; ++direction) {
+        const bool diagonal = (direction & 1) != 0;
+        const std::uint64_t enemy_sliders = diagonal ? enemy_bishops : enemy_rooks;
+        const std::uint64_t ray = detail::ray_attacks(king, direction);
+        if ((ray & enemy_sliders) == 0) continue;
         // One ray word answers both nearest-blocker scans.  A ray is
         // monotone in square index and starts on the square adjacent to the
-        // king, so every blocker lies on one side of the king: the
-        // lowest-index blocker sits above the king exactly on the
-        // increasing-step rays (N, NE, E, NW) and below it on the four
-        // decreasing ones.  That sign picks the near end for both scans.
-        const std::uint64_t blockers =
-            detail::ray_attacks(king, direction) & state.occupied;
+        // king: directions N(0), NE(1), E(2), NW(7) strictly increase in square
+        // index while SE(3), S(4), SW(5), W(6) strictly decrease.
+        const std::uint64_t blockers = ray & state.occupied;
         if (blockers == 0) continue;
-        const int lowest = static_cast<int>(std::countr_zero(blockers));
-        const int highest = 63 - static_cast<int>(std::countl_zero(blockers));
-        const bool increasing = lowest > king;
-        const int first = increasing ? lowest : highest;
+        const bool increasing = direction <= 2 || direction == 7;
+        const int first = increasing ?
+            static_cast<int>(std::countr_zero(blockers)) :
+            63 - static_cast<int>(std::countl_zero(blockers));
         const Piece first_piece = state.board[static_cast<std::size_t>(first)];
         if (first_piece.color != color || first_piece.type == PieceType::king) continue;
         // Clearing the first blocker leaves the next blocker on the same
-        // ray, which is exactly the occupancy the second nearest_blocker
-        // call used to receive; picking its near end yields the same square.
+        // ray; picking its near end yields the second blocker.
         const std::uint64_t remaining = blockers & ~(std::uint64_t{1} << first);
         if (remaining == 0) continue;
         const int second = increasing ?
@@ -601,7 +593,6 @@ void refresh_king_masks(NativeState& state) noexcept {
             63 - static_cast<int>(std::countl_zero(remaining));
         const Piece second_piece = state.board[static_cast<std::size_t>(second)];
         if (second_piece.color != opposite(color)) continue;
-        const bool diagonal = (direction & 1) != 0;
         if (second_piece.type == PieceType::queen ||
             second_piece.type == (diagonal ? PieceType::bishop : PieceType::rook)) {
             pinned |= std::uint64_t{1} << first;
@@ -902,40 +893,6 @@ public:
         return state.board[square.index()];
     }
 
-// Legality-probe filter for a pseudo-legal candidate.  The board and the
-// king-state prologue fields are passed in by the caller instead of being
-// re-read from `state` on every candidate.  That is exact because
-// resolve_move_legality leaves them untouched: the king probe
-// (king_move_is_legal) temporarily clears only `occupied` and restores it,
-// and the non-king trial mutates only the captured/victim bitboard words and
-// `occupied`, restoring them before returning.  resolve_move_legality never
-// records history (record_undo belongs to the make path), so the
-// hoisted values stay loop-invariant.
-[[nodiscard]] static bool move_requires_legality_probe(
-    const Move& move, const Board& board,
-    std::uint64_t checkers, std::uint64_t pinned, int en_passant) noexcept {
-    const int from = move.from().index();
-    const int to = move.to().index();
-    if (!valid_square(from) || !valid_square(to)) {
-        return true;
-    }
-    const Piece piece = board[static_cast<std::size_t>(from)];
-    if (piece.type == PieceType::king) {
-        return true;
-    }
-    if (checkers != 0) {
-        return true;
-    }
-    if ((pinned & bit(from)) != 0) {
-        return true;
-    }
-    if (piece.type == PieceType::pawn && en_passant < Square::kInvalid &&
-        to == en_passant && board[static_cast<std::size_t>(to)].empty()) {
-        return true;
-    }
-    return false;
-}
-
     // King moves are decided directly: after the king vacates `from`, the
     // destination must not be attacked.  Castling is already fully validated
     // during generation (path clear, not in check, transit and destination
@@ -960,187 +917,104 @@ public:
         return !attacked;
     }
 
-    // Full legality resolution for a move the cheap filter could not accept:
-    // king moves use the direct destination test; a non-king move in check is
-    // first screened against the check, and everything else runs a minimal
-    // in-place trial and checks the mover's king.
+    // Full legality resolution for moves needing explicit verification
+    // (king moves via king_move_is_legal; non-king, non-en-passant moves via
+    // O(1) pin-line / single-check evasion masks; en passant via minimal
+    // in-place trial).
     [[nodiscard]] bool resolve_move_legality(const Move& move, Color mover) {
         const int from = move.from().index();
         const int to = move.to().index();
-        if (valid_square(from) &&
-            state.board[static_cast<std::size_t>(from)].type == PieceType::king) {
+        if (!valid_square(from) || !valid_square(to)) {
+            return false;
+        }
+        const Piece moving = state.board[static_cast<std::size_t>(from)];
+        if (moving.type == PieceType::king) {
             return king_move_is_legal(move);
         }
+        const Piece captured = state.board[static_cast<std::size_t>(to)];
+        const bool en_passant = moving.type == PieceType::pawn &&
+            state.en_passant.index() < Square::kInvalid &&
+            to == state.en_passant.index() && captured.empty();
         const std::size_t side_index = mover == Color::white ? 0U : 1U;
         const std::uint64_t checkers = state.checkers[side_index];
-        if (checkers != 0) {
-            // Only a capture of the single checker or an interposition on its
-            // ray can answer a check with a non-king move; a double check can
-            // only be answered by the king.  En passant is the one capture
-            // whose target square is not the checker's square.
-            if (!valid_square(to) || (checkers & (checkers - 1)) != 0) {
+        const std::uint64_t pinned = state.pinned[side_index];
+        if (!en_passant) {
+            const int king = king_square(state, mover);
+            if (king < 0) {
+                return true;
+            }
+            const std::uint64_t from_bit = bit(from);
+            const std::uint64_t to_bit = bit(to);
+            if (checkers == 0) {
+                return (pinned & from_bit) == 0 ||
+                    (detail::line_mask(king, from) & to_bit) != 0;
+            }
+            if ((checkers & (checkers - 1)) != 0 || (pinned & from_bit) != 0) {
                 return false;
             }
-            if ((bit(to) & checkers) == 0) {
+            const int checker = static_cast<int>(std::countr_zero(checkers));
+            return ((checkers | detail::between_mask(king, checker)) & to_bit) != 0;
+        }
+
+        if (checkers != 0) {
+            if ((checkers & (checkers - 1)) != 0) {
+                return false;
+            }
+            const int checker = static_cast<int>(std::countr_zero(checkers));
+            const int captured_square = mover == Color::white ? to - 8 : to + 8;
+            if ((bit(to) & checkers) == 0 && captured_square != checker) {
                 const int king = king_square(state, mover);
-                const int checker = static_cast<int>(std::countr_zero(checkers));
-                bool answers = false;
-                if (king >= 0) {
-                    const std::uint64_t between =
-                        (detail::bishop_attacks(king, checkers) &
-                         detail::bishop_attacks(checker, bit(king))) |
-                        (detail::rook_attacks(king, checkers) &
-                         detail::rook_attacks(checker, bit(king)));
-                    answers = (bit(to) & between) != 0;
-                }
-                if (!answers && valid_square(from) &&
-                    state.board[static_cast<std::size_t>(from)].type == PieceType::pawn &&
-                    state.en_passant.index() < Square::kInvalid &&
-                    to == state.en_passant.index() &&
-                    state.board[static_cast<std::size_t>(to)].empty()) {
-                    const int captured = mover == Color::white ? to - 8 : to + 8;
-                    answers = captured == checker;
-                }
-                if (!answers) {
+                if (king < 0 || (detail::between_mask(king, checker) & bit(to)) == 0) {
                     return false;
                 }
             }
         }
-        // Minimal in-place trial.  is_checked() reads only `occupied` and the
-        // piece bitboards: king_square() reads the mover's king word, and
-        // square_attacked() reads the attacker's -- the opponent's -- pawn,
-        // knight, king, bishop, queen, and rook words.  Castling never reaches
-        // here (the king test above returns first) and the mover's king never
-        // moves, so the only predicate-visible effects apply_unchecked() has
-        // on a generated move are the captured piece and the en-passant victim
-        // leaving the opponent's bitboards and `occupied` losing the from,
-        // victim, and captured squares and gaining `to`.  Save exactly those
-        // entries, apply those effects, probe, and restore them; board, keys,
-        // side, rule state, and history stay untouched, so the caller's
-        // hoisted board/checkers/pinned/en-passant values remain valid.  The
-        // captured piece and the en-passant victim are always the opponent's:
-        // the generator rejects own pieces and kings as targets, set_fen()
-        // requires an enemy pawn behind an en-passant target, and
-        // apply_unchecked() drops a target that has no legal capture.
-        const Piece moving = state.board[static_cast<std::size_t>(from)];
-        const Piece captured = state.board[static_cast<std::size_t>(to)];
-        const bool en_passant = moving.type == PieceType::pawn &&
-            to == state.en_passant.index() && captured.empty();
-        const int victim_square =
-            en_passant ? to + (moving.color == Color::white ? -8 : 8) : -1;
-        const Piece victim = en_passant ?
-            state.board[static_cast<std::size_t>(victim_square)] : Piece{};
+
+        const int victim_square = to + (moving.color == Color::white ? -8 : 8);
+        const Piece victim = state.board[static_cast<std::size_t>(victim_square)];
         const std::size_t opponent_index = 1U - side_index;
-        const std::size_t captured_type = static_cast<std::size_t>(captured.type);
         const std::size_t victim_type = static_cast<std::size_t>(victim.type);
-        const std::uint64_t saved_captured_board =
-            state.piece_bitboards[opponent_index][captured_type];
         const std::uint64_t saved_victim_board =
             state.piece_bitboards[opponent_index][victim_type];
         const std::uint64_t saved_occupied = state.occupied;
-        if (!captured.empty()) {
-            state.piece_bitboards[opponent_index][captured_type] &= ~bit(to);
-        }
-        if (en_passant) {
-            state.piece_bitboards[opponent_index][victim_type] &= ~bit(victim_square);
-        }
+        state.piece_bitboards[opponent_index][victim_type] &= ~bit(victim_square);
         state.occupied =
             (saved_occupied & ~bit(from) & ~bit(victim_square)) | bit(to);
         const bool legal = !is_checked(state, mover);
         state.occupied = saved_occupied;
         state.piece_bitboards[opponent_index][victim_type] = saved_victim_board;
-        state.piece_bitboards[opponent_index][captured_type] = saved_captured_board;
         return legal;
     }
 
-    // The one per-candidate legality verdict shared by every consumer of the
-    // pseudo generator: the cheap prologue probe accepts the common case, and
-    // only the moves it flags run the full in-place resolution.  Both halves
-    // leave every predicate-visible field as they found it, so the hoisted
-    // mask arguments stay valid across the whole walk.
-    [[nodiscard]] bool candidate_is_legal(
-        const Move& move, Color mover, std::uint64_t checkers, std::uint64_t pinned,
-        int en_passant) {
-        if (!move_requires_legality_probe(move, state.board, checkers, pinned, en_passant)) {
-            return true;
-        }
-        return resolve_move_legality(move, mover);
-    }
-
-    // Sink for the existence probe: every emitted candidate runs the shared
-    // verdict and the first legal one stops the generation walk (emplace_back
-    // returns false = "stop", true = "continue").  The walk stops only after
-    // an acceptance that today's materialize-then-filter order would have
-    // returned true on at the same candidate, so has_legal_move()'s boolean
-    // answer cannot change.
+    // Sink for the existence probe: every emitted candidate from
+    // generate_pseudo() is already legal, so the first emission stops the walk.
     class FirstLegalMoveSink {
     public:
-        FirstLegalMoveSink(NativePosition& position, Color mover, std::uint64_t checkers,
-                           std::uint64_t pinned, int en_passant) noexcept
-            : position_(position), mover_(mover), checkers_(checkers), pinned_(pinned),
-              en_passant_(en_passant) {}
-
         template <typename... Arguments>
-        [[nodiscard]] bool emplace_back(Arguments&&... arguments) noexcept {
-            const Move move(std::forward<Arguments>(arguments)...);
-            if (position_.candidate_is_legal(move, mover_, checkers_, pinned_, en_passant_)) {
-                found_ = true;
-                return false;
-            }
-            return true;
+        [[nodiscard]] bool emplace_back(Arguments&&...) noexcept {
+            found_ = true;
+            return false;
         }
 
         [[nodiscard]] bool found() const noexcept { return found_; }
 
     private:
-        NativePosition& position_;
-        Color mover_;
-        std::uint64_t checkers_;
-        std::uint64_t pinned_;
-        int en_passant_;
         bool found_ = false;
     };
 
-std::vector<Move> legal_moves() {
-    const Color mover = state.side;
-    const std::size_t side_index = mover == Color::white ? 0U : 1U;
-    const std::uint64_t checkers = state.checkers[side_index];
-    const std::uint64_t pinned = state.pinned[side_index];
-    const int en_passant = state.en_passant.index();
-    MoveBuffer pseudo;
-    AddAllMoves sink(pseudo);
-    generate_pseudo(sink);
-    std::vector<Move> result;
-    result.reserve(pseudo.size());
-    for (const Move& move : pseudo) {
-        if (candidate_is_legal(move, mover, checkers, pinned, en_passant)) {
-            result.push_back(move);
-        }
+    std::vector<Move> legal_moves() {
+        std::vector<Move> result;
+        result.reserve(64);
+        VectorMoveSink sink(result);
+        generate_pseudo(sink);
+        return result;
     }
-    return result;
-}
 
     template <bool TacticalOnly>
     std::size_t legal_moves_into_impl(std::span<Move> output) {
-        const Color mover = state.side;
-        const std::size_t side_index = mover == Color::white ? 0U : 1U;
-        const std::uint64_t checkers = state.checkers[side_index];
-        const std::uint64_t pinned = state.pinned[side_index];
-        const int en_passant = state.en_passant.index();
-        MoveBuffer pseudo;
-        AddAllMoves sink(pseudo);
+        SpanMoveSink sink(output);
         generate_pseudo<TacticalOnly>(sink);
-        std::size_t count = 0;
-    for (const Move& move : pseudo) {
-        if (candidate_is_legal(move, mover, checkers, pinned, en_passant)) {
-            // Count every legal move; a too-small span only drops moves.
-            if (count < output.size()) {
-                output[count] = move;
-            }
-            ++count;
-        }
-    }
-    return count;
+        return sink.count();
     }
 
     std::size_t legal_moves_into(std::span<Move> output) {
@@ -1151,16 +1025,11 @@ std::vector<Move> legal_moves() {
         return legal_moves_into_impl<true>(output);
     }
 
-    // Stops at the first legal candidate instead of validating the whole
-    // pseudo-legal list.  Quiescence only needs to know whether a legal reply
-    // exists before deciding that a position is terminal.
+    // Stops at the first legal candidate instead of materializing the whole
+    // list.  Quiescence only needs to know whether a legal reply exists before
+    // deciding that a position is terminal.
     [[nodiscard]] bool has_legal_move() {
-        const Color mover = state.side;
-        const std::size_t side_index = mover == Color::white ? 0U : 1U;
-        const std::uint64_t checkers = state.checkers[side_index];
-        const std::uint64_t pinned = state.pinned[side_index];
-        const int en_passant = state.en_passant.index();
-        FirstLegalMoveSink sink(*this, mover, checkers, pinned, en_passant);
+        FirstLegalMoveSink sink;
         generate_pseudo(sink);
         return sink.found();
     }
@@ -1631,48 +1500,73 @@ private:
     }
 
     // `TacticalOnly` emits captures, en-passant, and promotions without the
-    // quiet moves that quiescence would discard anyway.  The full generator
-    // stays the default so perft and the public move list are unchanged.
-    // `moves.emplace_back` / `push` report whether the sink wants the walk to
-    // continue; the container sinks always answer true, so their emission
-    // list and order are exactly today's, while FirstLegalMoveSink stops the
-    // walk at the first legal candidate.
+    // quiet moves that quiescence would discard anyway.  Emits only legal
+    // moves directly into `moves` in the exact reference piece/ray order while
+    // skipping pinned/evasion-infeasible targets via bitboard masks.
     template <bool TacticalOnly = false, typename MoveSink>
     void generate_pseudo(MoveSink& moves) {
         const Color side = state.side;
         const std::size_t side_index = side == Color::white ? 0U : 1U;
-        std::uint64_t origins = state.occupancy[side_index];
+        const std::size_t enemy_index = 1U - side_index;
+        const std::uint64_t checkers = state.checkers[side_index];
+        const std::uint64_t pinned = state.pinned[side_index];
+        const int king = king_square(state, side);
+        const bool double_check = (checkers & (checkers - 1)) != 0;
+        const std::uint64_t single_check_targets =
+            (checkers != 0 && !double_check && king >= 0)
+                ? (checkers | detail::between_mask(king, static_cast<int>(std::countr_zero(checkers))))
+                : ~std::uint64_t{0};
+        const std::uint64_t friendly = state.occupancy[side_index];
+        const std::uint64_t enemy_king_bb =
+            state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::king)];
+        const std::uint64_t enemy_non_king = state.occupancy[enemy_index] & ~enemy_king_bb;
+        const std::uint64_t valid_targets =
+            TacticalOnly ? enemy_non_king : ~(friendly | enemy_king_bb);
+
+        std::uint64_t origins = double_check ?
+            state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::king)] :
+            friendly;
         while (origins != 0) {
             const int from = static_cast<int>(std::countr_zero(origins));
             origins &= origins - 1;
             const Piece piece = state.board[static_cast<std::size_t>(from)];
             if (piece.empty() || piece.color != side) continue;
-            const int file = file_of(from);
-            const int rank = rank_of(from);
+            const bool is_pinned = (pinned & bit(from)) != 0;
+            const Square source = Square::from_index(static_cast<std::uint8_t>(from));
+
             if (piece.type == PieceType::pawn) {
+                const int file = file_of(from);
+                const int rank = rank_of(from);
                 const int direction = side == Color::white ? 1 : -1;
+                const std::uint64_t pawn_legal_targets =
+                    (is_pinned && checkers != 0) ? std::uint64_t{0} :
+                    (is_pinned && king >= 0 ?
+                        (single_check_targets & detail::line_mask(king, from)) :
+                        single_check_targets);
+
                 const int one = from + direction * 8;
                 if (valid_square(one)) {
-                    // Bit-identity: the quiet target is loaded once here and
-                    // the same Piece value is threaded into push(); the board
-                    // cannot change between this load and either emission.
                     const Piece one_target = state.board[static_cast<std::size_t>(one)];
                     if (one_target.empty()) {
                         if constexpr (!TacticalOnly) {
-                            if (!push(moves, from, one, one_target)) return;
+                            if ((pawn_legal_targets & bit(one)) != 0) {
+                                if (!push(moves, from, one, one_target)) return;
+                            }
                             const int two = from + direction * 16;
                             const int start_rank = side == Color::white ? 1 : 6;
                             if (rank == start_rank &&
-                                state.board[static_cast<std::size_t>(two)].empty()) {
+                                state.board[static_cast<std::size_t>(two)].empty() &&
+                                (pawn_legal_targets & bit(two)) != 0) {
                                 if (!moves.emplace_back(
-                                        Square::from_index(static_cast<std::uint8_t>(from)),
+                                        source,
                                         Square::from_index(static_cast<std::uint8_t>(two)))) {
                                     return;
                                 }
                             }
                         } else {
                             const int promotion_rank = side == Color::white ? 7 : 0;
-                            if (rank_of(one) == promotion_rank) {
+                            if (rank_of(one) == promotion_rank &&
+                                (pawn_legal_targets & bit(one)) != 0) {
                                 if (!push(moves, from, one, one_target)) return;
                             }
                         }
@@ -1684,112 +1578,134 @@ private:
                     if (target_file < 0 || target_file >= 8 || target_rank < 0 || target_rank >= 8) continue;
                     const int to = target_rank * 8 + target_file;
                     const Piece target = state.board[static_cast<std::size_t>(to)];
-                    // Bit-identity: `target` is the Piece the three-argument
-                    // push() reloaded; the board is not mutated before the
-                    // call, including the empty en-passant target square.
-                    if ((!target.empty() && target.color != side && target.type != PieceType::king) ||
-                        (state.en_passant.index() == to && target.empty())) {
-                        if (!push(moves, from, to, target)) return;
+                    if (!target.empty() && target.color != side && target.type != PieceType::king) {
+                        if ((pawn_legal_targets & bit(to)) != 0) {
+                            if (!push(moves, from, to, target)) return;
+                        }
+                    } else if (state.en_passant.index() == to && target.empty()) {
+                        const Move ep_move(source, Square::from_index(static_cast<std::uint8_t>(to)));
+                        if (resolve_move_legality(ep_move, side) && !moves.emplace_back(ep_move)) {
+                            return;
+                        }
                     }
                 }
                 continue;
             }
-            if (piece.type == PieceType::knight || piece.type == PieceType::king) {
-                static constexpr std::array<std::array<int, 2>, 8> knight_steps{{
-                    {{1, 2}}, {{2, 1}}, {{2, -1}}, {{1, -2}},
-                    {{-1, -2}}, {{-2, -1}}, {{-2, 1}}, {{-1, 2}}}};
-                static constexpr std::array<std::array<int, 2>, 8> king_steps{{
-                    {{1, 1}}, {{1, 0}}, {{1, -1}}, {{0, -1}},
-                    {{-1, -1}}, {{-1, 0}}, {{-1, 1}}, {{0, 1}}}};
-                const auto& steps = piece.type == PieceType::knight ? knight_steps : king_steps;
-                for (const auto& step : steps) {
-                    const int target_file = file + step[0];
-                    const int target_rank = rank + step[1];
-                    if (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
-                        const int to = target_rank * 8 + target_file;
-                        // Bit-identity: the target square is loaded once and
-                        // the same Piece value is threaded into push() in both
-                        // generator modes; the checks and order are unchanged.
-                        const Piece target = state.board[static_cast<std::size_t>(to)];
-                        if constexpr (TacticalOnly) {
-                            if (target.empty() || target.color == side ||
-                                target.type == PieceType::king) {
-                                continue;
+            if (piece.type == PieceType::knight) {
+                if (is_pinned) continue;
+                const std::uint64_t targets =
+                    detail::knight_attacks(from) & valid_targets & single_check_targets;
+                if (targets == 0) continue;
+                static constexpr std::array<int, 8> kKnightStepDeltas{
+                    17, 10, -6, -15, -17, -10, 6, 15};
+                for (const int delta : kKnightStepDeltas) {
+                    const int to = from + delta;
+                    if (static_cast<unsigned>(to) < 64U && (targets & bit(to)) != 0) {
+                        if (!moves.emplace_back(
+                                source, Square::from_index(static_cast<std::uint8_t>(to)))) {
+                            return;
+                        }
+                    }
+                }
+                continue;
+            }
+            if (piece.type == PieceType::king) {
+                const std::uint64_t targets = detail::king_attacks(from) & valid_targets;
+                if (targets != 0) {
+                    static constexpr std::array<int, 8> kKingStepDeltas{
+                        9, 1, -7, -8, -9, -1, 7, 8};
+                    for (const int delta : kKingStepDeltas) {
+                        const int to = from + delta;
+                        if (static_cast<unsigned>(to) < 64U && (targets & bit(to)) != 0) {
+                            const Move candidate(
+                                source, Square::from_index(static_cast<std::uint8_t>(to)));
+                            if (king_move_is_legal(candidate) && !moves.emplace_back(candidate)) {
+                                return;
                             }
                         }
-                        if (!push(moves, from, to, target)) return;
                     }
                 }
                 if constexpr (!TacticalOnly) {
-                    if (piece.type == PieceType::king && !is_checked(state, side)) {
-                    const int rank_base = side == Color::white ? 0 : 7;
-                    if (from == rank_base * 8 + 4) {
-                        const std::uint8_t king_right = side == Color::white ? kWhiteKingSide : kBlackKingSide;
-                        const std::uint8_t queen_right = side == Color::white ? kWhiteQueenSide : kBlackQueenSide;
-                        if ((state.castling & king_right) != 0 &&
-                            state.board[static_cast<std::size_t>(rank_base * 8 + 5)].empty() &&
-                            state.board[static_cast<std::size_t>(rank_base * 8 + 6)].empty() &&
-                            safe_king_step(state, from, rank_base * 8 + 5, side) &&
-                            safe_king_step(state, from, rank_base * 8 + 6, side)) {
-                            if (!moves.emplace_back(Square::from_index(static_cast<std::uint8_t>(from)),
-                                                    Square::from_index(static_cast<std::uint8_t>(rank_base * 8 + 6)))) {
-                                return;
+                    if (king >= 0 && checkers == 0) {
+                        const int rank_base = side == Color::white ? 0 : 7;
+                        if (from == rank_base * 8 + 4) {
+                            const std::uint8_t king_right = side == Color::white ? kWhiteKingSide : kBlackKingSide;
+                            const std::uint8_t queen_right = side == Color::white ? kWhiteQueenSide : kBlackQueenSide;
+                            if ((state.castling & king_right) != 0 &&
+                                state.board[static_cast<std::size_t>(rank_base * 8 + 5)].empty() &&
+                                state.board[static_cast<std::size_t>(rank_base * 8 + 6)].empty() &&
+                                safe_king_step(state, from, rank_base * 8 + 5, side) &&
+                                safe_king_step(state, from, rank_base * 8 + 6, side)) {
+                                if (!moves.emplace_back(source,
+                                                        Square::from_index(static_cast<std::uint8_t>(rank_base * 8 + 6)))) {
+                                    return;
+                                }
+                            }
+                            if ((state.castling & queen_right) != 0 &&
+                                state.board[static_cast<std::size_t>(rank_base * 8 + 1)].empty() &&
+                                state.board[static_cast<std::size_t>(rank_base * 8 + 2)].empty() &&
+                                state.board[static_cast<std::size_t>(rank_base * 8 + 3)].empty() &&
+                                safe_king_step(state, from, rank_base * 8 + 3, side) &&
+                                safe_king_step(state, from, rank_base * 8 + 2, side)) {
+                                if (!moves.emplace_back(source,
+                                                        Square::from_index(static_cast<std::uint8_t>(rank_base * 8 + 2)))) {
+                                    return;
+                                }
                             }
                         }
-                        if ((state.castling & queen_right) != 0 &&
-                            state.board[static_cast<std::size_t>(rank_base * 8 + 1)].empty() &&
-                            state.board[static_cast<std::size_t>(rank_base * 8 + 2)].empty() &&
-                            state.board[static_cast<std::size_t>(rank_base * 8 + 3)].empty() &&
-                            safe_king_step(state, from, rank_base * 8 + 3, side) &&
-                            safe_king_step(state, from, rank_base * 8 + 2, side)) {
-                            if (!moves.emplace_back(Square::from_index(static_cast<std::uint8_t>(from)),
-                                                    Square::from_index(static_cast<std::uint8_t>(rank_base * 8 + 2)))) {
-                                return;
-                            }
-                        }
-                    }
                     }
                 }
                 continue;
             }
 
-            const bool diagonal = piece.type == PieceType::bishop || piece.type == PieceType::queen;
-            const bool orthogonal = piece.type == PieceType::rook || piece.type == PieceType::queen;
-            static constexpr std::array<std::array<int, 2>, 4> diagonal_steps{{
-                {{1, 1}}, {{1, -1}}, {{-1, -1}}, {{-1, 1}}}};
-            static constexpr std::array<std::array<int, 2>, 4> orthogonal_steps{{
-                {{1, 0}}, {{0, 1}}, {{-1, 0}}, {{0, -1}}}};
-            const auto add_rays = [&moves, this, from, file, rank](const auto& steps) {
-                for (const auto& step : steps) {
-                    int target_file = file + step[0];
-                    int target_rank = rank + step[1];
-                    while (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
-                        const int to = target_rank * 8 + target_file;
-                        const Piece target = state.board[static_cast<std::size_t>(to)];
-                        if (target.empty()) {
-                            if constexpr (!TacticalOnly) {
-                                if (!moves.emplace_back(Square::from_index(static_cast<std::uint8_t>(from)),
-                                                        Square::from_index(static_cast<std::uint8_t>(to)))) {
-                                    return false;
-                                }
-                            }
-                        } else {
-                            if (target.color != state.side && target.type != PieceType::king) {
-                                if (!moves.emplace_back(Square::from_index(static_cast<std::uint8_t>(from)),
-                                                        Square::from_index(static_cast<std::uint8_t>(to)))) {
-                                    return false;
-                                }
-                            }
-                            break;
-                        }
-                        target_file += step[0];
-                        target_rank += step[1];
+            if (is_pinned && checkers != 0) continue;
+            std::uint64_t slider_mask = valid_targets & single_check_targets;
+            if (is_pinned && king >= 0) {
+                slider_mask &= detail::line_mask(king, from);
+            }
+            if (slider_mask == 0) continue;
+
+            const auto emit_ray_dir = [&](int dir, bool positive_step, std::uint64_t piece_targets) -> bool {
+                std::uint64_t ray_targets = piece_targets & detail::ray_attacks(from, dir);
+                while (ray_targets != 0) {
+                    const int to = positive_step ?
+                        static_cast<int>(std::countr_zero(ray_targets)) :
+                        63 - static_cast<int>(std::countl_zero(ray_targets));
+                    ray_targets &= ~bit(to);
+                    if (!moves.emplace_back(
+                            source, Square::from_index(static_cast<std::uint8_t>(to)))) {
+                        return false;
                     }
                 }
                 return true;
             };
-            if (diagonal && !add_rays(diagonal_steps)) return;
-            if (orthogonal && !add_rays(orthogonal_steps)) return;
+
+            const bool diagonal = piece.type == PieceType::bishop || piece.type == PieceType::queen;
+            const bool orthogonal = piece.type == PieceType::rook || piece.type == PieceType::queen;
+            if (diagonal) {
+                const std::uint64_t diag_targets =
+                    detail::bishop_attacks(from, state.occupied) & slider_mask;
+                if (diag_targets != 0) {
+                    if (!emit_ray_dir(1, true, diag_targets) ||
+                        !emit_ray_dir(3, false, diag_targets) ||
+                        !emit_ray_dir(5, false, diag_targets) ||
+                        !emit_ray_dir(7, true, diag_targets)) {
+                        return;
+                    }
+                }
+            }
+            if (orthogonal) {
+                const std::uint64_t orth_targets =
+                    detail::rook_attacks(from, state.occupied) & slider_mask;
+                if (orth_targets != 0) {
+                    if (!emit_ray_dir(2, true, orth_targets) ||
+                        !emit_ray_dir(0, true, orth_targets) ||
+                        !emit_ray_dir(6, false, orth_targets) ||
+                        !emit_ray_dir(4, false, orth_targets)) {
+                        return;
+                    }
+                }
+            }
         }
     }
 
