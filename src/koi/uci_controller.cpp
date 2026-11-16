@@ -185,6 +185,219 @@ std::optional<ParsedOption> parse_setoption(const std::vector<std::string>& toke
                         join_tokens(tokens, value_index + 1, tokens.size())};
 }
 
+// UCCI allows `setoption <option> <value>` without `name`/`value` keywords in
+// addition to standard `setoption name <option> value <value>`.
+std::optional<ParsedOption> parse_setoption_for_protocol(const std::vector<std::string>& tokens,
+                                                         const bool allow_ucci_shorthand) {
+    if (std::optional<ParsedOption> standard = parse_setoption(tokens); standard.has_value()) {
+        return standard;
+    }
+    if (!allow_ucci_shorthand || tokens.size() < 2) {
+        return std::nullopt;
+    }
+    return ParsedOption{tokens[0], join_tokens(tokens, 1, tokens.size())};
+}
+
+std::optional<UciController::ProtocolMode> parse_protocol_mode(std::string_view value) noexcept {
+    if (equals_ignore_case(value, "uci")) {
+        return UciController::ProtocolMode::uci;
+    }
+    if (equals_ignore_case(value, "usi")) {
+        return UciController::ProtocolMode::usi;
+    }
+    if (equals_ignore_case(value, "ucci")) {
+        return UciController::ProtocolMode::ucci;
+    }
+    if (equals_ignore_case(value, "ucicyclone")) {
+        return UciController::ProtocolMode::ucicyclone;
+    }
+    if (equals_ignore_case(value, "xboard")) {
+        return UciController::ProtocolMode::xboard;
+    }
+    return std::nullopt;
+}
+
+std::string_view protocol_mode_name(UciController::ProtocolMode mode) noexcept {
+    switch (mode) {
+    case UciController::ProtocolMode::uci:
+        return "uci";
+    case UciController::ProtocolMode::usi:
+        return "usi";
+    case UciController::ProtocolMode::ucci:
+        return "ucci";
+    case UciController::ProtocolMode::ucicyclone:
+        return "ucicyclone";
+    case UciController::ProtocolMode::xboard:
+        return "xboard";
+    }
+    return "uci";
+}
+
+bool parse_int64_token(std::string_view value, std::int64_t& parsed) noexcept {
+    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
+    return error == std::errc{} && end == value.data() + value.size();
+}
+
+bool parse_xboard_seconds(std::string_view value, std::chrono::milliseconds& duration) {
+    if (value.empty()) {
+        return false;
+    }
+    char* end = nullptr;
+    const std::string buffer(value);
+    const double seconds = std::strtod(buffer.c_str(), &end);
+    if (end == buffer.c_str() || *end != '\0' || seconds < 0.0 ||
+        seconds > 86'400'000.0) {
+        return false;
+    }
+    duration = std::chrono::milliseconds{static_cast<std::int64_t>(seconds * 1000.0 + 0.5)};
+    return true;
+}
+
+bool parse_xboard_level_time(std::string_view value, std::chrono::milliseconds& duration) {
+    const std::size_t colon = value.find(':');
+    if (colon == std::string_view::npos) {
+        std::uint64_t minutes = 0;
+        const auto [end, error] =
+            std::from_chars(value.data(), value.data() + value.size(), minutes);
+        if (error != std::errc{} || end != value.data() + value.size() || minutes > 1440) {
+            return false;
+        }
+        duration = std::chrono::minutes{static_cast<std::int64_t>(minutes)};
+        return true;
+    }
+    std::uint64_t minutes = 0;
+    std::uint64_t seconds = 0;
+    const std::string_view min_part = value.substr(0, colon);
+    const std::string_view sec_part = value.substr(colon + 1);
+    const auto [mend, merr] =
+        std::from_chars(min_part.data(), min_part.data() + min_part.size(), minutes);
+    const auto [send, serr] =
+        std::from_chars(sec_part.data(), sec_part.data() + sec_part.size(), seconds);
+    if (merr != std::errc{} || mend != min_part.data() + min_part.size() ||
+        serr != std::errc{} || send != sec_part.data() + sec_part.size() ||
+        minutes > 1440 || seconds >= 60) {
+        return false;
+    }
+    duration = std::chrono::minutes{static_cast<std::int64_t>(minutes)} +
+               std::chrono::seconds{static_cast<std::int64_t>(seconds)};
+    return true;
+}
+
+int cecp_mate_score(const int mate_in_moves) noexcept {
+    if (mate_in_moves > 0) {
+        return 100'000 - (2 * mate_in_moves - 1);
+    }
+    return -100'000 + (-2 * mate_in_moves);
+}
+
+std::string xboard_terminal_result_line(const GameState& state) {
+    if (state.legal_moves().empty()) {
+        if (state.in_check()) {
+            return state.side_to_move() == Color::white ? "0-1 {Black mates}" : "1-0 {White mates}";
+        }
+        return "1/2-1/2 {Stalemate}";
+    }
+    switch (state.draw_status()) {
+    case DrawStatus::automatic_fivefold:
+    case DrawStatus::claimable_threefold:
+        return "1/2-1/2 {Draw by repetition}";
+    case DrawStatus::automatic_seventy_five_move:
+    case DrawStatus::claimable_fifty_move:
+        return "1/2-1/2 {50-move rule}";
+    case DrawStatus::dead_position:
+        return "1/2-1/2 {Insufficient material}";
+    case DrawStatus::none:
+        return "1/2-1/2 {Draw}";
+    }
+    return "1/2-1/2 {Draw}";
+}
+
+// Translates USI/UCCI/UCI_Cyclone `go` limit extensions cleanly onto Koi's
+// standard SearchLimits without altering ordinary UCI parsing.
+SearchLimits parse_protocol_go_limits(const UciController::ProtocolMode mode,
+                                      std::string_view arguments,
+                                      const Color side_to_move) {
+    if (mode == UciController::ProtocolMode::uci ||
+        mode == UciController::ProtocolMode::xboard) {
+        return uci::parse_go_limits(arguments);
+    }
+    std::istringstream stream{std::string(arguments)};
+    const std::vector<std::string> tokens = remaining_tokens(stream);
+    std::ostringstream translated;
+    bool has_explicit = false;
+    std::optional<std::int64_t> ucci_time;
+    std::optional<std::int64_t> ucci_opptime;
+    std::optional<std::int64_t> ucci_inc;
+    std::optional<std::int64_t> ucci_oppinc;
+    std::optional<std::int64_t> usi_byoyomi;
+
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        const std::string& token = tokens[index];
+        if ((mode == UciController::ProtocolMode::ucci ||
+             mode == UciController::ProtocolMode::ucicyclone) &&
+            index + 1 < tokens.size()) {
+            std::int64_t val = 0;
+            if (token == "time" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                ucci_time = val;
+                ++index;
+                continue;
+            }
+            if (token == "opptime" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                ucci_opptime = val;
+                ++index;
+                continue;
+            }
+            if (token == "increment" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                ucci_inc = val;
+                ++index;
+                continue;
+            }
+            if (token == "oppincrement" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                ucci_oppinc = val;
+                ++index;
+                continue;
+            }
+        }
+        if (mode == UciController::ProtocolMode::usi && token == "byoyomi" &&
+            index + 1 < tokens.size()) {
+            std::int64_t val = 0;
+            if (parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                usi_byoyomi = val;
+                ++index;
+                continue;
+            }
+        }
+        if (token == "depth" || token == "nodes" || token == "movetime" ||
+            token == "wtime" || token == "btime" || token == "infinite" ||
+            token == "ponder" || token == "mate") {
+            has_explicit = true;
+        }
+        if (translated.tellp() > 0) {
+            translated << ' ';
+        }
+        translated << token;
+    }
+
+    if (ucci_time.has_value()) {
+        has_explicit = true;
+        if (side_to_move == Color::white) {
+            translated << " wtime " << *ucci_time;
+            if (ucci_opptime.has_value()) translated << " btime " << *ucci_opptime;
+            if (ucci_inc.has_value()) translated << " winc " << *ucci_inc;
+            if (ucci_oppinc.has_value()) translated << " binc " << *ucci_oppinc;
+        } else {
+            translated << " btime " << *ucci_time;
+            if (ucci_opptime.has_value()) translated << " wtime " << *ucci_opptime;
+            if (ucci_inc.has_value()) translated << " binc " << *ucci_inc;
+            if (ucci_oppinc.has_value()) translated << " winc " << *ucci_oppinc;
+        }
+    }
+    if (usi_byoyomi.has_value() && !has_explicit) {
+        translated << " movetime " << std::max<std::int64_t>(1, *usi_byoyomi);
+    }
+    return uci::parse_go_limits(translated.str());
+}
+
 bool parse_uint64(const std::string& value, std::uint64_t& parsed) {
     const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
     return error == std::errc{} && end == value.data() + value.size();
@@ -644,6 +857,378 @@ UciController::~UciController() {
     stop_and_suppress_active_search();
 }
 
+bool UciController::is_valid_protocol(const std::string_view name) noexcept {
+    return parse_protocol_mode(name).has_value();
+}
+
+bool UciController::set_protocol(const std::string_view name) {
+    const auto parsed = parse_protocol_mode(name);
+    if (!parsed.has_value()) {
+        return false;
+    }
+    stop_and_suppress_active_search();
+    std::lock_guard lock(output_mutex_);
+    protocol_mode_ = *parsed;
+    xboard_force_ = false;
+    xboard_analyze_ = false;
+    xboard_pending_move_.reset();
+    return true;
+}
+
+void UciController::reset_new_game() {
+    stop_and_suppress_active_search();
+    search_service_.clear_hash();
+    observed_gui_overhead_ms_ = 0;
+    clock_baseline_valid_ = false;
+    previous_clock_remaining_ms_ = -1;
+    previous_clock_increment_ms_ = 0;
+    previous_clock_search_start_ = {};
+    debug_json_event("ucinewgame", "\"hash_cleared\":true");
+    position_ = GameState::startpos();
+    position_origin_ = GameState::startpos();
+    position_moves_.clear();
+    std::lock_guard lock(output_mutex_);
+    xboard_pending_move_.reset();
+}
+
+void UciController::apply_pending_xboard_move() {
+    std::optional<Move> pending;
+    {
+        std::lock_guard lock(output_mutex_);
+        if (xboard_pending_move_.has_value() &&
+            xboard_pending_move_generation_ == generation_) {
+            pending = xboard_pending_move_;
+        }
+        xboard_pending_move_.reset();
+    }
+    if (pending.has_value() && position_.is_legal(*pending) &&
+        position_.make_move(*pending)) {
+        position_moves_.push_back(*pending);
+    }
+}
+
+void UciController::start_xboard_search(const bool analyze_mode) {
+    ensure_auto_syzygy_loaded();
+    stop_and_suppress_active_search();
+    apply_pending_xboard_move();
+    if (!analyze_mode && position_.legal_moves().empty()) {
+        std::lock_guard lock(output_mutex_);
+        output_ << xboard_terminal_result_line(position_) << '\n' << std::flush;
+        return;
+    }
+    SearchLimits limits;
+    if (analyze_mode) {
+        limits.infinite = true;
+    } else {
+        if (xboard_fixed_depth_.has_value()) {
+            limits.depth = *xboard_fixed_depth_;
+        }
+        if (xboard_fixed_movetime_.has_value()) {
+            limits.movetime = *xboard_fixed_movetime_;
+        } else if (xboard_clock_configured_) {
+            limits.white_clock = ClockLimit{xboard_white_time_, xboard_increment_};
+            limits.black_clock = ClockLimit{xboard_black_time_, xboard_increment_};
+            if (xboard_moves_to_go_.has_value() && *xboard_moves_to_go_ > 0) {
+                limits.moves_to_go = static_cast<std::uint32_t>(*xboard_moves_to_go_);
+            }
+        } else if (!limits.depth.has_value()) {
+            limits.movetime = std::chrono::milliseconds{1'000};
+        }
+    }
+    start_search(position_, std::move(limits), analyze_mode, analyze_mode);
+}
+
+bool UciController::handle_xboard_command(const std::string_view name, std::istream& command,
+                                          bool& should_quit) {
+    if (name == "xboard") {
+        stop_and_suppress_active_search();
+        std::lock_guard lock(output_mutex_);
+        protocol_mode_ = ProtocolMode::xboard;
+        xboard_force_ = false;
+        xboard_analyze_ = false;
+        xboard_pending_move_.reset();
+        return true;
+    }
+    if (name == "protover") {
+        int version = 0;
+        (void)(command >> version);
+        write_xboard_features();
+        return true;
+    }
+    if (name == "accepted" || name == "rejected" || name == "random" ||
+        name == "computer" || name == "name" || name == "rating" ||
+        name == "ics" || name == "hint" || name == "bk" || name == "draw" ||
+        name == "result" || name == "white" || name == "black" || name == "option") {
+        if (name == "option") {
+            const std::vector<std::string> tokens = remaining_tokens(command);
+            if (!tokens.empty()) {
+                const std::string joined = join_tokens(tokens, 0, tokens.size());
+                const std::size_t eq = joined.find('=');
+                if (eq != std::string::npos) {
+                    std::istringstream synth(
+                        "name " + joined.substr(0, eq) + " value " + joined.substr(eq + 1));
+                    handle_setoption(synth);
+                }
+            }
+        }
+        return true;
+    }
+    if (name == "new") {
+        reset_new_game();
+        xboard_force_ = false;
+        xboard_analyze_ = false;
+        xboard_clock_configured_ = false;
+        xboard_fixed_movetime_.reset();
+        xboard_fixed_depth_.reset();
+        xboard_white_time_ = std::chrono::milliseconds{300'000};
+        xboard_black_time_ = std::chrono::milliseconds{300'000};
+        xboard_increment_ = std::chrono::milliseconds{0};
+        xboard_moves_to_go_.reset();
+        return true;
+    }
+    if (name == "variant") {
+        std::string variant_name;
+        if ((command >> variant_name) && !equals_ignore_case(variant_name, "normal") &&
+            !equals_ignore_case(variant_name, "standard")) {
+            std::lock_guard lock(output_mutex_);
+            output_ << "Error (unknown variant): " << variant_name << '\n' << std::flush;
+        }
+        return true;
+    }
+    if (name == "quit") {
+        {
+            std::lock_guard lock(output_mutex_);
+            state_ = ControllerState::ShuttingDown;
+        }
+        stop_and_suppress_active_search();
+        should_quit = true;
+        return true;
+    }
+    if (name == "force") {
+        stop_and_suppress_active_search();
+        apply_pending_xboard_move();
+        xboard_force_ = true;
+        xboard_analyze_ = false;
+        return true;
+    }
+    if (name == "go") {
+        xboard_force_ = false;
+        xboard_analyze_ = false;
+        start_xboard_search(false);
+        return true;
+    }
+    if (name == "playother") {
+        apply_pending_xboard_move();
+        xboard_force_ = false;
+        return true;
+    }
+    if (name == "post") {
+        std::lock_guard lock(output_mutex_);
+        xboard_post_ = true;
+        return true;
+    }
+    if (name == "nopost") {
+        std::lock_guard lock(output_mutex_);
+        xboard_post_ = false;
+        return true;
+    }
+    if (name == "hard") {
+        stop_and_suppress_active_search();
+        xboard_ponder_ = true;
+        ponder_enabled_ = true;
+        return true;
+    }
+    if (name == "easy") {
+        stop_and_suppress_active_search();
+        xboard_ponder_ = false;
+        ponder_enabled_ = false;
+        return true;
+    }
+    if (name == "?") {
+        stop_active_search();
+        return true;
+    }
+    if (name == "ping") {
+        std::string token;
+        if (command >> token) {
+            bool can_wait = false;
+            {
+                std::lock_guard lock(output_mutex_);
+                can_wait = active_search_.has_value() && !xboard_analyze_ && !active_ponder_;
+            }
+            if (can_wait && active_search_.has_value()) {
+                active_search_->wait();
+                active_search_.reset();
+                apply_pending_xboard_move();
+            }
+            ensure_auto_syzygy_loaded();
+            std::lock_guard lock(output_mutex_);
+            output_ << "pong " << token << '\n' << std::flush;
+        }
+        return true;
+    }
+    if (name == "memory") {
+        std::string token;
+        if (command >> token) {
+            std::istringstream synth("name Hash value " + token);
+            handle_setoption(synth);
+        }
+        return true;
+    }
+    if (name == "cores") {
+        std::string token;
+        if (command >> token) {
+            std::istringstream synth("name Threads value " + token);
+            handle_setoption(synth);
+        }
+        return true;
+    }
+    if (name == "setboard") {
+        stop_and_suppress_active_search();
+        const std::vector<std::string> tokens = remaining_tokens(command);
+        if (tokens.size() < 4) {
+            std::lock_guard lock(output_mutex_);
+            output_ << "tellusererror Illegal position\n" << std::flush;
+            return true;
+        }
+        std::string fen = join_tokens(tokens, 0, tokens.size());
+        if (tokens.size() == 4) {
+            fen += " 0 1";
+        }
+        const auto parsed = GameState::from_fen(fen);
+        if (!parsed) {
+            std::lock_guard lock(output_mutex_);
+            output_ << "tellusererror Illegal position: " << fen << '\n' << std::flush;
+            return true;
+        }
+        position_origin_ = *parsed;
+        position_ = *parsed;
+        position_moves_.clear();
+        {
+            std::lock_guard lock(output_mutex_);
+            xboard_pending_move_.reset();
+        }
+        if (xboard_analyze_) {
+            start_xboard_search(true);
+        }
+        return true;
+    }
+    if (name == "level") {
+        std::string mps_tok, base_tok, inc_tok;
+        if (command >> mps_tok >> base_tok >> inc_tok) {
+            std::uint64_t mps = 0;
+            std::chrono::milliseconds base{};
+            std::chrono::milliseconds inc{};
+            if (parse_uint64(mps_tok, mps) && parse_xboard_level_time(base_tok, base) &&
+                parse_xboard_seconds(inc_tok, inc)) {
+                xboard_moves_to_go_ = mps > 0 ? std::optional<int>(static_cast<int>(mps))
+                                              : std::nullopt;
+                xboard_base_time_ = base;
+                xboard_increment_ = inc;
+                xboard_white_time_ = base;
+                xboard_black_time_ = base;
+                xboard_fixed_movetime_.reset();
+                xboard_clock_configured_ = true;
+            }
+        }
+        return true;
+    }
+    if (name == "st") {
+        std::string sec_tok;
+        std::chrono::milliseconds parsed{};
+        if ((command >> sec_tok) && parse_xboard_seconds(sec_tok, parsed) &&
+            parsed.count() > 0) {
+            xboard_fixed_movetime_ = parsed;
+            xboard_clock_configured_ = false;
+        }
+        return true;
+    }
+    if (name == "sd") {
+        std::string depth_tok;
+        std::uint64_t depth = 0;
+        if ((command >> depth_tok) && parse_uint64(depth_tok, depth) && depth > 0 &&
+            depth <= 64) {
+            xboard_fixed_depth_ = static_cast<int>(depth);
+        }
+        return true;
+    }
+    if (name == "time" || name == "otim") {
+        std::string cs_tok;
+        std::int64_t cs = 0;
+        if ((command >> cs_tok) && parse_int64_token(cs_tok, cs)) {
+            const auto ms = std::chrono::milliseconds{std::max<std::int64_t>(1, cs * 10)};
+            const bool engine_is_white = (position_.side_to_move() == Color::white);
+            const bool target_white = (name == "time") ? engine_is_white : !engine_is_white;
+            if (target_white) {
+                xboard_white_time_ = ms;
+            } else {
+                xboard_black_time_ = ms;
+            }
+            xboard_clock_configured_ = true;
+        }
+        return true;
+    }
+    if (name == "analyze") {
+        xboard_analyze_ = true;
+        xboard_force_ = false;
+        start_xboard_search(true);
+        return true;
+    }
+    if (name == "exit") {
+        if (xboard_analyze_) {
+            stop_and_suppress_active_search();
+            xboard_analyze_ = false;
+        }
+        return true;
+    }
+    if (name == "undo" || name == "remove") {
+        stop_and_suppress_active_search();
+        apply_pending_xboard_move();
+        const std::size_t pop_count = (name == "remove") ? 2U : 1U;
+        if (position_moves_.size() >= pop_count) {
+            position_moves_.resize(position_moves_.size() - pop_count);
+            position_ = position_origin_;
+            for (const Move& m : position_moves_) {
+                (void)position_.make_move(m);
+            }
+        }
+        if (xboard_analyze_) {
+            start_xboard_search(true);
+        }
+        return true;
+    }
+
+    std::string move_token;
+    if (name == "usermove") {
+        if (!(command >> move_token)) {
+            return true;
+        }
+    } else if ((name.size() == 4 || name.size() == 5) &&
+               name[0] >= 'a' && name[0] <= 'h' && name[1] >= '1' && name[1] <= '8' &&
+               name[2] >= 'a' && name[2] <= 'h' && name[3] >= '1' && name[3] <= '8') {
+        move_token = std::string(name);
+    } else {
+        return false;
+    }
+
+    stop_and_suppress_active_search();
+    apply_pending_xboard_move();
+    const std::optional<Move> parsed_move = Move::parse_uci(move_token);
+    if (!parsed_move.has_value() || !position_.is_legal(*parsed_move) ||
+        !position_.make_move(*parsed_move)) {
+        std::lock_guard lock(output_mutex_);
+        output_ << "Illegal move: " << move_token << '\n' << std::flush;
+        return true;
+    }
+    position_moves_.push_back(*parsed_move);
+    if (xboard_analyze_) {
+        start_xboard_search(true);
+    } else if (!xboard_force_) {
+        start_xboard_search(false);
+    }
+    return true;
+}
+
 int UciController::run() {
     std::string line;
     for (;;) {
@@ -681,22 +1266,67 @@ int UciController::run() {
         }
 
         try {
+        ProtocolMode current_protocol = ProtocolMode::uci;
+        {
+            std::lock_guard lock(output_mutex_);
+            current_protocol = protocol_mode_;
+        }
         if (name == "uci") {
-            write_handshake();
+            if (current_protocol == ProtocolMode::xboard) {
+                stop_and_suppress_active_search();
+            }
+            {
+                std::lock_guard lock(output_mutex_);
+                protocol_mode_ = ProtocolMode::uci;
+                xboard_force_ = false;
+                xboard_analyze_ = false;
+                xboard_pending_move_.reset();
+            }
+            write_handshake(ProtocolMode::uci);
+        } else if (name == "usi") {
+            if (current_protocol == ProtocolMode::xboard) {
+                stop_and_suppress_active_search();
+            }
+            {
+                std::lock_guard lock(output_mutex_);
+                protocol_mode_ = ProtocolMode::usi;
+                xboard_force_ = false;
+                xboard_analyze_ = false;
+                xboard_pending_move_.reset();
+            }
+            write_handshake(ProtocolMode::usi);
+        } else if (name == "ucci") {
+            if (current_protocol == ProtocolMode::xboard) {
+                stop_and_suppress_active_search();
+            }
+            ProtocolMode next_mode = ProtocolMode::ucci;
+            {
+                std::lock_guard lock(output_mutex_);
+                if (protocol_mode_ == ProtocolMode::ucicyclone) {
+                    next_mode = ProtocolMode::ucicyclone;
+                } else {
+                    protocol_mode_ = ProtocolMode::ucci;
+                }
+                xboard_force_ = false;
+                xboard_analyze_ = false;
+                xboard_pending_move_.reset();
+            }
+            write_handshake(next_mode);
+        } else if (name == "xboard" || current_protocol == ProtocolMode::xboard) {
+            bool should_quit = false;
+            if (handle_xboard_command(name, command, should_quit)) {
+                if (should_quit) {
+                    return 0;
+                }
+            }
         } else if (name == "isready") {
             write_readyok();
-        } else if (name == "ucinewgame") {
-            stop_and_suppress_active_search();
-            search_service_.clear_hash();
-            observed_gui_overhead_ms_ = 0;
-            clock_baseline_valid_ = false;
-            previous_clock_remaining_ms_ = -1;
-            previous_clock_increment_ms_ = 0;
-            previous_clock_search_start_ = {};
-            debug_json_event("ucinewgame", "\"hash_cleared\":true");
-            position_ = GameState::startpos();
-            position_origin_ = GameState::startpos();
-            position_moves_.clear();
+        } else if (name == "ucinewgame" ||
+                   (current_protocol == ProtocolMode::usi && name == "usinewgame") ||
+                   ((current_protocol == ProtocolMode::ucci ||
+                     current_protocol == ProtocolMode::ucicyclone) &&
+                    name == "uccinewgame")) {
+            reset_new_game();
         } else if (name == "position") {
             handle_position(command, line);
         } else if (name == "setoption") {
@@ -723,13 +1353,18 @@ int UciController::run() {
             }
         } else if (name == "stop") {
             stop_active_search();
-        } else if (name == "quit") {
+        } else if (name == "quit" ||
+                   ((current_protocol == ProtocolMode::ucci ||
+                     current_protocol == ProtocolMode::ucicyclone) &&
+                    name == "bye")) {
             {
                 std::lock_guard lock(output_mutex_);
                 state_ = ControllerState::ShuttingDown;
             }
             stop_and_suppress_active_search();
             return 0;
+        } else if (current_protocol == ProtocolMode::usi && name == "gameover") {
+            stop_and_suppress_active_search();
         }
         } catch (const std::exception& error) {
             // A malformed or resource-starved command must not terminate the
@@ -762,9 +1397,15 @@ void UciController::handle_position(std::istream& command, std::string_view comm
 
     GameState candidate = GameState::startpos();
     std::size_t next = 0;
+    ProtocolMode current_protocol = ProtocolMode::uci;
+    {
+        std::lock_guard lock(output_mutex_);
+        current_protocol = protocol_mode_;
+    }
     if (tokens[0] == "startpos") {
         next = 1;
-    } else if (tokens[0] == "fen") {
+    } else if (tokens[0] == "fen" ||
+               (current_protocol == ProtocolMode::usi && tokens[0] == "sfen")) {
         if (tokens.size() < 7) {
             write_position_error("invalid FEN");
             return;
@@ -842,7 +1483,15 @@ void UciController::handle_position(std::istream& command, std::string_view comm
 
 void UciController::handle_setoption(std::istream& command) {
     const std::vector<std::string> tokens = remaining_tokens(command);
-    const std::optional<ParsedOption> parsed = parse_setoption(tokens);
+    ProtocolMode current_protocol = ProtocolMode::uci;
+    {
+        std::lock_guard lock(output_mutex_);
+        current_protocol = protocol_mode_;
+    }
+    const bool allow_ucci_short =
+        current_protocol == ProtocolMode::ucci || current_protocol == ProtocolMode::ucicyclone;
+    const std::optional<ParsedOption> parsed =
+        parse_setoption_for_protocol(tokens, allow_ucci_short);
     if (!parsed.has_value()) {
         return;
     }
@@ -1248,6 +1897,27 @@ void UciController::handle_setoption(std::istream& command) {
         break;
     }
 
+    case UciOptionId::protocol: {
+        const std::optional<ProtocolMode> requested_mode = parse_protocol_mode(value);
+        if (!requested_mode.has_value()) {
+            break;
+        }
+        ProtocolMode current_mode = ProtocolMode::uci;
+        {
+            std::lock_guard lock(output_mutex_);
+            current_mode = protocol_mode_;
+        }
+        if (*requested_mode != current_mode) {
+            stop_and_suppress_active_search();
+            std::lock_guard lock(output_mutex_);
+            protocol_mode_ = *requested_mode;
+            xboard_force_ = false;
+            xboard_analyze_ = false;
+            xboard_pending_move_.reset();
+        }
+        break;
+    }
+
     case UciOptionId::debug:
         apply_boolean(debug_log_->enabled(), [this](bool debug) {
             debug_log_->set_enabled(debug);
@@ -1269,7 +1939,13 @@ void UciController::handle_go(std::istream& command) {
     ensure_auto_syzygy_loaded();
     std::string arguments;
     std::getline(command, arguments);
-    SearchLimits limits = uci::parse_go_limits(arguments);
+    ProtocolMode current_protocol = ProtocolMode::uci;
+    {
+        std::lock_guard lock(output_mutex_);
+        current_protocol = protocol_mode_;
+    }
+    SearchLimits limits =
+        parse_protocol_go_limits(current_protocol, arguments, position_.side_to_move());
 
     if (limits.perft.has_value()) {
         // `go perft N` is a debugging command, not a search: answer with the
@@ -1480,20 +2156,27 @@ std::uint32_t UciController::effective_move_overhead_ms() const noexcept {
     return std::min(kMaximumMoveOverheadMs, std::max(move_overhead_ms_, observed_gui_overhead_ms_));
 }
 
-void UciController::start_search(GameState root, SearchLimits limits, bool skip_book) {
+void UciController::start_search(GameState root, SearchLimits limits, bool skip_book,
+                                 bool force_analyze) {
     const std::uint64_t generation = begin_generation();
     note_clock_baseline(limits);
+    ProtocolMode search_protocol = ProtocolMode::uci;
+    bool xboard_thinking = false;
+    bool xboard_analyze_snapshot = false;
     {
         std::lock_guard lock(output_mutex_);
         state_ = limits.ponder ? ControllerState::Pondering : ControllerState::Searching;
+        search_protocol = protocol_mode_;
+        xboard_analyze_snapshot = xboard_analyze_ || force_analyze;
+        xboard_thinking = xboard_post_ || xboard_analyze_snapshot;
     }
     const auto completion_once = std::make_shared<CompletionOnce>();
     debug_event("search start generation " + std::to_string(generation));
     debug_event("search root generation " + std::to_string(generation) +
                 " key " + std::to_string(root.position_key()) +
                 " fen " + root.fen());
-    const bool book_eligible = !skip_book && !analyse_mode_ && multi_pv_ == 1 && !limits.infinite &&
-        !limits.ponder && !limits.search_moves_specified;
+    const bool book_eligible = !skip_book && !force_analyze && !analyse_mode_ && multi_pv_ == 1 &&
+        !limits.infinite && !limits.ponder && !limits.search_moves_specified;
     std::optional<BookChoice> book_choice;
     std::uint32_t ply = 0;
     if (book_eligible) {
@@ -1507,8 +2190,10 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
             // UciController is the single protocol writer; every output write
             // goes through output_mutex_, including this lazy detection line.
             std::lock_guard lock(output_mutex_);
-            output_ << "info string book detected: " << resolved_book_path().string()
-                    << " (OwnBook not set, using it)\n" << std::flush;
+            if (protocol_mode_ != ProtocolMode::xboard) {
+                output_ << "info string book detected: " << resolved_book_path().string()
+                        << " (OwnBook not set, using it)\n" << std::flush;
+            }
         }
         book_choice = opening_book_.choose(root, ply, own_book_ || book_auto, book_depth_,
                                            random_seed_, book_random_, book_safety_,
@@ -1528,7 +2213,8 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
     if (book_choice.has_value()) {
         debug_event("book completion candidate generation " + std::to_string(generation) +
                     " move " + book_choice->move.uci() + " root " + root.fen());
-        write_book_completion(generation, root, limits, *book_choice, ply, completion_once);
+        write_book_completion(generation, root, limits, *book_choice, ply, completion_once,
+                              search_protocol);
         return;
     }
     const GameState search_root = root;
@@ -1536,7 +2222,8 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
     const bool allow_ponder_move = !limits.search_moves_specified;
 
     SearchEventSink sink;
-    sink.on_info = [this, generation, search_root, is_ponder_search](const SearchInfo& info) {
+    sink.on_info = [this, generation, search_root, is_ponder_search, search_protocol,
+                    xboard_thinking](const SearchInfo& info) {
         SearchInfo safe_info = info;
         safe_info.pv = legal_pv_prefix(search_root, info.pv);
         if (safe_info.pv.size() != info.pv.size()) {
@@ -1557,10 +2244,11 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                 }
             }
         }
-        write_search_info(generation, safe_info);
+        write_search_info(generation, safe_info, search_protocol, xboard_thinking);
     };
-    sink.on_complete = [this, generation, allow_ponder_move, search_root, limits, completion_once](
-                           const SearchResult& result) {
+    sink.on_complete = [this, generation, allow_ponder_move, search_root, limits, completion_once,
+                        search_protocol, is_ponder_search,
+                        xboard_analyze_snapshot](const SearchResult& result) {
         debug_event("search complete generation " + std::to_string(generation));
         CompletionCandidate candidate;
         candidate.best_move = result.best_move;
@@ -1713,14 +2401,15 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                         << std::flush;
             }
         }
-        write_search_completion(generation, completed);
+        write_search_completion(generation, completed, search_protocol, is_ponder_search,
+                                xboard_analyze_snapshot, search_root);
     };
 
     SearchOptions options;
     options.threads = threads_;
     options.multi_pv = multi_pv_;
     options.random_seed = random_seed_;
-    options.analyse_mode = analyse_mode_;
+    options.analyse_mode = analyse_mode_ || force_analyze;
     options.show_wdl = show_wdl_;
     options.move_overhead_ms = effective_move_overhead_ms();
     options.dynamic_move_overhead = dynamic_overhead_;
@@ -1759,7 +2448,8 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                        "move\n"
                     << std::flush;
         }
-        write_search_completion(generation, start_failure_fallback);
+        write_search_completion(generation, start_failure_fallback, search_protocol, is_ponder_search,
+                                xboard_analyze_snapshot, search_root);
         std::lock_guard lock(output_mutex_);
         if (state_ != ControllerState::ShuttingDown) {
             state_ = ControllerState::Idle;
@@ -1880,10 +2570,10 @@ std::uint64_t UciController::begin_generation() {
     return ++generation_;
 }
 
-void UciController::write_handshake() {
+void UciController::write_handshake(const ProtocolMode mode) {
     std::lock_guard lock(output_mutex_);
     output_ << "id name Koi " << KOI_ENGINE_BUILD_VERSION << '\n'
-               << "id author Contributors\n";
+            << "id author Contributors\n";
     for (const UciOptionDescriptor& option : kUciOptions) {
         if (!option.advertised) {
             continue;
@@ -1910,7 +2600,9 @@ void UciController::write_handshake() {
             output_ << "button";
             break;
         case UciOptionKind::combo:
-            output_ << "combo default " << option.default_value;
+            output_ << "combo default "
+                    << (option.id == UciOptionId::protocol ? protocol_mode_name(mode)
+                                                           : option.default_value);
             if (!option.combo_values.empty()) {
                 output_ << ' ' << option.combo_values;
             }
@@ -1918,8 +2610,32 @@ void UciController::write_handshake() {
         }
         output_ << '\n';
     }
-    output_ << "info string build " << KOI_ENGINE_BUILD_COMMIT << '\n'
-               << "uciok\n" << std::flush;
+    output_ << "info string build " << KOI_ENGINE_BUILD_COMMIT << '\n';
+    switch (mode) {
+    case ProtocolMode::usi:
+        output_ << "info string USI protocol compatibility mode (standard 8x8 chess only)\n"
+                << "usiok\n";
+        break;
+    case ProtocolMode::ucci:
+    case ProtocolMode::ucicyclone:
+        output_ << "info string UCCI protocol compatibility mode ("
+                << protocol_mode_name(mode) << ", standard 8x8 chess only)\n"
+                << "ucciok\n";
+        break;
+    case ProtocolMode::uci:
+    case ProtocolMode::xboard:
+        output_ << "uciok\n";
+        break;
+    }
+    output_ << std::flush;
+}
+
+void UciController::write_xboard_features() {
+    std::lock_guard lock(output_mutex_);
+    output_ << "feature myname=\"Koi " << KOI_ENGINE_BUILD_VERSION
+            << "\" setboard=1 ping=1 usermove=1 colors=0 reuse=1 analyze=1 memory=1 smp=1 "
+               "variants=\"normal\" sigint=0 sigterm=0 done=1\n"
+            << std::flush;
 }
 
 std::filesystem::path UciController::resolved_book_path() const {
@@ -1999,10 +2715,24 @@ void UciController::write_perft_results(GameState root, const int depth,
     state_ = ControllerState::Idle;
 }
 
-void UciController::write_search_info(std::uint64_t generation, const SearchInfo& info) {
+void UciController::write_search_info(const std::uint64_t generation, const SearchInfo& info,
+                                      const ProtocolMode protocol, const bool xboard_thinking) {
     std::lock_guard lock(output_mutex_);
     if (generation != generation_ || info.depth <= 0 ||
         state_ == ControllerState::ShuttingDown) {
+        return;
+    }
+    if (protocol == ProtocolMode::xboard) {
+        if (!xboard_thinking || info.multipv != 1) {
+            return;
+        }
+        const int score = info.mate.has_value() ? cecp_mate_score(*info.mate) : info.score_cp;
+        const auto centiseconds = info.elapsed.count() / 10;
+        output_ << info.depth << ' ' << score << ' ' << centiseconds << ' ' << info.nodes;
+        for (const Move& move : info.pv) {
+            output_ << ' ' << move.uci();
+        }
+        output_ << '\n' << std::flush;
         return;
     }
 
@@ -2163,11 +2893,39 @@ void UciController::rebuild_syzygy() {
     }
 }
 
-void UciController::write_search_completion(std::uint64_t generation,
-                                            const SearchResult& result) {
+void UciController::write_search_completion(const std::uint64_t generation,
+                                            const SearchResult& result,
+                                            const ProtocolMode protocol,
+                                            const bool is_ponder_search,
+                                            const bool xboard_analyze,
+                                            const GameState& search_root) {
     std::lock_guard lock(output_mutex_);
     if (generation != generation_ || state_ == ControllerState::ShuttingDown) {
         return;
+    }
+    if (protocol == ProtocolMode::xboard) {
+        if (is_ponder_search || xboard_analyze) {
+            return;
+        }
+        if (result.best_move.has_value()) {
+            xboard_pending_move_ = result.best_move;
+            xboard_pending_move_generation_ = generation;
+            output_ << "move " << result.best_move->uci() << '\n' << std::flush;
+        } else {
+            output_ << xboard_terminal_result_line(search_root) << '\n' << std::flush;
+        }
+        return;
+    }
+
+    if (!result.best_move.has_value()) {
+        if (protocol == ProtocolMode::usi) {
+            output_ << "bestmove resign\n" << std::flush;
+            return;
+        }
+        if (protocol == ProtocolMode::ucci) {
+            output_ << "nobestmove\n" << std::flush;
+            return;
+        }
     }
 
     output_ << "bestmove "
@@ -2181,10 +2939,11 @@ void UciController::write_search_completion(std::uint64_t generation,
     output_ << '\n' << std::flush;
 }
 
-void UciController::write_book_completion(std::uint64_t generation, const GameState& root,
+void UciController::write_book_completion(const std::uint64_t generation, const GameState& root,
                                            const SearchLimits& limits, const BookChoice& choice,
-                                           std::uint32_t ply,
-                                           const std::shared_ptr<CompletionOnce>& completion_once) {
+                                           const std::uint32_t ply,
+                                           const std::shared_ptr<CompletionOnce>& completion_once,
+                                           const ProtocolMode protocol) {
     CompletionCandidate candidate;
     candidate.best_move = choice.move;
     candidate.pv = {choice.move};
@@ -2250,6 +3009,10 @@ void UciController::write_book_completion(std::uint64_t generation, const GameSt
         if (generation != generation_) {
             return;
         }
+        if (protocol == ProtocolMode::xboard) {
+            output_ << xboard_terminal_result_line(root) << '\n' << std::flush;
+            return;
+        }
         output_ << "info string no common legal move for the book root; answering 0000\n"
                 << std::flush;
         output_ << "bestmove 0000\n" << std::flush;
@@ -2269,6 +3032,10 @@ void UciController::write_book_completion(std::uint64_t generation, const GameSt
         if (generation != generation_) {
             return;
         }
+        if (protocol == ProtocolMode::xboard) {
+            output_ << xboard_terminal_result_line(root) << '\n' << std::flush;
+            return;
+        }
         output_ << "bestmove 0000\n" << std::flush;
         return;
     }
@@ -2283,6 +3050,13 @@ void UciController::write_book_completion(std::uint64_t generation, const GameSt
             ",\"book_depth\":" + std::to_string(ply));
     std::lock_guard lock(output_mutex_);
     if (generation != generation_) {
+        return;
+    }
+
+    if (protocol == ProtocolMode::xboard) {
+        xboard_pending_move_ = validation.best_move;
+        xboard_pending_move_generation_ = generation;
+        output_ << "move " << validation.best_move->uci() << '\n' << std::flush;
         return;
     }
 

@@ -56,6 +56,7 @@ enum class UciOptionId {
     syzygy_50_move_rule,
     eval_file,
     eval_mode,
+    protocol,
     debug,
     debug_file,
 };
@@ -72,7 +73,7 @@ struct UciOptionDescriptor {
     std::string_view combo_values;
 };
 
-inline constexpr std::array<UciOptionDescriptor, 28> kUciOptions{{
+inline constexpr std::array<UciOptionDescriptor, 29> kUciOptions{{
     {"RandomSeed", UciOptionKind::spin, UciOptionId::random_seed, "0", 0,
      kMaximumRandomSeed, false, true},
     {"Hash", UciOptionKind::spin, UciOptionId::hash, "512", kMinimumHashMegabytes,
@@ -114,6 +115,8 @@ inline constexpr std::array<UciOptionDescriptor, 28> kUciOptions{{
     {"EvalFile", UciOptionKind::string, UciOptionId::eval_file, "", 0, 0, false, true},
     {"EvalMode", UciOptionKind::combo, UciOptionId::eval_mode, "nnue", 0, 0, false, true,
      "var nnue var hce"},
+    {"Protocol", UciOptionKind::combo, UciOptionId::protocol, "uci", 0, 0, false, true,
+     "var uci var usi var ucci var ucicyclone var xboard"},
     {"Debug", UciOptionKind::check, UciOptionId::debug, "false", 0, 0, false, false},
     {"DebugFile", UciOptionKind::string, UciOptionId::debug_file, "koi-debug.log", 0, 0, false,
      false},

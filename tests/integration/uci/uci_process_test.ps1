@@ -586,3 +586,39 @@ for ($ply = 0; $ply -lt 6; $ply++) {
     }
 }
 $null = Complete-UciSession $gameSession $true
+
+$versionText = (& $EnginePath --version | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $versionText -notmatch '^Koi \S+ \(\S+\)$') {
+    throw "koi-engine --version failed or returned unexpected format: '$versionText'"
+}
+
+$engineJsonRaw = (& $EnginePath --engine-json | Out-String)
+if ($LASTEXITCODE -ne 0) {
+    throw 'koi-engine --engine-json exited non-zero.'
+}
+$engineJson = $engineJsonRaw | ConvertFrom-Json
+if ($engineJson.type -cne 'local' -or $engineJson.name -cne 'Koi' -or
+    [string]::IsNullOrWhiteSpace([string]$engineJson.version) -or
+    [string]::IsNullOrWhiteSpace([string]$engineJson.path)) {
+    throw "koi-engine --engine-json emitted unexpected schema: $engineJsonRaw"
+}
+
+$xboardSession = Start-UciSession -Executable $EnginePath -Arguments @('--protocol', 'xboard')
+Send-UciCommand $xboardSession 'protover 2'
+$featureLine = Read-UciUntil -Session $xboardSession -Description 'XBoard protover feature line' -Predicate { param($line) $line -like 'feature *done=1' }
+if ($featureLine -notmatch 'usermove=1') {
+    throw "Unexpected XBoard feature line: '$featureLine'"
+}
+Send-UciCommand $xboardSession 'force'
+Send-UciCommand $xboardSession 'usermove e2e4'
+Send-UciCommand $xboardSession 'sd 1'
+Send-UciCommand $xboardSession 'go'
+$xboardMove = Read-UciUntil -Session $xboardSession -Description 'XBoard move reply' -Predicate { param($line) $line -match '^move [a-h][1-8][a-h][1-8][nbrq]?$' }
+if ($xboardMove -notmatch '^move [a-h][1-8][a-h][1-8][nbrq]?$') {
+    throw "Unexpected XBoard move reply: '$xboardMove'"
+}
+Send-UciCommand $xboardSession 'quit'
+[void]$xboardSession.Process.WaitForExit($TimeoutMilliseconds)
+if ($xboardSession.Process.ExitCode -ne 0) {
+    throw "XBoard process exited with $($xboardSession.Process.ExitCode)"
+}

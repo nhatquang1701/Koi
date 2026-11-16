@@ -46,11 +46,15 @@ function Start-UciSession {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Executable,
-        [string]$WorkingDirectory = ''
+        [string]$WorkingDirectory = '',
+        [string[]]$Arguments = @()
     )
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $Executable
+    foreach ($argument in $Arguments) {
+        $startInfo.ArgumentList.Add($argument)
+    }
     if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
         $startInfo.WorkingDirectory = $WorkingDirectory
     }

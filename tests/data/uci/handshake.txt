@@ -26,5 +26,6 @@ option name SyzygyInteriorDepth type spin default 0 min 0 max 100
 option name Syzygy50MoveRule type check default true
 option name EvalFile type string default {empty}
 option name EvalMode type combo default nnue var nnue var hce
+option name Protocol type combo default uci var uci var usi var ucci var ucicyclone var xboard
 info string build {build_commit}
 uciok

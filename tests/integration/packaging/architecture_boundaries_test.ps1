@@ -143,8 +143,8 @@ if (-not (Test-Path -LiteralPath $optionTablePath)) {
     Fail 'src/koi/detail/uci_option_table.hpp is missing'
 } else {
     $optionTable = Get-Content -LiteralPath $optionTablePath -Raw
-    if ($optionTable -notmatch 'array<UciOptionDescriptor, 28>') {
-        Fail 'the option catalog must declare the 28-entry table'
+    if ($optionTable -notmatch 'array<UciOptionDescriptor, 29>') {
+        Fail 'the option catalog must declare the 29-entry table'
     }
     $controllerSource = Read-RepositoryFile 'src/koi/uci_controller.cpp'
     if ($controllerSource -match 'enum class UciOptionKind') {

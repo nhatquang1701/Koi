@@ -57,6 +57,14 @@ inline constexpr std::size_t kMaximumProtocolLineBytes = std::size_t{1} << 20;
 
 class UciController {
 public:
+    enum class ProtocolMode : std::uint8_t {
+        uci,
+        usi,
+        ucci,
+        ucicyclone,
+        xboard,
+    };
+
     UciController(std::istream& input, std::ostream& output, std::ostream& diagnostics,
                   SearchService search_service,
                   std::filesystem::path executable_directory = {},
@@ -65,6 +73,11 @@ public:
 
     UciController(const UciController&) = delete;
     UciController& operator=(const UciController&) = delete;
+
+    // Selects the initial wire protocol (`uci`, `usi`, `ucci`, `ucicyclone`, or
+    // `xboard`).  Returns false when `name` is unrecognized.
+    bool set_protocol(std::string_view name);
+    [[nodiscard]] static bool is_valid_protocol(std::string_view name) noexcept;
 
     int run();
 
@@ -82,7 +95,12 @@ private:
     void handle_go(std::istream& command);
     void handle_ponderhit();
     void handle_annotate(std::istream& command);
-    void start_search(GameState root, SearchLimits limits, bool skip_book = false);
+    void reset_new_game();
+    bool handle_xboard_command(std::string_view name, std::istream& command, bool& should_quit);
+    void start_xboard_search(bool analyze_mode);
+    void apply_pending_xboard_move();
+    void start_search(GameState root, SearchLimits limits, bool skip_book = false,
+                      bool force_analyze = false);
     // Records the clock baseline for the previous/current timed move and folds
     // the observed GUI round trip into `observed_gui_overhead_ms_`.
     void note_clock_baseline(const SearchLimits& limits) noexcept;
@@ -93,14 +111,19 @@ private:
     void stop_active_perft();
     void clear_ponder_state();
     [[nodiscard]] std::uint64_t begin_generation();
-    void write_handshake();
+    void write_handshake(ProtocolMode mode = ProtocolMode::uci);
+    void write_xboard_features();
     void write_readyok();
-    void write_search_info(std::uint64_t generation, const SearchInfo& info);
-    void write_search_completion(std::uint64_t generation, const SearchResult& result);
+    void write_search_info(std::uint64_t generation, const SearchInfo& info,
+                           ProtocolMode protocol, bool xboard_thinking);
+    void write_search_completion(std::uint64_t generation, const SearchResult& result,
+                                 ProtocolMode protocol, bool is_ponder_search,
+                                 bool xboard_analyze, const GameState& search_root);
     void write_book_completion(std::uint64_t generation, const GameState& root,
                                const SearchLimits& limits, const BookChoice& choice,
                                std::uint32_t root_ply,
-                               const std::shared_ptr<CompletionOnce>& completion_once);
+                               const std::shared_ptr<CompletionOnce>& completion_once,
+                               ProtocolMode protocol);
     void write_position_error(const char* message);
     // Book auto-detection: a book beside the executable is used without the GUI
     // setting OwnBook, so shipping one is enough for it to take effect.
@@ -193,6 +216,24 @@ private:
     // distinct "generation" concepts.
     std::uint64_t generation_ = 0;
     std::string last_command_;
+    ProtocolMode protocol_mode_ = ProtocolMode::uci;
+    bool xboard_force_ = false;
+    bool xboard_post_ = false;
+    bool xboard_analyze_ = false;
+    bool xboard_ponder_ = false;
+    bool xboard_clock_configured_ = false;
+    std::optional<int> xboard_moves_to_go_;
+    std::chrono::milliseconds xboard_base_time_{300'000};
+    std::chrono::milliseconds xboard_increment_{0};
+    std::chrono::milliseconds xboard_white_time_{300'000};
+    std::chrono::milliseconds xboard_black_time_{300'000};
+    std::optional<std::chrono::milliseconds> xboard_fixed_movetime_;
+    std::optional<int> xboard_fixed_depth_;
+    // Set by the worker inside output_mutex_ when emitting an XBoard `move`
+    // and consumed lazily on the main protocol thread so `position_` stays
+    // exclusively single-thread owned (no TSan data race).
+    std::uint64_t xboard_pending_move_generation_ = 0;
+    std::optional<Move> xboard_pending_move_;
     ControllerState state_ = ControllerState::Idle;
 };
 

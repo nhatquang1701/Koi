@@ -5,6 +5,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -72,20 +73,89 @@ void configure_worker_stack() noexcept {
 }
 #endif
 
-std::filesystem::path executable_directory(int argc, char* argv[]) {
+std::filesystem::path resolved_executable_path(int argc, char* argv[]) {
     const std::filesystem::path module_path = koi::current_executable_path();
     if (!module_path.empty()) {
-        return module_path.parent_path();
+        return module_path;
     }
 
     std::error_code path_error;
     if (argc > 0) {
         const std::filesystem::path path = std::filesystem::absolute(argv[0], path_error);
         if (!path_error) {
-            return path.parent_path();
+            return path;
         }
     }
     return {};
+}
+
+std::filesystem::path executable_directory(int argc, char* argv[]) {
+    return resolved_executable_path(argc, argv).parent_path();
+}
+
+std::string json_escape(std::string_view text) {
+    std::string escaped;
+    escaped.reserve(text.size() + 8);
+    for (const unsigned char ch : text) {
+        switch (ch) {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\b':
+            escaped += "\\b";
+            break;
+        case '\f':
+            escaped += "\\f";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            if (ch < 0x20U) {
+                constexpr char kHex[] = "0123456789abcdef";
+                escaped += "\\u00";
+                escaped.push_back(kHex[(ch >> 4U) & 0x0fU]);
+                escaped.push_back(kHex[ch & 0x0fU]);
+            } else {
+                escaped.push_back(static_cast<char>(ch));
+            }
+            break;
+        }
+    }
+    return escaped;
+}
+
+void write_engine_json(int argc, char* argv[]) {
+    const std::string exe_path = resolved_executable_path(argc, argv).string();
+    std::cout << "{\n"
+              << "  \"type\": \"local\",\n"
+              << "  \"name\": \"Koi\",\n"
+              << "  \"version\": \"" << json_escape(KOI_ENGINE_BUILD_VERSION) << "\",\n"
+              << "  \"path\": \"" << json_escape(exe_path) << "\",\n"
+              << "  \"loaded\": true,\n"
+              << "  \"settings\": [\n"
+              << "    { \"name\": \"Threads\", \"value\": 1 },\n"
+              << "    { \"name\": \"Hash\", \"value\": 512 }\n"
+              << "  ]\n"
+              << "}\n";
+}
+
+void set_protocol_environment(std::string_view protocol) noexcept {
+    std::string protocol_copy(protocol);
+#if defined(_WIN32)
+    (void)::_putenv_s("KOI_PROTOCOL", protocol_copy.c_str());
+#else
+    (void)::setenv("KOI_PROTOCOL", protocol_copy.c_str(), 1);
+#endif
 }
 
 } // namespace
@@ -100,6 +170,63 @@ int main(int argc, char* argv[]) {
 #if defined(__linux__) && defined(__GLIBC__)
     configure_worker_stack();
 #endif
+#if defined(NDEBUG) && defined(KOI_CPU_REQUIRES_AVX512)
+    if (!koi::cpu_supports_avx512()) {
+        std::cerr << "Koi Release requires an x64 CPU with AVX-512 support.\n";
+        return 3;
+    }
+#endif
+#if defined(NDEBUG) && defined(KOI_CPU_REQUIRES_AVX2)
+    if (!koi::cpu_supports_avx2()) {
+        std::cerr << "Koi Release requires an x64 CPU with AVX2 support.\n";
+        return 3;
+    }
+#endif
+    // Parse CLI options before `run_cpu_selector()`: selector re-exec strips
+    // argv, so metadata queries (`--version`, `--engine-json`) answer for the
+    // entry executable directly while `--protocol` propagates via KOI_PROTOCOL.
+    std::optional<std::string_view> initial_protocol;
+    for (int index = 1; index < argc; ++index) {
+        const std::string_view arg(argv[index]);
+        if (arg == "--version" || arg == "-v") {
+            std::cout << "Koi " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT
+                      << ")\n";
+            return 0;
+        }
+        if (arg == "--engine-json") {
+            write_engine_json(argc, argv);
+            return 0;
+        }
+        if (arg == "--protocol") {
+            if (index + 1 >= argc) {
+                std::cerr << "koi-engine: missing argument for --protocol (expected uci, usi, "
+                             "ucci, ucicyclone, or xboard).\n";
+                return 2;
+            }
+            initial_protocol = std::string_view(argv[++index]);
+        } else if (arg.starts_with("--protocol=")) {
+            initial_protocol = arg.substr(std::string_view("--protocol=").size());
+        } else {
+            std::cerr << "koi-engine: unknown option '" << arg
+                      << "' (supported: --version, --engine-json, --protocol <name>).\n";
+            return 2;
+        }
+        if (initial_protocol.has_value()) {
+            if (!koi::UciController::is_valid_protocol(*initial_protocol)) {
+                std::cerr << "koi-engine: unknown protocol '" << *initial_protocol
+                          << "' (supported: uci, usi, ucci, ucicyclone, xboard).\n";
+                return 2;
+            }
+            set_protocol_environment(*initial_protocol);
+        }
+    }
+    if (!initial_protocol.has_value()) {
+        if (const char* env_protocol = std::getenv("KOI_PROTOCOL");
+            env_protocol != nullptr && *env_protocol != '\0' &&
+            koi::UciController::is_valid_protocol(env_protocol)) {
+            initial_protocol = std::string_view(env_protocol);
+        }
+    }
 #if defined(KOI_CPU_SELECTOR)
     // The baseline build runs on any x64 CPU. When a faster sibling executable
     // sits next to this binary and the host supports it, re-exec through that
@@ -112,18 +239,6 @@ int main(int argc, char* argv[]) {
     const int selector_exit = koi::run_cpu_selector();
     if (selector_exit != -1) {
         return selector_exit;
-    }
-#endif
-#if defined(NDEBUG) && defined(KOI_CPU_REQUIRES_AVX512)
-    if (!koi::cpu_supports_avx512()) {
-        std::cerr << "Koi Release requires an x64 CPU with AVX-512 support.\n";
-        return 3;
-    }
-#endif
-#if defined(NDEBUG) && defined(KOI_CPU_REQUIRES_AVX2)
-    if (!koi::cpu_supports_avx2()) {
-        std::cerr << "Koi Release requires an x64 CPU with AVX2 support.\n";
-        return 3;
     }
 #endif
     // Bootstrap with a tiny table so a GUI/tournament can deliver its Hash
@@ -191,5 +306,8 @@ int main(int argc, char* argv[]) {
     koi::UciController controller(std::cin, std::cout, std::cerr, std::move(search_service),
                                   engine_directory,
                                   autodiscovered_network && selection.nnue_enabled);
+    if (initial_protocol.has_value()) {
+        (void)controller.set_protocol(*initial_protocol);
+    }
     return controller.run();
 }

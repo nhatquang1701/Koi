@@ -677,7 +677,7 @@ the search but cannot push it past the cap.
 checkout commit recorded at configure time, then every advertised option in the
 fixed `kUciOptions` order, then `uciok`
 (`src/koi/uci_controller.cpp`). `Debug` and `DebugFile` are settable but
-intentionally not advertised, so 26 of the 28 entries are visible. There is no
+intentionally not advertised, so 27 of the 29 entries are visible. There is no
 `Speed` option: time allocation always uses the neutral 100 % factor.
 
 | Option | Type | Default | Range | Semantics |
@@ -708,6 +708,7 @@ intentionally not advertised, so 26 of the 28 entries are visible. There is no
 | `Syzygy50MoveRule` | check | true | true/false | Honors the 50-move rule in tablebase WDL results and requires a zero halfmove clock for cutoffs |
 | `EvalFile` | string | empty or `<autodiscovery>` | path | Loads a Koi NNUE network for subsequent searches; empty (or the informational `<autodiscovery>` marker) keeps the boot evaluator; rejected files fall back |
 | `EvalMode` | combo | `nnue` | `nnue`, `hce` | Selects the evaluator for later searches; HCE is the clean hand-crafted evaluator. `nnue` restores the current `EvalFile` or boot evaluator and reports if neither is available. |
+| `Protocol` | combo | `uci` | `uci`, `usi`, `ucci`, `ucicyclone`, `xboard` | Selects the wire protocol dialect (`uci` default, full XBoard/CECP v2 via `xboard` or `protover 2`, plus Standard 8x8 Chess compatibility for `usi`, `ucci`, and `ucicyclone`). Also selectable at launch with `--protocol <name>` or `KOI_PROTOCOL=<name>`. |
 | `Debug` (hidden) | check | false | true/false | Enables the debug log; changing it stops and joins the active search |
 | `DebugFile` (hidden) | string | `koi-debug.log` | path | Log path; relative paths resolve beside the executable; rotates at 8 MiB with 3 backups |
 

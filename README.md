@@ -32,7 +32,7 @@
 | :--- | :--- |
 | **Search** | Iterative-deepening alpha-beta (PVS) · Lazy SMP (`Threads > 1`) · Root-parallel `MultiPV` (up to 16 lines) · Deterministic single-thread mode (`Threads = 1`) |
 | **Evaluation** | Bundled HalfKA NNUE network (`nnue/koi.nnue`, auto-discovered at boot) · Clean tapered classical evaluator selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce` |
-| **Protocol** | Standard FIDE chess over UCI · Flag-proof time management with adaptive network-overhead learning · In-place `ponder` / `ponderhit` · `UCI_ShowWDL` |
+| **Protocol** | Standard FIDE chess over **UCI**, **XBoard/CECP v2**, and **USI** / **UCCI** / **UCI_Cyclone** preset compatibility (`Protocol` option or `--protocol`) · Flag-proof time management · In-place `ponder` / `ponderhit` · `UCI_ShowWDL` |
 | **Assets** | Bundled CC0 Polyglot opening book (`book/koi.bin`) · Automatic detection of local books (`book.bin`) and Syzygy tablebases (`syzygy/`) |
 | **Hardware** | Automatic CPU dispatch on x86-64 (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon (`arm64`) support |
 
@@ -53,7 +53,8 @@ Each release archive is self-contained and includes the engine binaries, the gat
 ### 2. Register in Your Chess GUI
 
 1. Extract the archive to a permanent folder.
-2. Add `koi-engine.exe` (Windows) or `koi-engine` (Linux / macOS) as a UCI engine in **En Croissant**, **Lucas Chess**, **Arena**, **Cute Chess**, or any compatible UCI interface.
+2. Add `koi-engine.exe` (Windows) or `koi-engine` (Linux / macOS) as a UCI engine in **Pawn Appétit**, **En Croissant**, **Lucas Chess**, **Arena**, **Cute Chess**, or any compatible UCI/XBoard interface.
+   - To show `Name: Koi` and a separate `VERSION` badge (like Stockfish) in **Pawn Appétit / En Croissant**, run `koi-engine --engine-json` and paste the output into **Edit JSON** (local binary import in those GUIs only reads `Name` from UCI `id name` and initializes `Version` empty). You can also print the build version via `koi-engine --version`.
 3. Recommended starting options:
    - `Hash = 512` (shared transposition table in MB)
    - `Threads = 1` for deterministic single-thread search, or `Threads = 4` for multi-threaded Lazy SMP

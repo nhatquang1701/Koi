@@ -2110,7 +2110,7 @@ void test_handshake_option_table_is_unique_and_well_formed() {
             "a handshake-only transcript must stay clean");
     const std::vector<std::string> options =
         lines_starting_with(output_lines(handshake.output), "option name ");
-    require(options.size() == 26, "the handshake must advertise exactly 26 options");
+    require(options.size() == 27, "the handshake must advertise exactly 27 options");
 
     const std::string prefix = "option name ";
     std::vector<std::string> names;
@@ -2487,6 +2487,124 @@ void test_uci_annotate_move_and_game_commands() {
             "ucinewgame must clear stored game moves before subsequent annotate game");
 }
 
+void test_protocol_option_and_handshake_modes() {
+    require(koi::UciController::is_valid_protocol("uci") &&
+                koi::UciController::is_valid_protocol("usi") &&
+                koi::UciController::is_valid_protocol("ucci") &&
+                koi::UciController::is_valid_protocol("ucicyclone") &&
+                koi::UciController::is_valid_protocol("XBOARD") &&
+                !koi::UciController::is_valid_protocol("shogi"),
+            "protocol validator must accept all five supported presets and reject unknowns");
+
+    const ControllerResult combo = run_controller(
+        "uci\n"
+        "setoption name Protocol value nonsense\n"
+        "setoption name Protocol value usi\n"
+        "usi\n"
+        "setoption name Protocol value ucci\n"
+        "ucci\n"
+        "setoption name Protocol value ucicyclone\n"
+        "ucci\n"
+        "isready\n"
+        "position startpos\n"
+        "go depth 1\n"
+        "stop\n"
+        "quit\n");
+    require(combo.exit_code == 0 && combo.diagnostics.empty(),
+            "protocol switches must remain clean");
+    require(combo.output.find(
+                "option name Protocol type combo default uci var uci var usi var ucci var ucicyclone var xboard") !=
+                std::string::npos,
+            "UCI handshake must advertise all five Protocol combo presets");
+    require(combo.output.find("usiok") != std::string::npos,
+            "USI handshake must emit usiok");
+    require(combo.output.find("ucciok") != std::string::npos,
+            "UCCI handshake must emit ucciok");
+    require(combo.output.find("ucicyclone") != std::string::npos,
+            "UCI_Cyclone handshake must reflect ucicyclone preset");
+    require(combo.output.find("bestmove ") != std::string::npos,
+            "UCCI/UCI_Cyclone mode must emit a legal bestmove");
+}
+
+void test_usi_and_ucci_commands_in_standard_chess() {
+    const ControllerResult usi = run_controller(
+        "usi\n"
+        "isready\n"
+        "usinewgame\n"
+        "position sfen 7k/6Q1/6K1/8/8/8/8/8 b - - 0 1\n"
+        "go byoyomi 50\n"
+        "stop\n"
+        "quit\n");
+    require(usi.exit_code == 0 && usi.diagnostics.empty(),
+            "USI compatibility session must exit cleanly");
+    require(usi.output.find("usiok") != std::string::npos &&
+                usi.output.find("readyok") != std::string::npos &&
+                usi.output.find("bestmove resign") != std::string::npos,
+            "USI terminal position must report bestmove resign");
+
+    const ControllerResult ucci = run_controller(
+        "ucci\n"
+        "setoption OwnBook false\n"
+        "isready\n"
+        "position fen 7k/6Q1/6K1/8/8/8/8/8 b - - 0 1\n"
+        "go time 50\n"
+        "stop\n"
+        "bye\n");
+    require(ucci.exit_code == 0 && ucci.diagnostics.empty(),
+            "UCCI session must support shorthand setoption, go time, nobestmove, and bye");
+    require(ucci.output.find("ucciok") != std::string::npos &&
+                ucci.output.find("readyok") != std::string::npos &&
+                ucci.output.find("nobestmove") != std::string::npos,
+            "UCCI terminal position must emit nobestmove");
+}
+
+void test_xboard_cecp_protocol_gameplay_and_controls() {
+    const ControllerResult xboard = run_controller(
+        "xboard\n"
+        "protover 2\n"
+        "ping 7\n"
+        "variant suicide\n"
+        "variant normal\n"
+        "new\n"
+        "option OwnBook=false\n"
+        "post\n"
+        "sd 1\n"
+        "level 0 1:30 2\n"
+        "time 9000\n"
+        "otim 9000\n"
+        "force\n"
+        "usermove e2e4\n"
+        "usermove e7e5\n"
+        "undo\n"
+        "usermove c7c5\n"
+        "go\n"
+        "ping 8\n"
+        "usermove e9e9\n"
+        "setboard 7k/6Q1/6K1/8/8/8/8/8 b - - 0 1\n"
+        "go\n"
+        "uci\n"
+        "quit\n");
+    require(xboard.exit_code == 0 && xboard.diagnostics.empty(),
+            "XBoard session must remain clean and return exit code 0");
+    require(xboard.output.find("feature myname=\"Koi ") != std::string::npos &&
+                xboard.output.find("usermove=1") != std::string::npos &&
+                xboard.output.find("done=1") != std::string::npos,
+            "protover 2 must emit CECP v2 feature string");
+    require(xboard.output.find("pong 7") != std::string::npos &&
+                xboard.output.find("pong 8") != std::string::npos,
+            "ping must return matching pong replies");
+    require(xboard.output.find("Error (unknown variant): suicide") != std::string::npos,
+            "non-normal variants must be rejected cleanly");
+    require(xboard.output.find("move ") != std::string::npos,
+            "XBoard go must emit a CECP move reply");
+    require(xboard.output.find("Illegal move: e9e9") != std::string::npos,
+            "invalid XBoard moves must report Illegal move");
+    require(xboard.output.find("1-0 {White mates}") != std::string::npos,
+            "mated position in XBoard go must emit mate result");
+    require(xboard.output.find("uciok") != std::string::npos,
+            "switching back from XBoard via uci must emit uciok");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2564,6 +2682,9 @@ int main(int argc, char** argv) {
         {"ponder move without the option", test_bestmove_reports_the_ponder_move_without_the_option},
         {"network overhead estimator", test_network_overhead_estimator_tracks_gui_latency},
         {"uci annotate commands", test_uci_annotate_move_and_game_commands},
+        {"Protocol presets and handshakes", test_protocol_option_and_handshake_modes},
+        {"USI and UCCI compatibility commands", test_usi_and_ucci_commands_in_standard_chess},
+        {"XBoard CECP v2 protocol commands", test_xboard_cecp_protocol_gameplay_and_controls},
     };
 
     return koi::test::run_tests(tests, argc, argv);

@@ -904,9 +904,11 @@ protocol clean. Leave this option disabled for normal release use.
 1. Build the Release target and resolve the absolute path to
    `build\release\koi-engine.exe` (`build/release/koi-engine` on Linux) — or
    the executable in your chosen build directory.
-2. In En Croissant, add a UCI engine and select that `koi-engine` path.
+2. In **Pawn Appétit** / **En Croissant**, add a UCI engine and select that `koi-engine` path.
    Keep the engine's working directory beside the executable when configuring
    the engine so portable relative assets resolve predictably.
+   - **Showing a separate `VERSION` indicator (like Stockfish):** Pawn Appétit / En Croissant's local binary scanner only populates `Name` from `id name` and leaves `Version` blank. Run `koi-engine --engine-json` to print a ready-to-paste JSON snippet (`name: "Koi"`, `version: "<semver>"`, resolved `path`, defaults) for the GUI's **Edit JSON** dialog (or fill the GUI's `Version` field manually). Check the CLI version directly with `koi-engine --version`.
+   - **Protocols (`uci`, `usi`, `ucci`, `ucicyclone`, `xboard`):** Select `Protocol` in UCI options (or launch with `--protocol <name>`, or send `xboard` / `usi` / `ucci` directly on stdin). All modes target standard 8x8 chess (`xboard` implements CECP v2 `protover 2`, `feature`, `setboard`, `usermove`, `ping/pong`, `level`/`st`/`sd`, `time`/`otim`, `post`/`nopost`, `analyze`/`exit`, `undo`/`remove`; `usi` and `ucci`/`ucicyclone` support their handshake, option, `go`, `bestmove resign`/`nobestmove`, and `bye` conventions on 8x8 boards).
 3. If using the opening book, place the user-supplied licensed `book.bin` in
    the same directory as `koi-engine.exe`. Do not add book data to this
    repository or redistribute it without its license.
