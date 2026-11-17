@@ -332,10 +332,17 @@ void SearchRunner::run_impl() {
             *limits.movetime < kShortTimedFallbackMinimum && !timing_context.in_check;
 
         // Lazy SMP replaces the root-splitting pool for the common Threads > 1
-        // configuration. Node-limited, MultiPV, forced-draw and short-tactical
-        // searches keep the root-parallel path so their accounting stays exact.
+        // configuration. Unlike RootWorkerPool, Lazy SMP has minimal startup
+        // overhead and runs the serial main-thread loop directly, so forcing or
+        // checked roots on timed budgets >= 25 ms still benefit from helper
+        // threads instead of falling back to a single core. Only node-limited,
+        // MultiPV, draw, or ultra-short (< 25 ms) scramble searches bypass it.
+        const bool ultra_short_smp_skip =
+            (limits.movetime.has_value() && *limits.movetime < std::chrono::milliseconds{25}) ||
+            (!limits.movetime.has_value() && effective_time_budget.has_value() &&
+             *effective_time_budget < std::chrono::milliseconds{25});
         const bool use_lazy_smp = options.threads > 1 && options.multi_pv == 1 &&
-            !time_manager.node_limit().has_value() && !short_tactical_budget &&
+            !time_manager.node_limit().has_value() && !ultra_short_smp_skip &&
             !root_is_claimable_draw && !root_is_forced_draw && legal_moves.size() >= 2;
         std::unique_ptr<LazySmpPool> lazy_pool;
         if (use_lazy_smp) {

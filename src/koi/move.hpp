@@ -66,7 +66,13 @@ public:
         : packed_(encode(from, to, promotion)) {}
 
     [[nodiscard]] static constexpr Move no_move() noexcept { return {}; }
+    [[nodiscard]] static constexpr Move from_raw(const std::uint32_t raw) noexcept {
+        Move move;
+        move.packed_ = raw;
+        return move;
+    }
     [[nodiscard]] static std::optional<Move> parse_uci(std::string_view uci) noexcept;
+    [[nodiscard]] constexpr std::uint32_t raw() const noexcept { return packed_; }
     [[nodiscard]] constexpr Square from() const noexcept;
     [[nodiscard]] constexpr Square to() const noexcept;
     [[nodiscard]] constexpr Promotion promotion() const noexcept;

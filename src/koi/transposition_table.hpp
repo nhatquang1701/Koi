@@ -8,7 +8,6 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <shared_mutex>
 #include <thread>
 #include <vector>
 
@@ -132,30 +131,20 @@ public:
 private:
     struct Storage;
 
-    // Access-mode implementations for the public probe()/store() entry
-    // points: Locked == true takes the stripe lock, Locked == false skips
-    // only that lock.  Both modes keep the Lease, the cluster scan,
-    // replacement math, entry values, and generation/clear_epoch handling
-    // character-identical, so one executing thread observes identical
-    // entries; only lock instructions differ.  The exclusive steady state
-    // driven by detail::SearchTableAccess does not use these templates: it
-    // pins one SessionLease (see below) and calls probe_exclusive/
-    // store_exclusive, whose bodies mirror the Locked == false instantiations
-    // with the hazard lease replaced by that pinned pointer.
-    template <bool Locked>
-    [[nodiscard]] std::optional<TranspositionEntry> probe_impl(std::uint64_t key,
-                                                               int ply) const noexcept;
-    template <bool Locked>
-    void store_impl(std::uint64_t key, int depth, int score, TranspositionBound bound,
-                    Move best_move, int ply, bool pv, int eval) noexcept;
+    // Shared lockless cluster probe/store/prefetch helpers operating on a
+    // caller-validated Storage pointer (either from a per-call Lease or a
+    // SessionLease pin in exclusive mode).
+    [[nodiscard]] static std::optional<TranspositionEntry> probe_storage(
+        const Storage* storage, std::uint64_t key, int ply) noexcept;
+    static void store_storage(Storage* storage, std::uint64_t key, int depth, int score,
+                              TranspositionBound bound, Move best_move, int ply, bool pv,
+                              int eval) noexcept;
+    static void prefetch_storage(const Storage* storage, std::uint64_t key) noexcept;
 
     // Exclusive-session entry points for detail::SearchTableAccess.  `storage`
     // is the pointer pinned once for the whole session by SessionLease (see
-    // below); while the pin is held a resize cannot complete, so these read
-    // the same objects a per-access lease would resolve and need neither the
-    // hazard lease nor, in exclusive mode, the stripe lock.  The bodies mirror
-    // probe_impl<false>/store_impl<false>; keep them character-identical
-    // modulo the lease so both modes observe the same entries.
+    // below); while the pin is held a resize cannot complete, so these bypass
+    // the per-access Lease cleanly.
     [[nodiscard]] std::optional<TranspositionEntry> probe_exclusive(
         Storage* storage, std::uint64_t key, int ply) const noexcept;
     void store_exclusive(Storage* storage, std::uint64_t key, int depth, int score,
@@ -321,8 +310,6 @@ private:
 #endif
 
     friend class detail::SearchTableAccess;
-
-    static constexpr std::size_t kStripeCount = 64;
 
     mutable std::mutex maintenance_mutex_;
     std::shared_ptr<Storage> storage_;

@@ -8,7 +8,6 @@
 #include <limits>
 #include <mutex>
 #include <new>
-#include <shared_mutex>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -51,25 +50,98 @@ constexpr std::size_t kClusterSize = 4;
 // sampling cost independent of the configured Hash size.
 constexpr std::size_t kHashfullSampleSlots = 1000;
 
-// Exclusive access mode skips the stripe lock: the caller guarantees one live
-// search per table, so no other thread can touch the cluster concurrently.
-// This stand-in keeps the stripe-lock declaration inside probe_impl and
-// store_impl identical across access modes while constructing nothing.
-struct UnlockedStripe {
-    explicit UnlockedStripe(std::shared_mutex&) noexcept {}
+// Lockless 24-byte slot backed by three atomic 64-bit words.  The first word
+// stores `key ^ word1 ^ word2` so a reader detects any torn concurrent write
+// across the three words without taking mutexes on probe or store.
+struct AtomicSlot {
+    std::atomic<std::uint64_t> key_tag{0};
+    std::atomic<std::uint64_t> word1{0};
+    std::atomic<std::uint64_t> word2{0};
 };
 
-// Selects the stripe-lock type for one access mode: locked uses the real
-// mutex lock, exclusive uses the no-op stand-in.
-template <bool Locked, class Lock>
-struct StripeLockSelect {
-    using type = Lock;
+static_assert(sizeof(AtomicSlot) == sizeof(TranspositionEntry),
+              "AtomicSlot must preserve TranspositionEntry cache footprint");
+
+struct UnpackedSlot {
+    std::uint64_t key = 0;
+    std::uint64_t word1 = 0;
+    std::uint64_t word2 = 0;
+    int score = 0;
+    Move best_move = Move::no_move();
+    std::int16_t eval = kNoEvaluation;
+    std::int8_t depth = 0;
+    std::uint8_t generation = 0;
+    std::uint8_t generation_age = 0;
+    TranspositionBound bound = TranspositionBound::exact;
+    bool occupied = false;
+    bool pv = false;
 };
 
-template <class Lock>
-struct StripeLockSelect<false, Lock> {
-    using type = UnlockedStripe;
-};
+[[nodiscard]] bool slot_occupied(const std::uint64_t word2) noexcept {
+    return ((word2 >> 48U) & 0xFFU) != 0U;
+}
+
+[[nodiscard]] std::uint8_t slot_epoch(const std::uint64_t word2) noexcept {
+    return static_cast<std::uint8_t>((word2 >> 32U) & 0xFFU);
+}
+
+[[nodiscard]] std::uint64_t pack_word1(const int stored_score, const Move best_move) noexcept {
+    const std::uint32_t score_bits =
+        static_cast<std::uint32_t>(static_cast<std::int32_t>(stored_score));
+    const std::uint32_t move_bits = best_move.raw();
+    return static_cast<std::uint64_t>(score_bits) |
+        (static_cast<std::uint64_t>(move_bits) << 32U);
+}
+
+[[nodiscard]] std::uint64_t pack_word2(const std::int16_t packed_eval,
+                                       const std::int8_t packed_depth,
+                                       const std::uint8_t generation,
+                                       const std::uint8_t clear_epoch,
+                                       const TranspositionBound bound,
+                                       const bool pv) noexcept {
+    return static_cast<std::uint64_t>(static_cast<std::uint16_t>(packed_eval)) |
+        (static_cast<std::uint64_t>(static_cast<std::uint8_t>(packed_depth)) << 16U) |
+        (static_cast<std::uint64_t>(generation) << 24U) |
+        (static_cast<std::uint64_t>(clear_epoch) << 32U) |
+        (static_cast<std::uint64_t>(static_cast<std::uint8_t>(bound)) << 40U) |
+        (std::uint64_t{1} << 48U) |
+        (static_cast<std::uint64_t>(pv ? 1U : 0U) << 56U);
+}
+
+void write_slot(AtomicSlot& slot, const std::uint64_t key, const std::uint64_t w1,
+                const std::uint64_t w2) noexcept {
+    slot.key_tag.store(key ^ w1 ^ w2, std::memory_order_relaxed);
+    slot.word1.store(w1, std::memory_order_relaxed);
+    slot.word2.store(w2, std::memory_order_relaxed);
+}
+
+void clear_slot(AtomicSlot& slot) noexcept {
+    slot.key_tag.store(0, std::memory_order_relaxed);
+    slot.word1.store(0, std::memory_order_relaxed);
+    slot.word2.store(0, std::memory_order_relaxed);
+}
+
+[[nodiscard]] UnpackedSlot read_slot(const AtomicSlot& slot) noexcept {
+    const std::uint64_t tag = slot.key_tag.load(std::memory_order_relaxed);
+    const std::uint64_t w1 = slot.word1.load(std::memory_order_relaxed);
+    const std::uint64_t w2 = slot.word2.load(std::memory_order_relaxed);
+    UnpackedSlot out;
+    out.word1 = w1;
+    out.word2 = w2;
+    out.key = tag ^ w1 ^ w2;
+    out.occupied = slot_occupied(w2);
+    out.generation_age = slot_epoch(w2);
+    out.generation = static_cast<std::uint8_t>((w2 >> 24U) & 0xFFU);
+    out.depth = static_cast<std::int8_t>(static_cast<std::uint8_t>((w2 >> 16U) & 0xFFU));
+    out.eval = static_cast<std::int16_t>(static_cast<std::uint16_t>(w2 & 0xFFFFU));
+    const std::uint8_t bound_raw = static_cast<std::uint8_t>((w2 >> 40U) & 0xFFU);
+    out.bound = bound_raw <= static_cast<std::uint8_t>(TranspositionBound::upper) ?
+        static_cast<TranspositionBound>(bound_raw) : TranspositionBound::exact;
+    out.pv = ((w2 >> 56U) & 0xFFU) != 0U;
+    out.score = static_cast<int>(static_cast<std::int32_t>(static_cast<std::uint32_t>(w1 & 0xFFFFFFFFULL)));
+    out.best_move = Move::from_raw(static_cast<std::uint32_t>(w1 >> 32U));
+    return out;
+}
 
 int score_for_storage(int score, int ply) noexcept {
     if (score >= kMateThreshold) {
@@ -248,15 +320,17 @@ std::size_t TranspositionTable::register_thread_hazard_slot() noexcept {
 
 struct TranspositionTable::Storage {
     struct Segment {
-        explicit Segment(std::size_t count, const HashAllocationFailureProvider& failure) {
+        explicit Segment(std::size_t count, const HashAllocationFailureProvider& failure)
+            : entry_count(count) {
             const std::size_t bytes = count * sizeof(TranspositionEntry);
             if (failure && failure(bytes)) {
                 throw std::bad_alloc();
             }
-            entries.resize(count);
+            entries = std::make_unique<AtomicSlot[]>(count);
         }
 
-        std::vector<TranspositionEntry> entries;
+        std::unique_ptr<AtomicSlot[]> entries;
+        std::size_t entry_count = 0;
     };
 
     explicit Storage(std::size_t megabytes, const HashAllocationFailureProvider& failure)
@@ -284,11 +358,11 @@ struct TranspositionTable::Storage {
         size_mb = std::max<std::size_t>(1, bytes_to_reported_megabytes(allocated_bytes));
     }
 
-    [[nodiscard]] TranspositionEntry& at(std::size_t slot) noexcept {
+    [[nodiscard]] AtomicSlot& at(std::size_t slot) noexcept {
         return segments[slot >> segment_shift]->entries[slot & entries_per_segment_mask];
     }
 
-    [[nodiscard]] const TranspositionEntry& at(std::size_t slot) const noexcept {
+    [[nodiscard]] const AtomicSlot& at(std::size_t slot) const noexcept {
         return segments[slot >> segment_shift]->entries[slot & entries_per_segment_mask];
     }
 
@@ -296,16 +370,15 @@ struct TranspositionTable::Storage {
     // `kClusterSize`, so a cluster never straddles a segment and this single
     // resolution covers all kClusterSize entries; the probe/store hot loops
     // call it once instead of once per entry through at().
-    [[nodiscard]] TranspositionEntry* cluster_base(std::size_t cluster) noexcept {
+    [[nodiscard]] AtomicSlot* cluster_base(std::size_t cluster) noexcept {
         return &at(cluster * kClusterSize);
     }
 
-    [[nodiscard]] const TranspositionEntry* cluster_base(std::size_t cluster) const noexcept {
+    [[nodiscard]] const AtomicSlot* cluster_base(std::size_t cluster) const noexcept {
         return &at(cluster * kClusterSize);
     }
 
     std::vector<std::unique_ptr<Segment>> segments;
-    std::array<std::shared_mutex, kStripeCount> stripes;
     const std::size_t entries_per_segment;
     const std::size_t entries_per_segment_mask;
     const std::size_t segment_shift;
@@ -313,12 +386,10 @@ struct TranspositionTable::Storage {
     std::size_t total_slot_count = 0;
     std::size_t cluster_count = 0;
     std::size_t size_mb = 0;
-    std::uint8_t generation = 1;
-    // `generation_age` is also the storage epoch for logical Clear Hash
-    // invalidation.  A clear normally advances this fence without touching
-    // the segments, which keeps repeated cold benchmark runs bounded by the
-    // search work instead of the table size.
-    std::uint8_t clear_epoch = 0;
+    std::atomic<std::uint8_t> generation{1};
+    // `clear_epoch` invalidates entries logically on Clear Hash without sweeping
+    // multi-gigabyte tables except on 8-bit wraparound.
+    std::atomic<std::uint8_t> clear_epoch{0};
 };
 
 TranspositionTable::TranspositionTable(std::size_t megabytes, HashMemoryPolicy policy)
@@ -570,23 +641,15 @@ std::size_t TranspositionTable::hashfull_permill() const noexcept {
         return 0;
     }
 
-    // Latch every stripe shared so the sample is consistent without blocking
-    // probes or stores for longer than the scan itself, which is bounded by
-    // kHashfullSampleSlots and spread with a stride so the whole table is
-    // covered regardless of size.
-    std::array<std::shared_lock<std::shared_mutex>, kStripeCount> stripe_locks;
-    for (std::size_t index = 0; index < kStripeCount; ++index) {
-        stripe_locks[index] = std::shared_lock<std::shared_mutex>(storage->stripes[index]);
-    }
-
+    const std::uint8_t epoch = storage->clear_epoch.load(std::memory_order_relaxed);
     const std::size_t sample_slots = std::min(kHashfullSampleSlots, storage->total_slot_count);
     std::size_t used = 0;
     for (std::size_t sampled = 0; sampled < sample_slots; ++sampled) {
         // Evenly spaced samples cover the whole allocation; the old
         // stride-and-stop loop never reached the tail of small tables.
         const std::size_t slot = sampled * storage->total_slot_count / sample_slots;
-        const TranspositionEntry& entry = storage->at(slot);
-        if (entry.occupied && entry.generation_age == storage->clear_epoch) {
+        const std::uint64_t w2 = storage->at(slot).word2.load(std::memory_order_relaxed);
+        if (slot_occupied(w2) && slot_epoch(w2) == epoch) {
             ++used;
         }
     }
@@ -600,17 +663,17 @@ void TranspositionTable::clear() noexcept {
         return;
     }
 
-    std::array<std::unique_lock<std::shared_mutex>, kStripeCount> stripe_locks;
-    for (std::size_t index = 0; index < kStripeCount; ++index) {
-        stripe_locks[index] = std::unique_lock<std::shared_mutex>(storage->stripes[index]);
-    }
-    if (storage->clear_epoch == std::numeric_limits<std::uint8_t>::max()) {
-        storage->clear_epoch = 0;
+    const std::uint8_t epoch = storage->clear_epoch.load(std::memory_order_relaxed);
+    if (epoch == std::numeric_limits<std::uint8_t>::max()) {
+        storage->clear_epoch.store(0, std::memory_order_relaxed);
         for (const auto& segment : storage->segments) {
-            std::fill(segment->entries.begin(), segment->entries.end(), TranspositionEntry{});
+            for (std::size_t index = 0; index < segment->entry_count; ++index) {
+                clear_slot(segment->entries[index]);
+            }
         }
     } else {
-        ++storage->clear_epoch;
+        storage->clear_epoch.store(static_cast<std::uint8_t>(epoch + 1U),
+                                   std::memory_order_relaxed);
     }
 }
 
@@ -624,78 +687,71 @@ void TranspositionTable::new_generation() noexcept {
         return;
     }
 
-    std::array<std::unique_lock<std::shared_mutex>, kStripeCount> stripe_locks;
-    for (std::size_t index = 0; index < kStripeCount; ++index) {
-        stripe_locks[index] = std::unique_lock<std::shared_mutex>(storage->stripes[index]);
-    }
-    ++storage->generation;
-    if (storage->generation == 0) {
-        storage->generation = 1;
+    const std::uint8_t gen = storage->generation.load(std::memory_order_relaxed);
+    if (gen == std::numeric_limits<std::uint8_t>::max()) {
+        storage->generation.store(1, std::memory_order_relaxed);
         for (const auto& segment : storage->segments) {
-            std::fill(segment->entries.begin(), segment->entries.end(), TranspositionEntry{});
+            for (std::size_t index = 0; index < segment->entry_count; ++index) {
+                clear_slot(segment->entries[index]);
+            }
         }
+    } else {
+        storage->generation.store(static_cast<std::uint8_t>(gen + 1U),
+                                  std::memory_order_relaxed);
     }
 }
 
-template <bool Locked>
-void TranspositionTable::store_impl(std::uint64_t key, int depth, int score,
-                                    TranspositionBound bound, Move best_move, int ply, bool pv,
-                                    int eval) noexcept {
-    const Lease lease(*this);
-    Storage* const storage = lease.storage();
+void TranspositionTable::store_storage(Storage* storage, std::uint64_t key, int depth, int score,
+                                       TranspositionBound bound, Move best_move, int ply, bool pv,
+                                       int eval) noexcept {
     if (storage == nullptr || storage->cluster_count == 0) {
         return;
     }
 
+    const std::uint8_t gen = storage->generation.load(std::memory_order_relaxed);
+    const std::uint8_t epoch = storage->clear_epoch.load(std::memory_order_relaxed);
     const std::size_t cluster = cluster_index(key, storage->cluster_count);
-    const std::size_t first_slot = cluster * kClusterSize;
-    // Resolve the cluster base once; every entry in the cluster lives in the
-    // same segment.
-    TranspositionEntry* const cluster_entries = storage->cluster_base(cluster);
-    static_assert(std::has_single_bit(kStripeCount));
-    using StripeLock = StripeLockSelect<Locked, std::unique_lock<std::shared_mutex>>::type;
-    StripeLock stripe_lock(storage->stripes[cluster & (kStripeCount - 1)]);
+    AtomicSlot* const cluster_entries = storage->cluster_base(cluster);
 
-    std::size_t empty_slot = storage->total_slot_count;
-    std::size_t replacement_slot = first_slot;
+    const std::size_t offset_start = static_cast<std::size_t>(key) & (kClusterSize - 1U);
+    std::size_t empty_offset = kClusterSize;
+    std::size_t replacement_offset = 0;
+    UnpackedSlot replacement_entry{};
     std::uint32_t replacement_priority = std::numeric_limits<std::uint32_t>::max();
-    for (std::size_t offset = 0; offset < kClusterSize; ++offset) {
-        const std::size_t slot = first_slot + offset;
-        TranspositionEntry& candidate = cluster_entries[offset];
-        const bool valid = candidate.occupied &&
-            candidate.generation_age == storage->clear_epoch;
+    for (std::size_t step = 0; step < kClusterSize; ++step) {
+        const std::size_t offset = (offset_start + step) & (kClusterSize - 1U);
+        const UnpackedSlot candidate = read_slot(cluster_entries[offset]);
+        const bool valid = candidate.occupied && candidate.generation_age == epoch;
         if (valid && candidate.key == key) {
             const bool keeps_deeper_entry = candidate.depth > depth;
             const bool keeps_equal_exact_entry = candidate.depth == depth &&
                 candidate.bound == TranspositionBound::exact &&
                 bound != TranspositionBound::exact;
             if (keeps_deeper_entry || keeps_equal_exact_entry) {
-                candidate.generation = storage->generation;
-                candidate.generation_age = storage->clear_epoch;
+                if (candidate.generation != gen || candidate.generation_age != epoch) {
+                    const std::uint64_t refreshed_w2 = pack_word2(
+                        candidate.eval, candidate.depth, gen, epoch, candidate.bound,
+                        candidate.pv);
+                    write_slot(cluster_entries[offset], key, candidate.word1, refreshed_w2);
+                }
                 return;
             }
-            candidate = TranspositionEntry{.key = key,
-                                           .score = score_for_storage(score, ply),
-                                           .best_move = best_move,
-                                           .eval = pack_eval(eval),
-                                           .depth = pack_depth(depth),
-                                           .generation = storage->generation,
-                                           .generation_age = storage->clear_epoch,
-                                           .bound = bound,
-                                           .occupied = true,
-                                           .pv = pv};
+            const std::uint64_t new_w1 = pack_word1(score_for_storage(score, ply), best_move);
+            const std::uint64_t new_w2 = pack_word2(
+                pack_eval(eval), pack_depth(depth), gen, epoch, bound, pv);
+            write_slot(cluster_entries[offset], key, new_w1, new_w2);
             return;
         }
-        if (!valid && empty_slot == storage->total_slot_count) {
-            empty_slot = slot;
+        if (!valid) {
+            if (empty_offset == kClusterSize) {
+                empty_offset = offset;
+            }
             continue;
         }
 
         // Prefer stale generations, then shallow entries.  The final key
-        // component makes replacement deterministic when all other signals
-        // tie, which is useful for fixed-depth reproducibility.
-        const std::uint8_t age = static_cast<std::uint8_t>(
-            storage->generation - candidate.generation);
+        // component makes replacement deterministic when all other signals tie.
+        const std::uint8_t age = static_cast<std::uint8_t>(gen - candidate.generation);
         const std::uint32_t age_rank = age == 0 ? 1U : 0U;
         const std::uint32_t depth_rank = static_cast<std::uint32_t>(
             std::max(0, static_cast<int>(candidate.depth)));
@@ -705,31 +761,26 @@ void TranspositionTable::store_impl(std::uint64_t key, int depth, int score,
             (key_rank & 0xFFU);
         if (priority < replacement_priority) {
             replacement_priority = priority;
-            replacement_slot = slot;
+            replacement_offset = offset;
+            replacement_entry = candidate;
         }
     }
 
-    const std::size_t slot = empty_slot != storage->total_slot_count ?
-        empty_slot : replacement_slot;
-    TranspositionEntry& destination = cluster_entries[slot - first_slot];
-    if (empty_slot == storage->total_slot_count) {
-        const bool older_generation = destination.generation != storage->generation;
-        const bool deeper = depth > destination.depth;
-        const bool deterministic_tie_break = depth == destination.depth && key < destination.key;
+    const std::size_t target_offset = empty_offset != kClusterSize ?
+        empty_offset : replacement_offset;
+    if (empty_offset == kClusterSize) {
+        const bool older_generation = replacement_entry.generation != gen;
+        const bool deeper = depth > replacement_entry.depth;
+        const bool deterministic_tie_break =
+            depth == replacement_entry.depth && key < replacement_entry.key;
         if (!older_generation && !deeper && !deterministic_tie_break) {
             return;
         }
     }
-    destination = TranspositionEntry{.key = key,
-                                     .score = score_for_storage(score, ply),
-                                     .best_move = best_move,
-                                     .eval = pack_eval(eval),
-                                     .depth = pack_depth(depth),
-                                     .generation = storage->generation,
-                                     .generation_age = storage->clear_epoch,
-                                     .bound = bound,
-                                     .occupied = true,
-                                     .pv = pv};
+    const std::uint64_t new_w1 = pack_word1(score_for_storage(score, ply), best_move);
+    const std::uint64_t new_w2 = pack_word2(
+        pack_eval(eval), pack_depth(depth), gen, epoch, bound, pv);
+    write_slot(cluster_entries[target_offset], key, new_w1, new_w2);
 }
 
 void TranspositionTable::store_exclusive(Storage* storage, std::uint64_t key, int depth,
@@ -738,98 +789,7 @@ void TranspositionTable::store_exclusive(Storage* storage, std::uint64_t key, in
 #ifndef NDEBUG
     assert_exclusive_session_owner();
 #endif
-    // Mirrors store_impl<false> with the session-pinned storage: no hazard
-    // lease and no stripe lock, so the steady-state path performs no atomic
-    // instruction at all.  While the pin is held no resize can complete (see
-    // SessionLease), so this is the same storage, generation, clear_epoch,
-    // stripes, and entries a per-access lease would resolve.
-    if (storage == nullptr || storage->cluster_count == 0) {
-        return;
-    }
-
-    const std::size_t cluster = cluster_index(key, storage->cluster_count);
-    const std::size_t first_slot = cluster * kClusterSize;
-    // Resolve the cluster base once; every entry in the cluster lives in the
-    // same segment.
-    TranspositionEntry* const cluster_entries = storage->cluster_base(cluster);
-    static_assert(std::has_single_bit(kStripeCount));
-    using StripeLock = StripeLockSelect<false, std::unique_lock<std::shared_mutex>>::type;
-    StripeLock stripe_lock(storage->stripes[cluster & (kStripeCount - 1)]);
-
-    std::size_t empty_slot = storage->total_slot_count;
-    std::size_t replacement_slot = first_slot;
-    std::uint32_t replacement_priority = std::numeric_limits<std::uint32_t>::max();
-    for (std::size_t offset = 0; offset < kClusterSize; ++offset) {
-        const std::size_t slot = first_slot + offset;
-        TranspositionEntry& candidate = cluster_entries[offset];
-        const bool valid = candidate.occupied &&
-            candidate.generation_age == storage->clear_epoch;
-        if (valid && candidate.key == key) {
-            const bool keeps_deeper_entry = candidate.depth > depth;
-            const bool keeps_equal_exact_entry = candidate.depth == depth &&
-                candidate.bound == TranspositionBound::exact &&
-                bound != TranspositionBound::exact;
-            if (keeps_deeper_entry || keeps_equal_exact_entry) {
-                candidate.generation = storage->generation;
-                candidate.generation_age = storage->clear_epoch;
-                return;
-            }
-            candidate = TranspositionEntry{.key = key,
-                                           .score = score_for_storage(score, ply),
-                                           .best_move = best_move,
-                                           .eval = pack_eval(eval),
-                                           .depth = pack_depth(depth),
-                                           .generation = storage->generation,
-                                           .generation_age = storage->clear_epoch,
-                                           .bound = bound,
-                                           .occupied = true,
-                                           .pv = pv};
-            return;
-        }
-        if (!valid && empty_slot == storage->total_slot_count) {
-            empty_slot = slot;
-            continue;
-        }
-
-        // Prefer stale generations, then shallow entries.  The final key
-        // component makes replacement deterministic when all other signals
-        // tie, which is useful for fixed-depth reproducibility.
-        const std::uint8_t age = static_cast<std::uint8_t>(
-            storage->generation - candidate.generation);
-        const std::uint32_t age_rank = age == 0 ? 1U : 0U;
-        const std::uint32_t depth_rank = static_cast<std::uint32_t>(
-            std::max(0, static_cast<int>(candidate.depth)));
-        const std::uint32_t key_rank = static_cast<std::uint32_t>(candidate.key);
-        const std::uint32_t priority = (age_rank << 24U) |
-            (std::min<std::uint32_t>(depth_rank, 0xFFFFU) << 8U) |
-            (key_rank & 0xFFU);
-        if (priority < replacement_priority) {
-            replacement_priority = priority;
-            replacement_slot = slot;
-        }
-    }
-
-    const std::size_t slot = empty_slot != storage->total_slot_count ?
-        empty_slot : replacement_slot;
-    TranspositionEntry& destination = cluster_entries[slot - first_slot];
-    if (empty_slot == storage->total_slot_count) {
-        const bool older_generation = destination.generation != storage->generation;
-        const bool deeper = depth > destination.depth;
-        const bool deterministic_tie_break = depth == destination.depth && key < destination.key;
-        if (!older_generation && !deeper && !deterministic_tie_break) {
-            return;
-        }
-    }
-    destination = TranspositionEntry{.key = key,
-                                     .score = score_for_storage(score, ply),
-                                     .best_move = best_move,
-                                     .eval = pack_eval(eval),
-                                     .depth = pack_depth(depth),
-                                     .generation = storage->generation,
-                                     .generation_age = storage->clear_epoch,
-                                     .bound = bound,
-                                     .occupied = true,
-                                     .pv = pv};
+    store_storage(storage, key, depth, score, bound, best_move, ply, pv, eval);
 }
 
 void TranspositionTable::store(std::uint64_t key, int depth, int score, TranspositionBound bound,
@@ -839,41 +799,41 @@ void TranspositionTable::store(std::uint64_t key, int depth, int score, Transpos
     if (mode == TranspositionAccessMode::exclusive) {
         assert_exclusive_session_owner();
     }
+#else
+    (void)mode;
 #endif
-    if (mode == TranspositionAccessMode::exclusive) {
-        store_impl<false>(key, depth, score, bound, best_move, ply, pv, eval);
-        return;
-    }
-    store_impl<true>(key, depth, score, bound, best_move, ply, pv, eval);
+    const Lease lease(*this);
+    store_storage(lease.storage(), key, depth, score, bound, best_move, ply, pv, eval);
 }
 
-template <bool Locked>
-std::optional<TranspositionEntry> TranspositionTable::probe_impl(
-    std::uint64_t key, int ply) const noexcept {
-    const Lease lease(*this);
-    Storage* const storage = lease.storage();
+std::optional<TranspositionEntry> TranspositionTable::probe_storage(
+    const Storage* storage, std::uint64_t key, int ply) noexcept {
     if (storage == nullptr || storage->cluster_count == 0) {
         return std::nullopt;
     }
 
+    const std::uint8_t epoch = storage->clear_epoch.load(std::memory_order_relaxed);
+    const std::uint8_t gen = storage->generation.load(std::memory_order_relaxed);
     const std::size_t cluster = cluster_index(key, storage->cluster_count);
-    // Resolve the cluster base once; every entry in the cluster lives in the
-    // same segment.
-    const TranspositionEntry* const cluster_entries = storage->cluster_base(cluster);
-    // Pull the cluster in while the stripe lock is acquired; callers that
-    // prefetched the key earlier already have the fetch in flight.
+    const AtomicSlot* const cluster_entries = storage->cluster_base(cluster);
     KOI_TT_PREFETCH(cluster_entries);
-    using StripeLock = StripeLockSelect<Locked, std::shared_lock<std::shared_mutex>>::type;
-    StripeLock stripe_lock(storage->stripes[cluster & (kStripeCount - 1)]);
+
     for (std::size_t offset = 0; offset < kClusterSize; ++offset) {
-        const TranspositionEntry& entry = cluster_entries[offset];
-        if (!entry.occupied || entry.generation_age != storage->clear_epoch ||
-            entry.key != key) {
+        const UnpackedSlot slot = read_slot(cluster_entries[offset]);
+        if (!slot.occupied || slot.generation_age != epoch || slot.key != key) {
             continue;
         }
-        TranspositionEntry result = entry;
-        result.score = score_for_probe(result.score, ply);
-        result.generation_age = static_cast<std::uint16_t>(storage->generation - entry.generation);
+        TranspositionEntry result;
+        result.key = key;
+        result.score = score_for_probe(slot.score, ply);
+        result.best_move = slot.best_move;
+        result.eval = slot.eval;
+        result.depth = slot.depth;
+        result.generation = slot.generation;
+        result.generation_age = static_cast<std::uint8_t>(gen - slot.generation);
+        result.bound = slot.bound;
+        result.occupied = true;
+        result.pv = slot.pv;
         return result;
     }
     return std::nullopt;
@@ -884,36 +844,7 @@ std::optional<TranspositionEntry> TranspositionTable::probe_exclusive(
 #ifndef NDEBUG
     assert_exclusive_session_owner();
 #endif
-    // Mirrors probe_impl<false> with the session-pinned storage: no hazard
-    // lease and no stripe lock, so the steady-state path performs no atomic
-    // instruction at all.  While the pin is held no resize can complete (see
-    // SessionLease), so this is the same storage, generation, clear_epoch,
-    // stripes, and entries a per-access lease would resolve.
-    if (storage == nullptr || storage->cluster_count == 0) {
-        return std::nullopt;
-    }
-
-    const std::size_t cluster = cluster_index(key, storage->cluster_count);
-    // Resolve the cluster base once; every entry in the cluster lives in the
-    // same segment.
-    const TranspositionEntry* const cluster_entries = storage->cluster_base(cluster);
-    // Pull the cluster in while the stripe lock is acquired; callers that
-    // prefetched the key earlier already have the fetch in flight.
-    KOI_TT_PREFETCH(cluster_entries);
-    using StripeLock = StripeLockSelect<false, std::shared_lock<std::shared_mutex>>::type;
-    StripeLock stripe_lock(storage->stripes[cluster & (kStripeCount - 1)]);
-    for (std::size_t offset = 0; offset < kClusterSize; ++offset) {
-        const TranspositionEntry& entry = cluster_entries[offset];
-        if (!entry.occupied || entry.generation_age != storage->clear_epoch ||
-            entry.key != key) {
-            continue;
-        }
-        TranspositionEntry result = entry;
-        result.score = score_for_probe(result.score, ply);
-        result.generation_age = static_cast<std::uint16_t>(storage->generation - entry.generation);
-        return result;
-    }
-    return std::nullopt;
+    return probe_storage(storage, key, ply);
 }
 
 std::optional<TranspositionEntry> TranspositionTable::probe(
@@ -922,37 +853,31 @@ std::optional<TranspositionEntry> TranspositionTable::probe(
     if (mode == TranspositionAccessMode::exclusive) {
         assert_exclusive_session_owner();
     }
+#else
+    (void)mode;
 #endif
-    if (mode == TranspositionAccessMode::exclusive) {
-        return probe_impl<false>(key, ply);
+    const Lease lease(*this);
+    return probe_storage(lease.storage(), key, ply);
+}
+
+void TranspositionTable::prefetch_storage(const Storage* storage, std::uint64_t key) noexcept {
+    if (storage == nullptr || storage->cluster_count == 0) {
+        return;
     }
-    return probe_impl<true>(key, ply);
+    const std::size_t cluster = cluster_index(key, storage->cluster_count);
+    KOI_TT_PREFETCH(storage->cluster_base(cluster));
 }
 
 void TranspositionTable::prefetch(std::uint64_t key) const noexcept {
-    // Resolve the address under the same hazard lease as the probe: the
-    // public service seam supports resizing the table during a live search
-    // (the soak suite's resize regression test drives that contract), so a
-    // lease-free read could touch retired storage.  The lease is the same
-    // ~3-atomic pattern the probe already pays per call; correctness outranks
-    // the hint's cost.
+    // Resolve the address under the same hazard lease as the probe: a resize
+    // may run during a concurrent search, so a lease-free read could touch
+    // retired storage.
     const Lease lease(*this);
-    const Storage* const storage = lease.storage();
-    if (storage == nullptr || storage->cluster_count == 0) {
-        return;
-    }
-    const std::size_t cluster = cluster_index(key, storage->cluster_count);
-    KOI_TT_PREFETCH(storage->cluster_base(cluster));
+    prefetch_storage(lease.storage(), key);
 }
 
 void TranspositionTable::prefetch_exclusive(Storage* storage, std::uint64_t key) const noexcept {
-    // Exclusive-mode prefetch: the session pin keeps the storage alive, so the
-    // body is the exact non-lease remainder of the locked prefetch.
-    if (storage == nullptr || storage->cluster_count == 0) {
-        return;
-    }
-    const std::size_t cluster = cluster_index(key, storage->cluster_count);
-    KOI_TT_PREFETCH(storage->cluster_base(cluster));
+    prefetch_storage(storage, key);
 }
 
 } // namespace koi

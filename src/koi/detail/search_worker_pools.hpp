@@ -9,11 +9,13 @@
 // owns flow/publication and the pools own worker lifetime and error capture.
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -193,19 +195,126 @@ private:
             &root_moves_, use_transposition_table_, quiet_history_side_hook_, tablebase_binding_,
             root_color_, contempt_cp_);
         SearchContext& context = *context_storage;
-        int depth = 1 + static_cast<int>(helper_index % 3);
+        // Stagger depths and apply tight progressive aspiration windows per
+        // helper so threads diversify across d, d+1, and d+2 instead of colliding
+        // at full (-inf, +inf) bounds in lockstep.
+        static constexpr std::array<int, 20> kSkipSize{
+            1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4};
+        static constexpr std::array<int, 20> kSkipPhase{
+            0, 1, 0, 1, 2, 3, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6, 7};
+        const std::size_t skip_slot = helper_index % kSkipSize.size();
+        const int skip_size = kSkipSize[skip_slot];
+        const int skip_phase = kSkipPhase[skip_slot];
+        const std::uint64_t root_tt_key = detail::search_transposition_key(state);
+
+        std::optional<int> previous_score;
+        std::optional<Move> previous_best_move;
+        int last_completed_depth = 0;
+        int depth = 1;
         while (!stopping_.load(std::memory_order_relaxed) &&
                !stop_requested_.load(std::memory_order_relaxed) &&
                !time_manager_.should_stop(0) && depth <= kMaximumSearchDepth) {
             const int published = std::max(1, main_depth_.load(std::memory_order_relaxed));
-            depth = std::max(depth, published + static_cast<int>(helper_index % 3));
-            PrincipalVariation pv;
-            context.begin_iteration(&helper_abort_);
-            context.negamax(state, depth, -kInfinity, kInfinity, 0, pv);
-            accumulate_stats(helper_stats_[helper_index], context.stats);
-            publish_iteration_stats(context.stats);
-            if (stopping_.load(std::memory_order_relaxed) || context.aborted) {
+            if (depth < published) {
+                depth = published;
+            }
+            while (depth <= published + 2 && depth < kMaximumSearchDepth &&
+                   (((depth + skip_phase) / skip_size) % 2) != 0) {
+                ++depth;
+            }
+            if (depth == published && (helper_index % 2) == 0 && depth < kMaximumSearchDepth) {
+                ++depth;
+            }
+
+            const bool jumped_depths = (depth - last_completed_depth) > 1;
+            if (jumped_depths) {
+                // Let the shared TT supply the freshest main-thread best move
+                // rather than overwriting it with a stale helper guess.
+                context.root_move_hint.reset();
+                if (const std::optional<TranspositionEntry> tt_root =
+                        context.table_access.probe(root_tt_key, 0);
+                    tt_root.has_value() && std::abs(tt_root->score) < (kMateThreshold - 1'000)) {
+                    previous_score = tt_root->score;
+                }
+            } else {
+                context.root_move_hint = previous_best_move;
+            }
+
+            int alpha = -kInfinity;
+            int beta = kInfinity;
+            int delta = kAspirationWindow + std::min(32, depth * 2) +
+                static_cast<int>((helper_index % 3) * 5);
+            if (depth >= 4 && previous_score.has_value() &&
+                std::abs(*previous_score) < (kMateThreshold - 1'000)) {
+                const int asymmetry = (helper_index & 1U) != 0U ? 3 : -2;
+                alpha = std::max(-kInfinity, *previous_score - delta - std::max(0, -asymmetry));
+                beta = std::min(kInfinity, *previous_score + delta + std::max(0, asymmetry));
+            }
+
+            int final_score = 0;
+            PrincipalVariation best_pv;
+            bool iteration_completed = false;
+            for (int attempt = 0; attempt < 4; ++attempt) {
+                PrincipalVariation pv;
+                context.begin_iteration(&helper_abort_);
+                SearchStats flushed{};
+                context.progress_probe = [this, &context, &flushed]() noexcept {
+                    SearchStats delta_stats{};
+                    delta_stats.nodes = context.stats.nodes - flushed.nodes;
+                    delta_stats.qnodes = context.stats.qnodes - flushed.qnodes;
+                    delta_stats.tt_hits = context.stats.tt_hits - flushed.tt_hits;
+                    delta_stats.tbhits = context.stats.tbhits - flushed.tbhits;
+                    delta_stats.seldepth = context.stats.seldepth;
+                    flushed.nodes = context.stats.nodes;
+                    flushed.qnodes = context.stats.qnodes;
+                    flushed.tt_hits = context.stats.tt_hits;
+                    flushed.tbhits = context.stats.tbhits;
+                    publish_iteration_stats(delta_stats);
+                };
+                const int score = context.negamax(state, depth, alpha, beta, 0, pv);
+                {
+                    SearchStats rem_stats{};
+                    rem_stats.nodes = context.stats.nodes - flushed.nodes;
+                    rem_stats.qnodes = context.stats.qnodes - flushed.qnodes;
+                    rem_stats.tt_hits = context.stats.tt_hits - flushed.tt_hits;
+                    rem_stats.tbhits = context.stats.tbhits - flushed.tbhits;
+                    rem_stats.seldepth = context.stats.seldepth;
+                    publish_iteration_stats(rem_stats);
+                }
+                context.progress_probe = {};
+                accumulate_stats(helper_stats_[helper_index], context.stats);
+
+                if (stopping_.load(std::memory_order_relaxed) ||
+                    stop_requested_.load(std::memory_order_relaxed) ||
+                    context.aborted) {
+                    break;
+                }
+                if (pv.length > 0) {
+                    best_pv = pv;
+                }
+                final_score = score;
+                if (score <= alpha && alpha > -kInfinity) {
+                    alpha = attempt >= 2 ? -kInfinity : std::max(-kInfinity, alpha - delta);
+                    delta *= 2;
+                    continue;
+                }
+                if (score >= beta && beta < kInfinity) {
+                    beta = attempt >= 2 ? kInfinity : std::min(kInfinity, beta + delta);
+                    delta *= 2;
+                    continue;
+                }
+                iteration_completed = true;
                 break;
+            }
+            if (stopping_.load(std::memory_order_relaxed) ||
+                stop_requested_.load(std::memory_order_relaxed) ||
+                !iteration_completed) {
+                break;
+            }
+            previous_score = final_score;
+            last_completed_depth = depth;
+            if (best_pv.length > 0) {
+                previous_best_move = best_pv.moves[0];
             }
             ++depth;
         }
