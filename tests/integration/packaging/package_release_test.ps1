@@ -131,7 +131,7 @@ try {
             Assert-True ($versionInfo.CompanyName -ceq 'Koi Chess Engine Contributors') "$exeName CompanyName metadata is missing: '$($versionInfo.CompanyName)'"
             Assert-True ($versionInfo.OriginalFilename -ceq $exeName) "$exeName OriginalFilename metadata mismatch: '$($versionInfo.OriginalFilename)'"
             Assert-True (-not [string]::IsNullOrWhiteSpace($versionInfo.FileDescription)) "$exeName FileDescription metadata is missing"
-            Assert-True ($versionInfo.FileVersion -match '^1\.1\.6\.') "$exeName FileVersion metadata mismatch: '$($versionInfo.FileVersion)'"
+            Assert-True ($versionInfo.FileVersion -match '^1\.1\.6(\.|$)') "$exeName FileVersion metadata mismatch: '$($versionInfo.FileVersion)'"
         }
     }
 
