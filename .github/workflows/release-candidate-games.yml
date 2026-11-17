@@ -40,6 +40,7 @@ jobs:
           path: |
             artifacts/packages/koi-engine-v1.1.6-linux-x86_64.tar.gz
             artifacts/packages/koi-engine-v1.1.6-linux-x86_64.tar.gz.sha256
+            artifacts/packages/koi-engine-v1.1.6-linux-x86_64.package.json
           if-no-files-found: error
           retention-days: 7
 
@@ -134,7 +135,7 @@ jobs:
           output = pathlib.Path("artifacts/release-candidate") / os.environ["LEG"]
           archive_checksum = pathlib.Path("artifacts/packages/koi-engine-v1.1.6-linux-x86_64.tar.gz.sha256")
           archive_sha256 = archive_checksum.read_text(encoding="utf-8").split()[0]
-          package_manifest = json.loads((output / "engine" / "package.json").read_text(encoding="utf-8-sig"))
+          package_manifest = json.loads(pathlib.Path("artifacts/packages/koi-engine-v1.1.6-linux-x86_64.package.json").read_text(encoding="utf-8-sig"))
           package_source_commit = package_manifest["provenance"]["source_commit"]
           if package_source_commit != os.environ["EXPECTED_SOURCE_COMMIT"]:
               raise SystemExit(f"package source commit {package_source_commit} differs from {os.environ['EXPECTED_SOURCE_COMMIT']}")

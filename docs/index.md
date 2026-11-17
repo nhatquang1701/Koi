@@ -26,8 +26,8 @@ It combines an iterative-deepening Principal Variation Search (PVS) and Lazy SMP
 
 Koi requires no external configuration files:
 
-- **NNUE Evaluator:** Bundled at `nnue/koi.nnue` in release archives and discovered automatically at startup. A clean hand-crafted evaluator is also built in and selectable at any time via `setoption name EvalMode value hce` (or `KOI_EVALUATOR=hce` at boot).
-- **Opening Book:** Release archives include a custom CC0 Polyglot book at `book/koi.bin`. Copy it next to the binary as `book.bin` for automatic detection, or configure `OwnBook` and `BookFile` in your GUI.
+- **NNUE Evaluator:** Bundled flat beside the executables (`koi.nnue`) in release archives and discovered automatically at startup. A clean hand-crafted evaluator is also built in and selectable at any time via `setoption name EvalMode value hce` (or `KOI_EVALUATOR=hce` at boot).
+- **Opening Book (optional):** Place any user-supplied Polyglot `.bin` file beside the binary as `book.bin` for automatic detection, or configure `OwnBook` and `BookFile` in your GUI.
 - **Syzygy Tablebases:** Place licensed `.rtbw` / `.rtbz` files in a `syzygy/` directory beside the executable (or set `SyzygyPath`) for automatic root and interior probing.
 
 ---

@@ -10,7 +10,8 @@ experimental, or deliberately limited, the text says so.
 The engine is a standard-chess UCI engine written in C++26. `Threads=1` is the
 deterministic configuration; `Threads>1` is intentionally nondeterministic Lazy
 SMP. Release packages ship the gated Koi-native NNUE evaluator as the primary
-evaluator: the network is bundled at `nnue/koi.nnue`, auto-discovered at boot, and
+evaluator: the network is bundled flat beside the executables as `koi.nnue`,
+auto-discovered at boot, and
 advertised through the `EvalFile` default `<autodiscovery>`. The original hand-crafted
 classical evaluator was **removed on 2026-10-28** and is being cleanly rewritten
 (`src/koi/classical_evaluator.*`); NNUE stays the default and production
@@ -37,12 +38,12 @@ The HCE is selectable for development and measurement with `EvalMode=hce` or the
 The version rides in `id name`; the CMake project version is also compiled into
 the core library and is consumed by `koi-bench` for its JSON
 `build` field (`tools/engine/koi_bench.cpp:577` and `:685`). Release provenance
-instead comes from the package manifest written by
-`tools/build/package_release.ps1`: schema `koi-engine-package-v1`, hard-coded
-`version = '1.1.6'`, per-file SHA-256 hashes, and a `provenance` object with
-`source_commit`, `source_dirty`, `source_ref`, and `created_utc`
-(`tools/build/package_release.ps1:254-268`). A package archive also gets a
-`.sha256` sidecar (`tools/build/package_release.ps1:283-284`).
+instead comes from the external package manifest written by
+`tools/build/package_release.ps1` (`<package>.package.json` beside the
+archive): schema `koi-engine-package-v1`, hard-coded
+`version = '1.1.6'`, archive hash, per-file SHA-256 hashes, and a `provenance`
+object with `source_commit`, `source_dirty`, `source_ref`, and `created_utc`. A
+package archive also gets a `.sha256` sidecar.
 
 The v1.1.6 release is cut at this commit: the version pins, the packaging
 script, and the documentation read `1.1.6`, so the compiled build identity is
@@ -983,20 +984,21 @@ measurement commands, never CTest thresholds.
    Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`)
    and the test suite are intentionally **not** copied into release archives;
    developers build them from source.
-2. Copies README, LICENSE, `licenses/chess-library-MIT.txt`,
-   `licenses/fathom-MIT.txt`, and writes `INSTALL.txt`.
-3. Optionally includes `nnue/koi.nnue` + `.sha256` + metadata and
-   `book/koi.bin` + `.sha256` + `book/COPYING.txt`. Release packages bundle the
-   promoted network inside the platform archive (`nnue/koi.nnue`, auto-discovered
-   by the engine) and must pass `-NnueGateReport` with an accepted strength-gate
-   JSON whose `candidate_sha256` matches the network; the manifest records
-   `nnue_gate.report_sha256`/`decision`. A rejected gate report makes packaging
-   fail, and a network without a report is allowed only for tests/local
-   inspection, never for a release.
-4. Writes `package.json` (`koi-engine-package-v1`) with per-file size/SHA-256,
-   book/tablebase/NNUE inclusion flags, and provenance (`GITHUB_SHA` or
-   `git rev-parse HEAD`, dirty flag computed with `core.autocrlf=false`).
-5. Creates `.zip` on Windows or `.tar.gz` elsewhere and a `.sha256` sidecar.
+2. Copies `LICENSE` only (no `README.md`, `INSTALL.txt`, `package.json`,
+   `book/`, or nested docs/licenses dirs inside the user-facing archive).
+3. Optionally includes `koi.nnue` flat beside the executables (`-NnuePath`).
+   Release packages bundle the promoted network inside the platform archive
+   (`koi.nnue`, auto-discovered by the engine) and must pass `-NnueGateReport`
+   with an accepted strength-gate JSON whose `candidate_sha256` matches the
+   network; the external manifest records `nnue_gate.report_sha256`/`decision`
+   and `nnue_metadata_sha256`. A rejected gate report makes packaging fail, and
+   a network without a report is allowed only for tests/local inspection, never
+   for a release.
+4. Creates `.zip` on Windows or `.tar.gz` elsewhere plus an external
+   `.sha256` sidecar and `<package>.package.json` manifest
+   (`koi-engine-package-v1` with archive hash, per-file size/SHA-256,
+   NNUE inclusion flags, and provenance: `GITHUB_SHA` or `git rev-parse HEAD`,
+   dirty flag computed with `core.autocrlf=false`).
 
 No tablebase data is packaged. Version strings in the packaging script and
 manifest are `1.1.6` on this tree. Release titles use a readable product

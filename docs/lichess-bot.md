@@ -109,14 +109,14 @@ buffer on the Lichess clock.
 
 ## Opening book
 
-Release packages carry a CC0 1.0 Polyglot book. The post-1.1.5 book is built by
-`tools/book/build_database_book.py` from the Lichess standard-game database dumps
-(2013-01..2014-01), keeping strong rated games; published 1.1.4/1.1.5 archives
-still carry the older book generated from Lichess opening data. Copy it next to
-the engine binary as `book.bin`:
+Release archives are kept minimal and do not bundle opening books. To use a
+book with the bot, build or supply a Polyglot book (for example with
+`tools/book/build_database_book.py` or `tools/build/install_book.ps1`, or a
+local book such as Cerebellum Light) and place or copy it next to the engine
+binary as `book.bin`:
 
 ```bash
-cp book/koi.bin ~/koi-bot/engines/book.bin
+cp path/to/your-book.bin ~/koi-bot/engines/book.bin
 ```
 
 A book found beside the executable is used **automatically** — the engine
@@ -142,7 +142,7 @@ the opening, which matters most in short games.
 - Optional assets stay optional: a book beside the executable and a conventional
   Syzygy directory (`syzygy/`, `syzygy345/`, `tablebases/`, `3-4-5/`) are
   auto-detected; `OwnBook`/`BookFile` and `SyzygyPath` only override that.
-  Release packages carry the CC0 book `book/koi.bin`; Syzygy data is never bundled.
+  Release archives ship only the executables, `koi.nnue`, and `LICENSE`.
 - For analysis-style use (no clock, infinite search, MultiPV), a GUI is a better
   fit than a bot; see the [user guide](USER_GUIDE.md).
 - **Desktop status window.** While the bot is online, `koi-bot.sh start` opens a

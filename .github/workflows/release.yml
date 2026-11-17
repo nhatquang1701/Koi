@@ -1,0 +1,288 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]*.[0-9]*.[0-9]*'
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to publish (defaults to current ref name)'
+        required: false
+        default: ''
+      nnue_url:
+        description: 'URL to the promoted koi.nnue network (defaults to verified v1.1.5 net)'
+        required: false
+        default: ''
+      nnue_sha256:
+        description: 'Expected SHA-256 of koi.nnue (64 hex chars)'
+        required: false
+        default: ''
+      draft:
+        description: 'Publish as a draft release'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  DEFAULT_NNUE_SHA256: '0bb8d25e871fefeede3c1d00c563815510133f1daca9191638ea74d82ebba6b3'
+  DEFAULT_NNUE_ARCHIVE_URL: 'https://github.com/nhatquang1701/Koi/releases/download/1.1.5/koi-engine-v1.1.5-linux-x86_64.tar.gz'
+
+jobs:
+  prepare-nnue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      nnue_sha256: ${{ steps.fetch.outputs.sha256 }}
+    steps:
+      - name: Fetch and verify promoted NNUE network
+        id: fetch
+        env:
+          INPUT_URL: ${{ inputs.nnue_url }}
+          INPUT_SHA: ${{ inputs.nnue_sha256 }}
+          VAR_URL: ${{ vars.KOI_NNUE_URL }}
+          VAR_SHA: ${{ vars.KOI_NNUE_SHA256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/release-nnue
+          url="${INPUT_URL:-${VAR_URL:-}}"
+          expected_sha="${INPUT_SHA:-${VAR_SHA:-$DEFAULT_NNUE_SHA256}}"
+          if [ -n "$url" ]; then
+            curl -fsSL -o artifacts/release-nnue/koi.nnue "$url"
+          else
+            curl -fsSL -o /tmp/v115.tar.gz "$DEFAULT_NNUE_ARCHIVE_URL"
+            tar -xzf /tmp/v115.tar.gz -C /tmp nnue/koi.nnue 2>/dev/null || tar -xzf /tmp/v115.tar.gz -C /tmp koi.nnue
+            if [ -f /tmp/nnue/koi.nnue ]; then
+              mv /tmp/nnue/koi.nnue artifacts/release-nnue/koi.nnue
+            else
+              mv /tmp/koi.nnue artifacts/release-nnue/koi.nnue
+            fi
+          fi
+          actual_sha=$(sha256sum artifacts/release-nnue/koi.nnue | awk '{print $1}')
+          if [ "$actual_sha" != "$expected_sha" ]; then
+            echo "NNUE SHA-256 mismatch: expected $expected_sha, got $actual_sha" >&2
+            exit 1
+          fi
+          echo "sha256=$actual_sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: release-nnue-network
+          path: artifacts/release-nnue/koi.nnue
+          if-no-files-found: error
+          retention-days: 1
+
+  build-windows:
+    needs: prepare-nnue
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: release-nnue-network
+          path: artifacts/release-nnue
+      - name: Build, harden, sign (if configured), and package Windows Release
+        shell: cmd
+        env:
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          if not exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" exit /b 1
+          for /f "usebackq delims=" %%I in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%I"
+          if not defined VSINSTALL exit /b 1
+          set "VSDEVCMD=%VSINSTALL%\Common7\Tools\VsDevCmd.bat"
+          if not exist "%VSDEVCMD%" exit /b 1
+          call "%VSDEVCMD%" -arch=x64 -host_arch=x64
+          if errorlevel 1 exit /b 1
+          cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl -DKOI_BUILD_MODULES=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build build/release --config Release
+          if errorlevel 1 exit /b 1
+          pwsh -NoProfile -ExecutionPolicy Bypass -Command "
+            if (-not [string]::IsNullOrWhiteSpace(\$env:WINDOWS_CERT_PFX_BASE64)) {
+              \$pfx = Join-Path \$env:RUNNER_TEMP 'koi-signing.pfx'
+              [System.IO.File]::WriteAllBytes(\$pfx, [System.Convert]::FromBase64String(\$env:WINDOWS_CERT_PFX_BASE64))
+              \$signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
+              if (-not \$signtool) { throw 'signtool.exe not found' }
+              foreach (\$exe in @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe')) {
+                & \$signtool.FullName sign /f \$pfx /p \$env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 (Join-Path 'build/release' \$exe)
+                if (\$LASTEXITCODE -ne 0) { throw \"signtool failed for \$exe\" }
+              }
+              Remove-Item -LiteralPath \$pfx -Force
+            }
+          "
+          if errorlevel 1 exit /b 1
+          pwsh -NoProfile -File tools/build/package_release.ps1 -BuildDirectory build/release -OutputDirectory artifacts/release -NnuePath artifacts/release-nnue/koi.nnue
+          if errorlevel 1 exit /b 1
+          pwsh -NoProfile -Command "
+            \$zip = Get-Item artifacts/release/koi-engine-*.zip | Select-Object -First 1
+            \$pkgDir = Join-Path artifacts/release ([System.IO.Path]::GetFileNameWithoutExtension(\$zip.Name))
+            foreach (\$exe in @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe')) {
+              \$vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path \$pkgDir \$exe))
+              if (\$vi.ProductName -cne 'Koi Chess Engine' -or \$vi.CompanyName -cne 'Koi Chess Engine Contributors') {
+                throw \"Missing PE version metadata on \$exe\"
+              }
+            }
+            \$files = Get-ChildItem -LiteralPath \$pkgDir -File -Recurse | ForEach-Object { \$_.Name } | Sort-Object
+            \$expected = @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe', 'koi.nnue', 'LICENSE') | Sort-Object
+            if ((\$files -join ',') -cne (\$expected -join ',')) {
+              throw \"Unexpected archive files: \$(\$files -join ', ')\"
+            }
+          "
+          if errorlevel 1 exit /b 1
+          for %%F in (koi-engine.exe koi-engine-avx2.exe koi-engine-avx512.exe) do (
+            dumpbin /nologo /headers build\release\%%F | findstr /C:"Control Flow Guard" >nul
+            if errorlevel 1 exit /b 1
+          )
+          for %%F in (koi-engine-avx2.exe koi-engine-avx512.exe) do (
+            dumpbin /nologo /imports build\release\%%F | findstr /I "CreateProcess" >nul
+            if not errorlevel 1 exit /b 1
+          )
+      - uses: actions/upload-artifact@v5
+        with:
+          name: release-windows-assets
+          path: |
+            artifacts/release/*.zip
+            artifacts/release/*.zip.sha256
+            artifacts/release/*.package.json
+          if-no-files-found: error
+          retention-days: 7
+
+  build-linux:
+    needs: prepare-nnue
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: release-nnue-network
+          path: artifacts/release-nnue
+      - name: Build and package portable Linux Release in Ubuntu 22.04 container
+        run: |
+          docker run --rm -e GITHUB_SHA -e GITHUB_REF -v "$PWD":/work -w /work ubuntu:22.04 bash -euxo pipefail -c '
+          export DEBIAN_FRONTEND=noninteractive
+          apt_retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "apt retry $i"; sleep 20; done; return 1; }
+          apt_retry apt-get -o Acquire::Retries=5 update
+          apt_retry apt-get install -y --no-install-recommends ca-certificates gnupg wget software-properties-common python3-pip git
+          git config --global --add safe.directory /work
+          add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
+          dpkg -i /tmp/packages-microsoft-prod.deb
+          apt_retry apt-get -o Acquire::Retries=5 update
+          apt_retry apt-get -o Acquire::Retries=5 install -y --no-install-recommends g++-14 powershell
+          python3 -m pip install --disable-pip-version-check --quiet --upgrade cmake ninja
+          cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 -DKOI_BUILD_MODULES=OFF
+          cmake --build build/release --config Release -j 4
+          pwsh -NoProfile -File tools/build/package_release.ps1 -BuildDirectory build/release -OutputDirectory artifacts/release -NnuePath artifacts/release-nnue/koi.nnue
+          archive=$(find artifacts/release -maxdepth 1 -name "*-linux-x86_64.tar.gz" | head -n 1)
+          test -n "$archive"
+          extracted=/tmp/koi-release-check
+          mkdir -p "$extracted"
+          tar -xzf "$archive" -C "$extracted"
+          for variant_bin in koi-engine-avx2 koi-engine-avx512; do
+            if nm -u "$extracted/$variant_bin" | grep -Eq "(^|[[:space:]])(execv|execve|fork|posix_spawn|system|popen)(@|$)"; then
+              echo "Unexpected process-creation symbol in $variant_bin" >&2
+              exit 1
+            fi
+          done
+          printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | timeout 15 "$extracted/koi-engine" | grep -q "bestmove "
+          '
+      - uses: actions/upload-artifact@v5
+        with:
+          name: release-linux-assets
+          path: |
+            artifacts/release/*-linux-x86_64.tar.gz
+            artifacts/release/*-linux-x86_64.tar.gz.sha256
+            artifacts/release/*-linux-x86_64.package.json
+          if-no-files-found: error
+          retention-days: 7
+
+  build-macos:
+    needs: prepare-nnue
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: release-nnue-network
+          path: artifacts/release-nnue
+      - name: Install Homebrew LLVM toolchain
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install ninja llvm
+          echo "LLVM_PREFIX=$(brew --prefix llvm)" >> "$GITHUB_ENV"
+      - name: Build and package macOS arm64 Release
+        run: |
+          cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="$LLVM_PREFIX/bin/clang" \
+            -DCMAKE_CXX_COMPILER="$LLVM_PREFIX/bin/clang++" \
+            -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
+          cmake --build build/release --config Release -j 4
+          pwsh -NoProfile -File tools/build/package_release.ps1 -BuildDirectory build/release -OutputDirectory artifacts/release -NnuePath artifacts/release-nnue/koi.nnue
+          extracted=/tmp/koi-release-check
+          mkdir -p "$extracted"
+          archive=$(find artifacts/release -maxdepth 1 -name "*-macos-arm64.tar.gz" | head -n 1)
+          tar -xzf "$archive" -C "$extracted"
+          printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | "$extracted/koi-engine" | grep -q "bestmove "
+      - uses: actions/upload-artifact@v5
+        with:
+          name: release-macos-assets
+          path: |
+            artifacts/release/*-macos-arm64.tar.gz
+            artifacts/release/*-macos-arm64.tar.gz.sha256
+            artifacts/release/*-macos-arm64.package.json
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    needs:
+      - build-windows
+      - build-linux
+      - build-macos
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: release-*-assets
+          path: artifacts/release
+          merge-multiple: true
+      - name: Verify checksums and build combined SHA256SUMS
+        working-directory: artifacts/release
+        run: |
+          set -euo pipefail
+          for sidecar in *.sha256; do
+            sha256sum -c "$sidecar"
+          done
+          sha256sum *.zip *.tar.gz *.package.json > SHA256SUMS.txt
+          ls -lh
+      - name: Attest SLSA build provenance for release archives
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            artifacts/release/*.zip
+            artifacts/release/*.tar.gz
+      - name: Publish GitHub Release on tag push
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag_name != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}
+          draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
+          generate_release_notes: true
+          files: |
+            artifacts/release/*.zip
+            artifacts/release/*.zip.sha256
+            artifacts/release/*.tar.gz
+            artifacts/release/*.tar.gz.sha256
+            artifacts/release/*.package.json
+            artifacts/release/SHA256SUMS.txt

@@ -367,10 +367,10 @@ every reader: `koi_dataset.py`, `train_nnue_koi.py`, and `train_nnue_sf.py` spli
 used as a WDL target once a trainer consumes it.
 
 The engine discovers a network automatically at startup: it looks for `koi.nnue`
-beside the executable, then the packaged `nnue/koi.nnue`, then a single `*.nnue`
+beside the executable, then `nnue/koi.nnue`, then a single `*.nnue`
 file in either directory (and in the working directory for development runs).
-Release archives bundle the promoted gated network at `nnue/koi.nnue`; when it was
-discovered at boot the UCI handshake advertises `EvalFile` default
+Release archives bundle the promoted gated network flat as `koi.nnue` beside
+the executables; when it was discovered at boot the UCI handshake advertises `EvalFile` default
 `<autodiscovery>` (informational; echoing it back keeps the boot evaluator).
 Point the `KOI_NNUE_PATH` environment variable at a specific file to override the
 scan, or set `KOI_NNUE_AUTODETECT=0` to disable discovery; NNUE is required, and the UCI
@@ -1042,10 +1042,12 @@ transcript but cannot automate a locally installed Lucas Chess GUI.
 
 The Koi v1.1.6 Windows package is `koi-engine-v1.1.6.zip`; the portable
 Linux archive is
-`koi-engine-v1.1.6-linux-x86_64.tar.gz`. Each archive retains the project README.md, the
-project GPLv3 license, required third-party licenses, and a `package.json` manifest with per-file
-SHA-256 hashes and source commit provenance. A `.sha256` sidecar verifies the
-archive itself. macOS arm64 (Apple Silicon) archives are published as well.
+`koi-engine-v1.1.6-linux-x86_64.tar.gz`; macOS arm64 (Apple Silicon) archives
+are published alongside them. Each user-facing archive is intentionally minimal
+and contains only the platform engine executables (`koi-engine` plus AVX2/AVX-512
+siblings on Windows/Linux), the bundled `koi.nnue`, and `LICENSE`. `.sha256`
+checksums and external `<package>.package.json` provenance manifests live outside
+the archive alongside the download assets.
 
 Koi has no required configuration file. En Croissant or another UCI GUI sends
 the options at session start; the portable release defaults are `RandomSeed=0`,
@@ -1061,18 +1063,12 @@ For the recommended En Croissant smoke scenario, use `Hash=512` and `Threads=4`,
 then keep the book and Syzygy paths explicitly configured if those
 assets are available.
 
-The release packages carry a custom built CC0 1.0 Polyglot book as
-`book/koi.bin`, with a `book/COPYING.txt` notice and a SHA-256 sidecar; copy it
-beside the binary as `book.bin` to enable automatic detection. It was built by
-`tools/book/build_database_book.py` from 4,084,023 Lichess standard games
-(2013-01..2014-01), keeping the 35,606 games where both players were rated at
-least 1800 and averaged at least 2000 in rapid-or-longer time controls: 284,030
-positions / 47,020 entries / 752,320 bytes, SHA-256
-`2ee7643d193a285978c0c56b97f7d9d280aef9fd2d12c984a472b56df2d0a923`.
-User-supplied books remain supported through `BookFile`. Never redistribute a
+Opening books are user-supplied (for example a local `book.bin` beside the
+executable or via `BookFile` / `tools/build/install_book.ps1`, or generated from
+Lichess dumps using `tools/book/build_database_book.py`). Never redistribute a
 book whose license does not permit it.
 
-Release archives contain only the engine binaries and their runtime assets.
+Release archives contain strictly the engine binaries, `koi.nnue`, and `LICENSE`.
 Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`) and
 the test suite are not included; build them from source when you need them.
 Retain these repository licenses with the package:

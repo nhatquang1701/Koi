@@ -31,9 +31,9 @@
 | Area | Capabilities |
 | :--- | :--- |
 | **Search** | Iterative-deepening alpha-beta (PVS) · Lazy SMP (`Threads > 1`) · Root-parallel `MultiPV` (up to 16 lines) · Deterministic single-thread mode (`Threads = 1`) |
-| **Evaluation** | Bundled HalfKA NNUE network (`nnue/koi.nnue`, auto-discovered at boot) · Clean tapered classical evaluator selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce` |
+| **Evaluation** | Bundled HalfKA NNUE network (`koi.nnue`, auto-discovered at boot) · Clean tapered classical evaluator selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce` |
 | **Protocol** | Standard FIDE chess over **UCI**, **XBoard/CECP v2**, and **USI** / **UCCI** / **UCI_Cyclone** preset compatibility (`Protocol` option or `--protocol`) · Flag-proof time management · In-place `ponder` / `ponderhit` · `UCI_ShowWDL` |
-| **Assets** | Bundled CC0 Polyglot opening book (`book/koi.bin`) · Automatic detection of local books (`book.bin`) and Syzygy tablebases (`syzygy/`) |
+| **Assets** | Automatic detection of user-supplied opening books (`book.bin`) and Syzygy tablebases (`syzygy/`) |
 | **Hardware** | Automatic CPU dispatch on x86-64 (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon (`arm64`) support |
 
 ---
@@ -42,18 +42,18 @@
 
 ### 1. Download a Release Package
 
-Prebuilt archives and `.sha256` checksum sidecars are published on [GitHub Releases](https://github.com/nhatquang1701/Koi/releases):
+Prebuilt archives, `.sha256` checksum sidecars, `.package.json` manifests, and GitHub SLSA build-provenance attestations are published on [GitHub Releases](https://github.com/nhatquang1701/Koi/releases) (see [SECURITY.md](SECURITY.md) for verification instructions):
 
 - **Windows x64:** `koi-engine-v1.1.6.zip`
 - **Linux x86-64:** `koi-engine-v1.1.6-linux-x86_64.tar.gz`
 - **macOS arm64 (Apple Silicon):** `koi-engine-v1.1.6-macos-arm64.tar.gz`
 
-Each release archive is self-contained and includes the engine binaries, the gated network (`nnue/koi.nnue`), the custom CC0 opening book (`book/koi.bin`), required third-party notices, and a cryptographic `package.json` provenance manifest.
+Each release archive is kept minimal and self-contained, shipping only the engine binaries (`koi-engine` plus `koi-engine-avx2` and `koi-engine-avx512` on x86-64), the gated network (`koi.nnue`), and `LICENSE`. Checksums, `.package.json` provenance manifests, and SLSA attestations live alongside the archive outside the zip/tarball.
 
 ### 2. Register in Your Chess GUI
 
 1. Extract the archive to a permanent folder.
-2. Add `koi-engine.exe` (Windows) or `koi-engine` (Linux / macOS) as a UCI engine in **Pawn Appétit**, **En Croissant**, **Lucas Chess**, **Arena**, **Cute Chess**, or any compatible UCI/XBoard interface.
+2. Add `koi-engine.exe` (Windows) or `koi-engine` (Linux / macOS) as a UCI engine in **Pawn Appétit**, **En Croissant**, **Lucas Chess**, **Arena**, **Cute Chess**, or any compatible UCI/XBoard interface. On x86-64 Windows/Linux you may also register `koi-engine-avx2` or `koi-engine-avx512` directly if your CPU supports those instruction sets.
    - To show `Name: Koi` and a separate `VERSION` badge (like Stockfish) in **Pawn Appétit / En Croissant**, run `koi-engine --engine-json` and paste the output into **Edit JSON** (local binary import in those GUIs only reads `Name` from UCI `id name` and initializes `Version` empty). You can also print the build version via `koi-engine --version`.
 3. Recommended starting options:
    - `Hash = 512` (shared transposition table in MB)
@@ -61,9 +61,9 @@ Each release archive is self-contained and includes the engine binaries, the gat
 
 Koi works out of the box with zero configuration files:
 
-- **NNUE network:** Automatically discovered from `nnue/koi.nnue` or `koi.nnue` beside the executable.
-- **Opening book:** Copy `book/koi.bin` beside the binary as `book.bin` to enable automatic Polyglot book lookup (or point `BookFile` at any `.bin` book and set `OwnBook = true`).
-- **Syzygy tablebases:** Place `.rtbw` and `.rtbz` files in a `syzygy/` folder beside the executable (or set `SyzygyPath`) for automatic root and interior probing.
+- **NNUE network:** Automatically discovered from `koi.nnue` (or `nnue/koi.nnue`) beside the executable.
+- **Opening book (optional):** Place any Polyglot `.bin` file beside the binary as `book.bin` to enable automatic book lookup (or point `BookFile` at any `.bin` book and set `OwnBook = true`).
+- **Syzygy tablebases (optional):** Place `.rtbw` and `.rtbz` files in a `syzygy/` folder beside the executable (or set `SyzygyPath`) for automatic root and interior probing.
 
 ---
 

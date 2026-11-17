@@ -94,6 +94,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "package script exited with $LASTEXITCODE" }
 
     $packageDirectory = Join-Path $outputDirectory $packageName
+    $manifestPath = Join-Path $outputDirectory "$packageName.package.json"
     $archivePath = Join-Path $outputDirectory $archivePathName
     $archiveHashPath = "$archivePath.sha256"
     $requiredExecutables = @("koi-engine$binarySuffix")
@@ -101,21 +102,40 @@ try {
         $requiredExecutables = @("koi-engine$binarySuffix", "koi-engine-avx2$binarySuffix",
             "koi-engine-avx512$binarySuffix")
     }
-    $requiredFiles = @($requiredExecutables + @('README.md', 'LICENSE', 'INSTALL.txt', 'package.json',
-        'licenses\chess-library-MIT.txt', 'licenses\fathom-MIT.txt'))
+    $requiredFiles = @($requiredExecutables + @('LICENSE'))
     foreach ($required in $requiredFiles) {
         Assert-True (Test-Path -LiteralPath (Join-Path $packageDirectory $required) -PathType Leaf) "package is missing $required"
     }
-    Assert-True (-not (Test-Path -LiteralPath (Join-Path $packageDirectory 'book.bin'))) 'package must not embed user-supplied book.bin'
+    $actualPackagePaths = @(Get-ChildItem -LiteralPath $packageDirectory -File -Recurse |
+        ForEach-Object { $_.FullName.Substring($packageDirectory.Length + 1).Replace('\', '/') } |
+        Sort-Object)
+    $expectedPackagePaths = @($requiredFiles | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)
+    Assert-True (($actualPackagePaths -join "`n") -ceq ($expectedPackagePaths -join "`n")) "release package must contain strictly executables and LICENSE; found: $($actualPackagePaths -join ', ')"
+    foreach ($unexpected in @('README.md', 'INSTALL.txt', 'package.json', 'licenses', 'book', 'nnue', 'book.bin')) {
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $packageDirectory $unexpected))) "clean release package must not include $unexpected"
+    }
     $developerTools = @("koi-bench$binarySuffix", "koi-replay$binarySuffix",
         "koi-perft$binarySuffix", "koi-eval-features$binarySuffix")
     foreach ($tool in $developerTools) {
         Assert-True (-not (Test-Path -LiteralPath (Join-Path $packageDirectory $tool))) "release package must not ship developer tool $tool"
     }
+    Assert-True (Test-Path -LiteralPath $manifestPath -PathType Leaf) 'external package manifest was not produced beside the archive'
     Assert-True (Test-Path -LiteralPath $archivePath -PathType Leaf) 'package archive was not produced'
     Assert-True (Test-Path -LiteralPath $archiveHashPath -PathType Leaf) 'archive SHA-256 sidecar was not produced'
 
-    $manifestText = Get-Content -LiteralPath (Join-Path $packageDirectory 'package.json') -Raw
+    if ($isWindowsHost) {
+        foreach ($exeName in $requiredExecutables) {
+            $exePath = Join-Path $packageDirectory $exeName
+            $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exePath)
+            Assert-True ($versionInfo.ProductName -ceq 'Koi Chess Engine') "$exeName ProductName metadata is missing: '$($versionInfo.ProductName)'"
+            Assert-True ($versionInfo.CompanyName -ceq 'Koi Chess Engine Contributors') "$exeName CompanyName metadata is missing: '$($versionInfo.CompanyName)'"
+            Assert-True ($versionInfo.OriginalFilename -ceq $exeName) "$exeName OriginalFilename metadata mismatch: '$($versionInfo.OriginalFilename)'"
+            Assert-True (-not [string]::IsNullOrWhiteSpace($versionInfo.FileDescription)) "$exeName FileDescription metadata is missing"
+            Assert-True ($versionInfo.FileVersion -match '^1\.1\.6\.') "$exeName FileVersion metadata mismatch: '$($versionInfo.FileVersion)'"
+        }
+    }
+
+    $manifestText = Get-Content -LiteralPath $manifestPath -Raw
     $manifest = $manifestText | ConvertFrom-Json
     Assert-True ($manifest.schema -ceq 'koi-engine-package-v1') 'package manifest schema is incorrect'
     Assert-True ($manifest.version -ceq '1.1.6') 'package manifest version is not 1.1.6'
@@ -134,8 +154,8 @@ try {
     Assert-True ($manifest.tablebases_included -eq $false) 'manifest must state that tablebases are excluded'
 
     $manifestFiles = @($manifest.files)
-    Assert-True ($manifestFiles.Count -eq ($requiredFiles.Count - 1)) 'manifest must checksum each payload file except package.json'
-    $expectedManifestPaths = @($requiredFiles | Where-Object { $_ -cne 'package.json' } | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)
+    Assert-True ($manifestFiles.Count -eq $requiredFiles.Count) 'manifest must checksum every payload file'
+    $expectedManifestPaths = @($requiredFiles | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)
     $actualManifestPaths = @($manifestFiles | ForEach-Object { [string]$_.path } | Sort-Object)
     Assert-True (($expectedManifestPaths -join "`n") -ceq ($actualManifestPaths -join "`n")) 'manifest file list does not match package payloads'
     foreach ($file in $manifestFiles) {
@@ -147,6 +167,9 @@ try {
     }
 
     $archiveHash = Get-TestSha256 -Path $archivePath
+    Assert-True ($manifest.archive.name -ceq $archivePathName) 'manifest archive name mismatch'
+    Assert-True ($manifest.archive.sha256 -ceq $archiveHash) 'manifest archive SHA-256 mismatch'
+    Assert-True ($manifest.archive.size_bytes -eq (Get-Item -LiteralPath $archivePath).Length) 'manifest archive size mismatch'
     $sidecar = (Get-Content -LiteralPath $archiveHashPath -Raw).Trim()
     Assert-True ($sidecar -match "^$archiveHash\s+\*?$([regex]::Escape($archivePathName))$") 'archive SHA-256 sidecar does not match the archive'
 
@@ -161,9 +184,10 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "tar extraction failed with exit code $LASTEXITCODE" }
     }
 
-    foreach ($required in $requiredFiles) {
-        Assert-True (Test-Path -LiteralPath (Join-Path $extractionDirectory $required) -PathType Leaf) "extracted archive is missing $required"
-    }
+    $actualExtractedPaths = @(Get-ChildItem -LiteralPath $extractionDirectory -File -Recurse |
+        ForEach-Object { $_.FullName.Substring($extractionDirectory.Length + 1).Replace('\', '/') } |
+        Sort-Object)
+    Assert-True (($actualExtractedPaths -join "`n") -ceq ($expectedPackagePaths -join "`n")) "extracted archive file list mismatch: $($actualExtractedPaths -join ', ')"
     foreach ($tool in $developerTools) {
         Assert-True (-not (Test-Path -LiteralPath (Join-Path $extractionDirectory $tool))) "extracted release archive must not ship developer tool $tool"
     }
@@ -197,7 +221,7 @@ try {
         Assert-True (@($replay.StandardOutput -split "`r?`n") -contains 'legal 1') "$label bestmove is not legal from startpos: $bestmove"
     }
 
-    Write-Output '[3/4] verify bundled NNUE network and metadata packaging'
+    Write-Output '[3/4] verify flat bundled NNUE layout and external provenance manifest'
     $netSourceDirectory = Join-Path $outputDirectory 'net-source'
     New-Item -ItemType Directory -Path $netSourceDirectory -Force | Out-Null
     $netSource = Join-Path $netSourceDirectory 'candidate.nnue'
@@ -210,16 +234,29 @@ try {
         -NnuePath $netSource -NnueMetadataPath $metadataSource | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "package script with a network exited with $LASTEXITCODE" }
     $netPackage = Join-Path $netOutputDirectory $packageName
-    $netTarget = Join-Path $netPackage 'nnue/koi.nnue'
-    Assert-True (Test-Path -LiteralPath $netTarget -PathType Leaf) 'package is missing nnue/koi.nnue'
+    $netTarget = Join-Path $netPackage 'koi.nnue'
+    Assert-True (Test-Path -LiteralPath $netTarget -PathType Leaf) 'package is missing flat koi.nnue'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $netPackage 'nnue'))) 'clean release package must place koi.nnue flat beside binaries without nnue/ directory'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $netPackage 'koi.nnue.sha256'))) 'clean release package must not include koi.nnue.sha256 inside the archive'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $netPackage 'koi.nnue.metadata.json'))) 'clean release package must not include koi.nnue.metadata.json inside the archive'
     Assert-True ((Get-TestSha256 -Path $netTarget) -ceq (Get-TestSha256 -Path $netSource)) 'bundled network differs from the source network'
-    $netSidecar = (Get-Content -LiteralPath (Join-Path $netPackage 'nnue/koi.nnue.sha256') -Raw).Trim()
-    Assert-True ($netSidecar -ceq (Get-TestSha256 -Path $netTarget)) 'network sidecar does not match the bundled network'
-    Assert-True (Test-Path -LiteralPath (Join-Path $netPackage 'nnue/koi.nnue.metadata.json') -PathType Leaf) 'package is missing the network metadata'
-    $netManifest = Get-Content -LiteralPath (Join-Path $netPackage 'package.json') -Raw | ConvertFrom-Json
+    $netManifestPath = Join-Path $netOutputDirectory "$packageName.package.json"
+    $netManifest = Get-Content -LiteralPath $netManifestPath -Raw | ConvertFrom-Json
     Assert-True ($netManifest.nnue_included -eq $true) 'manifest must state that the network is included'
+    Assert-True ($netManifest.nnue_metadata_sha256 -ceq (Get-TestSha256 -Path $metadataSource)) 'manifest must record external metadata SHA-256'
     $netPaths = @($netManifest.files | ForEach-Object { [string]$_.path })
-    Assert-True ($netPaths -contains 'nnue/koi.nnue') 'manifest file list is missing the network'
+    Assert-True ($netPaths -contains 'koi.nnue') 'manifest file list is missing flat koi.nnue'
+
+    $flatSmokeDir = Join-Path $outputDirectory 'flat-smoke'
+    & $powerShellExecutable -NoProfile -ExecutionPolicy Bypass -File $PackageScript `
+        -BuildDirectory $BuildDirectory -OutputDirectory $flatSmokeDir `
+        -NnuePath $fixtureNet | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "package script with fixture network exited with $LASTEXITCODE" }
+    $flatSmokeEngine = Join-Path (Join-Path $flatSmokeDir $packageName) "koi-engine$binarySuffix"
+    $flatSmoke = Invoke-BoundedProcess -FilePath $flatSmokeEngine -InputLines $uciTranscript
+    Assert-True ($flatSmoke.ExitCode -eq 0) "flat koi.nnue auto-discovery failed with $($flatSmoke.ExitCode)"
+    Assert-True (@($flatSmoke.StandardOutput -split "`r?`n") -contains 'uciok') 'flat koi.nnue package did not complete UCI handshake without KOI_NNUE_PATH'
+    Assert-True ((@($flatSmoke.StandardOutput -split "`r?`n" | Where-Object { $_ -match '^bestmove\s+' })).Count -eq 1) 'flat koi.nnue package did not return one bestmove'
 
     Write-Output '[4/4] verify NNUE gate report acceptance and rejection enforcement'
     $gateReport = Join-Path $netSourceDirectory 'nnue-gate.json'
@@ -234,10 +271,10 @@ try {
         -NnuePath $netSource -NnueMetadataPath $metadataSource `
         -NnueGateReport $gateReport -ReleasePackage | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "package script with a gate report exited with $LASTEXITCODE" }
-    $gatedManifest = Get-Content -LiteralPath (Join-Path (Join-Path $gatedOutputDirectory $packageName) 'package.json') -Raw |
+    $gatedManifest = Get-Content -LiteralPath (Join-Path $gatedOutputDirectory "$packageName.package.json") -Raw |
         ConvertFrom-Json
     Assert-True ($gatedManifest.nnue_gate.decision -ceq 'accept') 'manifest must record the NNUE gate decision'
-    Assert-True (Test-Path -LiteralPath (Join-Path (Join-Path $gatedOutputDirectory $packageName) 'nnue/koi.nnue') -PathType Leaf) 'gated package is missing the network'
+    Assert-True (Test-Path -LiteralPath (Join-Path (Join-Path $gatedOutputDirectory $packageName) 'koi.nnue') -PathType Leaf) 'gated package is missing flat koi.nnue'
 
     $badGate = Join-Path $netSourceDirectory 'nnue-gate-rejected.json'
     [ordered]@{

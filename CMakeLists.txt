@@ -169,10 +169,22 @@ if(MSVC)
         string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
         string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
         add_compile_options(/fsanitize=address)
-        add_link_options(/fsanitize=address)
+        add_link_options(/fsanitize=address /DYNAMICBASE /HIGHENTROPYVA /NXCOMPAT)
         message(STATUS "Koi Engine AddressSanitizer build enabled (dynamic CRT, no /RTC, no LTO)")
     else()
         set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        # Control Flow Guard, CET shadow-stack compatibility, high-entropy ASLR,
+        # and scrubbed PDB paths harden release binaries and reduce false-positive
+        # heuristic flags on Windows.
+        add_compile_options(/guard:cf)
+        add_link_options(
+            /GUARD:CF
+            /DYNAMICBASE
+            /HIGHENTROPYVA
+            /NXCOMPAT
+            /CETCOMPAT
+            "$<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>"
+        )
     endif()
     add_compile_options(
         /EHsc
@@ -191,6 +203,7 @@ else()
         "$<$<CONFIG:Release>:-O2>"
         "$<$<CONFIG:Release>:-O3>"
         "$<$<CONFIG:Release>:-DNDEBUG>"
+        "-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=."
     )
     find_package(Threads REQUIRED)
     # glibc ignores the ELF stack-size header, so the engine raises the default
@@ -792,17 +805,41 @@ target_link_libraries(koi_nnue_fixture PRIVATE koi_core koi_material_evaluator_t
 set_target_properties(koi_nnue_fixture PROPERTIES OUTPUT_NAME "koi-nnue-fixture")
 add_dependencies(koi_nnue_fixture_tests koi_nnue_fixture)
 
+# Embed PE VersionInfo metadata and an asInvoker application manifest on Windows
+# shipping binaries so Defender, SmartScreen, and file Properties identify them
+# cleanly as Koi Chess Engine without heuristic elevation guesses.
+function(koi_configure_shipping_metadata target file_description output_filename)
+    if(MSVC)
+        set(KOI_PE_FILE_DESCRIPTION "${file_description}")
+        set(KOI_PE_INTERNAL_NAME "${target}")
+        set(KOI_PE_ORIGINAL_FILENAME "${output_filename}")
+        set(generated_rc "${CMAKE_CURRENT_BINARY_DIR}/generated/${target}.rc")
+        configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/koi/resources/koi_engine.rc.in"
+            "${generated_rc}"
+            @ONLY
+        )
+        target_sources(${target} PRIVATE
+            "${generated_rc}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/koi/resources/koi_engine.manifest"
+        )
+    endif()
+endfunction()
+
 # Engine flavors: the baseline `koi-engine` selects the best sibling at startup,
 # while on x86-64 the AVX2/AVX-512 binaries gate themselves when launched
-# directly on a CPU that cannot execute them.  macOS arm64 builds the baseline
-# alone because those instruction sets do not exist there.
+# directly on a CPU that cannot execute them without linking process-launch APIs.
+# macOS arm64 builds the baseline alone because those instruction sets do not
+# exist there.
 add_executable(koi_engine
     src/main.cpp
+    src/koi/cpu_variant_selector.cpp
 )
 
 target_link_libraries(koi_engine PRIVATE koi_core_generic)
 target_compile_definitions(koi_engine PRIVATE KOI_CPU_SELECTOR=1)
 set_target_properties(koi_engine PROPERTIES OUTPUT_NAME "koi-engine")
+koi_configure_shipping_metadata(koi_engine "Koi UCI Chess Engine" "koi-engine.exe")
 
 if(KOI_TARGET_X86_64)
     add_executable(koi_engine_avx2
@@ -816,6 +853,8 @@ if(KOI_TARGET_X86_64)
         add_dependencies(koi_engine_avx2 koi_cpu_guard_avx2)
     endif()
     set_target_properties(koi_engine_avx2 PROPERTIES OUTPUT_NAME "koi-engine-avx2")
+    koi_configure_shipping_metadata(
+        koi_engine_avx2 "Koi UCI Chess Engine (AVX2)" "koi-engine-avx2.exe")
 
     add_executable(koi_engine_avx512
         src/main.cpp
@@ -828,6 +867,8 @@ if(KOI_TARGET_X86_64)
         add_dependencies(koi_engine_avx512 koi_cpu_guard_avx512)
     endif()
     set_target_properties(koi_engine_avx512 PROPERTIES OUTPUT_NAME "koi-engine-avx512")
+    koi_configure_shipping_metadata(
+        koi_engine_avx512 "Koi UCI Chess Engine (AVX-512)" "koi-engine-avx512.exe")
 endif()
 
 # Every C++ test binary shares the assertion/fixture helpers. The optional

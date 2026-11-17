@@ -12,11 +12,7 @@ param(
     [string]$NnueGateReport = '',
     # Release-candidate packaging: bundles of the public release must carry a
     # gated network and its gate report. Tests/local inspection may omit both.
-    [switch]$ReleasePackage,
-    # Optional Polyglot opening book, generated with tools/book/build_book.py from
-    # the CC0 lichess-org/chess-openings data. The engine auto-detects a book
-    # beside the executable when OwnBook was never set.
-    [string]$BookPath = ''
+    [switch]$ReleasePackage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -88,9 +84,9 @@ if (-not (Test-RequiredExecutables -Directory $binaryDirectory)) {
     }
     $binaryDirectory = [System.IO.Path]::GetFullPath($multiConfigReleaseDirectory)
 }
-$readmePath = Join-Path $repositoryRoot 'README.md'
-if (-not (Test-Path -LiteralPath $readmePath -PathType Leaf)) {
-    throw "README is missing: $readmePath"
+$licensePath = Join-Path $repositoryRoot 'LICENSE'
+if (-not (Test-Path -LiteralPath $licensePath -PathType Leaf)) {
+    throw "LICENSE is missing: $licensePath"
 }
 
 # Only the exact generated package directory is replaced.  The resolved target
@@ -105,33 +101,32 @@ if (Test-Path -LiteralPath $packageDirectory) {
 }
 New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
 
+$manifestPath = Join-Path $outputRoot "$packageName.package.json"
+
 foreach ($name in $requiredExecutables) {
     Copy-Item -LiteralPath (Join-Path $binaryDirectory $name) -Destination (Join-Path $packageDirectory $name)
 }
-Copy-Item -LiteralPath $readmePath -Destination (Join-Path $packageDirectory 'README.md')
-Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') `
-    -Destination (Join-Path $packageDirectory 'LICENSE')
+Copy-Item -LiteralPath $licensePath -Destination (Join-Path $packageDirectory 'LICENSE')
 
 $nnueIncluded = $false
+$nnueMetadataSha256 = $null
 $nnueGate = $null
 if (-not [string]::IsNullOrWhiteSpace($NnuePath)) {
     $resolvedNnue = [System.IO.Path]::GetFullPath($NnuePath)
     if (-not (Test-Path -LiteralPath $resolvedNnue -PathType Leaf)) {
         throw "NNUE network is missing: $resolvedNnue"
     }
-    $nnueDirectory = Join-Path $packageDirectory 'nnue'
-    New-Item -ItemType Directory -Path $nnueDirectory -Force | Out-Null
-    $nnueTarget = Join-Path $nnueDirectory 'koi.nnue'
+    # Place koi.nnue directly beside the executables so the user sees a clean
+    # directory with only the binaries, neural network, and root LICENSE.
+    $nnueTarget = Join-Path $packageDirectory 'koi.nnue'
     Copy-Item -LiteralPath $resolvedNnue -Destination $nnueTarget
     $nnueSha = Get-Sha256Hex $nnueTarget
-    Set-Content -LiteralPath (Join-Path $nnueDirectory 'koi.nnue.sha256') -Value $nnueSha -Encoding ASCII
     if (-not [string]::IsNullOrWhiteSpace($NnueMetadataPath)) {
         $resolvedMetadata = [System.IO.Path]::GetFullPath($NnueMetadataPath)
         if (-not (Test-Path -LiteralPath $resolvedMetadata -PathType Leaf)) {
             throw "NNUE metadata is missing: $resolvedMetadata"
         }
-        Copy-Item -LiteralPath $resolvedMetadata `
-            -Destination (Join-Path $nnueDirectory 'koi.nnue.metadata.json')
+        $nnueMetadataSha256 = Get-Sha256Hex $resolvedMetadata
     }
     $nnueIncluded = $true
 
@@ -175,99 +170,8 @@ if ($ReleasePackage) {
     }
 }
 
-$bookIncluded = $false
-if (-not [string]::IsNullOrWhiteSpace($BookPath)) {
-    $resolvedBook = [System.IO.Path]::GetFullPath($BookPath)
-    if (-not (Test-Path -LiteralPath $resolvedBook -PathType Leaf)) {
-        throw "opening book is missing: $resolvedBook"
-    }
-    $bookDirectory = Join-Path $packageDirectory 'book'
-    New-Item -ItemType Directory -Path $bookDirectory -Force | Out-Null
-    # The engine looks for book.bin beside the executable; the package keeps it
-    # in book/ with a sidecar so a user can copy it next to the binary verbatim.
-    $bookTarget = Join-Path $bookDirectory 'koi.bin'
-    Copy-Item -LiteralPath $resolvedBook -Destination $bookTarget
-    $bookSha = Get-Sha256Hex $bookTarget
-    Set-Content -LiteralPath (Join-Path $bookDirectory 'koi.bin.sha256') -Value $bookSha -Encoding ASCII
-    $bookNotice = Join-Path $packageDirectory 'book/COPYING.txt'
-    Set-Content -LiteralPath $bookNotice -Encoding ASCII -Value @(
-        'koi.bin is a Polyglot opening book built from Lichess standard-game database dumps,',
-        'released under CC0 1.0 Universal (public domain dedication).',
-        'Source: https://database.lichess.org',
-        'Generator: tools/book/build_database_book.py',
-        "SHA-256: $bookSha"
-    )
-    $bookIncluded = $true
-}
-
-$licenseDirectory = Join-Path $packageDirectory 'licenses'
-New-Item -ItemType Directory -Path $licenseDirectory -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $repositoryRoot 'third_party/chess-library/LICENSE') `
-    -Destination (Join-Path $licenseDirectory 'chess-library-MIT.txt')
-Copy-Item -LiteralPath (Join-Path $repositoryRoot 'third_party/fathom/LICENSE') `
-    -Destination (Join-Path $licenseDirectory 'fathom-MIT.txt')
-
-$engineName = "koi-engine$binarySuffix"
-$avx2Name = "koi-engine-avx2$binarySuffix"
-$avx512Name = "koi-engine-avx512$binarySuffix"
-$nnueParagraph = if ($nnueIncluded) {
-    "This package includes Koi's gated NNUE network at nnue/koi.nnue (its SHA-256 is in nnue/koi.nnue.sha256). The engine discovers it automatically at startup; set EvalFile only to override it. NNUE is required: the classical fallback was removed 2026-10-28."
-} else {
-    ''
-}
-$bookParagraph = if ($bookIncluded) {
-    "This package includes a Polyglot opening book at book/koi.bin (CC0, built from Lichess standard-game database dumps by tools/book/build_database_book.py; SHA-256 in book/koi.bin.sha256). Copy it next to the engine binary as book.bin and Koi uses it automatically: a book beside the executable is used unless the GUI sets OwnBook explicitly."
-} else {
-    ''
-}
-$launcherParagraph = if ($isMacOSHost) {
-    "This package contains the native Apple Silicon (arm64) build; run $engineName directly."
-} else {
-@"
-$engineName starts the fastest build this CPU supports: it launches the
-$avx512Name or $avx2Name sibling when it is present and the CPU supports those
-instructions, and otherwise runs its own baseline build in place. Set
-KOI_CPU_VARIANT=generic, avx2, or avx512 to force one build.
-"@
-}
-$developerToolsParagraph = 'Release packages ship the engine binaries and their runtime assets only. Developer tools (koi-bench, koi-replay, koi-perft, koi-eval-features) and the test suite are built from source and are not included.'
-$hardwareParagraph = if ($isMacOSHost) {
-    'Koi is CPU-only.'
-} else {
-@"
-Every build requires an x86-64 CPU. The AVX2 build requires AVX2 and the
-AVX-512 build requires AVX-512; the baseline build has no instruction-set
-requirement. Koi is CPU-only.
-"@
-}
-@"
-Koi v1.1.6 installation
-
-Run $engineName as a UCI engine from En Croissant or another UCI GUI.
-$launcherParagraph
-
-The optional user-supplied book.bin belongs beside $engineName. Syzygy
-tablebase files are also user-supplied; configure SyzygyPath in the GUI when
-they are available.
-$nnueParagraph
-$bookParagraph
-
-$developerToolsParagraph
-
-Recommended starting options:
-  Hash=512
-  Threads=1
-  OwnBook=false
-  BookFile=book.bin
-  BookDepth=16
-  BookRandom=false
-
-$hardwareParagraph
-
-Koi is free software distributed under the GNU General Public License v3.0
-(see LICENSE). The corresponding source code matching this package's
-source_commit in package.json is available at https://github.com/nhatquang1701/Koi.
-"@ | Set-Content -LiteralPath (Join-Path $packageDirectory 'INSTALL.txt') -Encoding UTF8
+# Keep provenance and checksums out of the user-facing archive so extracting
+# a release leaves only the executables, koi.nnue, and LICENSE.
 
 $sourceCommit = $env:GITHUB_SHA
 if ($sourceCommit -notmatch '^[0-9a-f]{40,64}$') {
@@ -293,7 +197,6 @@ if ($sourceDirty) {
     Write-Output "source_dirty=true first_offender=$($statusOutput[0])"
 }
 $packageFiles = @(Get-ChildItem -LiteralPath $packageDirectory -File -Recurse |
-    Where-Object { $_.FullName -ne (Join-Path $packageDirectory 'package.json') } |
     Sort-Object { $_.FullName.Substring($packageDirectory.Length + 1).Replace('\', '/') } |
     ForEach-Object {
         $relativePath = $_.FullName.Substring($packageDirectory.Length + 1).Replace('\', '/')
@@ -303,24 +206,6 @@ $packageFiles = @(Get-ChildItem -LiteralPath $packageDirectory -File -Recurse |
             sha256 = Get-Sha256Hex $_.FullName
         }
     })
-$manifest = [ordered]@{
-    schema = 'koi-engine-package-v1'
-    version = '1.1.6'
-    platform = if ($isWindowsHost) { 'windows-x86_64' } elseif ($isMacOSHost) { 'macos-arm64' } else { 'linux-x86_64' }
-    build_configuration = 'Release'
-    files = $packageFiles
-    book_included = [bool]$bookIncluded
-    tablebases_included = $false
-    nnue_included = [bool]$nnueIncluded
-    nnue_gate = $nnueGate
-    provenance = [ordered]@{
-        source_commit = $sourceCommit
-        source_dirty = [bool]$sourceDirty
-        source_ref = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_REF)) { $env:GITHUB_REF } else { $null }
-        created_utc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
-    }
-}
-$manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $packageDirectory 'package.json') -Encoding UTF8
 
 if (Test-Path -LiteralPath $archivePath) {
     Remove-Item -LiteralPath $archivePath -Force
@@ -336,10 +221,35 @@ if ($isWindowsHost) {
 $archiveHash = Get-Sha256Hex -Path $archivePath
 Set-Content -LiteralPath "$archivePath.sha256" -Value "$archiveHash  $([System.IO.Path]::GetFileName($archivePath))" -Encoding ASCII
 
+$manifest = [ordered]@{
+    schema = 'koi-engine-package-v1'
+    version = '1.1.6'
+    platform = if ($isWindowsHost) { 'windows-x86_64' } elseif ($isMacOSHost) { 'macos-arm64' } else { 'linux-x86_64' }
+    build_configuration = 'Release'
+    archive = [ordered]@{
+        name = [System.IO.Path]::GetFileName($archivePath)
+        size_bytes = (Get-Item -LiteralPath $archivePath).Length
+        sha256 = $archiveHash
+    }
+    files = $packageFiles
+    book_included = $false
+    tablebases_included = $false
+    nnue_included = [bool]$nnueIncluded
+    nnue_metadata_sha256 = $nnueMetadataSha256
+    nnue_gate = $nnueGate
+    provenance = [ordered]@{
+        source_commit = $sourceCommit
+        source_dirty = [bool]$sourceDirty
+        source_ref = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_REF)) { $env:GITHUB_REF } else { $null }
+        created_utc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    }
+}
+$manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
 Write-Output "package_directory=$packageDirectory"
+Write-Output "manifest=$manifestPath"
 Write-Output "archive=$archivePath"
 Write-Output "archive_sha256=$archiveHash"
-Write-Output "book_included=$($bookIncluded.ToString().ToLowerInvariant())"
 Write-Output "nnue_included=$($nnueIncluded.ToString().ToLowerInvariant())"
 Write-Output "nnue_gate_decision=$(if ($null -ne $nnueGate) { $nnueGate.decision } else { 'none' })"
 Write-Output "release_package=$($ReleasePackage.ToString().ToLowerInvariant())"

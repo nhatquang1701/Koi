@@ -4,6 +4,7 @@ $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../
 $workflow = Join-Path $repositoryRoot '.github/workflows/windows.yml'
 $linuxWorkflow = Join-Path $repositoryRoot '.github/workflows/linux.yml'
 $macosWorkflow = Join-Path $repositoryRoot '.github/workflows/macos.yml'
+$releaseWorkflow = Join-Path $repositoryRoot '.github/workflows/release.yml'
 $candidateWorkflow = Join-Path $repositoryRoot '.github/workflows/release-candidate-games.yml'
 $cmake = Join-Path $repositoryRoot 'CMakeLists.txt'
 if (-not (Test-Path -LiteralPath $workflow -PathType Leaf)) {
@@ -14,6 +15,9 @@ if (-not (Test-Path -LiteralPath $linuxWorkflow -PathType Leaf)) {
 }
 if (-not (Test-Path -LiteralPath $macosWorkflow -PathType Leaf)) {
     throw "macOS CI workflow is missing: $macosWorkflow"
+}
+if (-not (Test-Path -LiteralPath $releaseWorkflow -PathType Leaf)) {
+    throw "Release workflow is missing: $releaseWorkflow"
 }
 if (-not (Test-Path -LiteralPath $candidateWorkflow -PathType Leaf)) {
     throw "Release candidate game workflow is missing: $candidateWorkflow"
@@ -27,6 +31,7 @@ if (-not $windowsFlakeMatch.Success) {
 $windowsFlakeContent = $windowsFlakeMatch.Value
 $linuxContent = Get-Content -LiteralPath $linuxWorkflow -Raw
 $macosContent = Get-Content -LiteralPath $macosWorkflow -Raw
+$releaseContent = Get-Content -LiteralPath $releaseWorkflow -Raw
 $candidateContent = Get-Content -LiteralPath $candidateWorkflow -Raw
 $cmakeContent = Get-Content -LiteralPath $cmake -Raw
 $requirements = Join-Path $repositoryRoot 'tools/measurement/requirements.txt'
@@ -156,12 +161,22 @@ Require-WorkflowPattern '(?i)tools/build/package_release\.ps1' 'the shared packa
 Require-WorkflowPattern '(?i)tests/integration/packaging/package_release_test\.ps1' 'the packaging manifest and archive smoke test'
 Require-WorkflowPattern '(?i)koi-engine-v1\.1\.6\.zip' 'the Windows package archive name'
 Require-WorkflowPattern '(?i)koi-engine-v1\.1\.6\.zip\.sha256' 'the Windows package checksum sidecar'
+Require-WorkflowPattern '(?i)koi-engine-v1\.1\.6\.package\.json' 'the external Windows package manifest'
+Require-WorkflowPattern '(?i)Control Flow Guard' 'the Windows PE Control Flow Guard check'
 Require-CMakePattern '(?i)check_ipo_supported' 'an IPO/LTO capability check'
 Require-CMakePattern '(?i)CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE\s+ON' 'portable Release IPO/LTO'
 Require-CMakePattern '(?i)/arch:AVX2' 'the AVX2 Release optimization flag'
 Require-CMakePattern '(?i)/arch:AVX512' 'the AVX-512 Release optimization flag'
 Require-CMakePattern '(?i)TB_NO_HW_POP_COUNT' 'the baseline Fathom popcount fallback'
 Require-CMakePattern '(?i)KOI_CPU_SELECTOR' 'the automatic CPU variant selector'
+Require-CMakePattern '(?i)cpu_variant_selector\.cpp' 'the isolated CPU variant selector launcher unit'
+Require-CMakePattern '(?i)koi_configure_shipping_metadata' 'the shipping binary metadata/hardening helper'
+Require-CMakePattern '(?i)/guard:cf' 'MSVC Control Flow Guard compilation'
+Require-CMakePattern '(?i)/GUARD:CF' 'MSVC Control Flow Guard linking'
+Require-CMakePattern '(?i)/CETCOMPAT' 'MSVC shadow stack compatibility linking'
+Require-CMakePattern '(?i)/PDBALTPATH:%_PDB%' 'MSVC reproducible PDB path stripping'
+Require-CMakePattern '(?i)koi_engine\.manifest' 'the Windows application manifest'
+Require-CMakePattern '(?i)koi_engine\.rc\.in' 'the Windows PE VERSIONINFO template'
 Require-CMakePattern '(?i)CONFIG:Release.*:/O2' 'the Release compiler optimization level'
 Require-CMakePattern '(?i)CONFIG:Release.*:/DNDEBUG' 'the Release assertion configuration'
 Require-CMakePattern '(?i)CONFIG:Release' 'a Release-only AVX2 configuration guard'
@@ -198,6 +213,8 @@ Require-LinuxWorkflowPattern '(?i)ctest\s+--test-dir\s+build/ci-release\s+-C\s+R
 Require-LinuxWorkflowPattern '(?i)ubuntu:22\.04' 'the Ubuntu 22.04 tarball container'
 Require-LinuxWorkflowPattern '(?i)tools/build/package_release\.ps1' 'the shared packaging script'
 Require-LinuxWorkflowPattern '(?i)tests/integration/packaging/package_release_test\.ps1' 'the packaging manifest and archive smoke test'
+Require-LinuxWorkflowPattern '(?i)koi-engine-v1\.1\.6-linux-x86_64\.package\.json' 'the external Linux package manifest'
+Require-LinuxWorkflowPattern '(?i)nm\s+-u' 'the Linux variant process-import audit'
 Require-LinuxWorkflowPattern '(?i)koi-engine-v1\.1\.6-linux-x86_64\.tar\.gz' 'the Linux tarball name'
 Require-LinuxWorkflowPattern '(?i)sha256sum\s+-c' 'archive checksum verification'
 Require-LinuxWorkflowPattern '(?i)tar\s+-xzf\s+"\$archive"' 'extraction of the release archive'
@@ -237,10 +254,17 @@ Require-MacOSWorkflowPattern '(?m)^\s{2}macos-package:\s*$' 'the macOS packaging
 Require-MacOSWorkflowPattern '(?i)tools/build/package_release\.ps1' 'the shared packaging script'
 Require-MacOSWorkflowPattern '(?i)tests/integration/packaging/package_release_test\.ps1' 'the packaging manifest and archive smoke test'
 Require-MacOSWorkflowPattern '(?i)koi-engine-v1\.1\.6-macos-arm64\.tar\.gz' 'the macOS tarball name'
+Require-MacOSWorkflowPattern '(?i)koi-engine-v1\.1\.6-macos-arm64\.package\.json' 'the external macOS package manifest'
 Require-MacOSWorkflowPattern '(?i)shasum\s+-a\s+256\s+-c' 'archive checksum verification'
 Require-MacOSWorkflowPattern '(?i)KOI_CPU_VARIANT=generic' 'the forced generic UCI smoke'
 Deny-MacOSWorkflowPattern '(?i)koi-engine-avx512' 'the x86-only AVX-512 smoke'
 Deny-MacOSWorkflowPattern '(?i)koi_engine_variant_process' 'the x86-only three-binary variant process test'
+if ($releaseContent -notmatch '(?i)actions/attest-build-provenance@v2') {
+    throw 'Release workflow must attest SLSA build provenance.'
+}
+if ($releaseContent -notmatch '(?i)softprops/action-gh-release@v2') {
+    throw 'Release workflow must publish artifacts via softprops/action-gh-release.'
+}
 
 # The Windows no-retry flake gate must run repeated serial CTest selections
 # independently so timing failures remain visible instead of being retried away.
