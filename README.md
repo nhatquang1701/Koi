@@ -42,7 +42,7 @@
 
 ### 1. Download a Release Package
 
-Prebuilt archives, `.sha256` checksum sidecars, `.package.json` manifests, and GitHub SLSA build-provenance attestations are published on [GitHub Releases](https://github.com/nhatquang1701/Koi/releases) (see [SECURITY.md](SECURITY.md) for verification instructions):
+Prebuilt archives, `.sha256` checksum sidecars, `.package.json` manifests, and GitHub SLSA build-provenance attestations are published on [GitHub Releases](https://github.com/nhatquang1701/Koi/releases):
 
 - **Windows x64:** `koi-engine-v1.1.6.zip`
 - **Linux x86-64:** `koi-engine-v1.1.6-linux-x86_64.tar.gz`
