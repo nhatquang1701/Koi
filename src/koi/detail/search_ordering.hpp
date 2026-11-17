@@ -146,8 +146,11 @@ private:
     [[nodiscard]] bool is_good_capture(const MoveMetadata& metadata) const noexcept;
     [[nodiscard]] Stage first_stage() const noexcept;
     [[nodiscard]] MoveMetadata materialize(std::size_t index);
-    void prepare_candidates();
-    void ensure_stage_sorted() noexcept;
+    void prepare_quiescence_candidates();
+    void prepare_evasion_candidates();
+    void prepare_main_captures();
+    void prepare_main_quiets();
+    [[nodiscard]] std::size_t pick_next_in_stage(std::size_t rank) noexcept;
     void advance_stage() noexcept;
     [[nodiscard]] const MoveMetadata* emit_tt();
 
@@ -212,11 +215,12 @@ private:
     // picker was built for.
     std::optional<ExchangeContext> see_context_;
     std::array<Candidate, kMaximumLegalMoves> staged_;
-    // Candidates are grouped by stage rank once per preparation; each group is
-    // sorted with its packed key only when its stage is first reached, so
-    // stages that pruning skips never pay for a sort.
+    // Candidates are grouped into disjoint stage ranges and selected
+    // incrementally (or sorted lazily past a small prefix), so stages and late
+    // moves skipped by cutoffs never pay for full-list scoring or introsort.
     std::array<std::uint16_t, kStageRankCount> stage_begin_{};
     std::array<std::uint16_t, kStageRankCount> stage_end_{};
+    std::array<std::uint16_t, kStageRankCount> stage_cursor_{};
     std::bitset<kStageRankCount> stage_sorted_{};
     // The good-capture pass is already ordered by the same history/MVV score
     // used by the bad-capture pass. Keep only the staged slot of each deferred
@@ -227,11 +231,11 @@ private:
     // Deliberately uninitialized: MoveMetadata has no meaningful empty value
     // here and the record is always assigned before it can be read.
     MoveMetadata emitted_metadata_;
-    std::size_t candidate_count_ = 0;
-    std::size_t candidate_index_ = 0;
+    std::size_t main_captures_end_ = 0;
     std::size_t deferred_bad_capture_count_ = 0;
     std::size_t deferred_bad_capture_index_ = 0;
-    bool candidates_prepared_ = false;
+    bool captures_prepared_ = false;
+    bool quiets_prepared_ = false;
     bool tt_emitted_ = false;
     bool skip_quiets_ = false;
 };

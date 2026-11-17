@@ -502,192 +502,189 @@ MoveMetadata SearchMovePicker::materialize(const std::size_t index) {
     return metadata;
 }
 
-void SearchMovePicker::prepare_candidates() {
-    candidate_count_ = 0;
-    candidate_index_ = 0;
-    deferred_bad_capture_count_ = 0;
-    deferred_bad_capture_index_ = 0;
-    candidates_prepared_ = true;
-
-    if (mode_ == Mode::quiescence) {
-        // Quiescence reaches exactly two candidate stages: the complete
-        // capture/promotion stage and the quiet-check stage the generator
-        // enables inside the check horizon.  The complete capture list is
-        // staged, as in Stockfish's qsearch: qsearch's own SEE/delta pruning
-        // decides what is safe, and every tactical candidate is materialized
-        // before ranking so a poisoned capture cannot outrank a sound
-        // defensive recapture.  Place both stages in one pass with a front
-        // cursor for tactical candidates and a back cursor for quiet checks,
-        // then sort each region with its packed key before emission.  The
-        // generic eight-stage counting partition would stage the same records
-        // with the same materialize-then-rank sequence and the same per-stage
-        // key order, so the two placements are emission-order equivalent;
-        // this path additionally skips the in-place permutation and the
-        // main-only deferral/re-priority machinery next() can never reach in
-        // quiescence mode.
-        std::size_t capture_count = 0;
-        std::size_t check_count = 0;
-        for (std::size_t index = 0; index < moves_.size(); ++index) {
-            if (is_excluded(index)) {
-                continue;
-            }
-            const MoveMetadata& source = moves_[index];
-            const bool tactical = source.is_capture() ||
-                source.move.promotion() != Promotion::none;
-            if (!tactical && !source.gives_check) {
-                continue;
-            }
-            // Same SEE resolution as materialize(), minus its main-mode
-            // capture-check probe: a quiescence picker never sets that bit,
-            // so every tactical candidate is ranked with its resolved
-            // exchange score exactly like the generic path ranks it.
-            MoveMetadata materialized;
-            const MoveMetadata* metadata = &source;
-            if (tactical) {
-                materialized = source;
-                if (materialized.is_capture()) {
-                    if (!see_computed_.test(index)) {
-                        if (materialized.see_computed) {
-                            see_scores_[index] = materialized.see_score;
-                        } else {
-                            if (!see_context_.has_value()) {
-                                see_context_ = exchange_context_from(state_);
-                            }
-                            see_scores_[index] = static_cast<std::int16_t>(std::clamp(
-                                static_exchange_gain(*see_context_, materialized),
-                                static_cast<int>(std::numeric_limits<std::int16_t>::min()),
-                                static_cast<int>(std::numeric_limits<std::int16_t>::max())));
-                        }
-                        see_computed_.set(index);
-                    }
-                    materialized.see_score = see_scores_[index];
-                    materialized.see_computed = true;
-                }
-                metadata = &materialized;
-            }
-            const int priority = ordering_.priority(
-                state_, *metadata, std::nullopt, *history_context_);
-            const Candidate candidate{
-                static_cast<std::uint16_t>(index),
-                static_cast<std::uint8_t>(tactical ? Stage::good_captures : Stage::quiet_checks),
-                priority, picker_stage_sort_key(priority, move_tie_break_key(metadata->move))};
-            if (tactical) {
-                staged_[capture_count++] = candidate;
-            } else {
-                staged_[kMaximumLegalMoves - 1 - check_count] = candidate;
-                ++check_count;
-            }
-        }
-        // The two regions cannot overlap: their sizes sum to the number of
-        // staged records, which never exceeds moves_.size().
-        stage_begin_[static_cast<std::size_t>(Stage::good_captures)] = 0;
-        stage_end_[static_cast<std::size_t>(Stage::good_captures)] =
-            static_cast<std::uint16_t>(capture_count);
-        stage_begin_[static_cast<std::size_t>(Stage::quiet_checks)] =
-            static_cast<std::uint16_t>(kMaximumLegalMoves - check_count);
-        stage_end_[static_cast<std::size_t>(Stage::quiet_checks)] =
-            static_cast<std::uint16_t>(kMaximumLegalMoves);
-        candidate_count_ = capture_count + check_count;
-        stage_sorted_.reset();
-        return;
-    }
-
+void SearchMovePicker::prepare_quiescence_candidates() {
+    captures_prepared_ = true;
+    std::size_t capture_count = 0;
+    std::size_t check_count = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
         if (is_excluded(index)) {
             continue;
         }
-        // Quiescence is staged completely above, so this loop only ranks
-        // main and evasion candidates, and each one is ranked from its stored
-        // metadata record directly.
-        const MoveMetadata* metadata = &moves_[index];
-
-        Stage candidate_stage = Stage::done;
-        if (mode_ == Mode::evasion) {
-            candidate_stage = Stage::evasions;
-        } else if (metadata->move.promotion() != Promotion::none || metadata->is_capture()) {
-            candidate_stage = Stage::good_captures;
-        } else {
-            // Quiet checks, killers, counter moves, and ordinary quiets all
-            // compete in one history-ranked quiet pass.  Their priority
-            // carries the forcing/special-move bonus; the stage split only
-            // separates the proven good quiet prefix from the tail that can
-            // safely be searched after deferred captures.
-            candidate_stage = Stage::good_quiets;
+        const MoveMetadata& source = moves_[index];
+        const bool tactical = source.is_capture() ||
+            source.move.promotion() != Promotion::none;
+        if (!tactical && !source.gives_check) {
+            continue;
+        }
+        // Same SEE resolution as materialize(), minus its main-mode
+        // capture-check probe: a quiescence picker never sets that bit,
+        // so every tactical candidate is ranked with its resolved
+        // exchange score exactly like the generic path ranks it.
+        MoveMetadata materialized;
+        const MoveMetadata* metadata = &source;
+        if (tactical) {
+            materialized = source;
+            if (materialized.is_capture()) {
+                if (!see_computed_.test(index)) {
+                    if (materialized.see_computed) {
+                        see_scores_[index] = materialized.see_score;
+                    } else {
+                        if (!see_context_.has_value()) {
+                            see_context_ = exchange_context_from(state_);
+                        }
+                        see_scores_[index] = static_cast<std::int16_t>(std::clamp(
+                            static_exchange_gain(*see_context_, materialized),
+                            static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+                            static_cast<int>(std::numeric_limits<std::int16_t>::max())));
+                    }
+                    see_computed_.set(index);
+                }
+                materialized.see_score = see_scores_[index];
+                materialized.see_computed = true;
+            }
+            metadata = &materialized;
         }
         const int priority = ordering_.priority(
             state_, *metadata, std::nullopt, *history_context_);
-        if (mode_ == Mode::main && candidate_stage == Stage::good_quiets &&
-            priority <= kGoodQuietPriorityThreshold) {
-            candidate_stage = Stage::bad_quiets;
-        }
-        staged_[candidate_count_++] = Candidate{
-            static_cast<std::uint16_t>(index), static_cast<std::uint8_t>(candidate_stage),
+        const Candidate candidate{
+            static_cast<std::uint16_t>(index),
+            static_cast<std::uint8_t>(tactical ? Stage::good_captures : Stage::quiet_checks),
             priority, picker_stage_sort_key(priority, move_tie_break_key(metadata->move))};
-    }
-
-    // Partition by stage rank and sort each stage lazily.  The previous
-    // whole-array comparator's first key was the stage rank itself, so
-    // grouping by rank and then sorting each group with the remaining keys
-    // produces exactly the same emission order; stages that pruning never
-    // reaches are never sorted at all.
-    //
-    // The grouping itself is a counting partition rather than a comparison
-    // sort.  The per-stage packed key below is a strict total order because
-    // its tie-break half is unique per candidate (see ensure_stage_sorted),
-    // so the order inside a stage is fixed by that sort alone and the
-    // partition is free to be unstable.
-    std::array<std::size_t, kStageRankCount> counts{};
-    for (std::size_t i = 0; i < candidate_count_; ++i) {
-        ++counts[staged_[i].stage_rank];
-    }
-    std::size_t stage_offset = 0;
-    for (std::size_t rank = 0; rank < kStageRankCount; ++rank) {
-        stage_begin_[rank] = static_cast<std::uint16_t>(stage_offset);
-        stage_offset += counts[rank];
-        stage_end_[rank] = static_cast<std::uint16_t>(stage_offset);
-    }
-    // In-place counting permutation: move each misplaced candidate to the
-    // write cursor of its rank's range.  Every swap settles one slot, so the
-    // scan performs at most candidate_count_ swaps.
-    std::array<std::size_t, kStageRankCount> write{};
-    for (std::size_t rank = 0; rank < kStageRankCount; ++rank) {
-        write[rank] = stage_begin_[rank];
-    }
-    for (std::size_t i = 0; i < candidate_count_; ++i) {
-        std::size_t rank = staged_[i].stage_rank;
-        while (i < stage_begin_[rank] || i >= stage_end_[rank]) {
-            std::swap(staged_[i], staged_[write[rank]]);
-            ++write[rank];
-            rank = staged_[i].stage_rank;
+        if (tactical) {
+            staged_[capture_count++] = candidate;
+        } else {
+            staged_[kMaximumLegalMoves - 1 - check_count] = candidate;
+            ++check_count;
         }
     }
+    const std::size_t cap_rank = static_cast<std::size_t>(Stage::good_captures);
+    const std::size_t chk_rank = static_cast<std::size_t>(Stage::quiet_checks);
+    stage_begin_[cap_rank] = 0;
+    stage_end_[cap_rank] = static_cast<std::uint16_t>(capture_count);
+    stage_cursor_[cap_rank] = 0;
+    stage_begin_[chk_rank] = static_cast<std::uint16_t>(kMaximumLegalMoves - check_count);
+    stage_end_[chk_rank] = static_cast<std::uint16_t>(kMaximumLegalMoves);
+    stage_cursor_[chk_rank] = stage_begin_[chk_rank];
     stage_sorted_.reset();
 }
 
-void SearchMovePicker::ensure_stage_sorted() noexcept {
-    const std::size_t rank = static_cast<std::size_t>(stage_);
-    if (rank >= kStageRankCount || stage_sorted_.test(rank)) {
-        return;
+void SearchMovePicker::prepare_evasion_candidates() {
+    captures_prepared_ = true;
+    std::size_t evasion_count = 0;
+    for (std::size_t index = 0; index < moves_.size(); ++index) {
+        if (is_excluded(index)) {
+            continue;
+        }
+        const MoveMetadata& metadata = moves_[index];
+        const int priority = ordering_.priority(
+            state_, metadata, std::nullopt, *history_context_);
+        staged_[evasion_count++] = Candidate{
+            static_cast<std::uint16_t>(index),
+            static_cast<std::uint8_t>(Stage::evasions),
+            priority, picker_stage_sort_key(priority, move_tie_break_key(metadata.move))};
     }
-    stage_sorted_.set(rank);
-    // One ascending 64-bit key replaces the former three-key comparator
-    // (priority descending, tie_break ascending, source_index ascending).
-    // The third key was unreachable for distinct records: move_tie_break_key
-    // maps (from, to, promotion) through the square-key permutation
-    // (index % 8) * 8 + index / 8 and then (from_key * 64 + to_key) * 5 +
-    // promotion_key, which is injective, and every candidate list handed to
-    // the picker is built from the legal-move generator, which emits each
-    // (from, to, promotion) triple at most once (each origin is visited once;
-    // every step and ray target is distinct; a promotion enumerates four
-    // distinct pieces; castling is the only two-square king move).  Filtering
-    // and compaction only remove records, so two records of one candidate
-    // list can never share a tie-break key.  Distinct records therefore
-    // always differ in the packed key, and this sort's total order is
-    // identical to the old comparator's.
-    std::sort(staged_.begin() + stage_begin_[rank], staged_.begin() + stage_end_[rank],
-              [](const Candidate& lhs, const Candidate& rhs) {
-                  return lhs.sort_key < rhs.sort_key;
-              });
+    const std::size_t rank = static_cast<std::size_t>(Stage::evasions);
+    stage_begin_[rank] = 0;
+    stage_end_[rank] = static_cast<std::uint16_t>(evasion_count);
+    stage_cursor_[rank] = 0;
+    stage_sorted_.reset();
+}
+
+void SearchMovePicker::prepare_main_captures() {
+    captures_prepared_ = true;
+    main_captures_end_ = 0;
+    deferred_bad_capture_count_ = 0;
+    deferred_bad_capture_index_ = 0;
+    for (std::size_t index = 0; index < moves_.size(); ++index) {
+        if (is_excluded(index)) {
+            continue;
+        }
+        const MoveMetadata& metadata = moves_[index];
+        if (metadata.move.promotion() == Promotion::none && !metadata.is_capture()) {
+            continue;
+        }
+        const int priority = ordering_.priority(
+            state_, metadata, std::nullopt, *history_context_);
+        staged_[main_captures_end_++] = Candidate{
+            static_cast<std::uint16_t>(index),
+            static_cast<std::uint8_t>(Stage::good_captures),
+            priority, picker_stage_sort_key(priority, move_tie_break_key(metadata.move))};
+    }
+    const std::size_t cap_rank = static_cast<std::size_t>(Stage::good_captures);
+    stage_begin_[cap_rank] = 0;
+    stage_end_[cap_rank] = static_cast<std::uint16_t>(main_captures_end_);
+    stage_cursor_[cap_rank] = 0;
+}
+
+void SearchMovePicker::prepare_main_quiets() {
+    quiets_prepared_ = true;
+    std::size_t good_cursor = main_captures_end_;
+    std::size_t bad_cursor = kMaximumLegalMoves;
+    for (std::size_t index = 0; index < moves_.size(); ++index) {
+        if (is_excluded(index)) {
+            continue;
+        }
+        const MoveMetadata& metadata = moves_[index];
+        if (metadata.move.promotion() != Promotion::none || metadata.is_capture()) {
+            continue;
+        }
+        const int priority = ordering_.priority(
+            state_, metadata, std::nullopt, *history_context_);
+        const Candidate candidate{
+            static_cast<std::uint16_t>(index),
+            static_cast<std::uint8_t>(priority <= kGoodQuietPriorityThreshold ?
+                Stage::bad_quiets : Stage::good_quiets),
+            priority, picker_stage_sort_key(priority, move_tie_break_key(metadata.move))};
+        if (priority <= kGoodQuietPriorityThreshold) {
+            staged_[--bad_cursor] = candidate;
+        } else {
+            staged_[good_cursor++] = candidate;
+        }
+    }
+    const std::size_t good_rank = static_cast<std::size_t>(Stage::good_quiets);
+    const std::size_t bad_rank = static_cast<std::size_t>(Stage::bad_quiets);
+    stage_begin_[good_rank] = static_cast<std::uint16_t>(main_captures_end_);
+    stage_end_[good_rank] = static_cast<std::uint16_t>(good_cursor);
+    stage_cursor_[good_rank] = stage_begin_[good_rank];
+    stage_begin_[bad_rank] = static_cast<std::uint16_t>(bad_cursor);
+    stage_end_[bad_rank] = static_cast<std::uint16_t>(kMaximumLegalMoves);
+    stage_cursor_[bad_rank] = stage_begin_[bad_rank];
+}
+
+std::size_t SearchMovePicker::pick_next_in_stage(const std::size_t rank) noexcept {
+    // Pick incrementally for a short prefix so cutoffs on the first few moves
+    // avoid sorting the full stage, then sort any longer tail once. The packed
+    // 64-bit key is a strict total order, so emitted order matches full sort.
+    constexpr std::size_t kIncrementalPickPrefix = 6U;
+    const std::size_t begin = stage_begin_[rank];
+    const std::size_t end = stage_end_[rank];
+    const std::size_t cursor = stage_cursor_[rank];
+    if (!stage_sorted_.test(rank)) {
+        const std::size_t remaining = end - cursor;
+        if (remaining <= 1U) {
+            stage_sorted_.set(rank);
+        } else if (cursor - begin < kIncrementalPickPrefix) {
+            std::size_t best_slot = cursor;
+            std::uint64_t best_key = staged_[cursor].sort_key;
+            for (std::size_t probe = cursor + 1U; probe < end; ++probe) {
+                if (staged_[probe].sort_key < best_key) {
+                    best_key = staged_[probe].sort_key;
+                    best_slot = probe;
+                }
+            }
+            if (best_slot != cursor) {
+                std::swap(staged_[cursor], staged_[best_slot]);
+            }
+        } else {
+            stage_sorted_.set(rank);
+            std::sort(staged_.begin() + cursor, staged_.begin() + end,
+                      [](const Candidate& lhs, const Candidate& rhs) {
+                          return lhs.sort_key < rhs.sort_key;
+                      });
+        }
+    }
+    stage_cursor_[rank] = static_cast<std::uint16_t>(cursor + 1U);
+    return cursor;
 }
 
 void SearchMovePicker::advance_stage() noexcept {
@@ -749,22 +746,13 @@ const MoveMetadata* SearchMovePicker::next() {
             continue;
         }
         if (mode_ == Mode::quiescence) {
-            // Quiescence only reaches the capture and quiet-check stages, so
-            // emit them straight from the regions prepare_candidates()
-            // placed them in.  The main-mode deferral and staged-priority
-            // reuse below are unreachable here; captures were materialized in
-            // prepare, so emission only restores the recorded SEE value
-            // instead of paying a second materialize() pass.
-            if (!candidates_prepared_) {
-                prepare_candidates();
+            if (!captures_prepared_) {
+                prepare_quiescence_candidates();
             }
-            ensure_stage_sorted();
             const std::size_t rank = static_cast<std::size_t>(stage_);
-            const std::size_t stage_count =
-                static_cast<std::size_t>(stage_end_[rank]) - stage_begin_[rank];
-            if (candidate_index_ < stage_count) {
-                const Candidate& candidate =
-                    staged_[stage_begin_[rank] + candidate_index_++];
+            if (stage_cursor_[rank] < stage_end_[rank]) {
+                const std::size_t slot = pick_next_in_stage(rank);
+                const Candidate& candidate = staged_[slot];
                 const std::size_t source_index = candidate.source_index;
                 emitted_metadata_ = moves_[source_index];
                 if (emitted_metadata_.is_capture()) {
@@ -774,7 +762,6 @@ const MoveMetadata* SearchMovePicker::next() {
                 emitted_metadata_.ordering_score = candidate.priority;
                 return &emitted_metadata_;
             }
-            candidate_index_ = 0;
             advance_stage();
             continue;
         }
@@ -787,63 +774,19 @@ const MoveMetadata* SearchMovePicker::next() {
             advance_stage();
             continue;
         }
-        if (!candidates_prepared_) {
-            prepare_candidates();
-        }
-        ensure_stage_sorted();
-        while (candidate_index_ < candidate_count_ &&
-               staged_[candidate_index_].stage_rank < static_cast<std::uint8_t>(stage_)) {
-            ++candidate_index_;
-        }
-        if (candidate_index_ < candidate_count_ &&
-            staged_[candidate_index_].stage_rank == static_cast<std::uint8_t>(stage_)) {
-            const std::size_t candidate_slot = candidate_index_++;
-            const Candidate candidate = staged_[candidate_slot];
-            emitted_metadata_ = mode_ == Mode::evasion ? moves_[candidate.source_index] :
-                materialize(candidate.source_index);
-            if (mode_ == Mode::main && stage_ == Stage::good_captures &&
-                emitted_metadata_.is_capture() && !is_good_capture(emitted_metadata_)) {
-                if (deferred_bad_capture_count_ < deferred_bad_capture_indices_.size()) {
-                    // Keep the staged slot rather than the source index so the
-                    // candidate's staged priority is still reachable when the
-                    // bad-capture stage emits the deferred record.
-                    deferred_bad_capture_indices_[deferred_bad_capture_count_++] =
-                        static_cast<std::uint16_t>(candidate_slot);
-                }
-                continue;
+        if (mode_ == Mode::evasion) {
+            if (!captures_prepared_) {
+                prepare_evasion_candidates();
             }
-            // The staged priority is reusable unless materializing the
-            // metadata could still change what the priority depends on.  That
-            // is exactly the main-mode capture case: materialize resolves the
-            // lazy capture check flag and the SEE value, and the capture
-            // priority branch reads both.  Promotions cannot enter that
-            // branch: the generator classifies every promotion, including a
-            // capturing one, as MoveKind::promotion, so is_capture() is false
-            // and priority returns kPromotionPriority plus the promotion
-            // value, which materialize never changes.  Evasion, quiescence,
-            // and quiet-stage candidates were fully materialized before
-            // ranking.
-            const bool materialization_can_alter_priority =
-                mode_ == Mode::main && emitted_metadata_.is_capture();
-            if (materialization_can_alter_priority &&
-                !moves_[candidate.source_index].see_computed) {
-                // Search lists defer SEE, so the staged priority ranked this
-                // capture with see == 0 and no bad-capture penalty; the
-                // materialized priority is exactly the staged priority plus
-                // those two resolved terms.
-                const int see = std::clamp(
-                    static_cast<int>(emitted_metadata_.see_score),
-                    -piece_value(PieceType::queen), piece_value(PieceType::queen));
-                const int bad_capture_penalty =
-                    see < 0 && !emitted_metadata_.gives_check ? kBadCapturePenalty : 0;
-                emitted_metadata_.ordering_score =
-                    candidate.priority + see * kSeeOrderingWeight - bad_capture_penalty;
-            } else {
-                emitted_metadata_.ordering_score = materialization_can_alter_priority
-                    ? ordering_.priority(state_, emitted_metadata_, std::nullopt, *history_context_)
-                    : candidate.priority;
+            const std::size_t rank = static_cast<std::size_t>(stage_);
+            if (stage_cursor_[rank] < stage_end_[rank]) {
+                const Candidate& candidate = staged_[pick_next_in_stage(rank)];
+                emitted_metadata_ = moves_[candidate.source_index];
+                emitted_metadata_.ordering_score = candidate.priority;
+                return &emitted_metadata_;
             }
-            return &emitted_metadata_;
+            advance_stage();
+            continue;
         }
         if (stage_ == Stage::bad_captures) {
             if (deferred_bad_capture_index_ < deferred_bad_capture_count_) {
@@ -869,6 +812,50 @@ const MoveMetadata* SearchMovePicker::next() {
                 }
                 return &emitted_metadata_;
             }
+            advance_stage();
+            continue;
+        }
+        if (stage_ == Stage::good_captures) {
+            if (!captures_prepared_) {
+                prepare_main_captures();
+                prepare_main_quiets();
+            }
+        } else if (!quiets_prepared_) {
+            prepare_main_quiets();
+        }
+        const std::size_t rank = static_cast<std::size_t>(stage_);
+        if (stage_cursor_[rank] < stage_end_[rank]) {
+            const std::size_t candidate_slot = pick_next_in_stage(rank);
+            const Candidate candidate = staged_[candidate_slot];
+            emitted_metadata_ = materialize(candidate.source_index);
+            if (stage_ == Stage::good_captures &&
+                emitted_metadata_.is_capture() && !is_good_capture(emitted_metadata_)) {
+                if (deferred_bad_capture_count_ < deferred_bad_capture_indices_.size()) {
+                    // Keep the staged slot rather than the source index so the
+                    // candidate's staged priority is still reachable when the
+                    // bad-capture stage emits the deferred record.
+                    deferred_bad_capture_indices_[deferred_bad_capture_count_++] =
+                        static_cast<std::uint16_t>(candidate_slot);
+                }
+                continue;
+            }
+            const bool materialization_can_alter_priority =
+                emitted_metadata_.is_capture();
+            if (materialization_can_alter_priority &&
+                !moves_[candidate.source_index].see_computed) {
+                const int see = std::clamp(
+                    static_cast<int>(emitted_metadata_.see_score),
+                    -piece_value(PieceType::queen), piece_value(PieceType::queen));
+                const int bad_capture_penalty =
+                    see < 0 && !emitted_metadata_.gives_check ? kBadCapturePenalty : 0;
+                emitted_metadata_.ordering_score =
+                    candidate.priority + see * kSeeOrderingWeight - bad_capture_penalty;
+            } else {
+                emitted_metadata_.ordering_score = materialization_can_alter_priority
+                    ? ordering_.priority(state_, emitted_metadata_, std::nullopt, *history_context_)
+                    : candidate.priority;
+            }
+            return &emitted_metadata_;
         }
         advance_stage();
     }

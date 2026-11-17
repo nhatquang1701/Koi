@@ -79,19 +79,18 @@ public:
         // so retain the same depth/improving slope but calibrate the margin to
         // Koi's scale.  A null fail-high is still re-searched before cutoff,
         // while the node-type, repetition, and sparse-material gates provide
-        // the Koi-specific safety envelope.
-        const int static_eval_floor = beta + kNullMoveStaticMargin - 13 * depth -
-            (improving ? 47 : 0);
-        if (!base.eligible || pawn_endgame || beta < -2'000 ||
-            static_eval < static_eval_floor) {
+        // Require a static evaluation at least at beta before allowing a
+        // null-move cutoff, and clamp the reduction so depth >= 4 probes
+        // always search at least one regular ply (preventing 0-ply qsearch
+        // blindness to one-move quiet threats).
+        if (!base.eligible || depth < 4 || pawn_endgame || beta < -2'000 ||
+            static_eval < beta) {
             return {};
         }
 
         const int excess = std::max(0, static_eval - beta);
-        // Stockfish 19: R = 7 + depth / 3 + max((eval - beta) / 256, 0).
-        // Keep the exact shape; the call site clamps the resulting child
-        // depth at qsearch when R exceeds the remaining horizon.
-        const int reduction = 7 + depth / 3 + excess / 256;
+        const int reduction = std::min(
+            depth - 1, 3 + depth / 3 + std::min(excess / 200, 3));
         // Verification is reserved for deep nodes, matching Stockfish 19's
         // depth gate.  At those depths the reduced probe is a substantial
         // search of the null-free position, so an unverified fail-high could

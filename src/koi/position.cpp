@@ -1029,6 +1029,57 @@ public:
     // list.  Quiescence only needs to know whether a legal reply exists before
     // deciding that a position is terminal.
     [[nodiscard]] bool has_legal_move() {
+        const Color side = state.side;
+        const std::size_t side_index = side == Color::white ? 0U : 1U;
+        const std::size_t enemy_index = 1U - side_index;
+        if (state.checkers[side_index] == 0 && king_square(state, side) >= 0) {
+            constexpr std::uint64_t kFileAMask = 0x0101010101010101ULL;
+            constexpr std::uint64_t kFileHMask = 0x8080808080808080ULL;
+            const std::uint64_t pinned = state.pinned[side_index];
+            const std::uint64_t friendly = state.occupancy[side_index];
+            const std::uint64_t enemy_king_bb =
+                state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::king)];
+            const std::uint64_t valid_targets = ~(friendly | enemy_king_bb);
+
+            const std::uint64_t unpinned_pawns =
+                state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::pawn)] & ~pinned;
+            const std::uint64_t empty = ~state.occupied;
+            const std::uint64_t single_push = side == Color::white
+                ? ((unpinned_pawns << 8) & empty)
+                : ((unpinned_pawns >> 8) & empty);
+            if (single_push != 0) {
+                return true;
+            }
+
+            const std::uint64_t unpinned_ortho =
+                (state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::rook)] |
+                 state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)]) & ~pinned;
+            if ((((unpinned_ortho << 8) | (unpinned_ortho >> 8) |
+                  ((unpinned_ortho & ~kFileHMask) << 1) |
+                  ((unpinned_ortho & ~kFileAMask) >> 1)) & valid_targets) != 0) {
+                return true;
+            }
+
+            const std::uint64_t unpinned_diag =
+                (state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::bishop)] |
+                 state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)]) & ~pinned;
+            if (((((unpinned_diag & ~kFileHMask) << 9) |
+                  ((unpinned_diag & ~kFileAMask) << 7) |
+                  ((unpinned_diag & ~kFileHMask) >> 7) |
+                  ((unpinned_diag & ~kFileAMask) >> 9)) & valid_targets) != 0) {
+                return true;
+            }
+
+            std::uint64_t unpinned_knights =
+                state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::knight)] & ~pinned;
+            while (unpinned_knights != 0) {
+                const int from = static_cast<int>(std::countr_zero(unpinned_knights));
+                if ((detail::knight_attacks(from) & valid_targets) != 0) {
+                    return true;
+                }
+                unpinned_knights &= unpinned_knights - 1;
+            }
+        }
         FirstLegalMoveSink sink;
         generate_pseudo(sink);
         return sink.found();

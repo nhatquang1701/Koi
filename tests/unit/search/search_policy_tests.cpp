@@ -45,15 +45,21 @@ void test_dynamic_null_move_owns_reduction_and_verification_depth() {
         SearchPolicy::dynamic_null_move(16, 20, 21, 600, false, true, false, false);
     require(deep_candidate.eligible && deep_candidate.verify,
             "a deep eligible null fail-high must be verified");
-    require(deep_candidate.reduction == 7 + 16 / 3 + (600 - 21) / 256,
-            "the dynamic null reduction must keep the Stockfish depth/excess shape");
+    require(deep_candidate.reduction == 3 + 16 / 3 + std::min((600 - 21) / 200, 3),
+            "the dynamic null reduction must keep the calibrated depth/excess shape");
 
     const auto shallow = SearchPolicy::dynamic_null_move(15, 20, 21, 600, false, true, false, false);
     require(shallow.eligible && !shallow.verify,
             "null verification must stay off below the deep-search threshold");
 
-    require(!SearchPolicy::dynamic_null_move(16, 20, 21, -400, false, true, false, false).eligible,
-            "a static evaluation below the confidence floor must reject null move");
+    const auto min_ply_floor = SearchPolicy::dynamic_null_move(4, 20, 21, 600, false, true, false, false);
+    require(min_ply_floor.eligible && min_ply_floor.reduction <= 3,
+            "shallow null move must retain at least one regular reply ply");
+
+    require(!SearchPolicy::dynamic_null_move(3, 20, 21, 600, false, true, false, false).eligible,
+            "dynamic null move must require depth >= 4");
+    require(!SearchPolicy::dynamic_null_move(16, 20, 21, 20, false, true, false, false).eligible,
+            "a static evaluation below beta must reject null move");
     require(!SearchPolicy::dynamic_null_move(16, 20, 21, 600, false, true, false, true).eligible,
             "a pawn endgame must reject null move");
     require(!SearchPolicy::dynamic_null_move(16, 20, 21, 600, true, true, false, false).eligible,

@@ -1208,7 +1208,12 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 }
                 if (null_score >= beta) {
                     int verified_score = null_score;
-                    bool null_cutoff_proven = !null_selective_bound;
+                    // NMP requires static_eval >= beta and retains >= 1 regular
+                    // ply below the probe, so a fail-high is safe even when
+                    // the reduced null subtree pruned selectively (LMR, RFP,
+                    // qsearch stand-pat); still track path_selective_bound so
+                    // root provenance remains conservative.
+                    bool null_cutoff_proven = true;
                     // A verification search may not start another nested
                     // verification (Stockfish's nmpMinPly guard).
                     if (null_move_decision.verify && null_verification_min_ply == 0) {
@@ -1239,7 +1244,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                                 &verification_selective_bound);
                             path_repetition_sensitive = path_repetition_sensitive ||
                                 verification_repetition_sensitive;
-                            null_cutoff_proven = !verification_selective_bound;
+                            null_cutoff_proven = verified_score >= beta;
                         } catch (...) {
                             frame = saved_frame;
                             if (has_probe_child_frame) {
