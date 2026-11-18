@@ -84,8 +84,14 @@ public:
     // TT scores always keep the unadjusted search result.
     [[nodiscard]] int correction_value(std::uint64_t pawn_key, std::uint64_t material_key,
                                        std::uint64_t king_key) const noexcept;
+    [[nodiscard]] int correction_value(std::uint64_t pawn_key, std::uint64_t material_key,
+                                       std::uint64_t king_key, std::uint64_t minor_key,
+                                       std::uint64_t major_key) const noexcept;
     void update_correction(std::uint64_t pawn_key, std::uint64_t material_key,
                            std::uint64_t king_key, int bonus) noexcept;
+    void update_correction(std::uint64_t pawn_key, std::uint64_t material_key,
+                           std::uint64_t king_key, std::uint64_t minor_key,
+                           std::uint64_t major_key, int bonus) noexcept;
 
     void record_quiet_cutoff(Color side, Move move, int ply, int depth,
                              std::optional<Move> previous_move = std::nullopt) noexcept;
@@ -132,10 +138,12 @@ private:
     static constexpr std::size_t kPawnCorrectionHistorySize = 16 * 1024;
     static constexpr std::size_t kMaterialCorrectionHistorySize = 8 * 1024;
     static constexpr std::size_t kKingCorrectionHistorySize = 8 * 1024;
-    // Each correction entry saturates at the entry limit; the sum applied to
-    // the static evaluation is clamped to the total limit. Keeping both small
-    // makes the correction a nudge, never a replacement for the evaluator.
-    static constexpr int kCorrectionEntryLimit = 128;
+    static constexpr std::size_t kMinorCorrectionHistorySize = 16 * 1024;
+    static constexpr std::size_t kMajorCorrectionHistorySize = 16 * 1024;
+    // Each correction entry saturates at the entry limit; the combined static
+    // evaluation shift is clamped to the total limit so correction remains a
+    // bounded residual adjustment rather than replacing the evaluator.
+    static constexpr int kCorrectionEntryLimit = 192;
     static constexpr int kCorrectionTotalLimit = 192;
 
     [[nodiscard]] static int piece_index(PieceType type) noexcept;
@@ -148,6 +156,7 @@ private:
                                                  PieceType piece, Square to) noexcept;
     [[nodiscard]] static int normalized_ply(int ply) noexcept;
     static void update_history(int& score, int delta, int maximum) noexcept;
+    static void update_history(std::int16_t& score, int delta, int maximum) noexcept;
     void update_parent_histories(Color side, Move move, PieceType piece, int parent_ply,
                                  const SearchHistoryContext& context, int bonus,
                                  bool continuation_only) noexcept;
@@ -162,9 +171,11 @@ private:
     std::array<int, kContinuationHistorySize> continuation_history_{};
     std::unique_ptr<int[]> multi_ply_continuation_history_;
     std::unique_ptr<int[]> pawn_history_;
-    std::unique_ptr<int[]> pawn_correction_;
-    std::unique_ptr<int[]> material_correction_;
-    std::unique_ptr<int[]> king_correction_;
+    std::unique_ptr<std::int16_t[]> pawn_correction_;
+    std::unique_ptr<std::int16_t[]> material_correction_;
+    std::unique_ptr<std::int16_t[]> king_correction_;
+    std::unique_ptr<std::int16_t[]> minor_correction_;
+    std::unique_ptr<std::int16_t[]> major_correction_;
 };
 
 } // namespace koi::detail

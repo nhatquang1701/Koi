@@ -1079,7 +1079,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             correction_keys = correction_keys_for(state, node_pawn_key);
             correction_keys_valid = true;
             static_eval = raw_eval + ordering.correction_value(
-                correction_keys.pawn, correction_keys.material, correction_keys.king);
+                correction_keys.pawn, correction_keys.material, correction_keys.king,
+                correction_keys.minor, correction_keys.major);
             static_eval_valid = true;
         }
         frame.static_eval = static_eval;
@@ -2343,22 +2344,26 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         path_selective_bound = path_selective_bound || selective_pruning ||
             inexact_child_search || unresolved_selective_child;
         path_lower_bound = best_score_safe_lower_bound;
-        // Feed the bounded correction history with the residual the search
-        // found beyond the corrected static evaluation.  Mate scores and
-        // inherited (checked/excluded) evaluations are not samples, and the
-        // update never touches the transposition table.
+        const TranspositionBound bound = best_score <= original_alpha ? TranspositionBound::upper
+            : best_score >= original_beta ? TranspositionBound::lower : TranspositionBound::exact;
+        // Feed the bounded correction history only when the node's result is
+        // not a capture/promotion tactic and agrees with the returned bound,
+        // keeping tactical swings out of positional residual correction.
         if (correction_keys_valid && !claimable_draw && best_metadata_valid &&
+            !best_metadata.is_capture() &&
+            best_metadata.move.promotion() == Promotion::none &&
+            !(bound == TranspositionBound::upper && best_score >= static_eval) &&
+            !(bound == TranspositionBound::lower && best_score <= static_eval) &&
             std::abs(best_score) < kMateThreshold) {
             const int scaled_depth = std::min(depth, 8);
             const int bonus = std::clamp((best_score - static_eval) * scaled_depth / 8, -48, 48);
             if (bonus != 0) {
                 ordering.update_correction(correction_keys.pawn, correction_keys.material,
-                                           correction_keys.king, bonus);
+                                           correction_keys.king, correction_keys.minor,
+                                           correction_keys.major, bonus);
                 ++stats.correction_history_updates;
             }
         }
-        const TranspositionBound bound = best_score <= original_alpha ? TranspositionBound::upper
-            : best_score >= original_beta ? TranspositionBound::lower : TranspositionBound::exact;
         // An exact bound requires at least one authoritative child and no
         // candidate removed by selective pruning. A node that searched no
         // child must not turn its static fallback into an exact TT answer;

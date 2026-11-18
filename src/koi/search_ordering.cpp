@@ -151,11 +151,28 @@ int SearchMoveOrdering::correction_value(const std::uint64_t pawn_key,
     return tables_.correction_value(pawn_key, material_key, king_key);
 }
 
+int SearchMoveOrdering::correction_value(const std::uint64_t pawn_key,
+                                         const std::uint64_t material_key,
+                                         const std::uint64_t king_key,
+                                         const std::uint64_t minor_key,
+                                         const std::uint64_t major_key) const noexcept {
+    return tables_.correction_value(pawn_key, material_key, king_key, minor_key, major_key);
+}
+
 void SearchMoveOrdering::update_correction(const std::uint64_t pawn_key,
                                            const std::uint64_t material_key,
                                            const std::uint64_t king_key,
                                            const int bonus) noexcept {
     tables_.update_correction(pawn_key, material_key, king_key, bonus);
+}
+
+void SearchMoveOrdering::update_correction(const std::uint64_t pawn_key,
+                                           const std::uint64_t material_key,
+                                           const std::uint64_t king_key,
+                                           const std::uint64_t minor_key,
+                                           const std::uint64_t major_key,
+                                           const int bonus) noexcept {
+    tables_.update_correction(pawn_key, material_key, king_key, minor_key, major_key, bonus);
 }
 
 bool SearchMoveOrdering::is_killer(const Move move, const int ply) const noexcept {

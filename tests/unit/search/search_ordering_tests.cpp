@@ -667,6 +667,47 @@ void test_correction_history_saturates_and_resets() {
             "clear must reset the correction tables");
 }
 
+void test_extended_correction_history_weights_and_bounds() {
+    koi::detail::SearchMoveOrdering ordering;
+    constexpr std::uint64_t pawn_key = 0x0123456789ABCDEFULL;
+    constexpr std::uint64_t material_key = 0xFEDCBA9876543210ULL;
+    constexpr std::uint64_t king_key = 0x1111222233334444ULL;
+    constexpr std::uint64_t minor_key = 0x5555666677778888ULL;
+    constexpr std::uint64_t major_key = 0x9999AAAABBBBCCCCULL;
+
+    require(ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key) == 0,
+            "extended correction history must start neutral");
+
+    ordering.update_correction(pawn_key, material_key, king_key, minor_key, major_key, 40);
+    require(ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key) == 40,
+            "weighted correction tables must track a depth-8 residual without overshoot");
+
+    // Distinct minor/major structure keys keep independent slots even when pawn/material/king match.
+    const int partial = ordering.correction_value(
+        pawn_key, material_key, king_key, minor_key ^ 1ULL, major_key ^ 2ULL);
+    require(partial == 20, "shared pawn/material/king tables must contribute 4/8 of the residual");
+
+    for (int index = 0; index < 128; ++index) {
+        ordering.update_correction(pawn_key, material_key, king_key, minor_key, major_key, 48);
+    }
+    const int ceiling =
+        ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key);
+    require(ceiling > 0 && ceiling <= 192,
+            "extended correction history must saturate within +192");
+
+    for (int index = 0; index < 128; ++index) {
+        ordering.update_correction(pawn_key, material_key, king_key, minor_key, major_key, -48);
+    }
+    const int floor =
+        ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key);
+    require(floor < 0 && floor >= -192,
+            "extended correction history must saturate within -192");
+
+    ordering.clear();
+    require(ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key) == 0,
+            "clear must reset minor and major correction tables too");
+}
+
 void test_quiet_history_gravity_keeps_the_lmr_scale() {
     // Regression for a 299,998-clamp bug: the main history table shared the
     // counter-move priority clamp instead of the fixed-point 16,384 scale used
@@ -719,6 +760,7 @@ int main(int argc, char** argv) {
         {"quiet-only check metadata", test_search_move_generation_can_skip_capture_check_analysis},
         {"deferred SEE ordering", test_ordering_resolves_deferred_see_for_search_moves},
         {"correction history saturation", test_correction_history_saturates_and_resets},
+        {"extended correction history weights", test_extended_correction_history_weights_and_bounds},
         {"quiet history gravity scale", test_quiet_history_gravity_keeps_the_lmr_scale},
     };
 

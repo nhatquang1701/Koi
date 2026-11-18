@@ -64,15 +64,31 @@ std::uint64_t mix64(std::uint64_t value) noexcept {
     return value ^ (value >> 31U);
 }
 
+template <typename Entry>
+void update_gravity_entry(Entry& score, const int delta, const int maximum) noexcept {
+    const std::int64_t wide_score = score;
+    const std::int64_t wide_delta = delta;
+    const std::int64_t wide_abs_delta = wide_delta < 0 ? -wide_delta : wide_delta;
+    const std::int64_t updated = wide_score + wide_delta -
+        (wide_score * wide_abs_delta) / std::max(1, maximum);
+    score = static_cast<Entry>(clamp_history(updated, maximum));
+}
+
+std::size_t correction_slot(const std::uint64_t key, const std::size_t size) noexcept {
+    return static_cast<std::size_t>(mix64(key) & (size - 1U));
+}
+
 } // namespace
 
 SearchOrderingTables::SearchOrderingTables()
     : multi_ply_continuation_history_(std::make_unique<int[]>(
           kSearchContinuationPlies * kContinuationHistorySize)),
       pawn_history_(std::make_unique<int[]>(kPawnHistorySize)),
-      pawn_correction_(std::make_unique<int[]>(kPawnCorrectionHistorySize)),
-      material_correction_(std::make_unique<int[]>(kMaterialCorrectionHistorySize)),
-      king_correction_(std::make_unique<int[]>(kKingCorrectionHistorySize)) {
+      pawn_correction_(std::make_unique<std::int16_t[]>(kPawnCorrectionHistorySize)),
+      material_correction_(std::make_unique<std::int16_t[]>(kMaterialCorrectionHistorySize)),
+      king_correction_(std::make_unique<std::int16_t[]>(kKingCorrectionHistorySize)),
+      minor_correction_(std::make_unique<std::int16_t[]>(kMinorCorrectionHistorySize)),
+      major_correction_(std::make_unique<std::int16_t[]>(kMajorCorrectionHistorySize)) {
     // `clear()` intentionally retains its historical zeroed-reset contract
     // for diagnostics.  A newly created worker, however, should begin with
     // the calibrated Stockfish-style priors rather than indeterminate heap
@@ -90,6 +106,8 @@ SearchOrderingTables::SearchOrderingTables()
     std::fill_n(pawn_correction_.get(), kPawnCorrectionHistorySize, 0);
     std::fill_n(material_correction_.get(), kMaterialCorrectionHistorySize, 0);
     std::fill_n(king_correction_.get(), kKingCorrectionHistorySize, 0);
+    std::fill_n(minor_correction_.get(), kMinorCorrectionHistorySize, 0);
+    std::fill_n(major_correction_.get(), kMajorCorrectionHistorySize, 0);
 }
 
 SearchOrderingTables::~SearchOrderingTables() = default;
@@ -142,12 +160,12 @@ int SearchOrderingTables::normalized_ply(const int ply) noexcept {
 
 void SearchOrderingTables::update_history(int& score, const int delta,
                                            const int maximum) noexcept {
-    const std::int64_t wide_score = score;
-    const std::int64_t wide_delta = delta;
-    const std::int64_t wide_abs_delta = wide_delta < 0 ? -wide_delta : wide_delta;
-    const std::int64_t updated = wide_score + wide_delta -
-        (wide_score * wide_abs_delta) / std::max(1, maximum);
-    score = clamp_history(updated, maximum);
+    update_gravity_entry(score, delta, maximum);
+}
+
+void SearchOrderingTables::update_history(std::int16_t& score, const int delta,
+                                           const int maximum) noexcept {
+    update_gravity_entry(score, delta, maximum);
 }
 
 void SearchOrderingTables::clear() noexcept {
@@ -174,6 +192,12 @@ void SearchOrderingTables::clear() noexcept {
     }
     if (king_correction_ != nullptr) {
         std::fill_n(king_correction_.get(), kKingCorrectionHistorySize, 0);
+    }
+    if (minor_correction_ != nullptr) {
+        std::fill_n(minor_correction_.get(), kMinorCorrectionHistorySize, 0);
+    }
+    if (major_correction_ != nullptr) {
+        std::fill_n(major_correction_.get(), kMajorCorrectionHistorySize, 0);
     }
 }
 
@@ -391,14 +415,30 @@ bool SearchOrderingTables::is_proven_counter_move(
 int SearchOrderingTables::correction_value(const std::uint64_t pawn_key,
                                            const std::uint64_t material_key,
                                            const std::uint64_t king_key) const noexcept {
-    const std::size_t pawn_slot = static_cast<std::size_t>(
-        mix64(pawn_key) & (kPawnCorrectionHistorySize - 1));
-    const std::size_t material_slot = static_cast<std::size_t>(
-        mix64(material_key) & (kMaterialCorrectionHistorySize - 1));
-    const std::size_t king_slot = static_cast<std::size_t>(
-        mix64(king_key) & (kKingCorrectionHistorySize - 1));
-    const std::int64_t total = static_cast<std::int64_t>(pawn_correction_[pawn_slot]) +
-        material_correction_[material_slot] + king_correction_[king_slot];
+    const std::int64_t total =
+        static_cast<std::int64_t>(pawn_correction_[correction_slot(pawn_key, kPawnCorrectionHistorySize)]) +
+        material_correction_[correction_slot(material_key, kMaterialCorrectionHistorySize)] +
+        king_correction_[correction_slot(king_key, kKingCorrectionHistorySize)];
+    return static_cast<int>(std::clamp<std::int64_t>(
+        total, -kCorrectionTotalLimit, kCorrectionTotalLimit));
+}
+
+int SearchOrderingTables::correction_value(const std::uint64_t pawn_key,
+                                           const std::uint64_t material_key,
+                                           const std::uint64_t king_key,
+                                           const std::uint64_t minor_key,
+                                           const std::uint64_t major_key) const noexcept {
+    // Weighted average over 8 units (2*pawn + 2*minor + 2*major + material + king)
+    // matches the depth-8 residual bonus step size with unit gain and zero overshoot.
+    const std::int64_t pawn = pawn_correction_[correction_slot(pawn_key, kPawnCorrectionHistorySize)];
+    const std::int64_t material =
+        material_correction_[correction_slot(material_key, kMaterialCorrectionHistorySize)];
+    const std::int64_t king = king_correction_[correction_slot(king_key, kKingCorrectionHistorySize)];
+    const std::int64_t minor =
+        minor_correction_[correction_slot(minor_key, kMinorCorrectionHistorySize)];
+    const std::int64_t major =
+        major_correction_[correction_slot(major_key, kMajorCorrectionHistorySize)];
+    const std::int64_t total = (2 * pawn + 2 * minor + 2 * major + material + king) / 8;
     return static_cast<int>(std::clamp<std::int64_t>(
         total, -kCorrectionTotalLimit, kCorrectionTotalLimit));
 }
@@ -410,14 +450,27 @@ void SearchOrderingTables::update_correction(const std::uint64_t pawn_key,
     if (bonus == 0) {
         return;
     }
-    update_history(pawn_correction_[static_cast<std::size_t>(
-                       mix64(pawn_key) & (kPawnCorrectionHistorySize - 1))],
+    update_history(pawn_correction_[correction_slot(pawn_key, kPawnCorrectionHistorySize)],
                    bonus, kCorrectionEntryLimit);
-    update_history(material_correction_[static_cast<std::size_t>(
-                       mix64(material_key) & (kMaterialCorrectionHistorySize - 1))],
+    update_history(material_correction_[correction_slot(material_key, kMaterialCorrectionHistorySize)],
                    bonus, kCorrectionEntryLimit);
-    update_history(king_correction_[static_cast<std::size_t>(
-                       mix64(king_key) & (kKingCorrectionHistorySize - 1))],
+    update_history(king_correction_[correction_slot(king_key, kKingCorrectionHistorySize)],
+                   bonus, kCorrectionEntryLimit);
+}
+
+void SearchOrderingTables::update_correction(const std::uint64_t pawn_key,
+                                             const std::uint64_t material_key,
+                                             const std::uint64_t king_key,
+                                             const std::uint64_t minor_key,
+                                             const std::uint64_t major_key,
+                                             const int bonus) noexcept {
+    if (bonus == 0) {
+        return;
+    }
+    update_correction(pawn_key, material_key, king_key, bonus);
+    update_history(minor_correction_[correction_slot(minor_key, kMinorCorrectionHistorySize)],
+                   bonus, kCorrectionEntryLimit);
+    update_history(major_correction_[correction_slot(major_key, kMajorCorrectionHistorySize)],
                    bonus, kCorrectionEntryLimit);
 }
 

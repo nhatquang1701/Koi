@@ -562,6 +562,8 @@ struct SearchContext {
         std::uint64_t pawn = 0;
         std::uint64_t material = 0;
         std::uint64_t king = 0;
+        std::uint64_t minor = 0;
+        std::uint64_t major = 0;
     };
 
     [[nodiscard]] static CorrectionKeys correction_keys_for(const GameState& state) noexcept {
@@ -571,7 +573,11 @@ struct SearchContext {
     [[nodiscard]] static CorrectionKeys correction_keys_for(const GameState& state,
                                                             std::uint64_t pawn_key) noexcept {
         CorrectionKeys keys;
-        keys.pawn = pawn_key;
+        // Static evaluations and residuals are side-to-move-relative, so every
+        // correction key must isolate White-to-move and Black-to-move entries.
+        const std::uint64_t stm_salt = state.side_to_move() == Color::black ?
+            0x9E3779B97F4A7C15ULL : 0ULL;
+        keys.pawn = pawn_key ^ stm_salt;
         const auto& bitboards = state.piece_bitboards();
         // Material signature: FNV-1a over the ten piece counts.  Counts, not
         // placements, so positions with the same material share experience.
@@ -587,13 +593,27 @@ struct SearchContext {
                 signature = (signature ^ count) * 0x100000001B3ULL;
             }
         }
-        keys.material = signature;
-        const std::size_t mover_index = state.side_to_move() == Color::white ? 0U : 1U;
-        const std::uint64_t king_bits =
-            bitboards[mover_index][static_cast<std::size_t>(PieceType::king)];
-        keys.king = king_bits == 0
-            ? 64ULL
-            : static_cast<std::uint64_t>(std::countr_zero(king_bits));
+        keys.material = signature ^ stm_salt;
+        constexpr std::size_t kKnightIdx = static_cast<std::size_t>(PieceType::knight);
+        constexpr std::size_t kBishopIdx = static_cast<std::size_t>(PieceType::bishop);
+        constexpr std::size_t kRookIdx = static_cast<std::size_t>(PieceType::rook);
+        constexpr std::size_t kQueenIdx = static_cast<std::size_t>(PieceType::queen);
+        constexpr std::size_t kKingIdx = static_cast<std::size_t>(PieceType::king);
+        const std::uint64_t wk_bb = bitboards[0][kKingIdx];
+        const std::uint64_t bk_bb = bitboards[1][kKingIdx];
+        const std::uint64_t wk_sq = wk_bb == 0 ?
+            64ULL : static_cast<std::uint64_t>(std::countr_zero(wk_bb));
+        const std::uint64_t bk_sq = bk_bb == 0 ?
+            64ULL : static_cast<std::uint64_t>(std::countr_zero(bk_bb));
+        keys.king = (wk_sq | (bk_sq << 7U)) ^ stm_salt;
+        keys.minor = (bitboards[0][kKnightIdx] * 0xBF58476D1CE4E5B9ULL) ^
+            (bitboards[1][kKnightIdx] * 0x94D049BB133111EBULL) ^
+            (bitboards[0][kBishopIdx] * 0xD6E8FEB86659FD93ULL) ^
+            (bitboards[1][kBishopIdx] * 0xA0761D6478BD642FULL) ^ keys.king;
+        keys.major = (bitboards[0][kRookIdx] * 0xE7037ED1A0B428DBULL) ^
+            (bitboards[1][kRookIdx] * 0x8EBC6AF09C88C6E3ULL) ^
+            (bitboards[0][kQueenIdx] * 0x589965CC75374CC3ULL) ^
+            (bitboards[1][kQueenIdx] * 0x1D8E4E27C47D124FULL) ^ keys.king;
         return keys;
     }
 

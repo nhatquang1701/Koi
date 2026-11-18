@@ -65,8 +65,14 @@ public:
         Color side, Move previous_move, Move move) const noexcept;
     [[nodiscard]] int correction_value(std::uint64_t pawn_key, std::uint64_t material_key,
                                        std::uint64_t king_key) const noexcept;
+    [[nodiscard]] int correction_value(std::uint64_t pawn_key, std::uint64_t material_key,
+                                       std::uint64_t king_key, std::uint64_t minor_key,
+                                       std::uint64_t major_key) const noexcept;
     void update_correction(std::uint64_t pawn_key, std::uint64_t material_key,
                            std::uint64_t king_key, int bonus) noexcept;
+    void update_correction(std::uint64_t pawn_key, std::uint64_t material_key,
+                           std::uint64_t king_key, std::uint64_t minor_key,
+                           std::uint64_t major_key, int bonus) noexcept;
 
 private:
     friend class SearchMovePicker;
