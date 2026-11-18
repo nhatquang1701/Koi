@@ -154,102 +154,163 @@ inline ExchangeContext exchange_context_from(const GameState& state) noexcept {
     return context;
 }
 
-// True when `attacker` attacks `target` in the trial state.  Uses the same
-// five table queries as Position::square_attacked over the maintained masks:
-// the reverse pawn table, the knight and king masks, and the sliding attacks
-// generated through the current occupancy.  The ray masks include the first
-// blocker, which matches the mailbox scan's "check the first occupied square,
-// then stop" behavior, so the predicate is the same.
-inline bool exchange_square_attacked_by(const ExchangeContext& context, int target,
-                                        Color attacker) noexcept {
+// True when `attacker` attacks `target` in the trial state.
+inline bool exchange_square_attacked_by_masked(
+    const std::array<std::uint64_t, 7>& enemy_pieces,
+    std::uint64_t occupied,
+    int target,
+    Color attacker,
+    std::uint64_t alive_mask) noexcept {
     if (!exchange_square_valid(target)) {
         return false;
     }
-    const std::size_t color_index = exchange_color_index(attacker);
-    const auto& pieces = context.piece_bitboards[color_index];
-    if ((pawn_attackers_of(target, attacker == Color::white) &
-         pieces[static_cast<std::size_t>(PieceType::pawn)]) != 0) {
+    const std::uint64_t pawns =
+        enemy_pieces[static_cast<std::size_t>(PieceType::pawn)] & alive_mask;
+    if ((pawn_attackers_of(target, attacker == Color::white) & pawns) != 0) {
         return true;
     }
     if ((knight_attacks(target) &
-         pieces[static_cast<std::size_t>(PieceType::knight)]) != 0) {
+         (enemy_pieces[static_cast<std::size_t>(PieceType::knight)] & alive_mask)) != 0) {
         return true;
     }
     if ((king_attacks(target) &
-         pieces[static_cast<std::size_t>(PieceType::king)]) != 0) {
+         (enemy_pieces[static_cast<std::size_t>(PieceType::king)] & alive_mask)) != 0) {
         return true;
     }
-    const std::uint64_t occupied = context.occupied;
+    const std::uint64_t queens =
+        enemy_pieces[static_cast<std::size_t>(PieceType::queen)] & alive_mask;
     const std::uint64_t bishops =
-        pieces[static_cast<std::size_t>(PieceType::bishop)] |
-        pieces[static_cast<std::size_t>(PieceType::queen)];
-    if ((bishop_attacks(target, occupied) & bishops) != 0) {
+        (enemy_pieces[static_cast<std::size_t>(PieceType::bishop)] & alive_mask) | queens;
+    if (bishops != 0 && (bishop_attacks(target, occupied) & bishops) != 0) {
         return true;
     }
     const std::uint64_t rooks =
-        pieces[static_cast<std::size_t>(PieceType::rook)] |
-        pieces[static_cast<std::size_t>(PieceType::queen)];
-    if ((rook_attacks(target, occupied) & rooks) != 0) {
+        (enemy_pieces[static_cast<std::size_t>(PieceType::rook)] & alive_mask) | queens;
+    if (rooks != 0 && (rook_attacks(target, occupied) & rooks) != 0) {
         return true;
     }
     return false;
 }
 
-// Enumerates every piece of `attacker` that attacks `target` in the trial
-// state by intersecting the target-centric attack tables with the side's
-// maintained piece masks.  The old mailbox walk emitted the same set: pawns
-// from the reverse table, knight and king masks, and the first blocker on each
-// sliding ray (included by the ray construction).  Candidate order can differ
-// from the mailbox walk only in which attacker is visited first; selection
-// uses minimum exchange_piece_value with a lowest-square tie-break, so the
-// chosen attacker is order-independent.
-template <typename CandidateHandler>
-void for_each_exchange_attacker(const ExchangeContext& context, int target,
-                                Color attacker, CandidateHandler&& handler) noexcept {
-    if (!exchange_square_valid(target)) {
-        return;
-    }
+inline bool exchange_square_attacked_by(const ExchangeContext& context, int target,
+                                        Color attacker) noexcept {
     const std::size_t color_index = exchange_color_index(attacker);
-    const auto& pieces = context.piece_bitboards[color_index];
-    const auto emit = [&handler](std::uint64_t candidates) noexcept {
-        while (candidates != 0) {
-            const int square = static_cast<int>(std::countr_zero(candidates));
-            candidates &= candidates - 1;
-            handler(square);
-        }
-    };
-
-    emit(pawn_attackers_of(target, attacker == Color::white) &
-         pieces[static_cast<std::size_t>(PieceType::pawn)]);
-    emit(knight_attacks(target) & pieces[static_cast<std::size_t>(PieceType::knight)]);
-    emit(king_attacks(target) & pieces[static_cast<std::size_t>(PieceType::king)]);
-    const std::uint64_t occupied = context.occupied;
-    emit(bishop_attacks(target, occupied) &
-         (pieces[static_cast<std::size_t>(PieceType::bishop)] |
-          pieces[static_cast<std::size_t>(PieceType::queen)]));
-    emit(rook_attacks(target, occupied) &
-         (pieces[static_cast<std::size_t>(PieceType::rook)] |
-          pieces[static_cast<std::size_t>(PieceType::queen)]));
+    return exchange_square_attacked_by_masked(
+        context.piece_bitboards[color_index], context.occupied, target, attacker,
+        ~std::uint64_t{0});
 }
 
-inline bool exchange_recapture_is_legal(ExchangeContext& context, Color side, int source,
-                                        int target, Piece placed_piece) noexcept {
-    const std::size_t side_index = exchange_color_index(side);
-    const Piece moving_piece = context.board[static_cast<std::size_t>(source)];
-    const Piece captured_piece = context.board[static_cast<std::size_t>(target)];
-    const int saved_king_square = context.king_squares[side_index];
-
-    exchange_store_piece(context, source, Piece{});
-    exchange_store_piece(context, target, placed_piece);
-    if (moving_piece.type == PieceType::king) {
-        context.king_squares[side_index] = target;
+// Finds the least-valuable legal recapture square for `side` on `target` (with
+// lowest square index breaking any equal-type ties), stopping as soon as the
+// cheapest piece bucket yields a legal move. Piece material values are strictly
+// ordered: pawn < knight < bishop < rook < queen < king.
+[[nodiscard]] inline int find_least_valuable_legal_attacker(
+    const ExchangeContext& context,
+    int target,
+    Color side,
+    Piece& recapturing_piece,
+    int& promotion_gain) noexcept {
+    static_assert(piece_material_value(PieceType::pawn) < piece_material_value(PieceType::knight) &&
+                  piece_material_value(PieceType::knight) < piece_material_value(PieceType::bishop) &&
+                  piece_material_value(PieceType::bishop) < piece_material_value(PieceType::rook) &&
+                  piece_material_value(PieceType::rook) < piece_material_value(PieceType::queen) &&
+                  piece_material_value(PieceType::queen) < piece_material_value(PieceType::king));
+    if (!exchange_square_valid(target)) {
+        return -1;
     }
-    const bool legal =
-        !exchange_square_attacked_by(context, context.king_squares[side_index], opposite(side));
-    exchange_store_piece(context, source, moving_piece);
-    exchange_store_piece(context, target, captured_piece);
-    context.king_squares[side_index] = saved_king_square;
-    return legal;
+    const std::size_t side_index = exchange_color_index(side);
+    const std::size_t opp_index = 1U - side_index;
+    const auto& own_pieces = context.piece_bitboards[side_index];
+    const auto& enemy_pieces = context.piece_bitboards[opp_index];
+    const Color enemy = opposite(side);
+    const std::uint64_t target_bit = exchange_square_bit(target);
+    const std::uint64_t alive_enemy_mask = ~target_bit;
+    const int own_king_sq = context.king_squares[side_index];
+    const bool pawn_promotes = (target >> 3 == 0 || target >> 3 == 7);
+
+    const auto is_legal_non_king = [&](int source) noexcept {
+        const std::uint64_t occ_after =
+            (context.occupied & ~exchange_square_bit(source)) | target_bit;
+        return !exchange_square_attacked_by_masked(
+            enemy_pieces, occ_after, own_king_sq, enemy, alive_enemy_mask);
+    };
+
+    const auto try_bucket = [&](std::uint64_t candidates, PieceType type,
+                                bool promotes) noexcept -> int {
+        while (candidates != 0) {
+            const int source = static_cast<int>(std::countr_zero(candidates));
+            candidates &= candidates - 1;
+            if (type == PieceType::king) {
+                const std::uint64_t occ_after =
+                    (context.occupied & ~exchange_square_bit(source)) | target_bit;
+                if (!exchange_square_attacked_by_masked(
+                        enemy_pieces, occ_after, target, enemy, alive_enemy_mask)) {
+                    recapturing_piece = Piece{PieceType::king, side};
+                    promotion_gain = 0;
+                    return source;
+                }
+            } else if (is_legal_non_king(source)) {
+                recapturing_piece = Piece{promotes ? PieceType::queen : type, side};
+                promotion_gain = promotes
+                    ? (exchange_piece_value(PieceType::queen) -
+                       exchange_piece_value(PieceType::pawn))
+                    : 0;
+                return source;
+            }
+        }
+        return -1;
+    };
+
+    if (const std::uint64_t pawns =
+            pawn_attackers_of(target, side == Color::white) &
+            own_pieces[static_cast<std::size_t>(PieceType::pawn)];
+        pawns != 0) {
+        if (const int sq = try_bucket(pawns, PieceType::pawn, pawn_promotes); sq >= 0) {
+            return sq;
+        }
+    }
+    if (const std::uint64_t knights =
+            knight_attacks(target) & own_pieces[static_cast<std::size_t>(PieceType::knight)];
+        knights != 0) {
+        if (const int sq = try_bucket(knights, PieceType::knight, false); sq >= 0) {
+            return sq;
+        }
+    }
+
+    const std::uint64_t own_bishops = own_pieces[static_cast<std::size_t>(PieceType::bishop)];
+    const std::uint64_t own_rooks = own_pieces[static_cast<std::size_t>(PieceType::rook)];
+    const std::uint64_t own_queens = own_pieces[static_cast<std::size_t>(PieceType::queen)];
+    std::uint64_t diag_attacks = 0;
+    if ((own_bishops | own_queens) != 0) {
+        diag_attacks = bishop_attacks(target, context.occupied);
+        if (const std::uint64_t bishops = diag_attacks & own_bishops; bishops != 0) {
+            if (const int sq = try_bucket(bishops, PieceType::bishop, false); sq >= 0) {
+                return sq;
+            }
+        }
+    }
+    std::uint64_t orth_attacks = 0;
+    if ((own_rooks | own_queens) != 0) {
+        orth_attacks = rook_attacks(target, context.occupied);
+        if (const std::uint64_t rooks = orth_attacks & own_rooks; rooks != 0) {
+            if (const int sq = try_bucket(rooks, PieceType::rook, false); sq >= 0) {
+                return sq;
+            }
+        }
+    }
+    if (const std::uint64_t queens = (diag_attacks | orth_attacks) & own_queens; queens != 0) {
+        if (const int sq = try_bucket(queens, PieceType::queen, false); sq >= 0) {
+            return sq;
+        }
+    }
+    if (const std::uint64_t kings =
+            king_attacks(target) & own_pieces[static_cast<std::size_t>(PieceType::king)];
+        kings != 0) {
+        if (const int sq = try_bucket(kings, PieceType::king, false); sq >= 0) {
+            return sq;
+        }
+    }
+    return -1;
 }
 
 inline int static_exchange_gain_from_features(const ExchangeContext& context,
@@ -306,33 +367,10 @@ inline int static_exchange_gain_from_features(const ExchangeContext& context,
     Color side = opposite(moving_piece.color);
     std::size_t depth = 0;
     for (;;) {
-        int attacker_square = -1;
-        int attacker_value = std::numeric_limits<int>::max();
         Piece recapturing_piece{};
         int recapture_promotion_gain = 0;
-
-        for_each_exchange_attacker(trial, target, side, [&](const int square) noexcept {
-            const Piece candidate = trial.board[static_cast<std::size_t>(square)];
-            Piece replacement = candidate;
-            int candidate_promotion_gain = 0;
-            if (candidate.type == PieceType::pawn && (target >> 3 == 0 || target >> 3 == 7)) {
-                replacement.type = PieceType::queen;
-                candidate_promotion_gain =
-                    exchange_piece_value(PieceType::queen) - exchange_piece_value(PieceType::pawn);
-            }
-            if (!exchange_recapture_is_legal(trial, side, square, target, replacement)) {
-                return;
-            }
-
-            const int value = exchange_piece_value(candidate.type);
-            if (value < attacker_value ||
-                (value == attacker_value && (attacker_square < 0 || square < attacker_square))) {
-                attacker_square = square;
-                attacker_value = value;
-                recapturing_piece = replacement;
-                recapture_promotion_gain = candidate_promotion_gain;
-            }
-        });
+        const int attacker_square = find_least_valuable_legal_attacker(
+            trial, target, side, recapturing_piece, recapture_promotion_gain);
 
         if (attacker_square < 0 || depth + 1 >= kMaximumExchangeDepth) {
             break;

@@ -539,15 +539,8 @@ struct SearchContext {
     }
 
     [[nodiscard]] int evaluate(const GameState& state, Color perspective) {
-        // The private evaluation cache key includes the fullmove counter.  The
-        // removed classical evaluator read it for opening-development and
-        // king-ring thresholds, and position_key() deliberately covers only the
-        // board, side to move, castling rights, and a capturable en-passant
-        // target.  Keep mixing the counter so a transposition that changed it
-        // can never reuse an evaluation from a different search regime.
         const std::uint64_t key = state.position_key() ^
-            (perspective == Color::black ? 0xD6E8FEB86659FD93ULL : 0ULL) ^
-            (static_cast<std::uint64_t>(state.fullmove_number()) * 0x9E3779B97F4A7C15ULL);
+            (perspective == Color::black ? 0xD6E8FEB86659FD93ULL : 0ULL);
         EvaluationCacheEntry& entry =
             evaluation_cache[static_cast<std::size_t>(key) & (kEvaluationCacheSize - 1)];
         if (entry.valid && entry.key == key) {

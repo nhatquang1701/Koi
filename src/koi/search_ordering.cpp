@@ -62,6 +62,53 @@ int promotion_value(const Promotion promotion) noexcept {
         tie_break;
 }
 
+[[nodiscard]] int priority_with_side(
+    const SearchOrderingTables& tables,
+    const Color side,
+    const MoveMetadata& metadata,
+    const std::optional<Move> tt_move,
+    const SearchHistoryContext& history_context) noexcept {
+    const Move move = metadata.move;
+    if (tt_move.has_value() && move == *tt_move) {
+        return kTtMovePriority;
+    }
+
+    if (metadata.is_capture()) {
+        const int victim_value = piece_value(metadata.captured_piece);
+        const int attacker_value = piece_value(metadata.moving_piece);
+        const int see = metadata.see_computed ? std::clamp(
+            static_cast<int>(metadata.see_score),
+            -piece_value(PieceType::queen), piece_value(PieceType::queen)) : 0;
+        const int capture_history = tables.capture_history_score(metadata);
+        const int bad_capture_penalty = metadata.see_computed && see < 0 && !metadata.gives_check ?
+            kBadCapturePenalty : 0;
+        return kCapturePriority - bad_capture_penalty + (victim_value * 16) - attacker_value +
+            promotion_value(move.promotion()) + see * kSeeOrderingWeight +
+            capture_history * kCaptureHistoryWeight;
+    }
+    if (move.promotion() != Promotion::none) {
+        return kPromotionPriority + promotion_value(move.promotion());
+    }
+    if (metadata.gives_check) {
+        const int check_history = tables.quiet_history_score(side, metadata, history_context);
+        return kCheckingMovePriority + std::clamp(check_history / 32, -8'192, 8'192);
+    }
+
+    const int killer_rank = tables.killer_rank(move, history_context.ply);
+    if (killer_rank == 2) {
+        return kKillerPriority + 1;
+    }
+    if (killer_rank == 1) {
+        return kKillerPriority;
+    }
+    const Move previous = history_context.count > 0 ? history_context.continuation_moves[0] :
+                                                        Move::no_move();
+    if (!previous.is_no_move() && tables.is_proven_counter_move(side, previous, move)) {
+        return kCounterMovePriority;
+    }
+    return tables.quiet_history_score(side, metadata, history_context);
+}
+
 } // namespace
 
 std::uint32_t move_tie_break_key(const Move move) noexcept {
@@ -254,47 +301,8 @@ int SearchMoveOrdering::priority(const GameState& state, const MoveMetadata& met
 int SearchMoveOrdering::priority(const GameState& state, const MoveMetadata& metadata,
                                  const std::optional<Move> tt_move,
                                  const SearchHistoryContext& history_context) const {
-    const Move move = metadata.move;
-    if (tt_move.has_value() && move == *tt_move) {
-        return kTtMovePriority;
-    }
-
-    if (metadata.is_capture()) {
-        const int victim_value = piece_value(metadata.captured_piece);
-        const int attacker_value = piece_value(metadata.moving_piece);
-        const int see = metadata.see_computed ? std::clamp(
-            static_cast<int>(metadata.see_score),
-            -piece_value(PieceType::queen), piece_value(PieceType::queen)) : 0;
-        const int capture_history = tables_.capture_history_score(metadata);
-        const int bad_capture_penalty = metadata.see_computed && see < 0 && !metadata.gives_check ?
-            kBadCapturePenalty : 0;
-        return kCapturePriority - bad_capture_penalty + (victim_value * 16) - attacker_value +
-            promotion_value(move.promotion()) + see * kSeeOrderingWeight +
-            capture_history * kCaptureHistoryWeight;
-    }
-    if (move.promotion() != Promotion::none) {
-        return kPromotionPriority + promotion_value(move.promotion());
-    }
-    if (metadata.gives_check) {
-        const int check_history = tables_.quiet_history_score(
-            state.side_to_move(), metadata, history_context);
-        return kCheckingMovePriority + std::clamp(check_history / 32, -8'192, 8'192);
-    }
-
-    const int killer_rank = tables_.killer_rank(move, history_context.ply);
-    if (killer_rank == 2) {
-        return kKillerPriority + 1;
-    }
-    if (killer_rank == 1) {
-        return kKillerPriority;
-    }
-    const Move previous = history_context.count > 0 ? history_context.continuation_moves[0] :
-                                                        Move::no_move();
-    if (!previous.is_no_move() && tables_.is_proven_counter_move(
-            state.side_to_move(), previous, move)) {
-        return kCounterMovePriority;
-    }
-    return tables_.quiet_history_score(state.side_to_move(), metadata, history_context);
+    return priority_with_side(
+        tables_, state.side_to_move(), metadata, tt_move, history_context);
 }
 
 void SearchMoveOrdering::order(const GameState& state, std::vector<MoveMetadata>& moves,
@@ -504,6 +512,7 @@ MoveMetadata SearchMovePicker::materialize(const std::size_t index) {
 
 void SearchMovePicker::prepare_quiescence_candidates() {
     captures_prepared_ = true;
+    const Color side = state_.side_to_move();
     std::size_t capture_count = 0;
     std::size_t check_count = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
@@ -544,8 +553,8 @@ void SearchMovePicker::prepare_quiescence_candidates() {
             }
             metadata = &materialized;
         }
-        const int priority = ordering_.priority(
-            state_, *metadata, std::nullopt, *history_context_);
+        const int priority = priority_with_side(
+            ordering_.tables_, side, *metadata, std::nullopt, *history_context_);
         const Candidate candidate{
             static_cast<std::uint16_t>(index),
             static_cast<std::uint8_t>(tactical ? Stage::good_captures : Stage::quiet_checks),
@@ -570,14 +579,15 @@ void SearchMovePicker::prepare_quiescence_candidates() {
 
 void SearchMovePicker::prepare_evasion_candidates() {
     captures_prepared_ = true;
+    const Color side = state_.side_to_move();
     std::size_t evasion_count = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
         if (is_excluded(index)) {
             continue;
         }
         const MoveMetadata& metadata = moves_[index];
-        const int priority = ordering_.priority(
-            state_, metadata, std::nullopt, *history_context_);
+        const int priority = priority_with_side(
+            ordering_.tables_, side, metadata, std::nullopt, *history_context_);
         staged_[evasion_count++] = Candidate{
             static_cast<std::uint16_t>(index),
             static_cast<std::uint8_t>(Stage::evasions),
@@ -592,6 +602,7 @@ void SearchMovePicker::prepare_evasion_candidates() {
 
 void SearchMovePicker::prepare_main_captures() {
     captures_prepared_ = true;
+    const Color side = state_.side_to_move();
     main_captures_end_ = 0;
     deferred_bad_capture_count_ = 0;
     deferred_bad_capture_index_ = 0;
@@ -603,8 +614,8 @@ void SearchMovePicker::prepare_main_captures() {
         if (metadata.move.promotion() == Promotion::none && !metadata.is_capture()) {
             continue;
         }
-        const int priority = ordering_.priority(
-            state_, metadata, std::nullopt, *history_context_);
+        const int priority = priority_with_side(
+            ordering_.tables_, side, metadata, std::nullopt, *history_context_);
         staged_[main_captures_end_++] = Candidate{
             static_cast<std::uint16_t>(index),
             static_cast<std::uint8_t>(Stage::good_captures),
@@ -618,6 +629,7 @@ void SearchMovePicker::prepare_main_captures() {
 
 void SearchMovePicker::prepare_main_quiets() {
     quiets_prepared_ = true;
+    const Color side = state_.side_to_move();
     std::size_t good_cursor = main_captures_end_;
     std::size_t bad_cursor = kMaximumLegalMoves;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
@@ -628,8 +640,8 @@ void SearchMovePicker::prepare_main_quiets() {
         if (metadata.move.promotion() != Promotion::none || metadata.is_capture()) {
             continue;
         }
-        const int priority = ordering_.priority(
-            state_, metadata, std::nullopt, *history_context_);
+        const int priority = priority_with_side(
+            ordering_.tables_, side, metadata, std::nullopt, *history_context_);
         const Candidate candidate{
             static_cast<std::uint16_t>(index),
             static_cast<std::uint8_t>(priority <= kGoodQuietPriorityThreshold ?

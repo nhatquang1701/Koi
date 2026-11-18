@@ -862,59 +862,70 @@ void fill_v4_activations(std::span<const std::int32_t> hidden_sums,
 }
 
 #if KOI_NNUE_COMPILED_NEON
-void compute_pair_products_neon(std::span<const std::int16_t> activations,
-                                std::span<std::int16_t> pairs) noexcept {
+void accumulate_v4_perspective_fused_neon(std::span<const std::int32_t> sums,
+                                          const std::int8_t* weights,
+                                          std::span<std::int16_t> activations,
+                                          std::span<std::int16_t> pairs,
+                                          int32x4_t& acc_low,
+                                          int32x4_t& acc_high,
+                                          std::int64_t& acc_tail) noexcept {
     const std::size_t pair_count = pairs.size();
+    const int32x4_t zero = vdupq_n_s32(0);
+    const int32x4_t maximum = vdupq_n_s32(kKoiNnueClippedReluMaximum);
     std::size_t pair = 0;
     for (; pair + 8U <= pair_count; pair += 8U) {
-        const int16x8_t low = vld1q_s16(activations.data() + pair);
-        const int16x8_t high = vld1q_s16(activations.data() + pair + pair_count);
-        vst1q_s16(pairs.data() + pair, vmulq_s16(low, high));
-    }
-    for (; pair < pair_count; ++pair) {
-        pairs[pair] = static_cast<std::int16_t>(
-            activations[pair] * activations[pair + pair_count]);
-    }
-}
-
-[[nodiscard]] std::int64_t bucket_dot_neon(const NnueNetwork& network,
-                                           const std::size_t bucket,
-                                           std::span<const std::int16_t> pairs) noexcept {
-    const std::size_t pair_count = pairs.size();
-    const auto* weights = network.bottleneck_weights.data() + bucket * pair_count;
-    constexpr std::int64_t kMaximumPairProduct = 127 * 127;
-    if (static_cast<std::int64_t>(pair_count) * 127 * kMaximumPairProduct >
-        std::numeric_limits<std::int32_t>::max()) {
-        std::int64_t output = 0;
-        for (std::size_t pair = 0; pair < pair_count; ++pair) {
-            output += static_cast<std::int64_t>(weights[pair]) * pairs[pair];
-        }
-        return output;
-    }
-    int32x4_t acc_low = vdupq_n_s32(0);
-    int32x4_t acc_high = vdupq_n_s32(0);
-    std::size_t pair = 0;
-    for (; pair + 8U <= pair_count; pair += 8U) {
-        const int16x8_t pair_values = vld1q_s16(pairs.data() + pair);
+        int32x4_t low0 = vld1q_s32(sums.data() + pair);
+        int32x4_t high0 = vld1q_s32(sums.data() + pair + 4U);
+        int32x4_t low1 = vld1q_s32(sums.data() + pair + pair_count);
+        int32x4_t high1 = vld1q_s32(sums.data() + pair + pair_count + 4U);
+        low0 = vminq_s32(vmaxq_s32(low0, zero), maximum);
+        high0 = vminq_s32(vmaxq_s32(high0, zero), maximum);
+        low1 = vminq_s32(vmaxq_s32(low1, zero), maximum);
+        high1 = vminq_s32(vmaxq_s32(high1, zero), maximum);
+        const int16x8_t act0 = vcombine_s16(vqmovn_s32(low0), vqmovn_s32(high0));
+        const int16x8_t act1 = vcombine_s16(vqmovn_s32(low1), vqmovn_s32(high1));
+        vst1q_s16(activations.data() + pair, act0);
+        vst1q_s16(activations.data() + pair + pair_count, act1);
+        const int16x8_t prod = vmulq_s16(act0, act1);
+        vst1q_s16(pairs.data() + pair, prod);
         const int16x8_t weight_values = vmovl_s8(vld1_s8(weights + pair));
-        acc_low = vmlal_s16(acc_low, vget_low_s16(pair_values), vget_low_s16(weight_values));
-        acc_high = vmlal_s16(acc_high, vget_high_s16(pair_values), vget_high_s16(weight_values));
+        acc_low = vmlal_s16(acc_low, vget_low_s16(prod), vget_low_s16(weight_values));
+        acc_high = vmlal_s16(acc_high, vget_high_s16(prod), vget_high_s16(weight_values));
     }
-    std::int64_t output = static_cast<std::int64_t>(vaddvq_s32(vaddq_s32(acc_low, acc_high)));
     for (; pair < pair_count; ++pair) {
-        output += static_cast<std::int64_t>(weights[pair]) * pairs[pair];
+        const std::int16_t a0 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+            sums[pair], 0, kKoiNnueClippedReluMaximum));
+        const std::int16_t a1 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+            sums[pair + pair_count], 0, kKoiNnueClippedReluMaximum));
+        activations[pair] = a0;
+        activations[pair + pair_count] = a1;
+        const std::int16_t product = static_cast<std::int16_t>(a0 * a1);
+        pairs[pair] = product;
+        acc_tail += static_cast<std::int64_t>(weights[pair]) * product;
     }
-    return output;
 }
 
 [[nodiscard]] int finish_inference_v4_neon(const NnueNetwork& network,
                                            std::span<const std::int32_t> hidden_sums,
                                            const std::size_t bucket,
                                            NnueAccumulator& accumulator) noexcept {
-    fill_v4_activations(hidden_sums, accumulator);
-    compute_pair_products_neon(accumulator.values, accumulator.bottleneck_values);
+    const std::size_t pair_count = accumulator.bottleneck_values.size();
+    constexpr std::int64_t kMaximumPairProduct = 127 * 127;
+    if ((hidden_sums.size() & 1U) != 0 ||
+        static_cast<std::int64_t>(pair_count) * 127 * kMaximumPairProduct >
+            std::numeric_limits<std::int32_t>::max()) {
+        return finish_inference_v4_scalar(network, hidden_sums, bucket, accumulator);
+    }
+    const auto* weights = network.bottleneck_weights.data() + bucket * pair_count;
+    int32x4_t acc_low = vdupq_n_s32(0);
+    int32x4_t acc_high = vdupq_n_s32(0);
+    std::int64_t acc_tail = 0;
+    accumulate_v4_perspective_fused_neon(
+        hidden_sums, weights, accumulator.values, accumulator.bottleneck_values,
+        acc_low, acc_high, acc_tail);
     std::int64_t output = network.bottleneck_bias[bucket] +
-        bucket_dot_neon(network, bucket, accumulator.bottleneck_values);
+        static_cast<std::int64_t>(vaddvq_s32(vaddq_s32(acc_low, acc_high))) +
+        acc_tail;
     if (network.output_shift > 0) {
         output >>= network.output_shift;
     }
@@ -928,17 +939,28 @@ void compute_pair_products_neon(std::span<const std::int16_t> activations,
                                                 NnueAccumulator& accumulator) noexcept {
     const std::size_t hidden_units = network.manifest.layer_sizes[1];
     const std::size_t pair_count = hidden_units / 2U;
+    const std::size_t total_pairs = hidden_units;
+    constexpr std::int64_t kMaximumPairProduct = 127 * 127;
+    if ((hidden_units & 1U) != 0 ||
+        static_cast<std::int64_t>(total_pairs) * 127 * kMaximumPairProduct >
+            std::numeric_limits<std::int32_t>::max()) {
+        return finish_inference_v4_dual_scalar(network, own_sums, opp_sums, bucket, accumulator);
+    }
+    const auto* weights = network.bottleneck_weights.data() + bucket * total_pairs;
     std::span<std::int16_t> own_act(accumulator.values.data(), hidden_units);
     std::span<std::int16_t> opp_act(accumulator.values.data() + hidden_units, hidden_units);
-    fill_v4_activations_neon(own_sums, own_act);
-    fill_v4_activations_neon(opp_sums, opp_act);
-    compute_pair_products_neon(
-        own_act, std::span<std::int16_t>(accumulator.bottleneck_values.data(), pair_count));
-    compute_pair_products_neon(
-        opp_act,
-        std::span<std::int16_t>(accumulator.bottleneck_values.data() + pair_count, pair_count));
+    std::span<std::int16_t> own_pairs(accumulator.bottleneck_values.data(), pair_count);
+    std::span<std::int16_t> opp_pairs(accumulator.bottleneck_values.data() + pair_count, pair_count);
+    int32x4_t acc_low = vdupq_n_s32(0);
+    int32x4_t acc_high = vdupq_n_s32(0);
+    std::int64_t acc_tail = 0;
+    accumulate_v4_perspective_fused_neon(
+        own_sums, weights, own_act, own_pairs, acc_low, acc_high, acc_tail);
+    accumulate_v4_perspective_fused_neon(
+        opp_sums, weights + pair_count, opp_act, opp_pairs, acc_low, acc_high, acc_tail);
     std::int64_t output = network.bottleneck_bias[bucket] +
-        bucket_dot_neon(network, bucket, accumulator.bottleneck_values);
+        static_cast<std::int64_t>(vaddvq_s32(vaddq_s32(acc_low, acc_high))) +
+        acc_tail;
     if (network.output_shift > 0) {
         output >>= network.output_shift;
     }

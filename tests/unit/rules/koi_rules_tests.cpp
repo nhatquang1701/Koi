@@ -879,6 +879,35 @@ void require_emission_order_matches_the_oracle(const GameState& state) {
         tactical.push_back(tactical_metadata[index].move);
     }
     require_same_move_sequence(tactical, oracle_tactical, "legal_tactical_moves_with_metadata", state);
+
+    // Tactical-plus-quiet-checks generation must match filtering full legal
+    // moves element for element in identical sequence order.
+    koi::MoveMetadataList full_metadata;
+    state.legal_moves_with_metadata(
+        full_metadata, /*include_check_flags=*/true, /*include_see=*/false,
+        koi::CheckFlagMode::all_moves);
+    const bool checked = state.in_check();
+    std::vector<Move> expected_tactical_checks;
+    for (std::size_t index = 0; index < full_metadata.size(); ++index) {
+        const koi::MoveMetadata& meta = full_metadata[index];
+        if (checked || meta.is_capture() ||
+            meta.move.promotion() != Promotion::none || meta.gives_check) {
+            expected_tactical_checks.push_back(meta.move);
+        }
+    }
+    koi::MoveMetadataList tactical_checks_metadata;
+    const bool has_legal = state.legal_tactical_moves_with_metadata(
+        tactical_checks_metadata, /*include_quiet_checks=*/true, /*include_see=*/false);
+    require(has_legal == !oracle_full.empty(),
+            "legal_tactical_moves_with_metadata(quiet_checks=true) has_legal mismatch");
+    std::vector<Move> tactical_checks;
+    tactical_checks.reserve(tactical_checks_metadata.size());
+    for (std::size_t index = 0; index < tactical_checks_metadata.size(); ++index) {
+        tactical_checks.push_back(tactical_checks_metadata[index].move);
+    }
+    require_same_move_sequence(
+        tactical_checks, expected_tactical_checks,
+        "legal_tactical_moves_with_metadata(quiet_checks=true)", state);
 }
 
 // Shared differential corpus: suite fixtures (startpos, checkmate, stalemate,

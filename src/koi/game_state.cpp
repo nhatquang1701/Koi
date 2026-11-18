@@ -950,6 +950,27 @@ bool native_check_probe_matches(const Position& position,
     return true;
 }
 
+[[nodiscard]] Position::MoveFacts move_facts_from_snapshot(
+    const std::array<Piece, 64>& board,
+    const Color side,
+    const std::uint8_t ep_sq,
+    const Move& move) noexcept {
+    Position::MoveFacts facts;
+    const std::uint8_t source = move.from().index();
+    const std::uint8_t destination = move.to().index();
+    if (source >= Square::kInvalid || destination >= Square::kInvalid) {
+        return facts;
+    }
+    facts.valid = true;
+    facts.from = board[source];
+    facts.to = board[destination];
+    facts.occupied_from = !facts.from.empty();
+    facts.occupied_to = !facts.to.empty();
+    facts.own_piece_on_from = facts.occupied_from && facts.from.color == side;
+    facts.en_passant_target = destination == ep_sq;
+    return facts;
+}
+
 // `facts` must have been resolved from the same position as `probe`;
 // `castling` reports whether the move has the castling shape.
 bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
@@ -1403,11 +1424,19 @@ void GameState::legal_moves_with_metadata(MoveMetadataList& moves,
             (check_flag_mode == CheckFlagMode::quiet_moves_only || context.mirror == nullptr);
         const NativeCheckProbe probe = probe_checks && legal_count != 0 ?
             native_check_probe(*context.position) : NativeCheckProbe{};
+        std::array<Piece, 64> board{};
+        Color side = Color::white;
+        std::uint8_t ep_sq = Square::kInvalid;
+        if (legal_count != 0) {
+            impl_->native_position.copy_board_to(board);
+            side = impl_->native_position.side_to_move();
+            ep_sq = impl_->native_position.en_passant_square().index();
+        }
         for (std::size_t index = 0; index < legal_count; ++index) {
             const Move& move = legal[index];
             MoveMetadata metadata;
             if (!fill_move_metadata_from_facts(context, move,
-                                               impl_->native_position.move_facts(move),
+                                               move_facts_from_snapshot(board, side, ep_sq, move),
                                                probe, include_check_flags, check_flag_mode,
                                                metadata)) {
                 break;
@@ -1450,14 +1479,16 @@ bool GameState::legal_tactical_moves_with_metadata(MoveMetadataList& moves,
         // A position whose only legal moves are quiet still has to count as
         // non-terminal, so the tactical list is completed by a single
         // early-exit legality probe.
-        const bool tactical_only = !checked && !include_quiet_checks;
-        const std::size_t legal_count = tactical_only ?
-            impl_->native_position.legal_tactical_moves_into(
-                std::span<Move>(legal.data(), legal.size())) :
+        const std::size_t legal_count = checked ?
             impl_->native_position.legal_moves_into(
-                std::span<Move>(legal.data(), legal.size()));
+                std::span<Move>(legal.data(), legal.size())) :
+            (include_quiet_checks ?
+                 impl_->native_position.legal_tactical_and_checking_moves_into(
+                     std::span<Move>(legal.data(), legal.size())) :
+                 impl_->native_position.legal_tactical_moves_into(
+                     std::span<Move>(legal.data(), legal.size())));
         has_legal_moves = legal_count != 0 ||
-            (tactical_only && impl_->native_position.has_legal_move());
+            (!checked && impl_->native_position.has_legal_move());
         const NativeMetadataContext context{
             &impl_->native_position,
             impl_->mirror_tracking ? &impl_->compatibility_mirror : nullptr};
@@ -1465,9 +1496,17 @@ bool GameState::legal_tactical_moves_with_metadata(MoveMetadataList& moves,
         // probe is built once for the list.
         const NativeCheckProbe probe = legal_count != 0 ?
             native_check_probe(*context.position) : NativeCheckProbe{};
+        std::array<Piece, 64> board{};
+        Color side = Color::white;
+        std::uint8_t ep_sq = Square::kInvalid;
+        if (legal_count != 0) {
+            impl_->native_position.copy_board_to(board);
+            side = impl_->native_position.side_to_move();
+            ep_sq = impl_->native_position.en_passant_square().index();
+        }
         for (std::size_t index = 0; index < legal_count; ++index) {
             const Move& move = legal[index];
-            const Position::MoveFacts facts = impl_->native_position.move_facts(move);
+            const Position::MoveFacts facts = move_facts_from_snapshot(board, side, ep_sq, move);
             const bool capture_or_promotion = facts.is_capture() ||
                 move.promotion() != Promotion::none;
             const bool needs_check_probe = checked || capture_or_promotion || include_quiet_checks;

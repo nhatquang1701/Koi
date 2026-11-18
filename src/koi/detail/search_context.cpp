@@ -2104,12 +2104,14 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // upper bounds through the normal window contract.
             safe_upper_bound = !exact_root_score && child_nominal_depth_complete &&
                 score <= alpha && (!child_selective_bound || child_lower_bound);
+            const bool allow_selective_lower_bound =
+                ply > 1 || depth >= 6 || !child_selective_bound || !child_lower_bound;
             const bool child_score_safe_lower_bound = child_nominal_depth_complete &&
-                (ply > 1 || !child_selective_bound || !child_lower_bound) &&
+                allow_selective_lower_bound &&
                 score > alpha;
             const bool child_lower_bound_authoritative =
                 child_nominal_depth_complete &&
-                (ply > 1 || !child_selective_bound || !child_lower_bound) &&
+                allow_selective_lower_bound &&
                 score >= original_beta;
             const bool child_raises_alpha = child_score_safe_lower_bound;
             prior_child_fail_high = child_raises_alpha;

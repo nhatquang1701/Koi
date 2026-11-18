@@ -41,6 +41,10 @@ public:
     // Tactical-only variant for quiescence: captures, en-passant, and
     // promotions, in the same relative order as legal_moves_into().
     [[nodiscard]] std::size_t legal_tactical_moves_into(std::span<Move> output) const noexcept;
+    // Tactical moves plus quiet checking moves when not in check (and all legal
+    // moves when in check), preserving legal_moves_into() relative order.
+    [[nodiscard]] std::size_t legal_tactical_and_checking_moves_into(
+        std::span<Move> output) const noexcept;
     // True as soon as one legal move is found, without generating the rest.
     [[nodiscard]] bool has_legal_move() const noexcept;
     [[nodiscard]] bool is_legal(const Move& move) const noexcept;
