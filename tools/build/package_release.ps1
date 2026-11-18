@@ -10,6 +10,10 @@ param(
     # (net-vs-classical match/SPRT). Release packages must pass it; packaging a
     # network without evidence stays available only for tests/local inspection.
     [string]$NnueGateReport = '',
+    # Bundled Stockfish-verified CC0 opening book copied flat beside the
+    # executables as book.bin for automatic discovery. Pass an empty string only
+    # when explicitly omitting the book in isolated tests.
+    [string]$BookPath = (Join-Path (Join-Path (Join-Path $PSScriptRoot '../..') 'assets') 'book/koi.bin'),
     # Release-candidate packaging: bundles of the public release must carry a
     # gated network and its gate report. Tests/local inspection may omit both.
     [switch]$ReleasePackage
@@ -161,6 +165,19 @@ if (-not [string]::IsNullOrWhiteSpace($NnuePath)) {
     }
 }
 
+$bookIncluded = $false
+$bookSha = $null
+if (-not [string]::IsNullOrWhiteSpace($BookPath)) {
+    $resolvedBook = [System.IO.Path]::GetFullPath($BookPath)
+    if (-not (Test-Path -LiteralPath $resolvedBook -PathType Leaf)) {
+        throw "Opening book is missing: $resolvedBook"
+    }
+    $bookTarget = Join-Path $packageDirectory 'book.bin'
+    Copy-Item -LiteralPath $resolvedBook -Destination $bookTarget
+    $bookSha = Get-Sha256Hex $bookTarget
+    $bookIncluded = $true
+}
+
 if ($ReleasePackage) {
     if (-not $nnueIncluded) {
         throw 'A release package must bundle a gated NNUE network (-NnuePath).'
@@ -168,10 +185,13 @@ if ($ReleasePackage) {
     if ($null -eq $nnueGate) {
         throw 'A release package must pass -NnueGateReport with an accepted gate decision.'
     }
+    if (-not $bookIncluded) {
+        throw 'A release package must bundle the CC0 opening book (-BookPath).'
+    }
 }
 
 # Keep provenance and checksums out of the user-facing archive so extracting
-# a release leaves only the executables, koi.nnue, and LICENSE.
+# a release leaves only the executables, koi.nnue, book.bin, and LICENSE.
 
 $sourceCommit = $env:GITHUB_SHA
 if ($sourceCommit -notmatch '^[0-9a-f]{40,64}$') {
@@ -232,7 +252,8 @@ $manifest = [ordered]@{
         sha256 = $archiveHash
     }
     files = $packageFiles
-    book_included = $false
+    book_included = [bool]$bookIncluded
+    book_sha256 = $bookSha
     tablebases_included = $false
     nnue_included = [bool]$nnueIncluded
     nnue_metadata_sha256 = $nnueMetadataSha256

@@ -813,14 +813,17 @@ Behaviour details:
   `OwnBook` has never been set explicitly. On first use the engine emits
   `info string book detected: <path> (OwnBook not set, using it)`. Setting
   `OwnBook` explicitly (true or false) disables auto-detection.
-- Bundled book provenance: release archives carry a custom CC0 1.0 Polyglot book
-  (`book/koi.bin`) built by `tools/book/build_database_book.py` from the Lichess
-  standard-game database (2013-01..2014-01): 4,084,023 games scanned, 35,606
-  qualifying strong games (both players >= 1800, average >= 2000, base time
-  >= 180 s), 284,030 positions, 47,020 entries, 752,320 bytes, SHA-256
-  `2ee7643d193a285978c0c56b97f7d9d280aef9fd2d12c984a472b56df2d0a923`. The data
-  source is CC0; copying it beside the binary enables the automatic detection
-  above.
+- Bundled book provenance: release archives carry a compact Stockfish-verified
+  CC0 1.0 Polyglot book (`book.bin` beside the executables, sourced from
+  `assets/book/koi.bin`) built by `tools/book/build_verified_book.py` from
+  3,865 Lichess `chess-openings` ECO seeds and 13 monthly CC0 Lichess
+  standard-game dumps (2013-01..2014-01; 4,084,023 games scanned, 116,802
+  qualifying strong games, minimax-filtered with Stockfish 19 through ply 16):
+  22,510 unique positions (`29,280` reachable nodes), 32,645 entries, 522,320
+  bytes (~312 KB compressed), SHA-256
+  `811c6f64daa98afaa0609e73efb402bbc3240ff27644e0b1499919367e887854`. Because it
+  sits beside the binary as `book.bin`, automatic detection is active out of
+  the box unless `OwnBook=false` is explicitly set.
 - `BookFile` resolves relative paths beside the executable. Missing, unreadable,
   malformed, allocation-failed, or larger than 16 MiB books are treated as
   unusable; search proceeds normally. A book must be at least 16 bytes to be
@@ -836,9 +839,9 @@ Behaviour details:
 - Book selection is bypassed for analysis mode, `MultiPV > 1`, `go infinite`,
   `go ponder`, and any `searchmoves` command. On a hit the engine writes
   `info string book move <uci> depth <ply>` and one legal `bestmove`.
-- Release packages may contain a CC0 Polyglot book at `book/koi.bin` with
-  `book/COPYING.txt` and a SHA-256 sidecar; users copy it beside the binary as
-  `book.bin`. No book is required, and unlicensed books must not be redistributed.
+- Release packages bundle the verified CC0 Polyglot book flat beside the
+  executables as `book.bin`. Custom books can replace `book.bin` or override
+  `BookFile`; unlicensed books must not be redistributed.
 
 ### 8.2 Syzygy tablebases
 
@@ -985,15 +988,17 @@ measurement commands, never CTest thresholds.
    and the test suite are intentionally **not** copied into release archives;
    developers build them from source.
 2. Copies `LICENSE` only (no `README.md`, `INSTALL.txt`, `package.json`,
-   `book/`, or nested docs/licenses dirs inside the user-facing archive).
-3. Optionally includes `koi.nnue` flat beside the executables (`-NnuePath`).
-   Release packages bundle the promoted network inside the platform archive
-   (`koi.nnue`, auto-discovered by the engine) and must pass `-NnueGateReport`
+   `book/`, `nnue/`, or nested docs/licenses dirs inside the user-facing archive).
+3. Bundles `book.bin` flat beside the executables (defaulting to
+   `assets/book/koi.bin`) and optionally includes `koi.nnue` flat beside the
+   executables (`-NnuePath`). Release packages bundle both the verified CC0 book
+   and the promoted network inside the platform archive (`book.bin` and
+   `koi.nnue`, auto-discovered by the engine) and must pass `-NnueGateReport`
    with an accepted strength-gate JSON whose `candidate_sha256` matches the
-   network; the external manifest records `nnue_gate.report_sha256`/`decision`
-   and `nnue_metadata_sha256`. A rejected gate report makes packaging fail, and
-   a network without a report is allowed only for tests/local inspection, never
-   for a release.
+   network; the external manifest records `nnue_gate.report_sha256`/`decision`,
+   `nnue_metadata_sha256`, and `book_sha256`. A rejected gate report makes
+   packaging fail, and a network without a report is allowed only for
+   tests/local inspection, never for a release.
 4. Creates `.zip` on Windows or `.tar.gz` elsewhere plus an external
    `.sha256` sidecar and `<package>.package.json` manifest
    (`koi-engine-package-v1` with archive hash, per-file size/SHA-256,

@@ -16,7 +16,7 @@ Directory map:
 | Directory | Purpose |
 | --- | --- |
 | `tools/build/` | build, package, book-install, and verification scripts |
-| `tools/book/` | `build_book.py` (Polyglot book from CC0 Lichess opening data), `build_database_book.py` (custom strong-game book from the CC0 Lichess standard-game database dumps; produces the bundled release book), and `build_polyglot_subset.py` (compact opening subset of a larger book, e.g. Cerebellum Light, within the engine's fast-load book size contract) |
+| `tools/book/` | `build_verified_book.py` & `polyglot.py` (compact Stockfish-verified CC0 opening book producing `assets/book/koi.bin` for releases without external deps), `build_book.py` (Polyglot book from CC0 Lichess opening data), `build_database_book.py` (legacy raw-count CC0 Lichess-database builder), and `build_polyglot_subset.py` (compact opening subset of a larger book) |
 | `tools/bot/` | Lichess bot control script (install, start, stop, auto-update) |
 | `tools/engine/` | small C++ command-line tools built with Koi |
 | `tools/measurement/` | PGN, oracle, corpus, tuning, and NNUE tooling |

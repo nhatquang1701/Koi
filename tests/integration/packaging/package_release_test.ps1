@@ -102,7 +102,7 @@ try {
         $requiredExecutables = @("koi-engine$binarySuffix", "koi-engine-avx2$binarySuffix",
             "koi-engine-avx512$binarySuffix")
     }
-    $requiredFiles = @($requiredExecutables + @('LICENSE'))
+    $requiredFiles = @($requiredExecutables + @('book.bin', 'LICENSE'))
     foreach ($required in $requiredFiles) {
         Assert-True (Test-Path -LiteralPath (Join-Path $packageDirectory $required) -PathType Leaf) "package is missing $required"
     }
@@ -110,8 +110,8 @@ try {
         ForEach-Object { $_.FullName.Substring($packageDirectory.Length + 1).Replace('\', '/') } |
         Sort-Object)
     $expectedPackagePaths = @($requiredFiles | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)
-    Assert-True (($actualPackagePaths -join "`n") -ceq ($expectedPackagePaths -join "`n")) "release package must contain strictly executables and LICENSE; found: $($actualPackagePaths -join ', ')"
-    foreach ($unexpected in @('README.md', 'INSTALL.txt', 'package.json', 'licenses', 'book', 'nnue', 'book.bin')) {
+    Assert-True (($actualPackagePaths -join "`n") -ceq ($expectedPackagePaths -join "`n")) "release package must contain strictly executables, book.bin, and LICENSE; found: $($actualPackagePaths -join ', ')"
+    foreach ($unexpected in @('README.md', 'INSTALL.txt', 'package.json', 'licenses', 'book', 'nnue')) {
         Assert-True (-not (Test-Path -LiteralPath (Join-Path $packageDirectory $unexpected))) "clean release package must not include $unexpected"
     }
     $developerTools = @("koi-bench$binarySuffix", "koi-replay$binarySuffix",
@@ -150,7 +150,8 @@ try {
     Assert-True ($manifest.provenance.source_commit -ceq $expectedCommit) 'manifest source commit does not match the checkout'
     Assert-True ($manifestText -match '"created_utc"\s*:\s*"[^"]+Z"') 'manifest creation time is not UTC'
     Assert-True ($manifest.provenance.source_dirty -is [bool]) 'manifest source dirty flag is missing'
-    Assert-True ($manifest.book_included -eq $false) 'manifest must state that the optional book is excluded'
+    Assert-True ($manifest.book_included -eq $true) 'manifest must state that the bundled CC0 book is included'
+    Assert-True ($manifest.book_sha256 -ceq (Get-TestSha256 -Path (Join-Path $packageDirectory 'book.bin'))) 'manifest book SHA-256 mismatch'
     Assert-True ($manifest.tablebases_included -eq $false) 'manifest must state that tablebases are excluded'
 
     $manifestFiles = @($manifest.files)

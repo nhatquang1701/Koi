@@ -33,7 +33,7 @@
 | **Search** | Iterative-deepening alpha-beta (PVS) · Lazy SMP (`Threads > 1`) · Root-parallel `MultiPV` (up to 16 lines) · Deterministic single-thread mode (`Threads = 1`) |
 | **Evaluation** | Bundled HalfKA NNUE network (`koi.nnue`, auto-discovered at boot) · Clean tapered classical evaluator selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce` |
 | **Protocol** | Standard FIDE chess over **UCI**, **XBoard/CECP v2**, and **USI** / **UCCI** / **UCI_Cyclone** preset compatibility (`Protocol` option or `--protocol`) · Flag-proof time management · In-place `ponder` / `ponderhit` · `UCI_ShowWDL` |
-| **Assets** | Automatic detection of user-supplied opening books (`book.bin`) and Syzygy tablebases (`syzygy/`) |
+| **Assets** | Bundled Stockfish-verified CC0 opening book (`book.bin`) · Automatic detection of user opening books (`book.bin`) and Syzygy tablebases (`syzygy/`) |
 | **Hardware** | Automatic CPU dispatch on x86-64 (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon (`arm64`) support |
 
 ---
@@ -48,7 +48,7 @@ Prebuilt archives, `.sha256` checksum sidecars, `.package.json` manifests, and G
 - **Linux x86-64:** `koi-engine-v1.1.6-linux-x86_64.tar.gz`
 - **macOS arm64 (Apple Silicon):** `koi-engine-v1.1.6-macos-arm64.tar.gz`
 
-Each release archive is kept minimal and self-contained, shipping only the engine binaries (`koi-engine` plus `koi-engine-avx2` and `koi-engine-avx512` on x86-64), the gated network (`koi.nnue`), and `LICENSE`. Checksums, `.package.json` provenance manifests, and SLSA attestations live alongside the archive outside the zip/tarball.
+Each release archive is kept minimal and self-contained, shipping only the engine binaries (`koi-engine` plus `koi-engine-avx2` and `koi-engine-avx512` on x86-64), the gated network (`koi.nnue`), the Stockfish-verified CC0 opening book (`book.bin`), and `LICENSE`. Checksums, `.package.json` provenance manifests, and SLSA attestations live alongside the archive outside the zip/tarball.
 
 ### 2. Register in Your Chess GUI
 
@@ -62,7 +62,7 @@ Each release archive is kept minimal and self-contained, shipping only the engin
 Koi works out of the box with zero configuration files:
 
 - **NNUE network:** Automatically discovered from `koi.nnue` (or `nnue/koi.nnue`) beside the executable.
-- **Opening book (optional):** Place any Polyglot `.bin` file beside the binary as `book.bin` to enable automatic book lookup (or point `BookFile` at any `.bin` book and set `OwnBook = true`).
+- **Opening book (bundled):** A compact Stockfish-verified CC0 Polyglot book (`book.bin`) ships beside the executable and is auto-detected at startup when `OwnBook` is unset (set `OwnBook = false` to disable, or replace `book.bin` / point `BookFile` at any Polyglot `.bin` file).
 - **Syzygy tablebases (optional):** Place `.rtbw` and `.rtbz` files in a `syzygy/` folder beside the executable (or set `SyzygyPath`) for automatic root and interior probing.
 
 ---

@@ -128,7 +128,7 @@ jobs:
               }
             }
             \$files = Get-ChildItem -LiteralPath \$pkgDir -File -Recurse | ForEach-Object { \$_.Name } | Sort-Object
-            \$expected = @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe', 'koi.nnue', 'LICENSE') | Sort-Object
+            \$expected = @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe', 'koi.nnue', 'book.bin', 'LICENSE') | Sort-Object
             if ((\$files -join ',') -cne (\$expected -join ',')) {
               throw \"Unexpected archive files: \$(\$files -join ', ')\"
             }

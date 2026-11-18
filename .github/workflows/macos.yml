@@ -206,7 +206,7 @@ jobs:
           assert manifest["provenance"]["source_commit"] == os.environ["GITHUB_SHA"], manifest["provenance"]
           assert manifest["provenance"]["source_dirty"] is False, manifest["provenance"]
           extracted_files = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
-          assert extracted_files == ["LICENSE", "koi-engine"], extracted_files
+          assert extracted_files == ["LICENSE", "book.bin", "koi-engine"], extracted_files
           for item in manifest["files"]:
               path = (root / item["path"]).resolve()
               assert root.resolve() in path.parents, item["path"]

@@ -909,8 +909,10 @@ protocol clean. Leave this option disabled for normal release use.
    the engine so portable relative assets resolve predictably.
    - **Showing a separate `VERSION` indicator (like Stockfish):** Pawn Appétit / En Croissant's local binary scanner only populates `Name` from `id name` and leaves `Version` blank. Run `koi-engine --engine-json` to print a ready-to-paste JSON snippet (`name: "Koi"`, `version: "<semver>"`, resolved `path`, defaults) for the GUI's **Edit JSON** dialog (or fill the GUI's `Version` field manually). Check the CLI version directly with `koi-engine --version`.
    - **Protocols (`uci`, `usi`, `ucci`, `ucicyclone`, `xboard`):** Select `Protocol` in UCI options (or launch with `--protocol <name>`, or send `xboard` / `usi` / `ucci` directly on stdin). All modes target standard 8x8 chess (`xboard` implements CECP v2 `protover 2`, `feature`, `setboard`, `usermove`, `ping/pong`, `level`/`st`/`sd`, `time`/`otim`, `post`/`nopost`, `analyze`/`exit`, `undo`/`remove`; `usi` and `ucci`/`ucicyclone` support their handshake, option, `go`, `bestmove resign`/`nobestmove`, and `bye` conventions on 8x8 boards).
-3. If using the opening book, place the user-supplied licensed `book.bin` in
-   the same directory as `koi-engine.exe`. Do not add book data to this
+3. Release archives ship a compact Stockfish-verified CC0 opening book as
+   `book.bin` beside `koi-engine.exe` (used automatically unless `OwnBook` is
+   explicitly `false`); to use another Polyglot book, replace `book.bin` or set
+   `BookFile` with `OwnBook=true`. Do not add unlicensed book data to this
    repository or redistribute it without its license.
 
 Recommended starting options are:
@@ -960,7 +962,8 @@ Reduce `Hash` or `Threads` if other applications need the memory or CPU.
 
 Koi's `OwnBook` option defaults to false, but a Polyglot book placed beside the
 executable is auto-detected and used unless `OwnBook` is set explicitly; release
-packages bundle one at `book/koi.bin` (copy it beside the binary as `book.bin`).
+packages bundle the compact Stockfish-verified CC0 book flat beside the binary
+as `book.bin` so auto-detection works out of the box.
 A relative `BookFile` resolves from the engine's executable directory, not Lucas
 Chess's working directory. To force a specific book, set `OwnBook=true` with:
 
@@ -1045,9 +1048,10 @@ Linux archive is
 `koi-engine-v1.1.6-linux-x86_64.tar.gz`; macOS arm64 (Apple Silicon) archives
 are published alongside them. Each user-facing archive is intentionally minimal
 and contains only the platform engine executables (`koi-engine` plus AVX2/AVX-512
-siblings on Windows/Linux), the bundled `koi.nnue`, and `LICENSE`. `.sha256`
-checksums and external `<package>.package.json` provenance manifests live outside
-the archive alongside the download assets.
+siblings on Windows/Linux), the bundled `koi.nnue`, the bundled Stockfish-verified
+CC0 opening book (`book.bin`), and `LICENSE`. `.sha256` checksums and external
+`<package>.package.json` provenance manifests live outside the archive alongside
+the download assets.
 
 Koi has no required configuration file. En Croissant or another UCI GUI sends
 the options at session start; the portable release defaults are `RandomSeed=0`,
@@ -1063,12 +1067,14 @@ For the recommended En Croissant smoke scenario, use `Hash=512` and `Threads=4`,
 then keep the book and Syzygy paths explicitly configured if those
 assets are available.
 
-Opening books are user-supplied (for example a local `book.bin` beside the
-executable or via `BookFile` / `tools/build/install_book.ps1`, or generated from
-Lichess dumps using `tools/book/build_database_book.py`). Never redistribute a
-book whose license does not permit it.
+Release archives ship the compact Stockfish-verified CC0 `book.bin` (built by
+`tools/book/build_verified_book.py`) alongside the engine binaries; users may
+still replace `book.bin`, pass a custom `BookFile`, or use
+`tools/build/install_book.ps1`. Never redistribute a book whose license does not
+permit it.
 
-Release archives contain strictly the engine binaries, `koi.nnue`, and `LICENSE`.
+Release archives contain strictly the engine binaries, `koi.nnue`, `book.bin`,
+and `LICENSE`.
 Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`) and
 the test suite are not included; build them from source when you need them.
 Retain these repository licenses with the package:
