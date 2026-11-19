@@ -60,7 +60,7 @@ inline constexpr int kInternalIterativeReductionMinimumDepth = 6;
 // than the ordering it buys.
 inline constexpr int kTrueInternalIterativeDeepeningMinimumDepth = 6;
 inline constexpr int kTranspositionProbCutMargin = 428;
-inline constexpr int kReverseFutilityMinimumDepth = 2;
+inline constexpr int kReverseFutilityMinimumDepth = 1;
 // The reference reverse-futility envelope runs to depth 18; the margins below
 // already keep Koi's version far more conservative than the reference, so the
 // depth envelope can match it without weakening the gate's calibration.

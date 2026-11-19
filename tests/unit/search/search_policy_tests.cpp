@@ -80,6 +80,13 @@ void test_reverse_futility_state_signals_ease_the_cutoff() {
             "an improving static evaluation must lower the reverse-futility margin");
     require(worsening.margin < neutral.margin,
             "an opponent-worsening signal must lower the reverse-futility margin too");
+
+    const auto depth_one =
+        SearchPolicy::reverse_futility(1, 100, 400, false, false, true, false, false);
+    require(depth_one.eligible,
+            "reverse-futility pruning must be eligible at depth one when eval clears beta + margin");
+    require(!SearchPolicy::reverse_futility(1, 100, 120, false, false, true, false, false).eligible,
+            "depth-one reverse-futility must not prune when eval stays inside the margin");
 }
 
 void test_check_extension_policy_owns_timing_and_budget_rules() {
