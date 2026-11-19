@@ -177,6 +177,10 @@ public:
                                NnueInferencePath path = NnueInferencePath::automatic);
     [[nodiscard]] int evaluate(const GameState&, Color perspective,
                                NnueInferencePath path = NnueInferencePath::automatic);
+    // Search-only entry point: computes the exact same score as evaluate() while
+    // skipping dead scratch stores into accumulator_.
+    [[nodiscard]] int evaluate_score_only(const GameState&, Color perspective,
+                                          NnueInferencePath path = NnueInferencePath::automatic);
     [[nodiscard]] const NnueAccumulator& accumulator() const noexcept { return accumulator_; }
 
     // Advisory lifecycle hooks.  For v4 networks the worker keeps one hidden
@@ -198,12 +202,23 @@ public:
     }
 
 private:
+    friend class NnueEvaluator;
+
+    explicit NnueWorker(std::shared_ptr<const NnueNetwork> weights,
+                        bool int16_safe_known,
+                        bool precomputed_int16_safe);
+
     // Root slot plus the deepest search line the engine can reach.  Slots past
     // the cursor are never trusted, so an overrun only costs a refresh.
     static constexpr std::size_t kIncrementalSlotCount = 132;
     static constexpr std::size_t kIncrementalPerspectives = 2;
 
-    [[nodiscard]] bool supports_incremental() const noexcept;
+    [[nodiscard]] bool supports_incremental() const noexcept {
+        return supports_incremental_;
+    }
+    template <bool WriteAccumulator>
+    [[nodiscard]] int evaluate_state_impl(const GameState&, Color perspective,
+                                          NnueInferencePath path);
     void ensure_incremental_storage();
     [[nodiscard]] bool prepare_child_slot(int ply, int child_slot,
                                           std::uint64_t parent_key);
@@ -217,6 +232,9 @@ private:
                                   std::size_t slot);
     void refresh_slot_perspective_v4_finny(const GameState&, Color perspective,
                                            std::size_t slot);
+    template <typename SumT>
+    void refresh_finny_bucket_v4_impl(const GameState&, Color perspective,
+                                      std::size_t bucket, SumT* target_sums);
     void refresh_finny_bucket_v4(const GameState&, Color perspective,
                                  std::size_t bucket, std::int32_t* target_sums);
     void apply_feature_delta(std::size_t perspective, std::size_t slot,
@@ -225,6 +243,13 @@ private:
                                         std::int32_t* target_values,
                                         std::span<const std::uint16_t> removed,
                                         std::span<const std::uint16_t> added);
+    void apply_fused_perspective_deltas(const std::int16_t* parent_values,
+                                        std::int16_t* target_values,
+                                        std::span<const std::uint16_t> removed,
+                                        std::span<const std::uint16_t> added);
+    template <typename SumT>
+    void materialize_slot_perspective_v4_impl(const GameState&, std::size_t index,
+                                              std::size_t slot);
     void materialize_slot_perspective_v4(const GameState&, std::size_t index,
                                          std::size_t slot);
     void apply_move_deltas(
@@ -244,21 +269,24 @@ private:
     // every call (the checks used to run per evaluation and per incremental
     // hook).  Computed once in the constructor.
     bool network_usable_ = false;
+    bool supports_incremental_ = false;
     NnueAccumulator accumulator_;
 
-    struct PendingSlotDelta {
-        std::array<std::uint16_t, 2> removed{};
-        std::array<std::uint16_t, 2> added{};
-        std::uint8_t removed_count = 0;
-        std::uint8_t added_count = 0;
-        std::uint8_t needs_finny_refresh = 0;
+    struct PendingMoveV4 {
+        Move move;
+        PieceType moving_piece = PieceType::none;
+        PieceType captured_piece = PieceType::none;
+        MoveKind kind = MoveKind::quiet;
+        Color mover = Color::white;
+        bool is_null = false;
     };
 
     std::size_t hidden_units_ = 0;
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> slot_values_;
+    std::array<std::vector<std::int16_t>, kIncrementalPerspectives> slot_values_16_;
     std::array<std::vector<std::uint8_t>, kIncrementalPerspectives> slot_buckets_;
     std::array<std::vector<std::uint8_t>, kIncrementalPerspectives> slot_computed_;
-    std::array<std::vector<PendingSlotDelta>, kIncrementalPerspectives> slot_pending_;
+    std::vector<PendingMoveV4> slot_pending_move_;
     std::vector<std::uint64_t> slot_keys_;
     std::vector<std::uint8_t> slot_valid_;
     // Piece count per slot (capped at 32).  Cached so an incremental
@@ -266,6 +294,7 @@ private:
     std::vector<std::uint8_t> slot_pieces_;
     int slot_cursor_ = -1;
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> scratch_values_;
+    std::array<std::vector<std::int16_t>, kIncrementalPerspectives> scratch_values_16_;
     std::array<std::uint8_t, kIncrementalPerspectives> scratch_buckets_{};
     std::uint8_t scratch_pieces_ = 0;
     std::uint64_t scratch_key_ = 0;
@@ -273,6 +302,7 @@ private:
     // Finny Table for HalfKA v4 king-bucket refreshes: caches the accumulator
     // sums and 12 piece bitboards per (perspective, king_bucket).
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> finny_values_;
+    std::array<std::vector<std::int16_t>, kIncrementalPerspectives> finny_values_16_;
     std::array<std::array<std::array<std::array<std::uint64_t, 7>, 2>, kNnueKingBucketCount>,
                kIncrementalPerspectives>
         finny_bitboards_{};
@@ -287,7 +317,10 @@ private:
     // v4 halfka networks do not carry threat features; allocating or copying
     // the per-slot threat buffers on the make path is pure overhead there.
     bool threat_features_ = false;
+    bool dual_v4_ = false;
     bool overflow_safe_ = false;
+    bool int16_safe_known_ = false;
+    bool int16_safe_ = false;
     bool storage_ready_ = false;
     std::size_t incremental_make_count_ = 0;
     std::size_t incremental_fallback_count_ = 0;
@@ -305,6 +338,7 @@ public:
 
 private:
     std::shared_ptr<const NnueNetwork> weights_;
+    bool int16_accumulator_safe_ = false;
 };
 
 // Selection seam used by the engine entry points and by the advertised

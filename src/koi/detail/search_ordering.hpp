@@ -6,11 +6,13 @@
 #include <optional>
 #include <vector>
 
-#include "koi/game_state.hpp"
 #include "koi/detail/search_ordering_tables.hpp"
 #include "koi/detail/static_exchange.hpp"
+#include "koi/game_state.hpp"
 
 namespace koi::detail {
+
+inline constexpr int kTtMovePriority = 1'000'000;
 
 [[nodiscard]] std::uint32_t move_tie_break_key(Move move) noexcept;
 
@@ -60,14 +62,33 @@ public:
                                            const SearchHistoryContext& history_context) const noexcept;
     [[nodiscard]] int continuation_history_score(
         const MoveMetadata& metadata, const SearchHistoryContext& history_context) const noexcept;
+    [[nodiscard]] QuietAndContinuationScores quiet_and_continuation_scores(
+        Color side, const MoveMetadata& metadata,
+        const SearchHistoryContext& history_context) const noexcept;
     [[nodiscard]] int capture_history_score(const MoveMetadata& metadata) const noexcept;
     [[nodiscard]] bool is_proven_counter_move(
         Color side, Move previous_move, Move move) const noexcept;
-    [[nodiscard]] int correction_value(std::uint64_t pawn_key, std::uint64_t material_key,
-                                       std::uint64_t king_key) const noexcept;
-    [[nodiscard]] int correction_value(std::uint64_t pawn_key, std::uint64_t material_key,
-                                       std::uint64_t king_key, std::uint64_t minor_key,
-                                       std::uint64_t major_key) const noexcept;
+#if defined(__clang__) || defined(__GNUC__)
+#define KOI_ORD_CORR_INLINE __attribute__((always_inline)) inline
+#elif defined(_MSC_VER)
+#define KOI_ORD_CORR_INLINE __forceinline
+#else
+#define KOI_ORD_CORR_INLINE inline
+#endif
+
+    [[nodiscard]] KOI_ORD_CORR_INLINE int correction_value(
+        std::uint64_t pawn_key, std::uint64_t material_key,
+        std::uint64_t king_key) const noexcept {
+        return tables_.correction_value(pawn_key, material_key, king_key);
+    }
+    [[nodiscard]] KOI_ORD_CORR_INLINE int correction_value(
+        std::uint64_t pawn_key, std::uint64_t material_key,
+        std::uint64_t king_key, std::uint64_t minor_key,
+        std::uint64_t major_key) const noexcept {
+        return tables_.correction_value(pawn_key, material_key, king_key, minor_key, major_key);
+    }
+
+#undef KOI_ORD_CORR_INLINE
     void update_correction(std::uint64_t pawn_key, std::uint64_t material_key,
                            std::uint64_t king_key, int bonus) noexcept;
     void update_correction(std::uint64_t pawn_key, std::uint64_t material_key,
@@ -136,27 +157,36 @@ private:
     // Deliberately without default member initializers: `staged_` is written
     // for every candidate before any entry is read, and a picker is built once
     // per node, so zeroing 256 records here would be pure per-node overhead.
-    struct Candidate {
-        std::uint16_t source_index;
-        std::uint8_t stage_rank;
-        int priority;
-        // Packed (priority descending, tie-break ascending) sort key; see
-        // picker_stage_sort_key() in search_ordering.cpp.
-        std::uint64_t sort_key;
-    };
+    // Bits [63..32] carry the inverted signed priority, bits [31..9] carry the
+    // tie-break key, and bits [8..0] carry the source index into `moves_`.
+    using Candidate = std::uint64_t;
+    static_assert(kMaximumLegalMoves <= 512U,
+                  "Candidate source_index packing requires <= 512 legal moves");
 
     static constexpr std::size_t kStageRankCount =
         static_cast<std::size_t>(Stage::done) + 1U;
+
+#if defined(__clang__) || defined(__GNUC__)
+#define KOI_PICKER_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define KOI_PICKER_NOINLINE __declspec(noinline)
+#else
+#define KOI_PICKER_NOINLINE
+#endif
 
     [[nodiscard]] bool is_excluded(std::size_t index) const noexcept;
     [[nodiscard]] bool is_good_capture(const MoveMetadata& metadata) const noexcept;
     [[nodiscard]] Stage first_stage() const noexcept;
     [[nodiscard]] MoveMetadata materialize(std::size_t index);
-    void prepare_quiescence_candidates();
-    void prepare_evasion_candidates();
-    void prepare_main_captures();
-    void prepare_main_quiets();
+    KOI_PICKER_NOINLINE void prepare_quiescence_candidates();
+    KOI_PICKER_NOINLINE void prepare_evasion_candidates();
+    KOI_PICKER_NOINLINE void prepare_main_captures();
+    KOI_PICKER_NOINLINE void prepare_main_quiets();
+    template <bool AllCont, bool SkipLowPly>
+    void prepare_main_quiets_impl(Color side, const SearchOrderingTables::QuietHistoryBatch& quiet_batch);
+    KOI_PICKER_NOINLINE void score_quiescence_quiet_checks();
     [[nodiscard]] std::size_t pick_next_in_stage(std::size_t rank) noexcept;
+#undef KOI_PICKER_NOINLINE
     void advance_stage() noexcept;
     [[nodiscard]] const MoveMetadata* emit_tt();
 
@@ -242,6 +272,7 @@ private:
     std::size_t deferred_bad_capture_index_ = 0;
     bool captures_prepared_ = false;
     bool quiets_prepared_ = false;
+    bool quiet_checks_scored_ = false;
     bool tt_emitted_ = false;
     bool skip_quiets_ = false;
 };

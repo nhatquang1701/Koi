@@ -31,6 +31,8 @@ struct SearchFrame {
     // uses this to identify the parent's first non-TT quiet move when applying
     // refutation feedback.
     bool had_tt_move = false;
+    std::uint64_t material_signature = 0;
+    bool material_signature_valid = false;
 };
 
 // A principal variation is a plain length-prefixed move sequence.  Only the

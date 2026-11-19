@@ -124,18 +124,6 @@ struct PawnFileState {
     return result;
 }
 
-// King-bucket index of a perspective own-king square: rank zones of three,
-// three and two ranks, and four mirrored files.  Mirroring the file keeps the
-// buckets symmetric for kings on the e-h files.
-[[nodiscard]] constexpr std::size_t king_bucket(
-    const std::size_t perspective_king_square) noexcept {
-    const std::size_t file = perspective_king_square % 8U;
-    const std::size_t rank = perspective_king_square / 8U;
-    const std::size_t zone = rank <= 2U ? 0U : (rank <= 5U ? 1U : 2U);
-    const std::size_t mirrored_file = file < 4U ? file + 4U : file;
-    return zone * 4U + (mirrored_file - 4U);
-}
-
 // Collects the active halfka-king-bucket-v1 indices for one position under an
 // explicit real-color perspective into a strictly increasing list capped at
 // the sparse capacity.  When `dense` is non-null the same indices are also
@@ -143,10 +131,8 @@ struct PawnFileState {
 [[nodiscard]] std::size_t halfka_king_bucket_indices(
     const EvaluationFeatures& features, const Color perspective, std::uint16_t* output,
     const std::size_t capacity, NnueFeatureVectorV4* dense = nullptr) noexcept {
-    const std::uint8_t king_square =
-        features.position.king_squares[color_index(perspective)].index();
-    const std::size_t bucket = king_square < Square::kInvalid ?
-        king_bucket(perspective_square(king_square, perspective)) : 0U;
+    const std::size_t bucket = EvaluationFeatureExtractor::halfka_king_bucket_for_square(
+        features.position.king_squares[color_index(perspective)], perspective);
     const std::size_t base = bucket * kNnuePieceSquareV1FeatureCount;
     std::size_t count = 0;
     for (std::size_t square = 0; square < features.position.board.size(); ++square) {
@@ -389,27 +375,8 @@ NnueFeatureVectorV4 EvaluationFeatureExtractor::encode_halfka_king_bucket_v1(
 
 std::size_t EvaluationFeatureExtractor::halfka_king_bucket_for(
     const EvaluationFeatures& features, const Color perspective) noexcept {
-    const std::uint8_t king_square =
-        features.position.king_squares[color_index(perspective)].index();
-    return king_square < Square::kInvalid ?
-        king_bucket(perspective_square(king_square, perspective)) : 0U;
-}
-
-std::size_t EvaluationFeatureExtractor::halfka_king_bucket_for_square(
-    const Square king_square, const Color perspective) noexcept {
-    return king_square.index() < Square::kInvalid ?
-        king_bucket(perspective_square(king_square.index(), perspective)) : 0U;
-}
-
-std::uint16_t EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-    const std::size_t bucket, const Color perspective, const Piece piece,
-    const Square square) noexcept {
-    const std::size_t color = perspective_color(piece.color, perspective);
-    const std::size_t type = static_cast<std::size_t>(piece.type);
-    const std::size_t plane = color == kWhite ? type - 1U : type + 5U;
-    return static_cast<std::uint16_t>(
-        bucket * kNnuePieceSquareV1FeatureCount + plane * 64U +
-        perspective_square(square.index(), perspective));
+    return halfka_king_bucket_for_square(
+        features.position.king_squares[color_index(perspective)], perspective);
 }
 
 NnueSparseFeaturesV4 EvaluationFeatureExtractor::encode_sparse_v4(

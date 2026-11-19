@@ -319,9 +319,9 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         MoveMetadataList moves;
         ++stats.qsearch_move_generations;
         const bool has_legal_move = checked ?
-            (state.legal_moves_with_metadata(moves, true, false), !moves.empty()) :
-            state.legal_tactical_moves_with_metadata(
-                moves, qdepth < quiescence_check_depth_limit, false);
+            (state.legal_search_moves_with_metadata(moves, true), !moves.empty()) :
+            state.legal_tactical_search_moves_with_metadata(
+                moves, qdepth < quiescence_check_depth_limit);
         if (!has_legal_move) {
             const int score = terminal_score(state, 0, ply);
             if (use_qsearch_cache) {
@@ -359,8 +359,8 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             qdepth < kMaximumQuiescenceNarrowQuietCheckDepth) {
             MoveMetadataList quiet_check_candidates;
             ++stats.qsearch_move_generations;
-            state.legal_moves_with_metadata(
-                quiet_check_candidates, true, false, CheckFlagMode::quiet_moves_only);
+            state.legal_quiet_checking_search_moves_with_metadata(
+                quiet_check_candidates);
             int quiet_checks_added = 0;
             for (const MoveMetadata& candidate : quiet_check_candidates) {
                 if (candidate.is_capture() || !candidate.gives_check ||
@@ -393,7 +393,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // over it, and the picker below borrows whichever value is current.
         NoInitArray<SearchHistoryContext, 1> history_storage;
         if (quiet_history_reachable) {
-            history_storage[0] = history_context(ply, previous_move, state.pawn_key());
+            init_history_context(history_storage[0], ply, previous_move, state.pawn_key());
         }
 #ifndef NDEBUG
         else {
@@ -801,8 +801,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 if (ply == 0 && root_moves != nullptr) {
                     moves = *root_moves;
                 } else {
-                    state.legal_moves_with_metadata(
-                        moves, true, false, CheckFlagMode::quiet_moves_only);
+                    state.legal_search_moves_with_metadata(
+                        moves, true, CheckFlagMode::quiet_moves_only);
                 }
                 if (excluded_search) {
                     // MoveMetadataList is a fixed container; compact the excluded move
@@ -957,8 +957,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         const int original_alpha = alpha;
         const int original_beta = beta;
         const std::uint64_t node_pawn_key = state.pawn_key();
-        const SearchHistoryContext history = history_context(
-            ply, previous_move, node_pawn_key);
+        NoInitArray<SearchHistoryContext, 1> history_storage;
+        init_history_context(history_storage[0], ply, previous_move, node_pawn_key);
+        const SearchHistoryContext& history = history_storage[0];
         std::optional<Move> tt_move;
         // Consume the probe result in place so the normalized entry is not
         // copied a second time after probe() already built it.
@@ -1056,7 +1057,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         int static_eval = 0;
         bool static_eval_valid = false;
         int raw_static_eval = kNoEvaluation;
-        CorrectionKeys correction_keys{};
+        CorrectionKeys correction_keys;
         bool correction_keys_valid = false;
         if (checked) {
             const int previous_ply = ply - 2;
@@ -1076,7 +1077,10 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             const int raw_eval = (tt_entry.has_value() && tt_entry->eval != kNoEvaluation) ?
                 tt_entry->eval : evaluate(state, side_to_move);
             raw_static_eval = raw_eval;
-            correction_keys = correction_keys_for(state, node_pawn_key);
+            if (ply == 0) {
+                frame.material_signature_valid = false;
+            }
+            init_correction_keys(state, node_pawn_key, correction_keys, &frame);
             correction_keys_valid = true;
             static_eval = raw_eval + ordering.correction_value(
                 correction_keys.pawn, correction_keys.material, correction_keys.king,
@@ -1114,9 +1118,16 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // promotions never observed by the quiet-only gates below.  Compute
         // it once for all three consumers instead of once per use.
         const int node_game_phase = state.game_phase();
-        const bool phase_rich_quiet_position = !claimable_draw && !checked && depth == 1 &&
-            !tactical_position() &&
-            node_game_phase >= 8;
+        const bool phase_rich_depth_one_candidate =
+            !claimable_draw && !checked && depth == 1 && node_game_phase >= 8;
+        std::optional<bool> phase_rich_quiet_position_value;
+        const auto phase_rich_quiet_position = [&]() -> bool {
+            if (!phase_rich_quiet_position_value.has_value()) {
+                phase_rich_quiet_position_value =
+                    phase_rich_depth_one_candidate && !tactical_position();
+            }
+            return *phase_rich_quiet_position_value;
+        };
         const PositionFeatures* quiet_forcing_parent_features = nullptr;
         const PositionFeatures* root_direct_forcing_features = nullptr;
         if (!checked && depth == 1 && ply == 1) {
@@ -1125,9 +1136,10 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         if (!checked && depth == 1 && ply == 0 && allow_root_forcing_extension) {
             root_direct_forcing_features = &ensure_features();
         }
-        if (phase_rich_quiet_position && !pv_node) {
+        if (phase_rich_depth_one_candidate && !pv_node) {
             if (depth <= 1 && alpha > -kInfinity &&
-                static_eval + kRazorMarginPerDepthSquared * depth * depth <= alpha) {
+                static_eval + kRazorMarginPerDepthSquared * depth * depth <= alpha &&
+                phase_rich_quiet_position()) {
                 bool razor_selective_bound = false;
                 bool razor_lower_bound = false;
                 const int razor_score = quiescence(state, alpha, beta, ply, 0,
@@ -1514,11 +1526,42 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             }
         }
 
-        (void)ensure_moves();
-        SearchMovePicker picker(
-            ordering, state, moves, tt_move, &history, ply,
-            checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::main,
-            excluded_move);
+        MoveMetadata pre_tt_metadata;
+        bool pre_tt_pending = false;
+        bool defer_skip_quiets = false;
+        if (!moves_generated && tt_move.has_value() && ply > 0 && !excluded_search &&
+            state.try_legal_search_move_metadata(*tt_move, pre_tt_metadata)) {
+            pre_tt_metadata.ordering_score = kTtMovePriority;
+            pre_tt_pending = true;
+        }
+        std::optional<SearchMovePicker> picker;
+        if (!pre_tt_pending) {
+            (void)ensure_moves();
+            picker.emplace(
+                ordering, state, moves, tt_move, &history, ply,
+                checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::main,
+                excluded_move);
+        }
+        const auto next_candidate = [&]() -> const MoveMetadata* {
+            if (pre_tt_pending) {
+                pre_tt_pending = false;
+                return &pre_tt_metadata;
+            }
+            if (!picker.has_value()) {
+                (void)ensure_moves();
+                // Pre-TT runs only when excluded_search is false, so passing
+                // tt_move = nullopt and excluded_move = *tt_move skips sorting
+                // or emitting the already-searched TT move a second time.
+                picker.emplace(
+                    ordering, state, moves, std::nullopt, &history, ply,
+                    checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::main,
+                    *tt_move);
+                if (defer_skip_quiets) {
+                    picker->skip_quiet_moves();
+                }
+            }
+            return picker->next();
+        };
         // A claimable draw is an implicit zero-valued option for the side to
         // move. Keep it as the initial floor while still searching every
         // legal move for a positive continuation.
@@ -1592,7 +1635,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // restored between candidates (make/unmake), so every quiet candidate
         // observes the same phase.
         const bool phase_rich_depth_three = depth == 3 && node_game_phase >= 8;
-        while (const MoveMetadata* candidate = picker.next()) {
+        while (const MoveMetadata* candidate = next_candidate()) {
             const MoveMetadata& metadata = *candidate;
             // The stop flags are already sampled once per node entry
             // (count_node above), so no per-candidate interrupt check is
@@ -1619,17 +1662,25 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 !parent_frame.in_check &&
                 parent_has_non_pawn_material &&
                 best_score > -kMateThreshold && next_move_number >= quiet_skip_threshold) {
-                picker.skip_quiet_moves();
+                if (picker.has_value()) {
+                    picker->skip_quiet_moves();
+                } else {
+                    defer_skip_quiets = true;
+                }
                 selective_pruning = true;
             }
             // Both history reads feed only gates that require depth >= 3
             // (late_move_gate's candidate, dynamic_late_move, and
             // negative_continuation_history at depth >= 4), so below that
             // horizon the zero placeholders are never observed.
-            const int history_score = (depth < 3 || metadata.is_capture()) ? 0 :
-                ordering.quiet_history_score(moving_side, metadata, history);
-            const int continuation_score = depth < 3 ? 0 :
-                ordering.continuation_history_score(metadata, history);
+            int history_score = 0;
+            int continuation_score = 0;
+            if (depth >= 3) {
+                const auto history_scores =
+                    ordering.quiet_and_continuation_scores(moving_side, metadata, history);
+                history_score = metadata.is_capture() ? 0 : history_scores.quiet;
+                continuation_score = history_scores.continuation;
+            }
             const bool is_tt_move = tt_move.has_value() && move == *tt_move;
             // The proven-counter-move probe has a single consumer,
             // negative_continuation_history, whose own
@@ -1777,6 +1828,67 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     singular_extension = -3;
                 }
             }
+            const int capture_history_score = capture_history;
+            const bool capture_pruning_candidate = !claimable_draw && !excluded_search && ply > 0 &&
+                !pv_node && !checked && !metadata.gives_check &&
+                !repetition_sensitive && move_number > 0 &&
+                best_score > -kMateThreshold && parent_has_non_pawn_material &&
+                metadata.is_capture() && !is_tt_move;
+            std::optional<LateMoveDecision> pre_capture_lmr_decision;
+            if (capture_pruning_candidate) {
+                const LateMoveDecision pre_lmr = !lmr_candidate ?
+                    LateMoveDecision{} :
+                    SearchPolicy::dynamic_late_move(
+                        depth, next_move_number, full_child_depth, history_score,
+                        continuation_score,
+                        capture_history, root_pawn_move,
+                        checked, metadata.gives_check, true,
+                        move.promotion() != Promotion::none, is_tt_move,
+                        is_killer_move, true, false,
+                        pv_node, cut_node, improving, prior_child_fail_high,
+                        ply + 1 < static_cast<int>(SearchStack::kCapacity) ?
+                            stack.frame(static_cast<std::size_t>(ply + 1)).cutoff_count : 0,
+                        tt_move.has_value(), frame.tt_pv);
+                const int pre_lmr_depth = std::max(
+                    0, full_child_depth - (pre_lmr.reduced ? pre_lmr.reduction : 0));
+                const bool capture_futility = pre_lmr_depth < 8 &&
+                    static_eval + 234 + 247 * pre_lmr_depth +
+                        piece_value(metadata.captured_piece) +
+                        134 * capture_history_score / 1024 <= alpha;
+                const int see_margin = std::max(0, 177 * depth +
+                                                    34 * capture_history_score / 1024);
+                const bool capture_see = alpha >= 0 && metadata.see_score < -see_margin;
+                if (capture_futility || capture_see) {
+                    if (pre_lmr.reduced) {
+                        ++stats.lmr_reductions;
+                    }
+                    selective_pruning = true;
+                    if (capture_see) {
+                        ++stats.see_prunes;
+                    }
+                    ++move_number;
+                    frame.move_count = move_number;
+                    continue;
+                }
+                pre_capture_lmr_decision = pre_lmr;
+            }
+            if (!claimable_draw && ply > 0 && !pv_node && !checked && !lmr_candidate &&
+                quiet_forcing_parent_features == nullptr &&
+                root_direct_forcing_features == nullptr &&
+                move_number > 0 && !metadata.is_capture() && !metadata.gives_check &&
+                move.promotion() == Promotion::none && !is_tt_move) {
+                const int pre_lmr_depth = std::max(0, full_child_depth);
+                if (pre_lmr_depth < kChildFutilityMaximumLmrDepth &&
+                    static_eval + kChildFutilityBaseMargin +
+                        kChildFutilityDepthMargin * pre_lmr_depth +
+                        (static_eval > alpha ? kChildFutilityEvalAboveAlphaMargin : 0) <= alpha) {
+                    selective_pruning = true;
+                    ++stats.quiet_futility_prunes;
+                    ++move_number;
+                    frame.move_count = move_number;
+                    continue;
+                }
+            }
             const std::uint64_t root_move_start_visited =
                 ply == 0 ? (stats.nodes + stats.qnodes) : 0;
             if (profile_enabled && ply == 0) {
@@ -1879,8 +1991,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 }
             }
             const int child_extension_budget = child_check_extensions_remaining;
-            const LateMoveDecision lmr_decision = excluded_search || claimable_draw ||
-                !lmr_candidate ?
+            const LateMoveDecision lmr_decision = pre_capture_lmr_decision.has_value() ?
+                *pre_capture_lmr_decision :
+                (excluded_search || claimable_draw || !lmr_candidate ?
                 LateMoveDecision{} :
                 SearchPolicy::dynamic_late_move(
                     depth, next_move_number, full_child_depth, history_score,
@@ -1892,7 +2005,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     pv_node, cut_node, improving, prior_child_fail_high,
                     ply + 1 < static_cast<int>(SearchStack::kCapacity) ?
                         stack.frame(static_cast<std::size_t>(ply + 1)).cutoff_count : 0,
-                    tt_move.has_value(), frame.tt_pv);
+                    tt_move.has_value(), frame.tt_pv));
             const bool reduced = lmr_decision.reduced;
             const int reduction = lmr_decision.reduction;
             const int extension_depth = singular_extension + (quiet_forcing_extension ? 1 : 0);
@@ -1907,38 +2020,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             if (reduced) {
                 ++stats.lmr_reductions;
             }
-            // Mirror Stockfish 19's shallow capture gates at non-PV nodes.
-            // The move is already legal and made here so the normal unmake
-            // path remains the single state-restoration path. Do not prune a
-            // first candidate, a TT move, a checked/repetition-sensitive
-            // position, or a sacrifice below the draw score; those cases are
-            // too important for mate and defensive resource discovery.
             const int lmr_depth = std::max(0, full_child_depth - (reduced ? reduction : 0));
-            const int capture_history_score = capture_history;
-            const bool capture_pruning = !claimable_draw && !excluded_search && ply > 0 &&
-                !pv_node && !checked &&
-                !child_in_check && !repetition_sensitive && move_number > 0 &&
-                best_score > -kMateThreshold && parent_has_non_pawn_material &&
-                metadata.is_capture() && !is_tt_move;
-            if (capture_pruning) {
-                const bool capture_futility = lmr_depth < 8 &&
-                    static_eval + 234 + 247 * lmr_depth +
-                        piece_value(metadata.captured_piece) +
-                        134 * capture_history_score / 1024 <= alpha;
-                const int see_margin = std::max(0, 177 * depth +
-                                                    34 * capture_history_score / 1024);
-                const bool capture_see = alpha >= 0 && metadata.see_score < -see_margin;
-                if (capture_futility || capture_see) {
-                    selective_pruning = true;
-                    if (capture_see) {
-                        ++stats.see_prunes;
-                    }
-                    unmake_observed(state, ply + 1);
-                    ++move_number;
-                    frame.move_count = move_number;
-                    continue;
-                }
-            }
             // Child futility is a narrow scout-node optimisation. It is
             // intentionally unavailable to the first move, PV nodes,
             // forcing moves, and TT moves, so a quiet move that is the only
@@ -1964,9 +2046,15 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 continue;
             }
 
-            if (!claimable_draw && !pv_node && SearchPolicy::quiet_futility(
-                    phase_rich_quiet_position, metadata.is_capture(), metadata.gives_check,
-                    move.promotion() != Promotion::none, move_number, static_eval, depth, alpha)) {
+            if (phase_rich_depth_one_candidate && !pv_node &&
+                SearchPolicy::quiet_futility_window(
+                    move_number, static_eval, depth, alpha) &&
+                !metadata.is_capture() && !metadata.gives_check &&
+                move.promotion() == Promotion::none &&
+                SearchPolicy::quiet_futility(
+                    phase_rich_quiet_position(), metadata.is_capture(),
+                    metadata.gives_check, move.promotion() != Promotion::none,
+                    move_number, static_eval, depth, alpha)) {
                 selective_pruning = true;
                 ++stats.quiet_futility_prunes;
                 unmake_observed(state, ply + 1);

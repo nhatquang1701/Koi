@@ -130,6 +130,13 @@ public:
         return true;
     }
 
+    [[nodiscard]] MoveMetadata* reserve_next_slot() noexcept {
+        if (size_ >= kMaximumLegalMoves) {
+            return nullptr;
+        }
+        return &storage_[size_++];
+    }
+
     constexpr void resize(std::size_t size) noexcept {
         size_ = std::min(size, kMaximumLegalMoves);
     }
@@ -295,6 +302,20 @@ public:
         MoveMetadataList& moves, bool include_quiet_checks = true,
         bool include_see = true,
         CheckFlagMode check_flag_mode = CheckFlagMode::all_moves) const noexcept;
+    // Search-only move generation variants: read the native mailbox directly
+    // without copying and skip validation-token hashing when shadow tracking is
+    // detached (make_search_move consumes these internal records directly).
+    void legal_search_moves_with_metadata(
+        MoveMetadataList& moves, bool include_check_flags = true,
+        CheckFlagMode check_flag_mode = CheckFlagMode::all_moves) const noexcept;
+    [[nodiscard]] bool legal_tactical_search_moves_with_metadata(
+        MoveMetadataList& moves, bool include_quiet_checks = true) const noexcept;
+    void legal_quiet_checking_search_moves_with_metadata(
+        MoveMetadataList& moves) const noexcept;
+    // Validates one speculative move (e.g. a TT move) and fills search metadata
+    // without generating the full legal move list. Leaves SEE uncomputed.
+    [[nodiscard]] bool try_legal_search_move_metadata(
+        const Move& move, MoveMetadata& metadata) const noexcept;
     [[nodiscard]] std::optional<MoveMetadata> describe_move(const Move&) const noexcept;
     [[nodiscard]] PositionFeatures position_features() const noexcept;
     // Output-parameter form of position_features(): fills an existing snapshot
@@ -410,8 +431,14 @@ private:
         const Move&, bool include_check_flags, CheckFlagMode check_flag_mode) const noexcept;
     bool apply_generated_move(const MoveMetadata&, bool verify_shadow_legality,
                               bool verify_mirror) noexcept;
+    void legal_moves_with_metadata_impl(MoveMetadataList&, bool include_check_flags,
+                                        bool include_see, CheckFlagMode check_flag_mode,
+                                        bool include_validation_token) const noexcept;
+    [[nodiscard]] bool legal_tactical_moves_with_metadata_impl(
+        MoveMetadataList&, bool include_quiet_checks, bool include_see,
+        CheckFlagMode check_flag_mode, bool include_validation_token) const noexcept;
     void finalize_metadata(MoveMetadataList&, std::uint64_t position_key,
-                           bool include_see) const noexcept;
+                           bool include_see, bool include_validation_token = true) const noexcept;
     void invalidate_feature_cache() noexcept;
 
     friend int detail::static_exchange_gain(const GameState&, const MoveMetadata&) noexcept;

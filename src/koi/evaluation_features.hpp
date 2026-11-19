@@ -146,10 +146,30 @@ public:
     // Bucket of an explicit own-king square under a real-color perspective.
     // Used by the incremental accumulator, which must know the bucket a king
     // move lands in without rebuilding the whole feature view.
-    [[nodiscard]] static std::size_t halfka_king_bucket_for_square(
-        Square king_square, Color perspective) noexcept;
-    [[nodiscard]] static std::uint16_t halfka_king_bucket_feature_index(
-        std::size_t bucket, Color perspective, Piece piece, Square square) noexcept;
+    [[nodiscard]] static constexpr std::size_t halfka_king_bucket_for_square(
+        const Square king_square, const Color perspective) noexcept {
+        if (king_square.index() >= Square::kInvalid) {
+            return 0U;
+        }
+        const std::size_t sq = perspective == Color::white ?
+            king_square.index() : (king_square.index() ^ 56U);
+        const std::size_t file = sq & 7U;
+        const std::size_t rank = sq >> 3U;
+        const std::size_t zone = rank <= 2U ? 0U : (rank <= 5U ? 1U : 2U);
+        const std::size_t mirrored_file = file < 4U ? file + 4U : file;
+        return zone * 4U + (mirrored_file - 4U);
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t halfka_king_bucket_feature_index(
+        const std::size_t bucket, const Color perspective, const Piece piece,
+        const Square square) noexcept {
+        const std::size_t type = static_cast<std::size_t>(piece.type);
+        const std::size_t plane = piece.color == perspective ? (type - 1U) : (type + 5U);
+        const std::size_t sq = perspective == Color::white ?
+            square.index() : (square.index() ^ 56U);
+        return static_cast<std::uint16_t>(
+            bucket * kNnuePieceSquareV1FeatureCount + plane * 64U + sq);
+    }
 };
 
 } // namespace koi

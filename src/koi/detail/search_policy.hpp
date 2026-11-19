@@ -259,12 +259,18 @@ public:
         return ReverseFutilityDecision{static_eval - margin >= beta, margin};
     }
 
+    [[nodiscard]] static constexpr bool quiet_futility_window(
+        const int move_number, const int static_eval,
+        const int depth, const int alpha) noexcept {
+        return move_number > 0 && static_eval + 80 + depth * 60 <= alpha;
+    }
+
     [[nodiscard]] static constexpr bool quiet_futility(
         const bool phase_rich_quiet_position, const bool capture,
         const bool gives_check, const bool promotion, const int move_number,
         const int static_eval, const int depth, const int alpha) noexcept {
         return phase_rich_quiet_position && !capture && !gives_check && !promotion &&
-            move_number > 0 && static_eval + 80 + depth * 60 <= alpha;
+            quiet_futility_window(move_number, static_eval, depth, alpha);
     }
 
     // A very negative continuation-history score is evidence that this move

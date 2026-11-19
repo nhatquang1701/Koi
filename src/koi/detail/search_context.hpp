@@ -566,31 +566,46 @@ struct SearchContext {
         std::uint64_t major = 0;
     };
 
-    [[nodiscard]] static CorrectionKeys correction_keys_for(const GameState& state) noexcept {
-        return correction_keys_for(state, state.pawn_key());
-    }
+#if defined(__clang__) || defined(__GNUC__)
+#define KOI_CTX_ALWAYS_INLINE __attribute__((always_inline)) inline
+#elif defined(_MSC_VER)
+#define KOI_CTX_ALWAYS_INLINE __forceinline
+#else
+#define KOI_CTX_ALWAYS_INLINE inline
+#endif
 
-    [[nodiscard]] static CorrectionKeys correction_keys_for(const GameState& state,
-                                                            std::uint64_t pawn_key) noexcept {
-        CorrectionKeys keys;
+    KOI_CTX_ALWAYS_INLINE static void init_correction_keys(
+        const GameState& state, std::uint64_t pawn_key,
+        CorrectionKeys& keys, SearchFrame* frame = nullptr) noexcept {
         // Static evaluations and residuals are side-to-move-relative, so every
         // correction key must isolate White-to-move and Black-to-move entries.
         const std::uint64_t stm_salt = state.side_to_move() == Color::black ?
             0x9E3779B97F4A7C15ULL : 0ULL;
         keys.pawn = pawn_key ^ stm_salt;
         const auto& bitboards = state.piece_bitboards();
-        // Material signature: FNV-1a over the ten piece counts.  Counts, not
-        // placements, so positions with the same material share experience.
-        std::uint64_t signature = 0xCBF29CE484222325ULL;
-        constexpr std::array<PieceType, 5> kTypes{PieceType::pawn, PieceType::knight,
-                                                  PieceType::bishop, PieceType::rook,
-                                                  PieceType::queen};
-        for (const PieceType type : kTypes) {
-            const std::size_t type_index = static_cast<std::size_t>(type);
-            for (std::size_t color_index = 0; color_index < 2U; ++color_index) {
-                const std::uint64_t count = static_cast<std::uint64_t>(
-                    std::popcount(bitboards[color_index][type_index]));
-                signature = (signature ^ count) * 0x100000001B3ULL;
+        // Material signature: FNV-1a over the ten piece counts.  Since quiet
+        // non-promoting moves leave piece counts unchanged, cache it across
+        // quiet subtrees via SearchFrame rather than running 10 popcounts +
+        // dependent FNV multiplies at every interior node.
+        std::uint64_t signature = 0;
+        if (frame != nullptr && frame->material_signature_valid) {
+            signature = frame->material_signature;
+        } else {
+            signature = 0xCBF29CE484222325ULL;
+            constexpr std::array<PieceType, 5> kTypes{PieceType::pawn, PieceType::knight,
+                                                      PieceType::bishop, PieceType::rook,
+                                                      PieceType::queen};
+            for (const PieceType type : kTypes) {
+                const std::size_t type_index = static_cast<std::size_t>(type);
+                for (std::size_t color_index = 0; color_index < 2U; ++color_index) {
+                    const std::uint64_t count = static_cast<std::uint64_t>(
+                        std::popcount(bitboards[color_index][type_index]));
+                    signature = (signature ^ count) * 0x100000001B3ULL;
+                }
+            }
+            if (frame != nullptr) {
+                frame->material_signature = signature;
+                frame->material_signature_valid = true;
             }
         }
         keys.material = signature ^ stm_salt;
@@ -614,6 +629,19 @@ struct SearchContext {
             (bitboards[1][kRookIdx] * 0x8EBC6AF09C88C6E3ULL) ^
             (bitboards[0][kQueenIdx] * 0x589965CC75374CC3ULL) ^
             (bitboards[1][kQueenIdx] * 0x1D8E4E27C47D124FULL) ^ keys.king;
+    }
+
+    [[nodiscard]] static CorrectionKeys correction_keys_for(const GameState& state) noexcept {
+        CorrectionKeys keys;
+        init_correction_keys(state, state.pawn_key(), keys, nullptr);
+        return keys;
+    }
+
+    [[nodiscard]] static CorrectionKeys correction_keys_for(
+        const GameState& state, std::uint64_t pawn_key,
+        SearchFrame* frame = nullptr) noexcept {
+        CorrectionKeys keys;
+        init_correction_keys(state, pawn_key, keys, frame);
         return keys;
     }
 
@@ -631,6 +659,16 @@ struct SearchContext {
         if (!state.make_search_move(metadata)) {
             return false;
         }
+        if (ply >= 0 && static_cast<std::size_t>(ply + 1) < SearchStack::kCapacity) {
+            const SearchFrame& parent = stack.frame(static_cast<std::size_t>(ply));
+            SearchFrame& child = stack.frame(static_cast<std::size_t>(ply + 1));
+            if (!metadata.is_capture() && metadata.move.promotion() == Promotion::none) {
+                child.material_signature = parent.material_signature;
+                child.material_signature_valid = parent.material_signature_valid;
+            } else {
+                child.material_signature_valid = false;
+            }
+        }
         evaluation.notify_make_move(state, metadata, ply, parent_key);
         return true;
     }
@@ -644,6 +682,12 @@ struct SearchContext {
         const std::uint64_t parent_key = state.position_key();
         if (!state.make_null_move()) {
             return false;
+        }
+        if (ply >= 0 && static_cast<std::size_t>(ply + 1) < SearchStack::kCapacity) {
+            const SearchFrame& parent = stack.frame(static_cast<std::size_t>(ply));
+            SearchFrame& child = stack.frame(static_cast<std::size_t>(ply + 1));
+            child.material_signature = parent.material_signature;
+            child.material_signature_valid = parent.material_signature_valid;
         }
         evaluation.notify_make_null_move(state, ply, parent_key);
         return true;
@@ -724,10 +768,10 @@ struct SearchContext {
         stats.seldepth = std::max(stats.seldepth, ply);
     }
 
-    [[nodiscard]] SearchHistoryContext history_context(
+    KOI_CTX_ALWAYS_INLINE void init_history_context(
+        SearchHistoryContext& context,
         const int ply, const std::optional<Move> previous_move,
         const std::uint64_t pawn_key) const noexcept {
-        SearchHistoryContext context;
         context.count = 0;
         context.ply = ply;
         context.pawn_key = pawn_key;
@@ -736,27 +780,34 @@ struct SearchContext {
         if (!previous_move.has_value() && ply > 0) {
             candidate = stack.frame(static_cast<std::size_t>(ply)).previous_move;
         }
-        for (std::size_t distance = 0; distance < kSearchContinuationPlies &&
-             !candidate.is_no_move(); ++distance) {
+        std::size_t distance = 0;
+        for (; distance < kSearchContinuationPlies && !candidate.is_no_move(); ++distance) {
             context.continuation_moves[distance] = candidate;
-            ++context.count;
+            context.continuation_previous_scaled[distance] = static_cast<std::uint32_t>(
+                table_move_index(candidate) * 131U);
             const int parent_ply = ply - static_cast<int>(distance) - 1;
             if (parent_ply < 0) {
+                ++distance;
                 break;
             }
             candidate = stack.frame(static_cast<std::size_t>(parent_ply)).previous_move;
         }
-        // Hoist the per-node continuation components once.  table_move_index()
-        // is pure and total (no-move and out-of-range both give 0), so each
-        // `table_move_index(move) * 131U` equals the recomputed component for
-        // every input; the read paths only add `move_idx * 17U` and mask, so
-        // every continuation slot stays bit-identical.
-        for (std::size_t distance = 0; distance < kSearchContinuationPlies; ++distance) {
-            context.continuation_previous_scaled[distance] = static_cast<std::uint32_t>(
-                table_move_index(context.continuation_moves[distance]) * 131U);
+        context.count = distance;
+        for (; distance < kSearchContinuationPlies; ++distance) {
+            context.continuation_moves[distance] = Move::no_move();
+            context.continuation_previous_scaled[distance] = 0U;
         }
+    }
+
+    [[nodiscard]] SearchHistoryContext history_context(
+        const int ply, const std::optional<Move> previous_move,
+        const std::uint64_t pawn_key) const noexcept {
+        SearchHistoryContext context;
+        init_history_context(context, ply, previous_move, pawn_key);
         return context;
     }
+
+#undef KOI_CTX_ALWAYS_INLINE
 
     int quiescence(GameState& state, int alpha, int beta, int ply, int qdepth = 0,
                    std::optional<Move> previous_move = std::nullopt,

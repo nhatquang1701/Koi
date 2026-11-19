@@ -57,11 +57,8 @@ int clamp_history(const std::int64_t value, const int maximum) noexcept {
 }
 
 
-std::uint64_t mix64(std::uint64_t value) noexcept {
-    value += 0x9E3779B97F4A7C15ULL;
-    value = (value ^ (value >> 30U)) * 0xBF58476D1CE4E5B9ULL;
-    value = (value ^ (value >> 27U)) * 0x94D049BB133111EBULL;
-    return value ^ (value >> 31U);
+std::uint64_t mix64(const std::uint64_t value) noexcept {
+    return ordering_mix64(value);
 }
 
 template <typename Entry>
@@ -74,16 +71,12 @@ void update_gravity_entry(Entry& score, const int delta, const int maximum) noex
     score = static_cast<Entry>(clamp_history(updated, maximum));
 }
 
-std::size_t correction_slot(const std::uint64_t key, const std::size_t size) noexcept {
-    return static_cast<std::size_t>(mix64(key) & (size - 1U));
-}
-
 } // namespace
 
 SearchOrderingTables::SearchOrderingTables()
-    : multi_ply_continuation_history_(std::make_unique<int[]>(
+    : multi_ply_continuation_history_(std::make_unique<std::int16_t[]>(
           kSearchContinuationPlies * kContinuationHistorySize)),
-      pawn_history_(std::make_unique<int[]>(kPawnHistorySize)),
+      pawn_history_(std::make_unique<std::int16_t[]>(kPawnHistorySize)),
       pawn_correction_(std::make_unique<std::int16_t[]>(kPawnCorrectionHistorySize)),
       material_correction_(std::make_unique<std::int16_t[]>(kMaterialCorrectionHistorySize)),
       king_correction_(std::make_unique<std::int16_t[]>(kKingCorrectionHistorySize)),
@@ -228,18 +221,96 @@ int SearchOrderingTables::quiet_history_score(
     return std::clamp(score, -kMaximumHistoryScore, kMaximumHistoryScore);
 }
 
+std::int64_t SearchOrderingTables::continuation_history_raw(
+    const std::size_t move_idx, const SearchHistoryContext& context) const noexcept {
+    const std::size_t move_count = std::min(context.count, kSearchContinuationPlies);
+    if (move_count == 0) {
+        return 0;
+    }
+    const std::size_t scaled_move = move_idx * 17U;
+    constexpr std::size_t kMask = kContinuationHistorySize - 1U;
+    const auto slot_index = [&](const std::size_t distance) noexcept -> std::size_t {
+        const std::uint32_t cached = context.continuation_previous_scaled[distance];
+        if (cached != 0U) {
+            return (static_cast<std::size_t>(cached) + scaled_move) & kMask;
+        }
+        const Move previous = context.continuation_moves[distance];
+        return previous.is_no_move() ? kContinuationHistorySize
+                                     : ((table_move_index(previous) * 131U + scaled_move) & kMask);
+    };
+    std::int64_t cont_score = 0;
+    if (const std::size_t pair0 = slot_index(0); pair0 < kContinuationHistorySize) {
+        cont_score += continuation_history_[pair0];
+    }
+    if (move_count > 1) {
+        if (const std::size_t pair1 = slot_index(1); pair1 < kContinuationHistorySize) {
+            cont_score += multi_ply_continuation_history_[kContinuationHistorySize + pair1] / 2;
+        }
+        if (move_count > 2) {
+            if (const std::size_t pair2 = slot_index(2); pair2 < kContinuationHistorySize) {
+                cont_score +=
+                    multi_ply_continuation_history_[2 * kContinuationHistorySize + pair2] / 3;
+            }
+            if (move_count > 3) {
+                if (const std::size_t pair3 = slot_index(3); pair3 < kContinuationHistorySize) {
+                    cont_score +=
+                        multi_ply_continuation_history_[3 * kContinuationHistorySize + pair3] / 4;
+                }
+                if (move_count > 4) {
+                    if (const std::size_t pair4 = slot_index(4);
+                        pair4 < kContinuationHistorySize) {
+                        cont_score +=
+                            multi_ply_continuation_history_[4 * kContinuationHistorySize + pair4] /
+                            5;
+                    }
+                    if (move_count > 5) {
+                        if (const std::size_t pair5 = slot_index(5);
+                            pair5 < kContinuationHistorySize) {
+                            cont_score += multi_ply_continuation_history_
+                                [5 * kContinuationHistorySize + pair5] / 6;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return cont_score;
+}
+
+QuietAndContinuationScores SearchOrderingTables::quiet_and_continuation_scores(
+    const Color side, const MoveMetadata& metadata,
+    const SearchHistoryContext& context) const noexcept {
+    if (metadata.move.is_no_move()) {
+        return {};
+    }
+
+    const std::size_t move_idx = move_index(metadata.move);
+    const std::int64_t cont_score = continuation_history_raw(move_idx, context);
+
+    const int continuation = clamp_history(cont_score, kMaximumHistoryScore);
+    if (metadata.is_capture()) {
+        return QuietAndContinuationScores{0, continuation};
+    }
+
+    const std::size_t side_index = static_cast<std::size_t>(color_index(side));
+    std::int64_t quiet_score = history_[side_index][move_idx];
+    quiet_score += piece_to_history_[piece_to_index(metadata.moving_piece, metadata.move.to())];
+    if (context.ply < static_cast<int>(kLowPlyHistoryPlies)) {
+        quiet_score += low_ply_history_[static_cast<std::size_t>(context.ply) * kMoveTableSize +
+                                        move_idx];
+    }
+    quiet_score += cont_score;
+    quiet_score += pawn_history_[pawn_index(context, metadata.moving_piece, metadata.move.to())] / 2;
+    return QuietAndContinuationScores{
+        clamp_history(quiet_score, kMaximumHistoryScore), continuation};
+}
+
 int SearchOrderingTables::quiet_history_score(
     const Color side, const MoveMetadata& metadata,
     const SearchHistoryContext& context) const noexcept {
     if (metadata.move.is_no_move()) {
         return 0;
     }
-
-    // `move_index()` is pure, so evaluating it once cannot change any slot.
-    // The continuation hash below is the exact expression of
-    // continuation_index() with the hoisted `move_idx` and the per-node
-    // precomputed previous-move components, so every table slot stays
-    // bit-identical.
     const std::size_t move_idx = move_index(metadata.move);
     const std::size_t side_index = static_cast<std::size_t>(color_index(side));
     std::int64_t score = history_[side_index][move_idx];
@@ -248,76 +319,8 @@ int SearchOrderingTables::quiet_history_score(
         score += low_ply_history_[static_cast<std::size_t>(context.ply) * kMoveTableSize +
                                   move_idx];
     }
-
-    const std::size_t move_count = std::min(context.count, kSearchContinuationPlies);
-    // The distance-zero pair is the compact continuation table above.  The
-    // multi-ply table starts at the second predecessor so a move is not
-    // counted twice merely because both storage forms contain the same key.
-    //
-    // The distance loop is unrolled so every divisor is a compile-time constant
-    // (2..6) instead of the runtime `distance + 1`.  Constant-divisor division
-    // is exact C++ truncation toward zero for every dividend, so the dividends,
-    // slot indices, accumulation order, and results stay bit-identical.
-    if (move_count > 1) {
-        const Move previous = context.continuation_moves[1];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 1, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        kContinuationHistorySize + pair_index] / 2;
-        }
-    }
-    if (move_count > 2) {
-        const Move previous = context.continuation_moves[2];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 2, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        2 * kContinuationHistorySize + pair_index] / 3;
-        }
-    }
-    if (move_count > 3) {
-        const Move previous = context.continuation_moves[3];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 3, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        3 * kContinuationHistorySize + pair_index] / 4;
-        }
-    }
-    if (move_count > 4) {
-        const Move previous = context.continuation_moves[4];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 4, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        4 * kContinuationHistorySize + pair_index] / 5;
-        }
-    }
-    if (move_count > 5) {
-        const Move previous = context.continuation_moves[5];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 5, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        5 * kContinuationHistorySize + pair_index] / 6;
-        }
-    }
-
-    if (context.count > 0 && !context.continuation_moves[0].is_no_move()) {
-        const std::size_t pair_index =
-            (continuation_previous_component(context, 0, context.continuation_moves[0]) +
-             move_idx * 17U) &
-            (kContinuationHistorySize - 1U);
-        score += continuation_history_[pair_index];
-    }
+    score += continuation_history_raw(move_idx, context);
     score += pawn_history_[pawn_index(context, metadata.moving_piece, metadata.move.to())] / 2;
-
     return clamp_history(score, kMaximumHistoryScore);
 }
 
@@ -326,72 +329,8 @@ int SearchOrderingTables::continuation_history_score(
     if (metadata.move.is_no_move()) {
         return 0;
     }
-
-    // Same hoist and same precomputed continuation hash as
-    // quiet_history_score(); see the bit-identity note there.
-    const std::size_t move_idx = move_index(metadata.move);
-    std::int64_t score = 0;
-    const std::size_t move_count = std::min(context.count, kSearchContinuationPlies);
-    // Same hoist, same precomputed continuation hash, and same constant-divisor
-    // unroll as quiet_history_score(); see the bit-identity note there.
-    if (move_count > 1) {
-        const Move previous = context.continuation_moves[1];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 1, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        kContinuationHistorySize + pair_index] / 2;
-        }
-    }
-    if (move_count > 2) {
-        const Move previous = context.continuation_moves[2];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 2, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        2 * kContinuationHistorySize + pair_index] / 3;
-        }
-    }
-    if (move_count > 3) {
-        const Move previous = context.continuation_moves[3];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 3, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        3 * kContinuationHistorySize + pair_index] / 4;
-        }
-    }
-    if (move_count > 4) {
-        const Move previous = context.continuation_moves[4];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 4, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        4 * kContinuationHistorySize + pair_index] / 5;
-        }
-    }
-    if (move_count > 5) {
-        const Move previous = context.continuation_moves[5];
-        if (!previous.is_no_move()) {
-            const std::size_t pair_index =
-                (continuation_previous_component(context, 5, previous) + move_idx * 17U) &
-                (kContinuationHistorySize - 1U);
-            score += multi_ply_continuation_history_[
-                        5 * kContinuationHistorySize + pair_index] / 6;
-        }
-    }
-    if (move_count > 0 && !context.continuation_moves[0].is_no_move()) {
-        const std::size_t pair_index =
-            (continuation_previous_component(context, 0, context.continuation_moves[0]) +
-             move_idx * 17U) &
-            (kContinuationHistorySize - 1U);
-        score += continuation_history_[pair_index];
-    }
-    return clamp_history(score, kMaximumHistoryScore);
+    return clamp_history(continuation_history_raw(move_index(metadata.move), context),
+                         kMaximumHistoryScore);
 }
 
 int SearchOrderingTables::capture_history_score(const MoveMetadata& metadata) const noexcept {
@@ -399,6 +338,54 @@ int SearchOrderingTables::capture_history_score(const MoveMetadata& metadata) co
         return 0;
     }
     return capture_history_[capture_index(metadata)];
+}
+
+SearchOrderingTables::QuietHistoryBatch SearchOrderingTables::prepare_quiet_history_batch(
+    const Color side, const SearchHistoryContext& context) const noexcept {
+    static_assert(QuietHistoryBatch::kContSize == kContinuationHistorySize);
+    static_assert(QuietHistoryBatch::kPawnMask == kPawnHistorySize - 1U);
+    static_assert(QuietHistoryBatch::kHistoryMax == kMaximumHistoryScore);
+    QuietHistoryBatch batch;
+    batch.history_row = history_[static_cast<std::size_t>(color_index(side))].data();
+    batch.piece_to_row = piece_to_history_.data();
+    batch.low_ply_row = (context.ply >= 0 && context.ply < static_cast<int>(kLowPlyHistoryPlies)) ?
+        low_ply_history_.data() + static_cast<std::size_t>(context.ply) * kMoveTableSize :
+        nullptr;
+    batch.pawn_row = pawn_history_.get();
+    batch.cont0 = continuation_history_.data();
+    batch.multi_cont = multi_ply_continuation_history_.get();
+    batch.pawn_key = context.pawn_key;
+    batch.cont_prev.fill(QuietHistoryBatch::kInvalidOffset);
+    const std::size_t move_count = std::min(context.count, kSearchContinuationPlies);
+    std::uint8_t cont_mask = 0U;
+    for (std::size_t distance = 0; distance < move_count; ++distance) {
+        const std::uint32_t cached = context.continuation_previous_scaled[distance];
+        if (cached != 0U) {
+            batch.cont_prev[distance] =
+                static_cast<std::uint16_t>(cached & (kContinuationHistorySize - 1U));
+            cont_mask |= static_cast<std::uint8_t>(1U << distance);
+        } else if (!context.continuation_moves[distance].is_no_move()) {
+            batch.cont_prev[distance] = static_cast<std::uint16_t>(
+                (table_move_index(context.continuation_moves[distance]) * 131U) &
+                (kContinuationHistorySize - 1U));
+            cont_mask |= static_cast<std::uint8_t>(1U << distance);
+        }
+    }
+    batch.all_cont = cont_mask == 0x3FU;
+    return batch;
+}
+
+Move SearchOrderingTables::proven_counter_move(
+    const Color side, const Move previous_move) const noexcept {
+    if (previous_move.is_no_move()) {
+        return Move::no_move();
+    }
+    const std::size_t side_index = static_cast<std::size_t>(color_index(side));
+    const std::size_t previous_index = move_index(previous_move);
+    if (counter_confidence_[side_index][previous_index] < kCounterMoveMinimumConfidence) {
+        return Move::no_move();
+    }
+    return counter_moves_[side_index][previous_index];
 }
 
 bool SearchOrderingTables::is_proven_counter_move(
@@ -410,37 +397,6 @@ bool SearchOrderingTables::is_proven_counter_move(
     const std::size_t previous_index = move_index(previous_move);
     return counter_moves_[side_index][previous_index] == move &&
         counter_confidence_[side_index][previous_index] >= kCounterMoveMinimumConfidence;
-}
-
-int SearchOrderingTables::correction_value(const std::uint64_t pawn_key,
-                                           const std::uint64_t material_key,
-                                           const std::uint64_t king_key) const noexcept {
-    const std::int64_t total =
-        static_cast<std::int64_t>(pawn_correction_[correction_slot(pawn_key, kPawnCorrectionHistorySize)]) +
-        material_correction_[correction_slot(material_key, kMaterialCorrectionHistorySize)] +
-        king_correction_[correction_slot(king_key, kKingCorrectionHistorySize)];
-    return static_cast<int>(std::clamp<std::int64_t>(
-        total, -kCorrectionTotalLimit, kCorrectionTotalLimit));
-}
-
-int SearchOrderingTables::correction_value(const std::uint64_t pawn_key,
-                                           const std::uint64_t material_key,
-                                           const std::uint64_t king_key,
-                                           const std::uint64_t minor_key,
-                                           const std::uint64_t major_key) const noexcept {
-    // Weighted average over 8 units (2*pawn + 2*minor + 2*major + material + king)
-    // matches the depth-8 residual bonus step size with unit gain and zero overshoot.
-    const std::int64_t pawn = pawn_correction_[correction_slot(pawn_key, kPawnCorrectionHistorySize)];
-    const std::int64_t material =
-        material_correction_[correction_slot(material_key, kMaterialCorrectionHistorySize)];
-    const std::int64_t king = king_correction_[correction_slot(king_key, kKingCorrectionHistorySize)];
-    const std::int64_t minor =
-        minor_correction_[correction_slot(minor_key, kMinorCorrectionHistorySize)];
-    const std::int64_t major =
-        major_correction_[correction_slot(major_key, kMajorCorrectionHistorySize)];
-    const std::int64_t total = (2 * pawn + 2 * minor + 2 * major + material + king) / 8;
-    return static_cast<int>(std::clamp<std::int64_t>(
-        total, -kCorrectionTotalLimit, kCorrectionTotalLimit));
 }
 
 void SearchOrderingTables::update_correction(const std::uint64_t pawn_key,
@@ -489,13 +445,13 @@ void SearchOrderingTables::record_quiet_cutoff(
 
     const int depth_bonus = std::clamp(depth, 1, kMaximumPly);
     const int bonus = depth_bonus * depth_bonus;
-    int& history = history_[static_cast<std::size_t>(color_index(side))][move_index(move)];
+    std::int16_t& history = history_[static_cast<std::size_t>(color_index(side))][move_index(move)];
     update_history(history, bonus, kMaximumHistoryScore);
     if (previous_move.has_value() && !previous_move->is_no_move()) {
         const std::size_t side_index = static_cast<std::size_t>(color_index(side));
         const std::size_t previous_index = move_index(*previous_move);
         Move& counter_move = counter_moves_[side_index][previous_index];
-        int& counter_confidence = counter_confidence_[side_index][previous_index];
+        std::int16_t& counter_confidence = counter_confidence_[side_index][previous_index];
         if (counter_move != move) {
             counter_move = move;
             counter_confidence = 0;
@@ -552,7 +508,7 @@ void SearchOrderingTables::record_quiet_best(
         return;
     }
     const int bonus = std::max(1, std::clamp(depth, 1, kMaximumPly));
-    int& history = history_[static_cast<std::size_t>(color_index(side))][move_index(metadata.move)];
+    std::int16_t& history = history_[static_cast<std::size_t>(color_index(side))][move_index(metadata.move)];
     update_history(history, bonus, kMaximumHistoryScore);
     update_history(piece_to_history_[piece_to_index(metadata.moving_piece, metadata.move.to())],
                    bonus, kHistoryTableMaximum);

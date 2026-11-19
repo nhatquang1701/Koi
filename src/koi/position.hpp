@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -13,6 +14,7 @@
 namespace koi {
 
 enum class DrawStatus : std::uint8_t;
+class MoveMetadataList;
 
 class Position {
 public:
@@ -31,6 +33,8 @@ public:
     // copy). Bulk callers such as SEE context construction avoid 64 cross-TU
     // piece_at calls per snapshot.
     void copy_board_to(std::span<Piece, 64> output) const noexcept;
+    // Direct read-only view of the 64-square native mailbox for hot callers.
+    [[nodiscard]] const std::array<Piece, 64>& board_squares() const noexcept;
     [[nodiscard]] std::vector<Move> legal_moves() const;
     // Allocation-free legal generation for hot callers. The output preserves
     // the same deterministic ordering as legal_moves(); the returned value is
@@ -45,6 +49,15 @@ public:
     // moves when in check), preserving legal_moves_into() relative order.
     [[nodiscard]] std::size_t legal_tactical_and_checking_moves_into(
         std::span<Move> output) const noexcept;
+    void legal_search_metadata_into(
+        MoveMetadataList& output,
+        bool include_check_flags,
+        bool quiet_checks_only) const noexcept;
+    [[nodiscard]] bool legal_tactical_search_metadata_into(
+        MoveMetadataList& output,
+        bool include_quiet_checks) const noexcept;
+    void legal_quiet_checking_search_metadata_into(
+        MoveMetadataList& output) const noexcept;
     // True as soon as one legal move is found, without generating the rest.
     [[nodiscard]] bool has_legal_move() const noexcept;
     [[nodiscard]] bool is_legal(const Move& move) const noexcept;
@@ -70,6 +83,9 @@ public:
         }
     };
     [[nodiscard]] MoveFacts move_facts(const Move& move) const noexcept;
+    // Combines endpoint/piece legality verification with MoveFacts population
+    // so callers validating a single speculative move avoid re-reading board state.
+    [[nodiscard]] bool try_legal_move_facts(const Move& move, MoveFacts& facts) const noexcept;
     bool make_move(const Move& move) noexcept;
     // Applies a move that came from this position's legal move generator.
     // Callers must not use this for unvalidated external input.

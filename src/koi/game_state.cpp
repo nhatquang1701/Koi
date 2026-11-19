@@ -1404,9 +1404,29 @@ std::vector<MoveMetadata> GameState::legal_moves_with_metadata() const {
 }
 
 void GameState::legal_moves_with_metadata(MoveMetadataList& moves,
-                                           bool include_check_flags,
-                                           bool include_see,
-                                           CheckFlagMode check_flag_mode) const noexcept {
+                                          bool include_check_flags,
+                                          bool include_see,
+                                          CheckFlagMode check_flag_mode) const noexcept {
+    legal_moves_with_metadata_impl(
+        moves, include_check_flags, include_see, check_flag_mode, true);
+}
+
+void GameState::legal_search_moves_with_metadata(
+    MoveMetadataList& moves, bool include_check_flags,
+    CheckFlagMode check_flag_mode) const noexcept {
+    if (!impl_->mirror_tracking) {
+        impl_->native_position.legal_search_metadata_into(
+            moves, include_check_flags,
+            check_flag_mode == CheckFlagMode::quiet_moves_only);
+        return;
+    }
+    legal_moves_with_metadata_impl(
+        moves, include_check_flags, false, check_flag_mode, true);
+}
+
+void GameState::legal_moves_with_metadata_impl(
+    MoveMetadataList& moves, bool include_check_flags, bool include_see,
+    CheckFlagMode check_flag_mode, bool include_validation_token) const noexcept {
     moves.clear();
     const std::uint64_t key = position_key();
     try {
@@ -1424,11 +1444,10 @@ void GameState::legal_moves_with_metadata(MoveMetadataList& moves,
             (check_flag_mode == CheckFlagMode::quiet_moves_only || context.mirror == nullptr);
         const NativeCheckProbe probe = probe_checks && legal_count != 0 ?
             native_check_probe(*context.position) : NativeCheckProbe{};
-        std::array<Piece, 64> board{};
+        const std::array<Piece, 64>& board = impl_->native_position.board_squares();
         Color side = Color::white;
         std::uint8_t ep_sq = Square::kInvalid;
         if (legal_count != 0) {
-            impl_->native_position.copy_board_to(board);
             side = impl_->native_position.side_to_move();
             ep_sq = impl_->native_position.en_passant_square().index();
         }
@@ -1446,7 +1465,8 @@ void GameState::legal_moves_with_metadata(MoveMetadataList& moves,
                 // finalize pass into the fill instead of walking the list a
                 // second time; the stamped values are unchanged.
                 metadata.position_key = key;
-                metadata.validation_token = metadata_validation_token(key, metadata);
+                metadata.validation_token = include_validation_token ?
+                    metadata_validation_token(key, metadata) : 0;
             }
             if (!moves.push_back(metadata)) {
                 break;
@@ -1456,7 +1476,7 @@ void GameState::legal_moves_with_metadata(MoveMetadataList& moves,
         moves.clear();
     }
     if (include_see) {
-        finalize_metadata(moves, key, include_see);
+        finalize_metadata(moves, key, include_see, include_validation_token);
     }
 }
 
@@ -1464,6 +1484,33 @@ bool GameState::legal_tactical_moves_with_metadata(MoveMetadataList& moves,
                                                     bool include_quiet_checks,
                                                     bool include_see,
                                                     CheckFlagMode check_flag_mode) const noexcept {
+    return legal_tactical_moves_with_metadata_impl(
+        moves, include_quiet_checks, include_see, check_flag_mode, true);
+}
+
+bool GameState::legal_tactical_search_moves_with_metadata(
+    MoveMetadataList& moves, bool include_quiet_checks) const noexcept {
+    if (!impl_->mirror_tracking) {
+        return impl_->native_position.legal_tactical_search_metadata_into(
+            moves, include_quiet_checks);
+    }
+    return legal_tactical_moves_with_metadata_impl(
+        moves, include_quiet_checks, false, CheckFlagMode::all_moves, true);
+}
+
+void GameState::legal_quiet_checking_search_moves_with_metadata(
+    MoveMetadataList& moves) const noexcept {
+    if (!impl_->mirror_tracking) {
+        impl_->native_position.legal_quiet_checking_search_metadata_into(moves);
+        return;
+    }
+    legal_moves_with_metadata_impl(
+        moves, true, false, CheckFlagMode::quiet_moves_only, true);
+}
+
+bool GameState::legal_tactical_moves_with_metadata_impl(
+    MoveMetadataList& moves, bool include_quiet_checks, bool include_see,
+    CheckFlagMode check_flag_mode, bool include_validation_token) const noexcept {
     moves.clear();
     const std::uint64_t key = position_key();
     // The tactical path selects its own check-probe mode per move, so the
@@ -1496,11 +1543,10 @@ bool GameState::legal_tactical_moves_with_metadata(MoveMetadataList& moves,
         // probe is built once for the list.
         const NativeCheckProbe probe = legal_count != 0 ?
             native_check_probe(*context.position) : NativeCheckProbe{};
-        std::array<Piece, 64> board{};
+        const std::array<Piece, 64>& board = impl_->native_position.board_squares();
         Color side = Color::white;
         std::uint8_t ep_sq = Square::kInvalid;
         if (legal_count != 0) {
-            impl_->native_position.copy_board_to(board);
             side = impl_->native_position.side_to_move();
             ep_sq = impl_->native_position.en_passant_square().index();
         }
@@ -1544,7 +1590,8 @@ bool GameState::legal_tactical_moves_with_metadata(MoveMetadataList& moves,
                 if (!include_see) {
                     // Same stamp as the include_see=false finalize pass.
                     metadata.position_key = key;
-                    metadata.validation_token = metadata_validation_token(key, metadata);
+                    metadata.validation_token = include_validation_token ?
+                        metadata_validation_token(key, metadata) : 0;
                 }
                 (void)moves.push_back(metadata);
             }
@@ -1553,7 +1600,7 @@ bool GameState::legal_tactical_moves_with_metadata(MoveMetadataList& moves,
         moves.clear();
     }
     if (include_see) {
-        finalize_metadata(moves, key, include_see);
+        finalize_metadata(moves, key, include_see, include_validation_token);
     }
     return has_legal_moves;
 }
@@ -1576,6 +1623,29 @@ std::optional<MoveMetadata> GameState::describe_move(const Move& move) const noe
         metadata->see_computed = true;
     }
     return metadata;
+}
+
+bool GameState::try_legal_search_move_metadata(
+    const Move& move, MoveMetadata& metadata) const noexcept {
+    Position::MoveFacts facts;
+    if (!impl_->native_position.try_legal_move_facts(move, facts)) {
+        return false;
+    }
+    const NativeMetadataContext context{
+        &impl_->native_position,
+        impl_->mirror_tracking ? &impl_->compatibility_mirror : nullptr};
+    const bool use_probe = context.mirror == nullptr;
+    if (use_probe && !native_check_probe_matches(*context.position, impl_->check_probe)) {
+        impl_->check_probe = native_check_probe(*context.position);
+    }
+    if (!fill_move_metadata_from_facts(context, move, facts, impl_->check_probe,
+                                       true, CheckFlagMode::all_moves, metadata)) {
+        return false;
+    }
+    metadata.position_key = position_key();
+    metadata.validation_token = impl_->mirror_tracking ?
+        metadata_validation_token(metadata.position_key, metadata) : 0;
+    return true;
 }
 
 bool GameState::fill_native_move_metadata(
@@ -1607,7 +1677,8 @@ std::optional<MoveMetadata> GameState::metadata_for_native_move(
 }
 
 void GameState::finalize_metadata(MoveMetadataList& moves, const std::uint64_t key,
-                                  const bool include_see) const noexcept {
+                                  const bool include_see,
+                                  const bool include_validation_token) const noexcept {
     std::optional<detail::ExchangeContext> exchange_context;
     if (include_see) {
         const bool has_capture = std::any_of(moves.begin(), moves.end(),
@@ -1619,7 +1690,8 @@ void GameState::finalize_metadata(MoveMetadataList& moves, const std::uint64_t k
 
     for (MoveMetadata& metadata : moves) {
         metadata.position_key = key;
-        metadata.validation_token = metadata_validation_token(key, metadata);
+        metadata.validation_token = include_validation_token ?
+            metadata_validation_token(key, metadata) : 0;
         if (include_see && (metadata.is_capture() || metadata.move.promotion() != Promotion::none)) {
             metadata.see_score = metadata.is_capture() && exchange_context.has_value() ?
                 static_cast<std::int16_t>(std::clamp(
@@ -1770,6 +1842,13 @@ bool GameState::make_generated_move(const MoveMetadata& metadata) noexcept {
 }
 
 bool GameState::make_search_move(const MoveMetadata& metadata) noexcept {
+    if (!impl_->mirror_tracking) {
+        // Search detaches the compatibility mirror and supplies records generated
+        // strictly from the current position, so skip per-move SplitMix token
+        // hashing and preserve only the cheap stale-key/origin guards.
+        return metadata.position_key == position_key() &&
+            impl_->native_position.make_generated_move(metadata.move);
+    }
     // The staged picker may lazily discover that a generated capture or
     // promotion gives check. `gives_check` is part of the public metadata
     // authenticity token for ordinary generated moves, so refresh only this

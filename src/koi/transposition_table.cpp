@@ -347,10 +347,13 @@ struct TranspositionTable::Storage {
         const std::size_t segment_count =
             (total_entries + entries_per_segment - 1) / entries_per_segment;
         segments.reserve(segment_count);
+        segment_ptrs.reserve(segment_count);
         std::size_t remaining = total_entries;
         for (std::size_t index = 0; index < segment_count; ++index) {
             const std::size_t count = std::min(remaining, entries_per_segment);
-            segments.push_back(std::make_unique<Segment>(count, failure));
+            auto segment = std::make_unique<Segment>(count, failure);
+            segment_ptrs.push_back(segment->entries.get());
+            segments.push_back(std::move(segment));
             remaining -= count;
         }
         total_slot_count = total_entries;
@@ -359,11 +362,11 @@ struct TranspositionTable::Storage {
     }
 
     [[nodiscard]] AtomicSlot& at(std::size_t slot) noexcept {
-        return segments[slot >> segment_shift]->entries[slot & entries_per_segment_mask];
+        return segment_ptrs[slot >> segment_shift][slot & entries_per_segment_mask];
     }
 
     [[nodiscard]] const AtomicSlot& at(std::size_t slot) const noexcept {
-        return segments[slot >> segment_shift]->entries[slot & entries_per_segment_mask];
+        return segment_ptrs[slot >> segment_shift][slot & entries_per_segment_mask];
     }
 
     // Base entry of a cluster.  `entries_per_segment` is a multiple of
@@ -379,6 +382,7 @@ struct TranspositionTable::Storage {
     }
 
     std::vector<std::unique_ptr<Segment>> segments;
+    std::vector<AtomicSlot*> segment_ptrs;
     const std::size_t entries_per_segment;
     const std::size_t entries_per_segment_mask;
     const std::size_t segment_shift;
@@ -716,23 +720,45 @@ void TranspositionTable::store_storage(Storage* storage, std::uint64_t key, int 
     const std::size_t offset_start = static_cast<std::size_t>(key) & (kClusterSize - 1U);
     std::size_t empty_offset = kClusterSize;
     std::size_t replacement_offset = 0;
-    UnpackedSlot replacement_entry{};
+    std::uint64_t replacement_key = 0;
+    std::int8_t replacement_depth = 0;
+    std::uint8_t replacement_generation = 0;
     std::uint32_t replacement_priority = std::numeric_limits<std::uint32_t>::max();
     for (std::size_t step = 0; step < kClusterSize; ++step) {
         const std::size_t offset = (offset_start + step) & (kClusterSize - 1U);
-        const UnpackedSlot candidate = read_slot(cluster_entries[offset]);
-        const bool valid = candidate.occupied && candidate.generation_age == epoch;
-        if (valid && candidate.key == key) {
-            const bool keeps_deeper_entry = candidate.depth > depth;
-            const bool keeps_equal_exact_entry = candidate.depth == depth &&
-                candidate.bound == TranspositionBound::exact &&
+        const AtomicSlot& slot = cluster_entries[offset];
+        const std::uint64_t w2 = slot.word2.load(std::memory_order_relaxed);
+        const bool valid = slot_occupied(w2) && slot_epoch(w2) == epoch;
+        if (!valid) {
+            if (empty_offset == kClusterSize) {
+                empty_offset = offset;
+            }
+            continue;
+        }
+        const std::uint64_t tag = slot.key_tag.load(std::memory_order_relaxed);
+        const std::uint64_t w1 = slot.word1.load(std::memory_order_relaxed);
+        const std::uint64_t slot_key = tag ^ w1 ^ w2;
+        if (slot_key == key) {
+            const std::int8_t slot_depth =
+                static_cast<std::int8_t>(static_cast<std::uint8_t>(w2 >> 16U));
+            const std::uint8_t bound_raw = static_cast<std::uint8_t>(w2 >> 40U);
+            const TranspositionBound slot_bound =
+                bound_raw <= static_cast<std::uint8_t>(TranspositionBound::upper) ?
+                    static_cast<TranspositionBound>(bound_raw) :
+                    TranspositionBound::exact;
+            const bool keeps_deeper_entry = slot_depth > depth;
+            const bool keeps_equal_exact_entry = slot_depth == depth &&
+                slot_bound == TranspositionBound::exact &&
                 bound != TranspositionBound::exact;
             if (keeps_deeper_entry || keeps_equal_exact_entry) {
-                if (candidate.generation != gen || candidate.generation_age != epoch) {
+                const std::uint8_t slot_gen = static_cast<std::uint8_t>(w2 >> 24U);
+                if (slot_gen != gen) {
+                    const std::int16_t slot_eval = static_cast<std::int16_t>(
+                        static_cast<std::uint16_t>(w2));
+                    const bool slot_pv = ((w2 >> 56U) & 0xFFU) != 0U;
                     const std::uint64_t refreshed_w2 = pack_word2(
-                        candidate.eval, candidate.depth, gen, epoch, candidate.bound,
-                        candidate.pv);
-                    write_slot(cluster_entries[offset], key, candidate.word1, refreshed_w2);
+                        slot_eval, slot_depth, gen, epoch, slot_bound, slot_pv);
+                    write_slot(cluster_entries[offset], key, w1, refreshed_w2);
                 }
                 return;
             }
@@ -742,37 +768,37 @@ void TranspositionTable::store_storage(Storage* storage, std::uint64_t key, int 
             write_slot(cluster_entries[offset], key, new_w1, new_w2);
             return;
         }
-        if (!valid) {
-            if (empty_offset == kClusterSize) {
-                empty_offset = offset;
-            }
+
+        if (empty_offset != kClusterSize) {
             continue;
         }
-
         // Prefer stale generations, then shallow entries.  The final key
         // component makes replacement deterministic when all other signals tie.
-        const std::uint8_t age = static_cast<std::uint8_t>(gen - candidate.generation);
-        const std::uint32_t age_rank = age == 0 ? 1U : 0U;
-        const std::uint32_t depth_rank = static_cast<std::uint32_t>(
-            std::max(0, static_cast<int>(candidate.depth)));
-        const std::uint32_t key_rank = static_cast<std::uint32_t>(candidate.key);
+        const std::uint8_t slot_gen = static_cast<std::uint8_t>(w2 >> 24U);
+        const std::int8_t slot_depth =
+            static_cast<std::int8_t>(static_cast<std::uint8_t>(w2 >> 16U));
+        const std::uint32_t age_rank = (slot_gen == gen) ? 1U : 0U;
+        const std::uint32_t depth_rank =
+            slot_depth > 0 ? static_cast<std::uint32_t>(slot_depth) : 0U;
         const std::uint32_t priority = (age_rank << 24U) |
-            (std::min<std::uint32_t>(depth_rank, 0xFFFFU) << 8U) |
-            (key_rank & 0xFFU);
+            (depth_rank << 8U) |
+            (static_cast<std::uint32_t>(slot_key) & 0xFFU);
         if (priority < replacement_priority) {
             replacement_priority = priority;
             replacement_offset = offset;
-            replacement_entry = candidate;
+            replacement_generation = slot_gen;
+            replacement_depth = slot_depth;
+            replacement_key = slot_key;
         }
     }
 
     const std::size_t target_offset = empty_offset != kClusterSize ?
         empty_offset : replacement_offset;
     if (empty_offset == kClusterSize) {
-        const bool older_generation = replacement_entry.generation != gen;
-        const bool deeper = depth > replacement_entry.depth;
+        const bool older_generation = replacement_generation != gen;
+        const bool deeper = depth > replacement_depth;
         const bool deterministic_tie_break =
-            depth == replacement_entry.depth && key < replacement_entry.key;
+            depth == replacement_depth && key < replacement_key;
         if (!older_generation && !deeper && !deterministic_tie_break) {
             return;
         }
@@ -816,24 +842,32 @@ std::optional<TranspositionEntry> TranspositionTable::probe_storage(
     const std::uint8_t gen = storage->generation.load(std::memory_order_relaxed);
     const std::size_t cluster = cluster_index(key, storage->cluster_count);
     const AtomicSlot* const cluster_entries = storage->cluster_base(cluster);
-    KOI_TT_PREFETCH(cluster_entries);
 
     for (std::size_t offset = 0; offset < kClusterSize; ++offset) {
-        const UnpackedSlot slot = read_slot(cluster_entries[offset]);
-        if (!slot.occupied || slot.generation_age != epoch || slot.key != key) {
+        const AtomicSlot& slot = cluster_entries[offset];
+        const std::uint64_t tag = slot.key_tag.load(std::memory_order_relaxed);
+        const std::uint64_t w1 = slot.word1.load(std::memory_order_relaxed);
+        const std::uint64_t w2 = slot.word2.load(std::memory_order_relaxed);
+        if ((tag ^ w1 ^ w2) != key || !slot_occupied(w2) || slot_epoch(w2) != epoch) {
             continue;
         }
         TranspositionEntry result;
         result.key = key;
-        result.score = score_for_probe(slot.score, ply);
-        result.best_move = slot.best_move;
-        result.eval = slot.eval;
-        result.depth = slot.depth;
-        result.generation = slot.generation;
-        result.generation_age = static_cast<std::uint8_t>(gen - slot.generation);
-        result.bound = slot.bound;
+        const int raw_score = static_cast<int>(
+            static_cast<std::int32_t>(static_cast<std::uint32_t>(w1 & 0xFFFFFFFFULL)));
+        result.score = score_for_probe(raw_score, ply);
+        result.best_move = Move::from_raw(static_cast<std::uint32_t>(w1 >> 32U));
+        result.eval = static_cast<std::int16_t>(static_cast<std::uint16_t>(w2 & 0xFFFFULL));
+        result.depth = static_cast<std::int8_t>(static_cast<std::uint8_t>((w2 >> 16U) & 0xFFU));
+        const std::uint8_t slot_gen = static_cast<std::uint8_t>((w2 >> 24U) & 0xFFU);
+        result.generation = slot_gen;
+        result.generation_age = static_cast<std::uint8_t>(gen - slot_gen);
+        const std::uint8_t bound_raw = static_cast<std::uint8_t>((w2 >> 40U) & 0xFFU);
+        result.bound = bound_raw <= static_cast<std::uint8_t>(TranspositionBound::upper) ?
+            static_cast<TranspositionBound>(bound_raw) :
+            TranspositionBound::exact;
         result.occupied = true;
-        result.pv = slot.pv;
+        result.pv = ((w2 >> 56U) & 0xFFU) != 0U;
         return result;
     }
     return std::nullopt;
