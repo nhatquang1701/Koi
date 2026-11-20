@@ -2573,7 +2573,7 @@ std::uint64_t UciController::begin_generation() {
 void UciController::write_handshake(const ProtocolMode mode) {
     std::lock_guard lock(output_mutex_);
     output_ << "id name Koi " << KOI_ENGINE_BUILD_VERSION << '\n'
-            << "id author Contributors\n";
+            << "id author Nguyễn Nhật Quang\n";
     for (const UciOptionDescriptor& option : kUciOptions) {
         if (!option.advertised) {
             continue;

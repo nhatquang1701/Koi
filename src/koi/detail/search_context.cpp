@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -26,9 +27,431 @@ namespace {
     return -1 - qdepth;
 }
 
+#if defined(__clang__) || defined(__GNUC__)
+#define KOI_CTX_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define KOI_CTX_NOINLINE __declspec(noinline)
+#else
+#define KOI_CTX_NOINLINE
+#endif
+
 } // namespace
 
+struct SearchContext::FrameScratch {
+    struct Slot {
+        Slot() noexcept {}
+        MoveMetadataList moves;
+        NoInitArray<DeferredHistoryMove, kMaximumLegalMoves> failed_moves;
+        NoInitArray<PositionFeatures, 3> features_pool;
+        PrincipalVariation child_pv;
+        std::unique_ptr<MoveMetadataList> aux_moves;
+        alignas(SearchMovePicker) std::array<std::byte, sizeof(SearchMovePicker)> picker_storage;
+    };
+
+    static constexpr std::size_t kSlotArrayCapacity = kSearchStackCapacity * 2U;
+    std::array<std::unique_ptr<Slot>, kSlotArrayCapacity> slots{};
+    std::vector<std::unique_ptr<Slot>> overflow_slots;
+    std::size_t depth = 0;
+
+    [[nodiscard]] Slot& slot_at(const std::size_t index) {
+        if (index < slots.size() && slots[index] != nullptr) [[likely]] {
+            return *slots[index];
+        }
+        return alloc_slot_at(index);
+    }
+
+    KOI_CTX_NOINLINE Slot& alloc_slot_at(const std::size_t index) {
+        if (index < slots.size()) {
+            if (slots[index] == nullptr) {
+                slots[index] = std::make_unique<Slot>();
+            }
+            return *slots[index];
+        }
+        const std::size_t overflow_index = index - slots.size();
+        if (overflow_index >= overflow_slots.size()) {
+            overflow_slots.resize(overflow_index + 1U);
+        }
+        if (overflow_slots[overflow_index] == nullptr) {
+            overflow_slots[overflow_index] = std::make_unique<Slot>();
+        }
+        return *overflow_slots[overflow_index];
+    }
+};
+
+namespace {
+
+class FrameScratchLease {
+public:
+    explicit FrameScratchLease(SearchContext::FrameScratch& scratch)
+        : scratch_(scratch),
+          index_(scratch.depth++),
+          slot_(scratch.slot_at(index_)) {}
+
+    FrameScratchLease(const FrameScratchLease&) = delete;
+    FrameScratchLease& operator=(const FrameScratchLease&) = delete;
+
+    ~FrameScratchLease() noexcept {
+        if (picker_ != nullptr) {
+            std::destroy_at(picker_);
+        }
+        --scratch_.depth;
+    }
+
+    [[nodiscard]] SearchContext::FrameScratch::Slot& slot() noexcept {
+        return slot_;
+    }
+
+    template <typename... Args>
+    SearchMovePicker& emplace_picker(Args&&... args) noexcept {
+        if (picker_ != nullptr) {
+            std::destroy_at(picker_);
+            picker_ = nullptr;
+        }
+        picker_ = std::construct_at(
+            reinterpret_cast<SearchMovePicker*>(slot_.picker_storage.data()),
+            std::forward<Args>(args)...);
+        return *picker_;
+    }
+
+    [[nodiscard]] SearchMovePicker* picker() noexcept {
+        return picker_;
+    }
+
+private:
+    SearchContext::FrameScratch& scratch_;
+    std::size_t index_;
+    SearchContext::FrameScratch::Slot& slot_;
+    SearchMovePicker* picker_ = nullptr;
+};
+
+} // namespace
+
+KOI_CTX_NOINLINE bool SearchContext::poll_clock_slow() noexcept {
+    if (time_manager.should_stop(visited_nodes())) {
+        request_abort();
+        return true;
+    }
+    if (progress_probe) {
+        try {
+            progress_probe();
+        } catch (...) {
+        }
+    }
+    return false;
+}
+
+KOI_CTX_NOINLINE Color SearchContext::history_side_slow(
+    const Color candidate, const bool after_unmake) const noexcept {
+    try {
+        return quiet_history_side_hook(candidate, after_unmake);
+    } catch (...) {
+        return candidate;
+    }
+}
+
+KOI_CTX_NOINLINE void SearchContext::reinforce_tt_lower_quiet(
+    const GameState& state, const Move tt_best_move, const int depth, const int ply,
+    const std::optional<Move> previous_move, const Color side_to_move,
+    const bool moves_generated, const MoveMetadataList& moves,
+    bool& history_ready, SearchHistoryContext& history_out,
+    std::uint64_t& node_pawn_key) noexcept {
+    const auto get_history = [&]() noexcept -> const SearchHistoryContext& {
+        if (!history_ready) {
+            history_ready = true;
+            node_pawn_key = state.pawn_key();
+            init_history_context(history_out, ply, previous_move, node_pawn_key);
+        }
+        return history_out;
+    };
+    if (moves_generated) {
+        const auto tt_metadata = std::find_if(
+            moves.begin(), moves.end(), [tt_best_move](const MoveMetadata& metadata) {
+                return metadata.move == tt_best_move;
+            });
+        if (tt_metadata != moves.end() && !tt_metadata->is_capture() &&
+            tt_metadata->move.promotion() == Promotion::none) {
+            const SearchHistoryContext& tt_history = get_history();
+            const Color moving_side = history_side(side_to_move, false);
+            ordering.record_quiet_cutoff(
+                history_side(moving_side, true), *tt_metadata,
+                std::max(1, depth / 2), tt_history);
+            ++stats.quiet_history_updates;
+            if (tt_history.count > 0) {
+                ++stats.continuation_history_updates;
+            }
+        }
+    } else if (!state.is_capture(tt_best_move) &&
+               tt_best_move.promotion() == Promotion::none) {
+        if (const std::optional<MoveMetadata> tt_metadata =
+                state.describe_move(tt_best_move);
+            tt_metadata.has_value() && !tt_metadata->is_capture() &&
+            tt_metadata->move.promotion() == Promotion::none) {
+            const SearchHistoryContext& tt_history = get_history();
+            const Color moving_side = history_side(side_to_move, false);
+            ordering.record_quiet_cutoff(
+                history_side(moving_side, true), *tt_metadata,
+                std::max(1, depth / 2), tt_history);
+            ++stats.quiet_history_updates;
+            if (tt_history.count > 0) {
+                ++stats.continuation_history_updates;
+            }
+        }
+    }
+}
+
+KOI_CTX_NOINLINE void SearchContext::compute_root_authoritative(
+    const std::size_t legal_move_count, const Move best_move, const int best_score,
+    const bool best_metadata_valid, const bool best_score_authoritative,
+    const bool best_score_safe_lower_bound, const bool claimable_draw,
+    bool& root_authoritative_path) noexcept {
+    const bool complete_root_coverage = root_move_score_count == legal_move_count;
+    const auto root_score_is_safe = [](const RootMoveScore& root_score,
+                                       const int incumbent_score,
+                                       const bool incumbent_has_lower_bound) {
+        if (root_score.exact || root_score.safe_upper_bound) {
+            return true;
+        }
+        return root_score.selective_upper_bound && incumbent_has_lower_bound &&
+            root_score.score <= incumbent_score;
+    };
+    bool claim_option_authoritative = claimable_draw && best_score == -contempt_cp &&
+        best_metadata_valid && complete_root_coverage;
+    if (claim_option_authoritative) {
+        for (std::size_t index = 0; index < root_move_score_count; ++index) {
+            const RootMoveScore& root_score = root_move_scores[index];
+            if (root_score.score > -contempt_cp ||
+                !root_score_is_safe(root_score, -contempt_cp, true)) {
+                claim_option_authoritative = false;
+                break;
+            }
+        }
+    }
+    bool root_authoritative = claim_option_authoritative ||
+        (best_metadata_valid && best_score_authoritative && complete_root_coverage);
+    if (root_authoritative) {
+        bool exact_incumbent = false;
+        for (std::size_t index = 0; index < root_move_score_count; ++index) {
+            const RootMoveScore& root_score = root_move_scores[index];
+            if (root_score.move == best_move) {
+                exact_incumbent = root_score.exact;
+            }
+            if (!root_score_is_safe(root_score, best_score,
+                                    best_score_safe_lower_bound)) {
+                root_authoritative = false;
+                break;
+            }
+        }
+        root_authoritative = root_authoritative &&
+            (exact_incumbent || claim_option_authoritative);
+    }
+    root_authoritative_path = root_authoritative;
+}
+
+std::unique_ptr<SearchContext::FrameScratch, SearchContext::FrameScratchDeleter>
+SearchContext::create_frame_scratch() {
+    return std::unique_ptr<FrameScratch, FrameScratchDeleter>(new FrameScratch());
+}
+
+void SearchContext::FrameScratchDeleter::operator()(FrameScratch* ptr) const noexcept {
+    delete ptr;
+}
+
 SearchContext::~SearchContext() = default;
+
+KOI_CTX_NOINLINE int SearchContext::run_null_verification(
+    GameState& state, const int null_depth, const int beta, const int ply,
+    SearchFrame& frame, PrincipalVariation& verification_pv,
+    const std::optional<Move> previous_move, const int child_check_extensions_remaining,
+    bool& path_repetition_sensitive) {
+    ++stats.null_verifications;
+    verification_pv.clear();
+    const bool saved_table_state = table_access.enabled();
+    const int saved_null_verification_min_ply = null_verification_min_ply;
+    const SearchFrame saved_frame = frame;
+    const bool has_probe_child_frame =
+        ply + 1 < static_cast<int>(SearchStack::kCapacity);
+    const SearchFrame saved_probe_child_frame = has_probe_child_frame ?
+        stack.frame(static_cast<std::size_t>(ply + 1)) : SearchFrame{};
+    table_access.set_enabled(false);
+    null_verification_min_ply = ply + 3 * null_depth / 4;
+    int verified_score = 0;
+    try {
+        bool verification_repetition_sensitive = false;
+        bool verification_selective_bound = false;
+        verified_score = negamax(
+            state, null_depth, beta - 1, beta, ply, verification_pv,
+            previous_move, false, child_check_extensions_remaining,
+            Move::no_move(), &verification_repetition_sensitive,
+            &verification_selective_bound);
+        path_repetition_sensitive = path_repetition_sensitive ||
+            verification_repetition_sensitive;
+    } catch (...) {
+        frame = saved_frame;
+        if (has_probe_child_frame) {
+            stack.frame(static_cast<std::size_t>(ply + 1)) =
+                saved_probe_child_frame;
+        }
+        table_access.set_enabled(saved_table_state);
+        null_verification_min_ply = saved_null_verification_min_ply;
+        throw;
+    }
+    frame = saved_frame;
+    if (has_probe_child_frame) {
+        stack.frame(static_cast<std::size_t>(ply + 1)) =
+            saved_probe_child_frame;
+    }
+    table_access.set_enabled(saved_table_state);
+    null_verification_min_ply = saved_null_verification_min_ply;
+    return verified_score;
+}
+
+KOI_CTX_NOINLINE bool SearchContext::run_probcut(
+    GameState& state, const int ply, const int beta, const int probcut_beta,
+    const int probcut_depth, const int static_eval, const int raw_static_eval,
+    const std::uint64_t transposition_key, const MoveMetadataList& current_moves,
+    const Move excluded_move, const std::optional<Move> tt_move,
+    const SearchHistoryContext& history, PrincipalVariation& probcut_pv,
+    MoveMetadataList& probcut_moves, const int child_check_extensions_remaining,
+    bool& path_repetition_sensitive, bool& path_selective_bound,
+    bool& path_lower_bound, int& cutoff_score) {
+    probcut_moves.clear();
+    for (const MoveMetadata& candidate : current_moves) {
+        if ((candidate.is_capture() || candidate.move.promotion() != Promotion::none) &&
+            candidate.move != excluded_move) {
+            (void)probcut_moves.push_back(candidate);
+        }
+    }
+    ordering.order(state, probcut_moves, tt_move, history);
+    for (const MoveMetadata& candidate : probcut_moves) {
+        if (interrupted()) {
+            cutoff_score = 0;
+            return true;
+        }
+        ++stats.probcut_searches;
+        const bool candidate_gives_check = candidate.gives_check ||
+            (candidate.is_capture() && state.move_gives_check(candidate.move));
+        if (candidate.is_capture() &&
+            candidate.see_score < probcut_beta - static_eval &&
+            !candidate_gives_check) {
+            continue;
+        }
+        if (!make_observed(state, candidate, ply)) {
+            continue;
+        }
+        probcut_pv.clear();
+        bool probcut_repetition_sensitive = false;
+        bool probcut_qsearch_selective_bound = false;
+        int probcut_score = -quiescence(
+            state, -probcut_beta, -probcut_beta + 1, ply + 1, 0,
+            candidate.move, &probcut_repetition_sensitive,
+            &probcut_qsearch_selective_bound);
+        path_repetition_sensitive = path_repetition_sensitive ||
+            probcut_repetition_sensitive;
+        if (!aborted && probcut_score >= probcut_beta && probcut_depth > 0) {
+            probcut_pv.clear();
+            bool probcut_search_repetition_sensitive = false;
+            bool probcut_search_selective_bound = false;
+            probcut_score = -negamax(
+                state, probcut_depth, -probcut_beta, -probcut_beta + 1,
+                ply + 1, probcut_pv, candidate.move, false,
+                child_check_extensions_remaining, Move::no_move(),
+                &probcut_search_repetition_sensitive,
+                &probcut_search_selective_bound);
+            path_repetition_sensitive = path_repetition_sensitive ||
+                probcut_search_repetition_sensitive;
+            if (probcut_search_selective_bound) {
+                probcut_score = -kInfinity;
+            }
+        }
+        unmake_observed(state, ply + 1);
+        if (aborted) {
+            cutoff_score = 0;
+            return true;
+        }
+        if (probcut_score >= probcut_beta &&
+            (probcut_depth > 0 || !probcut_qsearch_selective_bound)) {
+            path_selective_bound = true;
+            path_lower_bound = false;
+            ++stats.probcut_cutoffs;
+            if (std::abs(probcut_score) < kMateThreshold) {
+                if (probcut_depth > 0 && !path_repetition_sensitive &&
+                    table_access.enabled()) {
+                    table_access.store(
+                        transposition_key, probcut_depth + 1,
+                        probcut_score, TranspositionBound::lower,
+                        candidate.move, ply, false, raw_static_eval);
+                }
+                cutoff_score = probcut_score - (probcut_beta - beta);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+KOI_CTX_NOINLINE std::optional<Move> SearchContext::run_true_iid(
+    GameState& state, const int probe_depth, const int alpha, const int ply,
+    SearchFrame& frame, PrincipalVariation& probe_pv,
+    const std::optional<Move> previous_move, const int check_extensions_remaining,
+    const std::uint64_t transposition_key, bool& path_selective_bound) {
+    probe_pv.clear();
+    const bool saved_selective_bound = path_selective_bound;
+    const SearchFrame saved_frame = frame;
+    SearchFrame& child_frame = stack.frame(static_cast<std::size_t>(ply + 1));
+    const int saved_child_cutoff_count = child_frame.cutoff_count;
+    const std::size_t saved_root_move_score_count = root_move_score_count;
+    (void)negamax(state, probe_depth, alpha, alpha + 1, ply, probe_pv, previous_move,
+                  false, check_extensions_remaining, Move::no_move(), nullptr, nullptr);
+    if (aborted) {
+        return std::nullopt;
+    }
+    frame = saved_frame;
+    child_frame.cutoff_count = saved_child_cutoff_count;
+    path_selective_bound = saved_selective_bound;
+    root_move_score_count = saved_root_move_score_count;
+    ++stats.internal_iterative_deepening;
+    const std::optional<TranspositionEntry> probe_entry =
+        table_access.probe(transposition_key, ply);
+    if (probe_entry.has_value() && probe_entry->best_move != Move::no_move()) {
+        return probe_entry->best_move;
+    }
+    return std::nullopt;
+}
+
+KOI_CTX_NOINLINE int SearchContext::run_singular_search(
+    GameState& state, const int singular_depth, const int singular_beta, const int ply,
+    SearchFrame& frame, PrincipalVariation& singular_pv,
+    const std::optional<Move> previous_move, const int child_check_extensions_remaining,
+    const Move excluded_move, bool& excluded_repetition_sensitive,
+    bool& excluded_selective_bound) {
+    singular_pv.clear();
+    const SearchFrame saved_frame = frame;
+    const bool has_probe_child_frame =
+        ply + 1 < static_cast<int>(SearchStack::kCapacity);
+    const SearchFrame saved_probe_child_frame = has_probe_child_frame ?
+        stack.frame(static_cast<std::size_t>(ply + 1)) : SearchFrame{};
+    int excluded_score = 0;
+    try {
+        excluded_score = negamax(
+            state, singular_depth, singular_beta - 1, singular_beta, ply,
+            singular_pv, previous_move, false,
+            child_check_extensions_remaining, excluded_move,
+            &excluded_repetition_sensitive, &excluded_selective_bound);
+    } catch (...) {
+        frame = saved_frame;
+        if (has_probe_child_frame) {
+            stack.frame(static_cast<std::size_t>(ply + 1)) =
+                saved_probe_child_frame;
+        }
+        throw;
+    }
+    frame = saved_frame;
+    if (has_probe_child_frame) {
+        stack.frame(static_cast<std::size_t>(ply + 1)) =
+            saved_probe_child_frame;
+    }
+    return excluded_score;
+}
 
 static_assert(SearchContext::stack_capacity() == SearchStack::kCapacity);
 
@@ -123,8 +546,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // handling still has to run before the static horizon fallback.
         if (ply >= static_cast<int>(SearchStack::kCapacity) - 1) {
             ++stats.qsearch_move_generations;
-            const std::vector<Move> legal_moves = state.legal_moves();
-            if (legal_moves.empty()) {
+            if (!state.has_legal_move()) {
                 return terminal_score(state, 0, ply);
             }
             const DrawStatus draw_status = state.draw_status();
@@ -135,7 +557,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             // this qsearch node from examining its tactical frontier.
             path_selective_bound = true;
             if (checked) {
-                return terminal_score(state, legal_moves.size(), ply);
+                return terminal_score(state, 1, ply);
             }
             const int static_score = evaluate(state, state.side_to_move());
             return is_claimable_draw_status(draw_status) ?
@@ -190,14 +612,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // the qsearch move list and TT bookkeeping.
         if (checked && qdepth >= kMaximumQuiescenceSafetyDepth) {
             ++stats.qsearch_move_generations;
-            const std::vector<Move> legal_moves = state.legal_moves();
-            // Checkmate takes precedence over automatic draw clocks, but a
-            // checked position with a legal evasion is still a draw when the
-            // fivefold/75-move/dead-position rule has already ended the
-            // game.  Keep the safety boundary's terminal semantics aligned
-            // with the ordinary qsearch path without constructing another
-            // metadata list.
-            if (legal_moves.empty()) {
+            if (!state.has_legal_move()) {
                 return terminal_score(state, 0, ply);
             }
             const DrawStatus draw_status = state.draw_status();
@@ -209,7 +624,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             // horizon is therefore a bounded frontier result, not a proof
             // at the regular node's nominal depth.
             path_selective_bound = true;
-            return terminal_score(state, legal_moves.size(), ply);
+            return terminal_score(state, 1, ply);
         }
 
         // Consume the probe result in place so the normalized entry is not
@@ -316,7 +731,9 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             }
         }
 
-        MoveMetadataList moves;
+        FrameScratchLease lease(*frame_scratch);
+        MoveMetadataList& moves = lease.slot().moves;
+        moves.clear();
         ++stats.qsearch_move_generations;
         const bool has_legal_move = checked ?
             (state.legal_search_moves_with_metadata(moves, true), !moves.empty()) :
@@ -355,21 +772,27 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // narrow evasion set.
         // This rescues short mating nets without paying the full quiet-check
         // annotation cost at every quiescence node.
-        if (!checked && qdepth >= kNarrowQuietCheckProbeStartDepth &&
-            qdepth < kMaximumQuiescenceNarrowQuietCheckDepth) {
-            MoveMetadataList quiet_check_candidates;
-            ++stats.qsearch_move_generations;
-            state.legal_quiet_checking_search_moves_with_metadata(
-                quiet_check_candidates);
-            int quiet_checks_added = 0;
-            for (const MoveMetadata& candidate : quiet_check_candidates) {
-                if (candidate.is_capture() || !candidate.gives_check ||
-                    !narrow_deep_quiet_check_candidate(state, candidate)) {
-                    continue;
+        if constexpr (kNarrowQuietCheckProbeStartDepth < kMaximumQuiescenceNarrowQuietCheckDepth) {
+            if (!checked && qdepth >= kNarrowQuietCheckProbeStartDepth &&
+                qdepth < kMaximumQuiescenceNarrowQuietCheckDepth) {
+                if (lease.slot().aux_moves == nullptr) {
+                    lease.slot().aux_moves = std::make_unique<MoveMetadataList>();
                 }
-                (void)moves.push_back(candidate);
-                if (++quiet_checks_added >= kMaximumQuiescenceNarrowQuietChecks) {
-                    break;
+                MoveMetadataList& quiet_check_candidates = *lease.slot().aux_moves;
+                quiet_check_candidates.clear();
+                ++stats.qsearch_move_generations;
+                state.legal_quiet_checking_search_moves_with_metadata(
+                    quiet_check_candidates);
+                int quiet_checks_added = 0;
+                for (const MoveMetadata& candidate : quiet_check_candidates) {
+                    if (candidate.is_capture() || !candidate.gives_check ||
+                        !narrow_deep_quiet_check_candidate(state, candidate)) {
+                        continue;
+                    }
+                    (void)moves.push_back(candidate);
+                    if (++quiet_checks_added >= kMaximumQuiescenceNarrowQuietChecks) {
+                        break;
+                    }
                 }
             }
         }
@@ -392,17 +815,6 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // costs nothing; the reachable branch assigns a fully written context
         // over it, and the picker below borrows whichever value is current.
         NoInitArray<SearchHistoryContext, 1> history_storage;
-        if (quiet_history_reachable) {
-            init_history_context(history_storage[0], ply, previous_move, state.pawn_key());
-        }
-#ifndef NDEBUG
-        else {
-            // Poison the unreachable context in debug builds so a future
-            // reader that invalidates the reachability proof fails a test
-            // loudly instead of ranking moves from indeterminate bytes.
-            std::memset(history_storage.data(), 0xAA, sizeof(SearchHistoryContext));
-        }
-#endif
         std::optional<Move> tt_move;
         if (tt_entry.has_value() && !tt_entry->best_move.is_no_move()) {
             tt_move = tt_entry->best_move;
@@ -434,7 +846,18 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             }
         }
 
-        SearchMovePicker picker(
+        if (quiet_history_reachable) {
+            init_history_context(history_storage[0], ply, previous_move, state.pawn_key());
+        }
+#ifndef NDEBUG
+        else {
+            // Poison the unreachable context in debug builds so a future
+            // reader that invalidates the reachability proof fails a test
+            // loudly instead of ranking moves from indeterminate bytes.
+            std::memset(history_storage.data(), 0xAA, sizeof(SearchHistoryContext));
+        }
+#endif
+        SearchMovePicker& picker = lease.emplace_picker(
             ordering, state, moves, tt_move, &history_storage[0], ply,
             checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::quiescence);
         const Square previous_destination = previous_move.has_value() ?
@@ -793,7 +1216,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // count accumulates for the rest of this node's move loop.
             stack.frame(static_cast<std::size_t>(ply + 1)).cutoff_count = 0;
         }
-        MoveMetadataList moves;
+        FrameScratchLease lease(*frame_scratch);
+        MoveMetadataList& moves = lease.slot().moves;
+        moves.clear();
         bool moves_generated = false;
         const auto ensure_moves = [&]() -> const MoveMetadataList& {
             if (!moves_generated) {
@@ -906,21 +1331,16 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             }
         }
 
-        std::optional<PositionFeatures> features;
+        bool features_ready = false;
         const auto ensure_features = [&]() -> const PositionFeatures& {
-            if (!features.has_value()) {
-                // emplace() value-initializes the snapshot, but the fill below
-                // overwrites every member with the same cached slot the
-                // by-value call would return, so the final contents are
-                // identical while the return temporary and its copy-assignment
-                // disappear. The return value reports the single cache miss
-                // this call may have caused.
-                features.emplace();
-                if (state.position_features_into(*features)) {
+            PositionFeatures& cached_features = lease.slot().features_pool[0];
+            if (!features_ready) {
+                features_ready = true;
+                if (state.position_features_into(cached_features)) {
                     ++stats.position_feature_extractions;
                 }
             }
-            return *features;
+            return cached_features;
         };
         // The tactic flag is consumed only by pruning gates that run after the
         // transposition probe, and several early-return paths never reach one.
@@ -956,10 +1376,24 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         const bool cut_node = !pv_node;
         const int original_alpha = alpha;
         const int original_beta = beta;
-        const std::uint64_t node_pawn_key = state.pawn_key();
         NoInitArray<SearchHistoryContext, 1> history_storage;
-        init_history_context(history_storage[0], ply, previous_move, node_pawn_key);
-        const SearchHistoryContext& history = history_storage[0];
+        std::uint64_t node_pawn_key = 0;
+        bool pawn_key_ready = false;
+        const auto ensure_pawn_key = [&]() noexcept -> std::uint64_t {
+            if (!pawn_key_ready) {
+                pawn_key_ready = true;
+                node_pawn_key = state.pawn_key();
+            }
+            return node_pawn_key;
+        };
+        bool history_ready = false;
+        const auto ensure_history = [&]() -> const SearchHistoryContext& {
+            if (!history_ready) {
+                history_ready = true;
+                init_history_context(history_storage[0], ply, previous_move, ensure_pawn_key());
+            }
+            return history_storage[0];
+        };
         std::optional<Move> tt_move;
         // Consume the probe result in place so the normalized entry is not
         // copied a second time after probe() already built it.
@@ -995,38 +1429,10 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // quiet move in the current position.
                     if (tt_entry->bound == TranspositionBound::lower &&
                         !tt_entry->best_move.is_no_move()) {
-                        if (moves_generated) {
-                            const auto tt_metadata = std::find_if(
-                                moves.begin(), moves.end(), [&tt_entry](const MoveMetadata& metadata) {
-                                    return metadata.move == tt_entry->best_move;
-                                });
-                            if (tt_metadata != moves.end() && !tt_metadata->is_capture() &&
-                                tt_metadata->move.promotion() == Promotion::none) {
-                                const Color moving_side = history_side(side_to_move, false);
-                                ordering.record_quiet_cutoff(
-                                    history_side(moving_side, true), *tt_metadata,
-                                    std::max(1, depth / 2), history);
-                                ++stats.quiet_history_updates;
-                                if (history.count > 0) {
-                                    ++stats.continuation_history_updates;
-                                }
-                            }
-                        } else if (!state.is_capture(tt_entry->best_move) &&
-                                   tt_entry->best_move.promotion() == Promotion::none) {
-                            if (const std::optional<MoveMetadata> tt_metadata =
-                                    state.describe_move(tt_entry->best_move);
-                                tt_metadata.has_value() && !tt_metadata->is_capture() &&
-                                tt_metadata->move.promotion() == Promotion::none) {
-                                const Color moving_side = history_side(side_to_move, false);
-                                ordering.record_quiet_cutoff(
-                                    history_side(moving_side, true), *tt_metadata,
-                                    std::max(1, depth / 2), history);
-                                ++stats.quiet_history_updates;
-                                if (history.count > 0) {
-                                    ++stats.continuation_history_updates;
-                                }
-                            }
-                        }
+                        reinforce_tt_lower_quiet(
+                            state, tt_entry->best_move, depth, ply, previous_move,
+                            side_to_move, moves_generated, moves, history_ready,
+                            history_storage[0], node_pawn_key);
                     }
                     // A bound-only TT cutoff is a valid window result, but
                     // it is not an exact nominal-depth score for the caller.
@@ -1080,7 +1486,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             if (ply == 0) {
                 frame.material_signature_valid = false;
             }
-            init_correction_keys(state, node_pawn_key, correction_keys, &frame);
+            init_correction_keys(state, ensure_pawn_key(), correction_keys, &frame);
             correction_keys_valid = true;
             static_eval = raw_eval + ordering.correction_value(
                 correction_keys.pawn, correction_keys.material, correction_keys.king,
@@ -1203,7 +1609,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             improving, pawn_endgame);
         if (null_move_decision.eligible && null_move_is_safe(state, node_game_phase)) {
             if (make_null_observed(state, ply)) {
-                PrincipalVariation null_pv;
+                PrincipalVariation& null_pv = lease.slot().child_pv;
+                null_pv.clear();
                 const int null_depth = std::max(
                     0, depth - null_move_decision.reduction);
                 bool null_repetition_sensitive = false;
@@ -1230,54 +1637,14 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // A verification search may not start another nested
                     // verification (Stockfish's nmpMinPly guard).
                     if (null_move_decision.verify && null_verification_min_ply == 0) {
-                        ++stats.null_verifications;
-                        PrincipalVariation verification_pv;
-                        const bool saved_table_state = table_access.enabled();
-                        const int saved_null_verification_min_ply = null_verification_min_ply;
-                        const SearchFrame saved_frame = frame;
-                        const bool has_probe_child_frame =
-                            ply + 1 < static_cast<int>(SearchStack::kCapacity);
-                        const SearchFrame saved_probe_child_frame = has_probe_child_frame ?
-                            stack.frame(static_cast<std::size_t>(ply + 1)) : SearchFrame{};
-                        // The verification must stand on its own: a TT bound at
-                        // this node or in its subtree is flagged as a selective
-                        // result, which would make the confirmation unable to
-                        // prove the cutoff.  The null branch already has its
-                        // own key domain, so this disable is about evidence
-                        // provenance rather than key collisions.
-                        table_access.set_enabled(false);
-                        null_verification_min_ply = ply + 3 * null_depth / 4;
-                        try {
-                            bool verification_repetition_sensitive = false;
-                            bool verification_selective_bound = false;
-                            verified_score = negamax(
-                                state, null_depth, beta - 1, beta, ply, verification_pv,
-                                previous_move, false, child_check_extensions_remaining,
-                                Move::no_move(), &verification_repetition_sensitive,
-                                &verification_selective_bound);
-                            path_repetition_sensitive = path_repetition_sensitive ||
-                                verification_repetition_sensitive;
-                            null_cutoff_proven = verified_score >= beta;
-                        } catch (...) {
-                            frame = saved_frame;
-                            if (has_probe_child_frame) {
-                                stack.frame(static_cast<std::size_t>(ply + 1)) =
-                                    saved_probe_child_frame;
-                            }
-                            table_access.set_enabled(saved_table_state);
-                            null_verification_min_ply = saved_null_verification_min_ply;
-                            throw;
-                        }
-                        frame = saved_frame;
-                        if (has_probe_child_frame) {
-                            stack.frame(static_cast<std::size_t>(ply + 1)) =
-                                saved_probe_child_frame;
-                        }
-                        table_access.set_enabled(saved_table_state);
-                        null_verification_min_ply = saved_null_verification_min_ply;
+                        verified_score = run_null_verification(
+                            state, null_depth, beta, ply, frame, lease.slot().child_pv,
+                            previous_move, child_check_extensions_remaining,
+                            path_repetition_sensitive);
                         if (aborted) {
                             return 0;
                         }
+                        null_cutoff_proven = verified_score >= beta;
                     }
                     // A null probe may report a spurious score at its reduced
                     // horizon (for example after the side to move passes in
@@ -1365,90 +1732,17 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             !(tt_entry.has_value() && tt_entry->depth >= probcut.depth &&
               tt_entry->score < probcut.beta)) {
             const MoveMetadataList& current_moves = ensure_moves();
-            MoveMetadataList probcut_moves;
-            for (const MoveMetadata& candidate : current_moves) {
-                if ((candidate.is_capture() || candidate.move.promotion() != Promotion::none) &&
-                    candidate.move != excluded_move) {
-                    (void)probcut_moves.push_back(candidate);
-                }
+            if (lease.slot().aux_moves == nullptr) {
+                lease.slot().aux_moves = std::make_unique<MoveMetadataList>();
             }
-            ordering.order(state, probcut_moves, tt_move, history);
-            for (const MoveMetadata& candidate : probcut_moves) {
-                if (interrupted()) {
-                    return 0;
-                }
-                ++stats.probcut_searches;
-                const bool candidate_gives_check = candidate.gives_check ||
-                    (candidate.is_capture() && state.move_gives_check(candidate.move));
-                if (candidate.is_capture() &&
-                    candidate.see_score < probcut.beta - static_eval &&
-                    !candidate_gives_check) {
-                    continue;
-                }
-                if (!make_observed(state, candidate, ply)) {
-                    continue;
-                }
-                PrincipalVariation probcut_pv;
-                bool probcut_repetition_sensitive = false;
-                bool probcut_qsearch_selective_bound = false;
-                int probcut_score = -quiescence(
-                    state, -probcut.beta, -probcut.beta + 1, ply + 1, 0,
-                    candidate.move, &probcut_repetition_sensitive,
-                    &probcut_qsearch_selective_bound);
-                path_repetition_sensitive = path_repetition_sensitive ||
-                    probcut_repetition_sensitive;
-                if (!aborted && probcut_score >= probcut.beta && probcut.depth > 0) {
-                    probcut_pv = {};
-                    bool probcut_search_repetition_sensitive = false;
-                    bool probcut_search_selective_bound = false;
-                    probcut_score = -negamax(
-                        state, probcut.depth, -probcut.beta, -probcut.beta + 1,
-                        ply + 1, probcut_pv, candidate.move, false,
-                        child_check_extensions_remaining, Move::no_move(),
-                        &probcut_search_repetition_sensitive,
-                        &probcut_search_selective_bound);
-                    path_repetition_sensitive = path_repetition_sensitive ||
-                        probcut_search_repetition_sensitive;
-                    if (probcut_search_selective_bound) {
-                        // A reduced ProbCut child that used razor, pruning,
-                        // or another selective cutoff is only a scout. Its
-                        // score cannot establish the lower bound that this
-                        // ProbCut branch would otherwise publish.
-                        probcut_score = -kInfinity;
-                    }
-                }
-                unmake_observed(state, ply + 1);
-                if (aborted) {
-                    return 0;
-                }
-                // A depth-zero ProbCut has no reduced regular confirmation.
-                // A qsearch lower bound is still useful as a probe, but it
-                // cannot be the sole proof for the parent cutoff.
-                if (probcut_score >= probcut.beta &&
-                    (probcut.depth > 0 || !probcut_qsearch_selective_bound)) {
-                    path_selective_bound = true;
-                    // ProbCut deliberately proves only a reduced tactical
-                    // probe. Keep it selective, but do not claim a lower
-                    // bound at the parent horizon; otherwise negation can
-                    // make an unsafe root upper-bound certificate.
-                    path_lower_bound = false;
-                    ++stats.probcut_cutoffs;
-                    if (std::abs(probcut_score) < kMateThreshold) {
-                        if (probcut.depth > 0 && !path_repetition_sensitive &&
-                            table_access.enabled()) {
-                            // The legal tactical child established a real
-                            // lower bound at the reduced horizon. Retain it
-                            // at that horizon for future move ordering and
-                            // selective cutoffs, but never label it PV or
-                            // store it at the parent's nominal depth.
-                            table_access.store(
-                                transposition_key, probcut.depth + 1,
-                                probcut_score, TranspositionBound::lower,
-                                candidate.move, ply, false, raw_static_eval);
-                        }
-                        return probcut_score - (probcut.beta - beta);
-                    }
-                }
+            int cutoff_score = 0;
+            if (run_probcut(state, ply, beta, probcut.beta, probcut.depth, static_eval,
+                            raw_static_eval, transposition_key, current_moves,
+                            excluded_move, tt_move, ensure_history(), lease.slot().child_pv,
+                            *lease.slot().aux_moves, child_check_extensions_remaining,
+                            path_repetition_sensitive, path_selective_bound,
+                            path_lower_bound, cutoff_score)) {
+                return cutoff_score;
             }
         }
 
@@ -1491,38 +1785,16 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             ordering_source_needs_probe &&
             depth >= kTrueInternalIterativeDeepeningMinimumDepth;
         if (true_iid) {
-            // The rewrite above deliberately keeps this trigger broad (a missing
-            // ordering source, a failed-low entry, or one searched at less than
-            // half this depth), so the probe depth is bounded to keep its cost a
-            // small fraction of the node it orders.  A depth - 2 probe would
-            // re-search almost the whole subtree, which measured a many-fold
-            // slowdown on deep PV nodes.
             const int probe_depth = std::max(1, depth - 4);
-            PrincipalVariation probe_pv;
-            // The probe's score is discarded, so it must not taint this node's
-            // provenance: the reduced search may write through the flag, and
-            // only the full search below decides whether this node is
-            // selective. The probe also re-enters this ply, so both the frame
-            // and the child cutoff counter the move loop reads are restored.
-            const bool saved_selective_bound = path_selective_bound;
-            const SearchFrame saved_frame = frame;
-            SearchFrame& child_frame = stack.frame(static_cast<std::size_t>(ply + 1));
-            const int saved_child_cutoff_count = child_frame.cutoff_count;
-            const std::size_t saved_root_move_score_count = root_move_score_count;
-            (void)negamax(state, probe_depth, alpha, alpha + 1, ply, probe_pv, previous_move,
-                          false, check_extensions_remaining, Move::no_move(), nullptr, nullptr);
+            const std::optional<Move> probe_move = run_true_iid(
+                state, probe_depth, alpha, ply, frame, lease.slot().child_pv,
+                previous_move, check_extensions_remaining, transposition_key,
+                path_selective_bound);
             if (aborted) {
                 return 0;
             }
-            frame = saved_frame;
-            child_frame.cutoff_count = saved_child_cutoff_count;
-            path_selective_bound = saved_selective_bound;
-            root_move_score_count = saved_root_move_score_count;
-            ++stats.internal_iterative_deepening;
-            const std::optional<TranspositionEntry> probe_entry =
-                table_access.probe(transposition_key, ply);
-            if (probe_entry.has_value() && probe_entry->best_move != Move::no_move()) {
-                tt_move = probe_entry->best_move;
+            if (probe_move.has_value()) {
+                tt_move = probe_move;
             }
         }
 
@@ -1534,28 +1806,40 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             pre_tt_metadata.ordering_score = kTtMovePriority;
             pre_tt_pending = true;
         }
-        std::optional<SearchMovePicker> picker;
-        if (!pre_tt_pending) {
+        SearchMovePicker* picker = nullptr;
+        const auto emplace_picker = [&](std::optional<Move> picker_tt,
+                                        const Move picker_excluded) {
+            if (!moves_generated && !checked) {
+                moves_generated = true;
+                const bool tactical_only_deferred =
+                    state.legal_tactical_only_search_moves_with_metadata(moves);
+                picker = &lease.emplace_picker(
+                    ordering, state, moves,
+                    tactical_only_deferred ? std::nullopt : picker_tt,
+                    &ensure_history(), ply, SearchMovePicker::Mode::main,
+                    picker_excluded,
+                    tactical_only_deferred ? &moves : nullptr);
+                return;
+            }
             (void)ensure_moves();
-            picker.emplace(
-                ordering, state, moves, tt_move, &history, ply,
+            picker = &lease.emplace_picker(
+                ordering, state, moves, picker_tt, &ensure_history(), ply,
                 checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::main,
-                excluded_move);
+                picker_excluded);
+        };
+        if (!pre_tt_pending) {
+            emplace_picker(tt_move, excluded_move);
         }
         const auto next_candidate = [&]() -> const MoveMetadata* {
             if (pre_tt_pending) {
                 pre_tt_pending = false;
                 return &pre_tt_metadata;
             }
-            if (!picker.has_value()) {
-                (void)ensure_moves();
+            if (picker == nullptr) {
                 // Pre-TT runs only when excluded_search is false, so passing
                 // tt_move = nullopt and excluded_move = *tt_move skips sorting
                 // or emitting the already-searched TT move a second time.
-                picker.emplace(
-                    ordering, state, moves, std::nullopt, &history, ply,
-                    checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::main,
-                    *tt_move);
+                emplace_picker(std::nullopt, *tt_move);
                 if (defer_skip_quiets) {
                     picker->skip_quiet_moves();
                 }
@@ -1571,11 +1855,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         int move_number = 0;
         bool prior_child_fail_high = false;
         bool singular_probe_done = false;
-        // Only the first `failed_move_count` entries are ever read, so the
-        // array is intentionally left uninitialized to avoid clearing ~3 KB
-        // at every negamax node.  NoInitArray starts an entry's lifetime on
-        // the store that claims it; nothing is written up front.
-        NoInitArray<DeferredHistoryMove, kMaximumLegalMoves> failed_moves;
+        auto& failed_moves = lease.slot().failed_moves;
         std::size_t failed_move_count = 0;
         MoveMetadata best_metadata{};
         Color best_history_side = side_to_move;
@@ -1614,7 +1894,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             tt_move.has_value() && singular_tt_bound &&
             tt_entry->depth >= depth - 3 &&
             std::abs(tt_entry->score) < kMateThreshold;
-        std::optional<PositionFeatures> lmr_parent_features;
+        bool lmr_parent_features_ready = false;
         const Color moving_side = history_side(side_to_move, false);
         // The denominator is 1 when `improving` and 2 otherwise, and the
         // numerator 3 + depth^2 is always positive, so the integer division is
@@ -1623,17 +1903,13 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         const int quiet_skip_numerator = 3 + depth * depth;
         const int quiet_skip_threshold = improving ? quiet_skip_numerator :
             (quiet_skip_numerator >> 1);
+        const SearchHistoryContext& history = ensure_history();
         const Move previous_history_move = history.count > 0 ?
             history.continuation_moves[0] : Move::no_move();
         const int full_child_depth = depth - 1;
         const bool shallow_checked_root = ply == 1 && depth <= 3 &&
             stack.frame(0).in_check;
-        // The depth-three reduction gate reads the node's hoisted game phase;
-        // quiet candidates cannot change piece counts within this node (no
-        // captures, no promotions; castling and king moves preserve counts;
-        // en passant is a capture and never quiet), and the position is
-        // restored between candidates (make/unmake), so every quiet candidate
-        // observes the same phase.
+        // Restored/unchanged node position preserves piece counts.
         const bool phase_rich_depth_three = depth == 3 && node_game_phase >= 8;
         while (const MoveMetadata* candidate = next_candidate()) {
             const MoveMetadata& metadata = *candidate;
@@ -1650,7 +1926,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // exist.  Table reads are pure, so skipping the probe below depth
             // 3 changes no decision.
             const bool is_killer_move = depth >= 3 && ordering.is_killer(move, ply);
-            const int capture_history = ordering.capture_history_score(metadata);
+            const int capture_history = metadata.is_capture() ?
+                ordering.capture_history_score(metadata) : 0;
             // Once a cut node has already examined enough candidates, keep
             // Stockfish's staged-picker behavior: tactical moves and the
             // strongest quiet history are still available, while the tail of
@@ -1662,26 +1939,32 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 !parent_frame.in_check &&
                 parent_has_non_pawn_material &&
                 best_score > -kMateThreshold && next_move_number >= quiet_skip_threshold) {
-                if (picker.has_value()) {
+                if (picker != nullptr) {
                     picker->skip_quiet_moves();
                 } else {
                     defer_skip_quiets = true;
                 }
                 selective_pruning = true;
             }
-            // Both history reads feed only gates that require depth >= 3
-            // (late_move_gate's candidate, dynamic_late_move, and
-            // negative_continuation_history at depth >= 4), so below that
-            // horizon the zero placeholders are never observed.
+            const bool is_tt_move = tt_move.has_value() && move == *tt_move;
+            const bool root_pawn_move = ply == 0 && metadata.moving_piece == PieceType::pawn;
+            // Both history reads feed only gates that require depth >= 3,
+            // move_number >= 2, and a non-TT, non-killer, non-checking,
+            // non-promoting candidate (plus capture_history > -8192 for captures).
+            const bool need_lmr_history = depth >= 3 && next_move_number >= 2 &&
+                !excluded_search && !claimable_draw && !root_pawn_move &&
+                !checked && !metadata.gives_check &&
+                move.promotion() == Promotion::none &&
+                !is_tt_move && !is_killer_move &&
+                (!metadata.is_capture() || capture_history > -8'192);
             int history_score = 0;
             int continuation_score = 0;
-            if (depth >= 3) {
+            if (need_lmr_history) {
                 const auto history_scores =
                     ordering.quiet_and_continuation_scores(moving_side, metadata, history);
                 history_score = metadata.is_capture() ? 0 : history_scores.quiet;
                 continuation_score = history_scores.continuation;
             }
-            const bool is_tt_move = tt_move.has_value() && move == *tt_move;
             // The proven-counter-move probe has a single consumer,
             // negative_continuation_history, whose own
             // depth >= kNegativeContinuationHistoryMinimumDepth guard makes
@@ -1692,7 +1975,6 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 !previous_history_move.is_no_move() &&
                 ordering.is_proven_counter_move(
                     moving_side, previous_history_move, move);
-            const bool root_pawn_move = ply == 0 && metadata.moving_piece == PieceType::pawn;
             const bool negative_continuation_allowed = !claimable_draw &&
                 !excluded_search && ply > 0 && !repetition_sensitive &&
                 !pawn_endgame && !parent_frame.in_check &&
@@ -1720,39 +2002,11 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             if (lmr_gate.high_history_exclusion) {
                 ++stats.lmr_high_history_exclusions;
             }
-            // Depth-three reductions are useful in sparse/low-phase
-            // verification positions, but opening positions still have a
-            // wide, weakly learned quiet move set.  At that horizon a
-            // reduction can turn a principled central break into a qsearch
-            // estimate before its opponent's reply is visible.  Use the
-            // existing Koi phase boundary to keep the shallow LMR available
-            // where the low-phase regression needs it while requiring a full
-            // first pass in phase-rich positions.
             const bool phase_rich_shallow_node = lmr_gate.candidate &&
                 !metadata.is_capture() && phase_rich_depth_three;
-            // A checked root receives a one-ply root extension.  At the
-            // resulting shallow horizon, serial search can carry history from
-            // one evasion into the next while root workers cannot; avoid a
-            // depth-three reduction there so threaded and serial evasions use
-            // the same tactical horizon.  Ordinary quiet roots retain the
-            // depth-three LMR needed by the verification path.
             const bool lmr_candidate = lmr_gate.candidate &&
                 !lmr_gate.high_history_exclusion && !shallow_checked_root &&
                 !phase_rich_shallow_node;
-            if (lmr_candidate && !metadata.is_capture()) {
-                if (!lmr_parent_features.has_value()) {
-                    // Same in-place fill as ensure_features(): the parent
-                    // snapshot is a value, not a reference into the cache, so
-                    // child fetches cannot rewrite it. The return value is the
-                    // FeatureState miss report for this call.
-                    lmr_parent_features.emplace();
-                    if (state.position_features_into(*lmr_parent_features)) {
-                        ++stats.position_feature_extractions;
-                    }
-                } else {
-                    ++stats.lmr_parent_feature_reuses;
-                }
-            }
             int singular_extension = 0;
             if (singular_candidate && move == *tt_move && !singular_probe_done) {
                 singular_probe_done = true;
@@ -1761,34 +2015,13 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     (59 + 66 * (frame.tt_pv && !pv_node)) * depth / 63;
                 const int singular_beta = tt_entry->score - singular_margin;
                 const int singular_depth = std::max(1, (depth - 1) / 2);
-                PrincipalVariation singular_pv;
-                const SearchFrame saved_frame = frame;
-                const bool has_probe_child_frame =
-                    ply + 1 < static_cast<int>(SearchStack::kCapacity);
-                const SearchFrame saved_probe_child_frame = has_probe_child_frame ?
-                    stack.frame(static_cast<std::size_t>(ply + 1)) : SearchFrame{};
-                int excluded_score = 0;
                 bool excluded_repetition_sensitive = false;
                 bool excluded_selective_bound = false;
-                try {
-                    excluded_score = negamax(
-                        state, singular_depth, singular_beta - 1, singular_beta, ply,
-                        singular_pv, previous_move, false,
-                        child_check_extensions_remaining, move,
-                        &excluded_repetition_sensitive, &excluded_selective_bound);
-                } catch (...) {
-                    frame = saved_frame;
-                    if (has_probe_child_frame) {
-                        stack.frame(static_cast<std::size_t>(ply + 1)) =
-                            saved_probe_child_frame;
-                    }
-                    throw;
-                }
-                frame = saved_frame;
-                if (has_probe_child_frame) {
-                    stack.frame(static_cast<std::size_t>(ply + 1)) =
-                        saved_probe_child_frame;
-                }
+                const int excluded_score = run_singular_search(
+                    state, singular_depth, singular_beta, ply, frame,
+                    lease.slot().child_pv, previous_move,
+                    child_check_extensions_remaining, move,
+                    excluded_repetition_sensitive, excluded_selective_bound);
                 if (aborted) {
                     return 0;
                 }
@@ -1872,7 +2105,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 }
                 pre_capture_lmr_decision = pre_lmr;
             }
-            if (!claimable_draw && ply > 0 && !pv_node && !checked && !lmr_candidate &&
+            if (!claimable_draw && ply > 0 && !pv_node && !checked &&
                 quiet_forcing_parent_features == nullptr &&
                 root_direct_forcing_features == nullptr &&
                 move_number > 0 && !metadata.is_capture() && !metadata.gives_check &&
@@ -1887,6 +2120,16 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     ++move_number;
                     frame.move_count = move_number;
                     continue;
+                }
+            }
+            if (lmr_candidate && !metadata.is_capture()) {
+                if (!lmr_parent_features_ready) {
+                    lmr_parent_features_ready = true;
+                    if (state.position_features_into(lease.slot().features_pool[1])) {
+                        ++stats.position_feature_extractions;
+                    }
+                } else {
+                    ++stats.lmr_parent_feature_reuses;
                 }
             }
             const std::uint64_t root_move_start_visited =
@@ -1924,7 +2167,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // on the tactical branch; its SEE/capture history already
                     // supplies the safety signal used by LMR.
                     reducible_quiet = !child_in_check;
-                } else if (lmr_parent_features.has_value()) {
+                } else if (lmr_parent_features_ready) {
+                    const PositionFeatures& lmr_parent_features =
+                        lease.slot().features_pool[1];
                     // The diagnostic count is charged exactly as the
                     // full-snapshot path charged it, keeping the
                     // position_feature_extractions < nodes contract and the
@@ -1942,14 +2187,14 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // before/after comparison.
                     QuietForcingAfterView after_forced_view;
                     build_quiet_forcing_after_view(
-                        state, lmr_parent_features->side_to_move, after_forced_view);
+                        state, lmr_parent_features.side_to_move, after_forced_view);
                     const std::size_t enemy =
-                        lmr_parent_features->side_to_move == Color::white ? 1U : 0U;
+                        lmr_parent_features.side_to_move == Color::white ? 1U : 0U;
                     king_zone_pressure = after_forced_view.enemy_king_zone_attacks >
-                        lmr_parent_features->king_zone_attacks[enemy];
+                        lmr_parent_features.king_zone_attacks[enemy];
                     reducible_quiet = !child_in_check &&
                         !quiet_move_is_forcing(
-                            *lmr_parent_features, state, after_forced_view, metadata);
+                            lmr_parent_features, state, after_forced_view, metadata);
                 }
             }
             if (king_zone_pressure) {
@@ -1979,7 +2224,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // contents as position_features(); its return value
                     // reports the miss without the before/after
                     // cache_misses() reads.
-                    PositionFeatures after_quiet_features;
+                    PositionFeatures& after_quiet_features = lease.slot().features_pool[2];
                     if (state.position_features_into(after_quiet_features)) {
                         ++stats.position_feature_extractions;
                     }
@@ -2075,7 +2320,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 // searched authoritatively.
                 inexact_child_search = true;
             }
-            PrincipalVariation child_pv;
+            PrincipalVariation& child_pv = lease.slot().child_pv;
+            child_pv.clear();
             int score = 0;
             bool reduced_child_verified = !reduced;
             bool exact_root_score = false;
@@ -2113,7 +2359,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 child_selective_bound = scout_selective_bound;
                 if (!aborted && reduced && score > alpha) {
                     ++stats.lmr_verifications;
-                    child_pv = {};
+                    child_pv.clear();
                     bool verification_repetition_sensitive = false;
                     bool verification_selective_bound = false;
                     score = -negamax(
@@ -2129,7 +2375,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                         !child_selective_bound;
                 } else if (!aborted && !reduced && score > alpha && score < beta) {
                     ++stats.pvs_researches;
-                    child_pv = {};
+                    child_pv.clear();
                     bool verification_repetition_sensitive = false;
                     bool verification_selective_bound = false;
                     score = -negamax(
@@ -2468,54 +2714,10 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                                frame.tt_pv, raw_static_eval);
         }
         if (root_authoritative_path != nullptr && ply == 0 && !excluded_search) {
-            const bool complete_root_coverage = root_move_score_count == moves.size();
-            const auto root_score_is_safe = [](const RootMoveScore& root_score,
-                                                    const int incumbent_score,
-                                                    const bool incumbent_has_lower_bound) {
-                if (root_score.exact || root_score.safe_upper_bound) {
-                    return true;
-                }
-                // A selective child lower bound becomes an upper bound after
-                // negation. Once an exact/lower-bound incumbent is known to
-                // be at least as good, that root line cannot displace it.
-                return root_score.selective_upper_bound && incumbent_has_lower_bound &&
-                    root_score.score <= incumbent_score;
-            };
-            bool claim_option_authoritative = claimable_draw && best_score == -contempt_cp &&
-                best_metadata_valid && complete_root_coverage;
-            if (claim_option_authoritative) {
-                // With a claim available, zero is exact only when every root
-                // move has been searched and no line can prove a positive
-                // score. Ordinary fail-lows are safe upper bounds here; a
-                // selective fail-high remains an unresolved challenger.
-                for (std::size_t index = 0; index < root_move_score_count; ++index) {
-                    const RootMoveScore& root_score = root_move_scores[index];
-                    if (root_score.score > -contempt_cp ||
-                        !root_score_is_safe(root_score, -contempt_cp, true)) {
-                        claim_option_authoritative = false;
-                        break;
-                    }
-                }
-            }
-            bool root_authoritative = claim_option_authoritative ||
-                (best_metadata_valid && best_score_authoritative && complete_root_coverage);
-            if (root_authoritative) {
-                bool exact_incumbent = false;
-                for (std::size_t index = 0; index < root_move_score_count; ++index) {
-                    const RootMoveScore& root_score = root_move_scores[index];
-                    if (root_score.move == best_move) {
-                        exact_incumbent = root_score.exact;
-                    }
-                    if (!root_score_is_safe(root_score, best_score,
-                                            best_score_safe_lower_bound)) {
-                        root_authoritative = false;
-                        break;
-                    }
-                }
-                root_authoritative = root_authoritative &&
-                    (exact_incumbent || claim_option_authoritative);
-            }
-            *root_authoritative_path = root_authoritative;
+            compute_root_authoritative(
+                moves.size(), best_move, best_score, best_metadata_valid,
+                best_score_authoritative, best_score_safe_lower_bound,
+                claimable_draw, *root_authoritative_path);
         }
         return best_score;
     }

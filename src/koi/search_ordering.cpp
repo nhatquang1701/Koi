@@ -56,8 +56,8 @@ static_assert(((64U * 64U + 64U) * 5U + 4U) < (1ULL << 23U),
 
 [[nodiscard]] constexpr std::uint64_t pack_candidate(
     const int priority, const std::uint32_t tie_break, const std::size_t index) noexcept {
-    return (static_cast<std::uint64_t>(
-                ~(static_cast<std::uint32_t>(priority) ^ 0x80000000U)) << 32U) |
+    const std::uint32_t inverted = ~(static_cast<std::uint32_t>(priority) ^ 0x80000000U);
+    return (static_cast<std::uint64_t>(inverted) << 32U) |
         (static_cast<std::uint64_t>(tie_break) << 9U) |
         static_cast<std::uint64_t>(index);
 }
@@ -121,21 +121,22 @@ template <typename Scorer>
     const Move killer1,
     const Move proven_counter,
     const Scorer& scorer) noexcept {
-    const Move move = metadata.move;
-    if (metadata.gives_check) {
-        const int check_history = scorer.score(metadata);
-        return kCheckingMovePriority + std::clamp(check_history / 32, -8'192, 8'192);
+    if (!metadata.gives_check) {
+        const Move move = metadata.move;
+        if (move == killer0) {
+            return kKillerPriority + 1;
+        }
+        if (move == killer1) {
+            return kKillerPriority;
+        }
+        if (move == proven_counter) {
+            return kCounterMovePriority;
+        }
     }
-    if (move == killer0) {
-        return kKillerPriority + 1;
-    }
-    if (move == killer1) {
-        return kKillerPriority;
-    }
-    if (move == proven_counter) {
-        return kCounterMovePriority;
-    }
-    return scorer.score(metadata);
+    const int history = scorer.score(metadata);
+    return metadata.gives_check ?
+        (kCheckingMovePriority + std::clamp(history / 32, -8'192, 8'192)) :
+        history;
 }
 
 [[nodiscard]] int quiet_priority_preloaded(
@@ -214,13 +215,28 @@ inline constexpr std::array<std::uint8_t, 8> kPromotionTieKey{
     0U,
 };
 
+[[nodiscard]] inline std::uint32_t generated_move_tie_break_key(const Move move) noexcept {
+    const std::uint32_t raw = move.raw();
+    const std::uint32_t from_key = kSquareTransposeTieKey[raw & 0x3FU];
+    const std::uint32_t to_key = kSquareTransposeTieKey[(raw >> 6U) & 0x3FU];
+    const std::uint32_t promo_key = kPromotionTieKey[(raw >> 12U) & 0x7U];
+    return (from_key * 64U + to_key) * 5U + promo_key;
+}
+
+[[nodiscard]] inline std::uint32_t generated_quiet_tie_break_key(const Move move) noexcept {
+    const std::uint32_t raw = move.raw();
+    const std::uint32_t from_key = kSquareTransposeTieKey[raw & 0x3FU];
+    const std::uint32_t to_key = kSquareTransposeTieKey[(raw >> 6U) & 0x3FU];
+    return (from_key * 64U + to_key) * 5U;
+}
+
 } // namespace
 
 std::uint32_t move_tie_break_key(const Move move) noexcept {
-    const std::uint32_t from_key = kSquareTransposeTieKey[move.from().index()];
-    const std::uint32_t to_key = kSquareTransposeTieKey[move.to().index()];
-    const std::uint32_t promo_key = kPromotionTieKey[static_cast<std::size_t>(move.promotion())];
-    return (from_key * 64U + to_key) * 5U + promo_key;
+    if (move.is_no_move()) {
+        return (64U * 64U + 64U) * 5U;
+    }
+    return generated_move_tie_break_key(move);
 }
 
 void SearchMoveOrdering::clear() noexcept {
@@ -522,10 +538,11 @@ SearchMovePicker::SearchMovePicker(
     const SearchMoveOrdering& ordering, const GameState& state,
     const MoveMetadataList& moves, std::optional<Move> tt_move,
     const SearchHistoryContext* history_context, const int ply, const Mode mode,
-    const Move excluded_move) noexcept
+    const Move excluded_move, MoveMetadataList* const mutable_moves) noexcept
     : ordering_(ordering), state_(state), moves_(moves),
       history_context_(history_context), tt_move_(tt_move),
-      excluded_move_(excluded_move), ply_(ply), mode_(mode), stage_(first_stage()) {
+      excluded_move_(excluded_move), ply_(ply), mode_(mode), stage_(first_stage()),
+      mutable_moves_(mutable_moves), defer_quiets_(mutable_moves != nullptr) {
     // Only a main-mode picker reads the capture-check guard (materialize's
     // capture-check probe); quiescence and evasion pickers never reach that
     // probe, so only main mode pays for its zeroed start.
@@ -561,7 +578,17 @@ bool SearchMovePicker::is_good_capture(const MoveMetadata& metadata) const noexc
 }
 
 SearchMovePicker::Stage SearchMovePicker::first_stage() const noexcept {
-    return Stage::tt;
+    if (tt_move_.has_value()) {
+        return Stage::tt;
+    }
+    switch (mode_) {
+    case Mode::main:
+    case Mode::quiescence:
+        return Stage::good_captures;
+    case Mode::evasion:
+        return Stage::evasions;
+    }
+    return Stage::done;
 }
 
 MoveMetadata SearchMovePicker::materialize(const std::size_t index) {
@@ -601,7 +628,6 @@ void SearchMovePicker::prepare_quiescence_candidates() {
     captures_prepared_ = true;
     quiet_checks_scored_ = false;
     const Color side = state_.side_to_move();
-    const bool has_excluded = !excluded_move_.is_no_move();
     std::size_t capture_count = 0;
     std::size_t check_count = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
@@ -609,7 +635,7 @@ void SearchMovePicker::prepare_quiescence_candidates() {
             continue;
         }
         const MoveMetadata& source = moves_[index];
-        if (has_excluded && source.move == excluded_move_) {
+        if (source.move == excluded_move_) {
             continue;
         }
         const bool tactical = source.is_capture() ||
@@ -652,7 +678,7 @@ void SearchMovePicker::prepare_quiescence_candidates() {
             ordering_.tables_, side, materialized, *history_context_, Move::no_move(),
             Move::no_move(), Move::no_move());
         staged_[capture_count++] = pack_candidate(
-            priority, move_tie_break_key(materialized.move), index);
+            priority, generated_move_tie_break_key(materialized.move), index);
     }
     const std::size_t cap_rank = static_cast<std::size_t>(Stage::good_captures);
     const std::size_t chk_rank = static_cast<std::size_t>(Stage::quiet_checks);
@@ -673,14 +699,13 @@ void SearchMovePicker::prepare_evasion_candidates() {
         history_context_->continuation_moves[0] : Move::no_move();
     const Move proven_counter = ordering_.tables_.proven_counter_move(side, previous);
     const auto quiet_batch = ordering_.tables_.prepare_quiet_history_batch(side, *history_context_);
-    const bool has_excluded = !excluded_move_.is_no_move();
     std::size_t evasion_count = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
         if (emitted_[index]) {
             continue;
         }
         const MoveMetadata& metadata = moves_[index];
-        if (has_excluded && metadata.move == excluded_move_) {
+        if (metadata.move == excluded_move_) {
             continue;
         }
         const int priority = metadata.is_capture() ?
@@ -689,7 +714,7 @@ void SearchMovePicker::prepare_evasion_candidates() {
                 kPromotionPriority + promotion_value(metadata.move.promotion()) :
                 quiet_priority_core(metadata, killer0, killer1, proven_counter, quiet_batch));
         staged_[evasion_count++] = pack_candidate(
-            priority, move_tie_break_key(metadata.move), index);
+            priority, generated_move_tie_break_key(metadata.move), index);
     }
     const std::size_t rank = static_cast<std::size_t>(Stage::evasions);
     stage_begin_[rank] = 0;
@@ -700,7 +725,6 @@ void SearchMovePicker::prepare_evasion_candidates() {
 
 void SearchMovePicker::prepare_main_captures() {
     captures_prepared_ = true;
-    const bool has_excluded = !excluded_move_.is_no_move();
     main_captures_end_ = 0;
     deferred_bad_capture_count_ = 0;
     deferred_bad_capture_index_ = 0;
@@ -709,7 +733,7 @@ void SearchMovePicker::prepare_main_captures() {
             continue;
         }
         const MoveMetadata& metadata = moves_[index];
-        if (has_excluded && metadata.move == excluded_move_) {
+        if (metadata.move == excluded_move_) {
             continue;
         }
         if (metadata.move.promotion() == Promotion::none && !metadata.is_capture()) {
@@ -719,7 +743,7 @@ void SearchMovePicker::prepare_main_captures() {
             capture_priority_no_tt(ordering_.tables_, metadata) :
             kPromotionPriority + promotion_value(metadata.move.promotion());
         staged_[main_captures_end_++] = pack_candidate(
-            priority, move_tie_break_key(metadata.move), index);
+            priority, generated_move_tie_break_key(metadata.move), index);
     }
     const std::size_t cap_rank = static_cast<std::size_t>(Stage::good_captures);
     stage_begin_[cap_rank] = 0;
@@ -735,24 +759,23 @@ void SearchMovePicker::prepare_main_quiets_impl(
         history_context_->continuation_moves[0] : Move::no_move();
     const Move proven_counter = ordering_.tables_.proven_counter_move(side, previous);
     const LegalBatchQuietScorer<AllCont, SkipLowPly> scorer{quiet_batch};
-    const bool has_excluded = !excluded_move_.is_no_move();
     std::size_t good_cursor = main_captures_end_;
     std::size_t bad_cursor = kMaximumLegalMoves;
-    for (std::size_t index = 0; index < moves_.size(); ++index) {
+    for (std::size_t index = main_quiet_start_; index < moves_.size(); ++index) {
         if (emitted_[index]) {
             continue;
         }
         const MoveMetadata& metadata = moves_[index];
-        if (has_excluded && metadata.move == excluded_move_) {
+        if (metadata.move == excluded_move_) {
             continue;
         }
-        if (metadata.move.promotion() != Promotion::none || metadata.is_capture()) {
+        if ((metadata.move.raw() & 0x7000U) != 0U || metadata.is_capture()) {
             continue;
         }
         const int priority = quiet_priority_core(
             metadata, killer0, killer1, proven_counter, scorer);
         const Candidate candidate = pack_candidate(
-            priority, move_tie_break_key(metadata.move), index);
+            priority, generated_quiet_tie_break_key(metadata.move), index);
         if (priority <= kGoodQuietPriorityThreshold) {
             staged_[--bad_cursor] = candidate;
         } else {
@@ -790,7 +813,7 @@ void SearchMovePicker::score_quiescence_quiet_checks() {
         const MoveMetadata& check_meta = moves_[src];
         const int priority = quiet_priority_core(
             check_meta, Move::no_move(), Move::no_move(), Move::no_move(), quiet_batch);
-        staged_[s] = pack_candidate(priority, move_tie_break_key(check_meta.move), src);
+        staged_[s] = pack_candidate(priority, generated_move_tie_break_key(check_meta.move), src);
     }
 }
 
@@ -976,9 +999,13 @@ const MoveMetadata* SearchMovePicker::next() {
         if (stage_ == Stage::good_captures) {
             if (!captures_prepared_) {
                 prepare_main_captures();
-                prepare_main_quiets();
             }
         } else if (!quiets_prepared_) {
+            if (defer_quiets_ && mutable_moves_ != nullptr) {
+                main_quiet_start_ = mutable_moves_->size();
+                state_.append_quiet_search_moves_with_metadata(*mutable_moves_);
+                defer_quiets_ = false;
+            }
             prepare_main_quiets();
         }
         const std::size_t rank = static_cast<std::size_t>(stage_);

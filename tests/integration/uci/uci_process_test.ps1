@@ -61,7 +61,7 @@ $handshakeFixture = [System.IO.Path]::GetFullPath(
 if (-not (Test-Path -LiteralPath $handshakeFixture)) {
     throw "Missing handshake fixture: $handshakeFixture"
 }
-$expectedHandshake = @(Get-Content -LiteralPath $handshakeFixture)
+$expectedHandshake = @(Get-Content -LiteralPath $handshakeFixture -Encoding utf8)
 # The identity line carries the build version and the build line carries the
 # exact commit, so both are host/build dependent; every other line is exact.
 function Assert-UciHandshake {

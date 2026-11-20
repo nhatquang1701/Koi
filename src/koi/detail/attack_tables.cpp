@@ -33,6 +33,8 @@ struct Tables {
     std::array<std::array<U64, 64>, 2> pawn{};
     std::array<std::array<U64, 64>, 2> pawn_attackers{};
     std::array<std::array<U64, 64>, kAttackDirections> rays{};
+    std::array<U64, 64> bishop_pseudo{};
+    std::array<U64, 64> rook_pseudo{};
     std::array<std::array<U64, 64>, 64> line{};
     std::array<std::array<U64, 64>, 64> between{};
 
@@ -111,6 +113,11 @@ struct Tables {
                 }
                 rays[index][static_cast<std::size_t>(square)] = mask;
             }
+            const std::size_t sq_idx = static_cast<std::size_t>(square);
+            rook_pseudo[sq_idx] =
+                rays[0][sq_idx] | rays[2][sq_idx] | rays[4][sq_idx] | rays[6][sq_idx];
+            bishop_pseudo[sq_idx] =
+                rays[1][sq_idx] | rays[3][sq_idx] | rays[5][sq_idx] | rays[7][sq_idx];
         }
 
         for (int s1 = 0; s1 < 64; ++s1) {
@@ -347,6 +354,16 @@ std::uint64_t queen_attacks(int square, std::uint64_t occupied) noexcept {
     const std::size_t index = static_cast<std::size_t>(square);
     return kSliderTables.bishop[index].lookup(occupied) |
         kSliderTables.rook[index].lookup(occupied);
+}
+
+std::uint64_t bishop_pseudo_attacks(int square) noexcept {
+    if (square < 0 || square >= 64) return 0;
+    return kTables.bishop_pseudo[static_cast<std::size_t>(square)];
+}
+
+std::uint64_t rook_pseudo_attacks(int square) noexcept {
+    if (square < 0 || square >= 64) return 0;
+    return kTables.rook_pseudo[static_cast<std::size_t>(square)];
 }
 
 std::uint64_t ray_attacks(int square, int direction) noexcept {

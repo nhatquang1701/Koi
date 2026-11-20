@@ -58,6 +58,10 @@ public:
         bool include_quiet_checks) const noexcept;
     void legal_quiet_checking_search_metadata_into(
         MoveMetadataList& output) const noexcept;
+    void legal_tactical_only_search_metadata_into(
+        MoveMetadataList& output) const noexcept;
+    void append_quiet_search_metadata_into(
+        MoveMetadataList& output) const noexcept;
     // True as soon as one legal move is found, without generating the rest.
     [[nodiscard]] bool has_legal_move() const noexcept;
     [[nodiscard]] bool is_legal(const Move& move) const noexcept;

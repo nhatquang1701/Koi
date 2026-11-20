@@ -482,28 +482,27 @@ void refresh_king_masks(NativeState& state) noexcept {
         (detail::pawn_attackers_of(king, enemy_pawns_are_white) & enemy_pawns) |
         (detail::knight_attacks(king) & enemy_knights) |
         (detail::king_attacks(king) & enemy_kings);
-    if (enemy_bishops != 0) {
-        checkers |= detail::bishop_attacks(king, state.occupied) & enemy_bishops;
-    }
-    if (enemy_rooks != 0) {
-        checkers |= detail::rook_attacks(king, state.occupied) & enemy_rooks;
-    }
-    state.checkers[color_index] = checkers;
 
-    // An enemy without a bishop/queen or rook/queen can never pin through
-    // a blocker, so the scan below is skipped while `pinned` still holds
-    // the zero written above.
+    // An enemy without a bishop/queen or rook/queen can never deliver slider
+    // checks or pin through a blocker, so skip the sniper scan below while
+    // `pinned` still holds zero.
     if (enemy_bishops == 0 && enemy_rooks == 0) {
+        state.checkers[color_index] = checkers;
         return;
     }
 
-    // Stockfish-style X-ray pin scan: test only aligned enemy sliders via
-    // between_mask(king, sniper).  A friendly non-king piece is pinned iff it
-    // is the sole occupant strictly between `king` and an aligned enemy slider
-    // of matching direction class.  Identical to the 8-ray blocker scan.
+    // Unified Stockfish-style sniper scan: find all aligned enemy sliders using
+    // O(1) empty-board pseudo rays, then inspect between_mask(king, sniper).
+    // Zero blockers between king and sniper is a direct check; a single
+    // friendly non-king blocker is pinned. Avoids any magic lookup unless a
+    // slider actually sits on a king ray.
     std::uint64_t snipers =
-        (enemy_bishops != 0 ? (detail::bishop_attacks(king, 0) & enemy_bishops) : 0ULL) |
-        (enemy_rooks != 0 ? (detail::rook_attacks(king, 0) & enemy_rooks) : 0ULL);
+        (enemy_bishops != 0 ? (detail::bishop_pseudo_attacks(king) & enemy_bishops) : 0ULL) |
+        (enemy_rooks != 0 ? (detail::rook_pseudo_attacks(king) & enemy_rooks) : 0ULL);
+    if (snipers == 0) {
+        state.checkers[color_index] = checkers;
+        return;
+    }
     const std::uint64_t friendly_non_king =
         state.occupancy[color_index] &
         ~state.piece_bitboards[color_index][static_cast<std::size_t>(PieceType::king)];
@@ -512,11 +511,14 @@ void refresh_king_masks(NativeState& state) noexcept {
         const int sniper = static_cast<int>(std::countr_zero(snipers));
         snipers &= snipers - 1;
         const std::uint64_t blockers = detail::between_mask(king, sniper) & state.occupied;
-        if (blockers != 0 && (blockers & (blockers - 1)) == 0 &&
-            (blockers & friendly_non_king) != 0) {
+        if (blockers == 0) {
+            checkers |= bit(sniper);
+        } else if ((blockers & (blockers - 1)) == 0 &&
+                   (blockers & friendly_non_king) != 0) {
             pinned |= blockers;
         }
     }
+    state.checkers[color_index] = checkers;
     state.pinned[color_index] = pinned;
 }
 
@@ -1285,7 +1287,7 @@ public:
         return result;
     }
 
-    enum class PseudoGenMode : std::uint8_t { all, tactical_only, tactical_and_checks };
+    enum class PseudoGenMode : std::uint8_t { all, tactical_only, tactical_and_checks, quiet_only };
 
     template <PseudoGenMode Mode>
     std::size_t legal_moves_into_impl(std::span<Move> output) {
@@ -1356,6 +1358,19 @@ public:
         sink.finish();
     }
 
+    void legal_tactical_only_search_metadata_into(MoveMetadataList& output) noexcept {
+        output.clear();
+        SearchMetadataSink<false, false, false, false> sink(state, output);
+        generate_pseudo<PseudoGenMode::tactical_only>(sink);
+        sink.finish();
+    }
+
+    void append_quiet_search_metadata_into(MoveMetadataList& output) noexcept {
+        SearchMetadataSink<true, true, false, false> sink(state, output);
+        generate_pseudo<PseudoGenMode::quiet_only>(sink);
+        sink.finish();
+    }
+
     // Stops at the first legal candidate instead of materializing the whole
     // list.  Quiescence only needs to know whether a legal reply exists before
     // deciding that a position is terminal.
@@ -1379,6 +1394,15 @@ public:
                 ? ((unpinned_pawns << 8) & empty)
                 : ((unpinned_pawns >> 8) & empty);
             if (single_push != 0) {
+                return true;
+            }
+            const std::uint64_t enemy_occupancy = state.occupancy[enemy_index];
+            const std::uint64_t pawn_captures = side == Color::white
+                ? ((((unpinned_pawns & ~kFileAMask) << 7) |
+                    ((unpinned_pawns & ~kFileHMask) << 9)) & enemy_occupancy)
+                : ((((unpinned_pawns & ~kFileHMask) >> 7) |
+                    ((unpinned_pawns & ~kFileAMask) >> 9)) & enemy_occupancy);
+            if (pawn_captures != 0) {
                 return true;
             }
 
@@ -2003,8 +2027,10 @@ private:
         const std::uint64_t enemy_non_king = state.occupancy[enemy_index] & ~enemy_king_bb;
         constexpr bool tactical_only = Mode == PseudoGenMode::tactical_only;
         constexpr bool tactical_and_checks = Mode == PseudoGenMode::tactical_and_checks;
+        constexpr bool quiet_only = Mode == PseudoGenMode::quiet_only;
         const std::uint64_t valid_targets =
-            tactical_only ? enemy_non_king : ~(friendly | enemy_king_bb);
+            quiet_only ? ~state.occupied
+                       : (tactical_only ? enemy_non_king : ~(friendly | enemy_king_bb));
 
         int ek = -1;
         std::uint64_t direct_pawn_checks = 0;
@@ -2079,7 +2105,8 @@ private:
                         const Square dest_sq = Square::from_index(static_cast<std::uint8_t>(to));
                         const Move candidate(king_sq, dest_sq);
                         if (king_move_is_legal(candidate)) {
-                            const bool cap = tactical_only || ((enemy_non_king & bit(to)) != 0);
+                            const bool cap = !quiet_only &&
+                                (tactical_only || ((enemy_non_king & bit(to)) != 0));
                             const PieceType cap_pt = cap ?
                                 state.board[static_cast<std::size_t>(to)].type : PieceType::none;
                             if (!moves.emit_piece_move(
@@ -2094,7 +2121,7 @@ private:
                             const int rank_base = side == Color::white ? 0 : 7;
                             if (king == rank_base * 8 + 4) {
                                 const std::uint64_t rook_lines_empty =
-                                    tactical_and_checks ? detail::rook_attacks(ek, 0) : 0ULL;
+                                    tactical_and_checks ? detail::rook_pseudo_attacks(ek) : 0ULL;
                                 const std::uint64_t dc_king =
                                     (tactical_and_checks && (dc_blockers & bit(king)) != 0)
                                         ? ~detail::line_mask(ek, king)
@@ -2161,6 +2188,7 @@ private:
                             pinned | (tactical_and_checks ? dc_blockers : 0ULL);
                         const std::uint64_t fast_pawns = all_pawns & ~slow_mask;
                         if (fast_pawns != 0) {
+                            if constexpr (!quiet_only) {
                             const std::uint64_t cap_left_all =
                                 (White ? ((fast_pawns & ~kFileAMask) << 7)
                                        : ((fast_pawns & ~kFileAMask) >> 9)) &
@@ -2222,8 +2250,10 @@ private:
                                     return false;
                                 }
                             }
+                            }
 
                             const std::uint64_t push_all = shift_fwd(fast_pawns) & empty;
+                            if constexpr (!quiet_only) {
                             std::uint64_t push_promo = push_all & kPromoMask & single_check_targets;
                             while (push_promo != 0) {
                                 const int to = static_cast<int>(std::countr_zero(push_promo));
@@ -2234,6 +2264,7 @@ private:
                                         from, to, true, Piece{}, moves.capture_from_safe(from))) {
                                     return false;
                                 }
+                            }
                             }
 
                             if constexpr (!tactical_only) {
@@ -2299,7 +2330,8 @@ private:
                                 if constexpr (!tactical_only) {
                                     const std::uint64_t quiet_mask =
                                         direct_pawn_checks | dc_off_ray;
-                                    if ((pawn_legal_targets & bit(one)) != 0 &&
+                                    if ((!quiet_only || !is_promo) &&
+                                        (pawn_legal_targets & bit(one)) != 0 &&
                                         (!tactical_and_checks || is_promo ||
                                          (quiet_mask & bit(one)) != 0)) {
                                         if (!moves.emit_pawn_move(
@@ -2325,6 +2357,7 @@ private:
                                     }
                                 }
                             }
+                            if constexpr (!quiet_only) {
                             for (const int file_delta : {-1, 1}) {
                                 const int target_file = file + file_delta;
                                 const int target_rank = rank + direction;
@@ -2346,8 +2379,10 @@ private:
                                     }
                                 }
                             }
+                            }
                         }
 
+                        if constexpr (!quiet_only) {
                         if (state.en_passant.index() < Square::kInvalid) {
                             const int ep_to = state.en_passant.index();
                             const Piece ep_target_piece =
@@ -2372,6 +2407,7 @@ private:
                                 }
                             }
                         }
+                        }
                         return true;
                     };
 
@@ -2385,20 +2421,23 @@ private:
                 const auto emit_split_targets = [&]<PieceType PT>(
                     const Square source, const int from,
                     const std::uint64_t targets, const bool from_safe) noexcept -> bool {
-                    std::uint64_t cap_targets = tactical_only ?
-                        targets : (targets & enemy_non_king);
-                    while (cap_targets != 0) {
-                        const int to = static_cast<int>(std::countr_zero(cap_targets));
-                        cap_targets &= cap_targets - 1;
-                        if (!moves.emit_piece_move(
-                                source, from, to, PT,
-                                state.board[static_cast<std::size_t>(to)].type,
-                                MoveKind::capture, from_safe)) {
-                            return false;
+                    if constexpr (!quiet_only) {
+                        std::uint64_t cap_targets = tactical_only ?
+                            targets : (targets & enemy_non_king);
+                        while (cap_targets != 0) {
+                            const int to = static_cast<int>(std::countr_zero(cap_targets));
+                            cap_targets &= cap_targets - 1;
+                            if (!moves.emit_piece_move(
+                                    source, from, to, PT,
+                                    state.board[static_cast<std::size_t>(to)].type,
+                                    MoveKind::capture, from_safe)) {
+                                return false;
+                            }
                         }
                     }
                     if constexpr (!tactical_only) {
-                        std::uint64_t quiet_targets = targets & ~enemy_non_king;
+                        std::uint64_t quiet_targets =
+                            quiet_only ? targets : (targets & ~enemy_non_king);
                         while (quiet_targets != 0) {
                             const int to = static_cast<int>(std::countr_zero(quiet_targets));
                             quiet_targets &= quiet_targets - 1;
@@ -2503,6 +2542,9 @@ private:
             }
         }
 
+        if constexpr (quiet_only) {
+            return;
+        }
         std::uint64_t origins = double_check ?
             state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::king)] :
             friendly;
@@ -3089,6 +3131,18 @@ void Position::legal_quiet_checking_search_metadata_into(
     MoveMetadataList& output) const noexcept {
     const_cast<NativePosition&>(impl_->position)
         .legal_quiet_checking_search_metadata_into(output);
+}
+
+void Position::legal_tactical_only_search_metadata_into(
+    MoveMetadataList& output) const noexcept {
+    const_cast<NativePosition&>(impl_->position)
+        .legal_tactical_only_search_metadata_into(output);
+}
+
+void Position::append_quiet_search_metadata_into(
+    MoveMetadataList& output) const noexcept {
+    const_cast<NativePosition&>(impl_->position)
+        .append_quiet_search_metadata_into(output);
 }
 
 bool Position::has_legal_move() const noexcept {

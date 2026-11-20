@@ -31,6 +31,8 @@ inline constexpr int kAttackDirections = 8;
 [[nodiscard]] std::uint64_t bishop_attacks(int square, std::uint64_t occupied) noexcept;
 [[nodiscard]] std::uint64_t rook_attacks(int square, std::uint64_t occupied) noexcept;
 [[nodiscard]] std::uint64_t queen_attacks(int square, std::uint64_t occupied) noexcept;
+[[nodiscard]] std::uint64_t bishop_pseudo_attacks(int square) noexcept;
+[[nodiscard]] std::uint64_t rook_pseudo_attacks(int square) noexcept;
 
 // Empty-board ray from `square` in `direction`, or 0 when off the board.
 [[nodiscard]] std::uint64_t ray_attacks(int square, int direction) noexcept;

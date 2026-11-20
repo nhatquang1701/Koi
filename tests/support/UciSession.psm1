@@ -63,6 +63,8 @@ function Start-UciSession {
     $startInfo.RedirectStandardInput = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo

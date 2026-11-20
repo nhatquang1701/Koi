@@ -312,6 +312,15 @@ public:
         MoveMetadataList& moves, bool include_quiet_checks = true) const noexcept;
     void legal_quiet_checking_search_moves_with_metadata(
         MoveMetadataList& moves) const noexcept;
+    // Generates only captures, en-passant, and promotions for staged move
+    // ordering. Returns true if only tactical moves were generated (quiets
+    // deferred), or false if compatibility mirror tracking forced full movegen.
+    [[nodiscard]] bool legal_tactical_only_search_moves_with_metadata(
+        MoveMetadataList& moves) const noexcept;
+    // Appends legal quiet (non-capture, non-promotion) moves with quiet check
+    // flags after tactical moves already in `moves`.
+    void append_quiet_search_moves_with_metadata(
+        MoveMetadataList& moves) const noexcept;
     // Validates one speculative move (e.g. a TT move) and fills search metadata
     // without generating the full legal move list. Leaves SEE uncomputed.
     [[nodiscard]] bool try_legal_search_move_metadata(

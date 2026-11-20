@@ -164,7 +164,7 @@ struct SearchContext {
     // the same subtree repeatedly, so collisions between distinct positions
     // cost real evaluator work; 64K entries keep the working set of a search
     // comfortably inside the table on this hardware.
-    static constexpr std::size_t kEvaluationCacheSize = 64 * 1024;
+    static constexpr std::size_t kEvaluationCacheSize = 16 * 1024;
     // 16K entries (256 KiB) keeps the direct-mapped quotient-cache collision
     // rate low across iterative deepening; the entries are exact-key checked,
     // so the size only trades memory for hit rate.
@@ -207,6 +207,11 @@ struct SearchContext {
     int clock_poll_countdown = 0;
     int quiescence_check_depth_limit = kMaximumQuiescenceCheckDepth;
     SearchStack stack;
+    struct FrameScratch;
+    struct FrameScratchDeleter {
+        void operator()(FrameScratch* ptr) const noexcept;
+    };
+    std::unique_ptr<FrameScratch, FrameScratchDeleter> frame_scratch;
     std::unique_ptr<EvaluationCacheEntry[]> evaluation_cache;
     std::array<QSearchCacheEntry, kQSearchCacheSize> qsearch_cache{};
     std::array<RootMoveScore, kMaximumLegalMoves> root_move_scores{};
@@ -309,6 +314,7 @@ struct SearchContext {
         : evaluation(evaluator, evaluator_mutex), table_access(table, use_transposition_table),
           budget(time_manager, global_nodes), time_manager(time_manager),
           stop_requested(stop_requested), root_moves(root_moves),
+          frame_scratch(create_frame_scratch()),
           evaluation_cache(std::make_unique<EvaluationCacheEntry[]>(kEvaluationCacheSize)),
           quiet_history_side_hook(std::move(quiet_history_side_hook)),
           tablebase(std::move(tablebase_binding)), root_color(root_color),
@@ -322,20 +328,17 @@ struct SearchContext {
         }
     }
 
+    [[nodiscard]] static std::unique_ptr<FrameScratch, FrameScratchDeleter> create_frame_scratch();
     ~SearchContext();
 
-    [[nodiscard]] Color history_side(Color candidate, const bool after_unmake) const {
-        if (!quiet_history_side_hook) {
+    [[nodiscard]] Color history_side(Color candidate, const bool after_unmake) const noexcept {
+        if (!quiet_history_side_hook) [[likely]] {
             return candidate;
         }
-        // This hook is test/diagnostic-only and can run on every root worker.
-        // A diagnostic callback must never be able to terminate the search.
-        try {
-            return quiet_history_side_hook(candidate, after_unmake);
-        } catch (...) {
-            return candidate;
-        }
+        return history_side_slow(candidate, after_unmake);
     }
+
+    [[nodiscard]] Color history_side_slow(Color candidate, bool after_unmake) const noexcept;
 
     // Interior Syzygy WDL probe.  Returns a decisive side-to-move score below
     // the mate threshold, or nullopt when no cutoff applies.  A configured
@@ -491,18 +494,19 @@ struct SearchContext {
             return false;
         }
         clock_poll_countdown = kClockPollInterval;
-        if (time_manager.should_stop(visited_nodes())) {
-            request_abort();
-            return true;
-        }
-        if (progress_probe) {
-            try {
-                progress_probe();
-            } catch (...) {
-            }
-        }
-        return false;
+        return poll_clock_slow();
     }
+
+    [[nodiscard]] bool poll_clock_slow() noexcept;
+    void reinforce_tt_lower_quiet(const GameState& state, Move best_move, int depth, int ply,
+                                  std::optional<Move> previous_move, Color side_to_move,
+                                  bool moves_generated, const MoveMetadataList& moves,
+                                  bool& history_ready, SearchHistoryContext& history_out,
+                                  std::uint64_t& node_pawn_key) noexcept;
+    void compute_root_authoritative(std::size_t legal_move_count, Move best_move, int best_score,
+                                    bool best_metadata_valid, bool best_score_authoritative,
+                                    bool best_score_safe_lower_bound, bool claimable_draw,
+                                    bool& root_authoritative_path) noexcept;
 
     [[nodiscard]] bool interrupted() noexcept {
         return stop_signal_pending() || poll_clock();
@@ -825,6 +829,33 @@ struct SearchContext {
                 bool* root_authoritative_path = nullptr,
                 bool* lower_bound_path = nullptr,
                 int singular_extensions_remaining = kMaximumSingularExtensionsPerPath);
+
+    int run_null_verification(
+        GameState& state, int null_depth, int beta, int ply, SearchFrame& frame,
+        PrincipalVariation& verification_pv, std::optional<Move> previous_move,
+        int child_check_extensions_remaining, bool& path_repetition_sensitive);
+
+    bool run_probcut(
+        GameState& state, int ply, int beta, int probcut_beta, int probcut_depth,
+        int static_eval, int raw_static_eval, std::uint64_t transposition_key,
+        const MoveMetadataList& current_moves, Move excluded_move,
+        std::optional<Move> tt_move, const SearchHistoryContext& history,
+        PrincipalVariation& probcut_pv, MoveMetadataList& probcut_moves,
+        int child_check_extensions_remaining, bool& path_repetition_sensitive,
+        bool& path_selective_bound, bool& path_lower_bound, int& cutoff_score);
+
+    std::optional<Move> run_true_iid(
+        GameState& state, int probe_depth, int alpha, int ply, SearchFrame& frame,
+        PrincipalVariation& probe_pv, std::optional<Move> previous_move,
+        int check_extensions_remaining, std::uint64_t transposition_key,
+        bool& path_selective_bound);
+
+    int run_singular_search(
+        GameState& state, int singular_depth, int singular_beta, int ply,
+        SearchFrame& frame, PrincipalVariation& singular_pv,
+        std::optional<Move> previous_move, int child_check_extensions_remaining,
+        Move excluded_move, bool& excluded_repetition_sensitive,
+        bool& excluded_selective_bound);
 };
 
 } // namespace koi::detail

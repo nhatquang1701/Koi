@@ -131,8 +131,13 @@ public:
                     return 0;
                 }
             }
-            const std::size_t from_sq = static_cast<std::size_t>(metadata.move.from().index());
-            const std::size_t to_raw = static_cast<std::size_t>(metadata.move.to().index());
+            const std::uint32_t raw = metadata.move.raw();
+            const std::size_t from_sq = Unchecked ?
+                static_cast<std::size_t>(raw & 0x3FU) :
+                static_cast<std::size_t>(metadata.move.from().index());
+            const std::size_t to_raw = Unchecked ?
+                static_cast<std::size_t>((raw >> 6U) & 0x3FU) :
+                static_cast<std::size_t>(metadata.move.to().index());
             const std::size_t move_idx =
                 (Unchecked || (from_sq < Square::kInvalid && to_raw < Square::kInvalid)) ?
                 (from_sq * 64U + to_raw) : 0U;

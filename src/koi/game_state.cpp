@@ -1508,6 +1508,52 @@ void GameState::legal_quiet_checking_search_moves_with_metadata(
         moves, true, false, CheckFlagMode::quiet_moves_only, true);
 }
 
+bool GameState::legal_tactical_only_search_moves_with_metadata(
+    MoveMetadataList& moves) const noexcept {
+    if (!impl_->mirror_tracking) {
+        impl_->native_position.legal_tactical_only_search_metadata_into(moves);
+        return true;
+    }
+    legal_moves_with_metadata_impl(
+        moves, true, false, CheckFlagMode::quiet_moves_only, true);
+    return false;
+}
+
+#if defined(__clang__) || defined(__GNUC__)
+#define KOI_GS_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define KOI_GS_NOINLINE __declspec(noinline)
+#else
+#define KOI_GS_NOINLINE
+#endif
+
+namespace {
+
+KOI_GS_NOINLINE void append_quiet_mirror_fallback(const GameState& state,
+                                                  MoveMetadataList& moves) noexcept {
+    MoveMetadataList all_moves;
+    state.legal_moves_with_metadata(
+        all_moves, true, false, CheckFlagMode::quiet_moves_only);
+    for (const MoveMetadata& candidate : all_moves) {
+        if (!candidate.is_capture() && candidate.move.promotion() == Promotion::none) {
+            (void)moves.push_back(candidate);
+        }
+    }
+}
+
+} // namespace
+
+void GameState::append_quiet_search_moves_with_metadata(
+    MoveMetadataList& moves) const noexcept {
+    if (!impl_->mirror_tracking) {
+        impl_->native_position.append_quiet_search_metadata_into(moves);
+        return;
+    }
+    append_quiet_mirror_fallback(*this, moves);
+}
+
+#undef KOI_GS_NOINLINE
+
 bool GameState::legal_tactical_moves_with_metadata_impl(
     MoveMetadataList& moves, bool include_quiet_checks, bool include_see,
     CheckFlagMode check_flag_mode, bool include_validation_token) const noexcept {

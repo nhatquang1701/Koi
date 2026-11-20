@@ -189,6 +189,7 @@ if(MSVC)
     add_compile_options(
         /EHsc
         /permissive-
+        /utf-8
         "$<$<CONFIG:Release>:/O2>"
         "$<$<CONFIG:Release>:/Ob3>"
         "$<$<CONFIG:Release>:/DNDEBUG>"

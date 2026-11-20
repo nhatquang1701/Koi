@@ -2417,14 +2417,26 @@ int NnueWorker::evaluate(const EvaluationFeatures& features, const Color perspec
     return perspective == mover ? score : -score;
 }
 
+#if defined(__clang__) || defined(__GNUC__)
+#define KOI_NNUE_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define KOI_NNUE_NOINLINE __declspec(noinline)
+#else
+#define KOI_NNUE_NOINLINE
+#endif
+
 template <bool WriteAccumulator>
-int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspective,
-                                    const NnueInferencePath path) {
+KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
+    const GameState& state, const Color perspective,
+    const NnueInferencePath path) {
     if (!supports_incremental()) {
         return evaluate(EvaluationFeatureExtractor::extract(state), perspective, path);
     }
-    if (!storage_ready_) [[unlikely]] {
+    if (!storage_ready_) {
         ensure_incremental_storage();
+        if (int16_safe_) {
+            return evaluate_state_impl<WriteAccumulator>(state, perspective, path);
+        }
     }
     const bool threat = threat_features_;
     const Color mover = state.side_to_move();
@@ -2437,88 +2449,6 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
     const bool use_simd = path != NnueInferencePath::scalar;
     (void)use_simd;
     std::size_t pieces = 0;
-    if (int16_safe_) {
-        std::span<const std::int16_t> mover_sums_16;
-        std::span<const std::int16_t> opponent_sums_16;
-        if (slot_cursor_ >= 0 &&
-            slot_valid_[static_cast<std::size_t>(slot_cursor_)] != 0 &&
-            slot_keys_[static_cast<std::size_t>(slot_cursor_)] == key) {
-            const std::size_t slot = static_cast<std::size_t>(slot_cursor_);
-            materialize_slot_perspective_v4_impl<std::int16_t>(state, mover_index, slot);
-            if (dual_v4_) {
-                materialize_slot_perspective_v4_impl<std::int16_t>(state, opponent_index, slot);
-            }
-            mover_sums_16 = std::span<const std::int16_t>(
-                slot_values_16_[mover_index].data() + slot * hidden_units_, hidden_units_);
-            opponent_sums_16 = std::span<const std::int16_t>(
-                slot_values_16_[opponent_index].data() + slot * hidden_units_, hidden_units_);
-            pieces = slot_pieces_[slot];
-        } else if (scratch_valid_ && scratch_key_ == key) {
-            mover_sums_16 = std::span<const std::int16_t>(scratch_values_16_[mover_index]);
-            opponent_sums_16 = std::span<const std::int16_t>(scratch_values_16_[opponent_index]);
-            pieces = scratch_pieces_;
-        } else {
-            for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
-                const Color real = index == 0U ? Color::white : Color::black;
-                const std::size_t color_idx = real == Color::white ? 0U : 1U;
-                const std::uint64_t king_bb =
-                    state.piece_bitboards()[color_idx][static_cast<std::size_t>(PieceType::king)];
-                const Square king_sq = king_bb != 0 ?
-                    Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
-                    Square{};
-                const std::size_t bucket_idx =
-                    EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, real);
-                refresh_finny_bucket_v4_impl<std::int16_t>(
-                    state, real, bucket_idx, scratch_values_16_[index].data());
-                scratch_buckets_[index] = static_cast<std::uint8_t>(bucket_idx);
-            }
-            scratch_pieces_ = static_cast<std::uint8_t>(state.piece_count());
-            scratch_key_ = key;
-            scratch_valid_ = true;
-            ++incremental_fallback_count_;
-            mover_sums_16 = std::span<const std::int16_t>(scratch_values_16_[mover_index]);
-            opponent_sums_16 = std::span<const std::int16_t>(scratch_values_16_[opponent_index]);
-            pieces = scratch_pieces_;
-        }
-        const std::size_t bucket = output_bucket_for_pieces(pieces);
-        int score = 0;
-        if (dual_v4_) {
-#if KOI_NNUE_COMPILED_AVX2
-            if (use_avx2) {
-                score = finish_inference_v4_dual_avx2_t<std::int16_t>(
-                    *weights_, mover_sums_16, opponent_sums_16, bucket, accumulator_);
-            } else
-#endif
-#if KOI_NNUE_COMPILED_NEON
-            if (use_simd) {
-                score = finish_inference_v4_dual_neon_t<std::int16_t, WriteAccumulator>(
-                    *weights_, mover_sums_16, opponent_sums_16, bucket, accumulator_);
-            } else
-#endif
-            {
-                score = finish_inference_v4_dual_scalar_t<std::int16_t>(
-                    *weights_, mover_sums_16, opponent_sums_16, bucket, accumulator_);
-            }
-        } else {
-#if KOI_NNUE_COMPILED_AVX2
-            if (use_avx2) {
-                score = finish_inference_v4_avx2_t<std::int16_t>(
-                    *weights_, mover_sums_16, bucket, accumulator_);
-            } else
-#endif
-#if KOI_NNUE_COMPILED_NEON
-            if (use_simd) {
-                score = finish_inference_v4_neon_t<std::int16_t, WriteAccumulator>(
-                    *weights_, mover_sums_16, bucket, accumulator_);
-            } else
-#endif
-            {
-                score = finish_inference_v4_scalar_t<std::int16_t>(
-                    *weights_, mover_sums_16, bucket, accumulator_);
-            }
-        }
-        return perspective == mover ? score : -score;
-    }
 
     std::span<const std::int32_t> mover_sums;
     std::span<const std::int32_t> opponent_sums;
@@ -2636,6 +2566,108 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
 #endif
         {
             score = finish_inference_v4_scalar(*weights_, mover_sums, bucket, accumulator_);
+        }
+    }
+    return perspective == mover ? score : -score;
+}
+
+#undef KOI_NNUE_NOINLINE
+
+template <bool WriteAccumulator>
+int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspective,
+                                    const NnueInferencePath path) {
+    if (!supports_incremental() || !storage_ready_ || !int16_safe_) [[unlikely]] {
+        return evaluate_state_fallback_impl<WriteAccumulator>(state, perspective, path);
+    }
+    const Color mover = state.side_to_move();
+    const std::size_t mover_index = mover == Color::white ? 0U : 1U;
+    const std::size_t opponent_index = 1U - mover_index;
+    const std::uint64_t key = state.position_key();
+    const bool use_avx2 = path == NnueInferencePath::avx2_compatible ? avx2_available() :
+        (path == NnueInferencePath::automatic && avx2_available());
+    (void)use_avx2;
+    const bool use_simd = path != NnueInferencePath::scalar;
+    (void)use_simd;
+    std::size_t pieces = 0;
+    std::span<const std::int16_t> mover_sums_16;
+    std::span<const std::int16_t> opponent_sums_16;
+    if (slot_cursor_ >= 0 &&
+        slot_valid_[static_cast<std::size_t>(slot_cursor_)] != 0 &&
+        slot_keys_[static_cast<std::size_t>(slot_cursor_)] == key) {
+        const std::size_t slot = static_cast<std::size_t>(slot_cursor_);
+        if (slot_computed_[mover_index][slot] == 0) {
+            materialize_slot_perspective_v4_impl<std::int16_t>(state, mover_index, slot);
+        }
+        if (dual_v4_ && slot_computed_[opponent_index][slot] == 0) {
+            materialize_slot_perspective_v4_impl<std::int16_t>(state, opponent_index, slot);
+        }
+        mover_sums_16 = std::span<const std::int16_t>(
+            slot_values_16_[mover_index].data() + slot * hidden_units_, hidden_units_);
+        opponent_sums_16 = std::span<const std::int16_t>(
+            slot_values_16_[opponent_index].data() + slot * hidden_units_, hidden_units_);
+        pieces = slot_pieces_[slot];
+    } else if (scratch_valid_ && scratch_key_ == key) {
+        mover_sums_16 = std::span<const std::int16_t>(scratch_values_16_[mover_index]);
+        opponent_sums_16 = std::span<const std::int16_t>(scratch_values_16_[opponent_index]);
+        pieces = scratch_pieces_;
+    } else {
+        for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
+            const Color real = index == 0U ? Color::white : Color::black;
+            const std::size_t color_idx = real == Color::white ? 0U : 1U;
+            const std::uint64_t king_bb =
+                state.piece_bitboards()[color_idx][static_cast<std::size_t>(PieceType::king)];
+            const Square king_sq = king_bb != 0 ?
+                Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
+                Square{};
+            const std::size_t bucket_idx =
+                EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, real);
+            refresh_finny_bucket_v4_impl<std::int16_t>(
+                state, real, bucket_idx, scratch_values_16_[index].data());
+            scratch_buckets_[index] = static_cast<std::uint8_t>(bucket_idx);
+        }
+        scratch_pieces_ = static_cast<std::uint8_t>(state.piece_count());
+        scratch_key_ = key;
+        scratch_valid_ = true;
+        ++incremental_fallback_count_;
+        mover_sums_16 = std::span<const std::int16_t>(scratch_values_16_[mover_index]);
+        opponent_sums_16 = std::span<const std::int16_t>(scratch_values_16_[opponent_index]);
+        pieces = scratch_pieces_;
+    }
+    const std::size_t bucket = output_bucket_for_pieces(pieces);
+    int score = 0;
+    if (dual_v4_) {
+#if KOI_NNUE_COMPILED_AVX2
+        if (use_avx2) {
+            score = finish_inference_v4_dual_avx2_t<std::int16_t>(
+                *weights_, mover_sums_16, opponent_sums_16, bucket, accumulator_);
+        } else
+#endif
+#if KOI_NNUE_COMPILED_NEON
+        if (use_simd) {
+            score = finish_inference_v4_dual_neon_t<std::int16_t, WriteAccumulator>(
+                *weights_, mover_sums_16, opponent_sums_16, bucket, accumulator_);
+        } else
+#endif
+        {
+            score = finish_inference_v4_dual_scalar_t<std::int16_t>(
+                *weights_, mover_sums_16, opponent_sums_16, bucket, accumulator_);
+        }
+    } else {
+#if KOI_NNUE_COMPILED_AVX2
+        if (use_avx2) {
+            score = finish_inference_v4_avx2_t<std::int16_t>(
+                *weights_, mover_sums_16, bucket, accumulator_);
+        } else
+#endif
+#if KOI_NNUE_COMPILED_NEON
+        if (use_simd) {
+            score = finish_inference_v4_neon_t<std::int16_t, WriteAccumulator>(
+                *weights_, mover_sums_16, bucket, accumulator_);
+        } else
+#endif
+        {
+            score = finish_inference_v4_scalar_t<std::int16_t>(
+                *weights_, mover_sums_16, bucket, accumulator_);
         }
     }
     return perspective == mover ? score : -score;

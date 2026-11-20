@@ -1,4 +1,5 @@
 #include <winver.h>
+#pragma code_page(65001)
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
@@ -21,7 +22,7 @@ BEGIN
             VALUE "FileDescription", "@KOI_PE_FILE_DESCRIPTION@"
             VALUE "FileVersion", "@PROJECT_VERSION@"
             VALUE "InternalName", "@KOI_PE_INTERNAL_NAME@"
-            VALUE "LegalCopyright", "Copyright (C) 2026 Koi Contributors (GPL-3.0-or-later)"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Nguyễn Nhật Quang (GPL-3.0-or-later)"
             VALUE "OriginalFilename", "@KOI_PE_ORIGINAL_FILENAME@"
             VALUE "ProductName", "Koi Chess Engine"
             VALUE "ProductVersion", "@PROJECT_VERSION@"

@@ -219,6 +219,9 @@ private:
     template <bool WriteAccumulator>
     [[nodiscard]] int evaluate_state_impl(const GameState&, Color perspective,
                                           NnueInferencePath path);
+    template <bool WriteAccumulator>
+    [[nodiscard]] int evaluate_state_fallback_impl(const GameState&, Color perspective,
+                                                   NnueInferencePath path);
     void ensure_incremental_storage();
     [[nodiscard]] bool prepare_child_slot(int ply, int child_slot,
                                           std::uint64_t parent_key);

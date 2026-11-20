@@ -127,7 +127,8 @@ public:
     SearchMovePicker(const SearchMoveOrdering& ordering, const GameState& state,
                      const MoveMetadataList& moves, std::optional<Move> tt_move,
                      const SearchHistoryContext* history_context, int ply, Mode mode,
-                     Move excluded_move = Move::no_move()) noexcept;
+                     Move excluded_move = Move::no_move(),
+                     MoveMetadataList* mutable_moves = nullptr) noexcept;
 
     // Emits the next candidate, or nullptr when no stage remains.  The
     // returned record lives in the picker's emission scratch and is valid
@@ -267,6 +268,8 @@ private:
     // Deliberately uninitialized: MoveMetadata has no meaningful empty value
     // here and the record is always assigned before it can be read.
     MoveMetadata emitted_metadata_;
+    MoveMetadataList* mutable_moves_ = nullptr;
+    std::size_t main_quiet_start_ = 0;
     std::size_t main_captures_end_ = 0;
     std::size_t deferred_bad_capture_count_ = 0;
     std::size_t deferred_bad_capture_index_ = 0;
@@ -275,6 +278,7 @@ private:
     bool quiet_checks_scored_ = false;
     bool tt_emitted_ = false;
     bool skip_quiets_ = false;
+    bool defer_quiets_ = false;
 };
 
 } // namespace koi::detail
