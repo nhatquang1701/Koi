@@ -90,11 +90,8 @@ jobs:
         with:
           name: release-nnue-network
           path: artifacts/release-nnue
-      - name: Build, harden, sign (if configured), and package Windows Release
+      - name: Build and harden Windows Release
         shell: cmd
-        env:
-          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
-          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
           if not exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" exit /b 1
           for /f "usebackq delims=" %%I in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%I"
@@ -107,38 +104,6 @@ jobs:
           if errorlevel 1 exit /b 1
           cmake --build build/release --config Release
           if errorlevel 1 exit /b 1
-          pwsh -NoProfile -ExecutionPolicy Bypass -Command "
-            if (-not [string]::IsNullOrWhiteSpace(\$env:WINDOWS_CERT_PFX_BASE64)) {
-              \$pfx = Join-Path \$env:RUNNER_TEMP 'koi-signing.pfx'
-              [System.IO.File]::WriteAllBytes(\$pfx, [System.Convert]::FromBase64String(\$env:WINDOWS_CERT_PFX_BASE64))
-              \$signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
-              if (-not \$signtool) { throw 'signtool.exe not found' }
-              foreach (\$exe in @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe')) {
-                & \$signtool.FullName sign /f \$pfx /p \$env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 (Join-Path 'build/release' \$exe)
-                if (\$LASTEXITCODE -ne 0) { throw \"signtool failed for \$exe\" }
-              }
-              Remove-Item -LiteralPath \$pfx -Force
-            }
-          "
-          if errorlevel 1 exit /b 1
-          pwsh -NoProfile -File tools/build/package_release.ps1 -BuildDirectory build/release -OutputDirectory artifacts/release -NnuePath artifacts/release-nnue/koi.nnue
-          if errorlevel 1 exit /b 1
-          pwsh -NoProfile -Command "
-            \$zip = Get-Item artifacts/release/koi-engine-*.zip | Select-Object -First 1
-            \$pkgDir = Join-Path artifacts/release ([System.IO.Path]::GetFileNameWithoutExtension(\$zip.Name))
-            foreach (\$exe in @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe')) {
-              \$vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path \$pkgDir \$exe))
-              if (\$vi.ProductName -cne 'Koi Chess Engine' -or \$vi.CompanyName -cne 'Koi Chess Engine Contributors') {
-                throw \"Missing PE version metadata on \$exe\"
-              }
-            }
-            \$files = Get-ChildItem -LiteralPath \$pkgDir -File -Recurse | ForEach-Object { \$_.Name } | Sort-Object
-            \$expected = @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe', 'koi.nnue', 'book.bin', 'LICENSE') | Sort-Object
-            if ((\$files -join ',') -cne (\$expected -join ',')) {
-              throw \"Unexpected archive files: \$(\$files -join ', ')\"
-            }
-          "
-          if errorlevel 1 exit /b 1
           for %%F in (koi-engine.exe koi-engine-avx2.exe koi-engine-avx512.exe) do (
             dumpbin /nologo /headers build\release\%%F | findstr /C:"Control Flow Guard" >nul
             if errorlevel 1 exit /b 1
@@ -147,6 +112,46 @@ jobs:
             dumpbin /nologo /imports build\release\%%F | findstr /I "CreateProcess" >nul
             if not errorlevel 1 exit /b 1
           )
+      - name: Sign (if configured), package, and verify Windows Release
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERT_PFX_BASE64)) {
+            $pfx = Join-Path $env:RUNNER_TEMP 'koi-signing.pfx'
+            [System.IO.File]::WriteAllBytes($pfx, [System.Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64))
+            try {
+              $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
+              if (-not $signtool) { throw 'signtool.exe not found' }
+              foreach ($exe in @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe')) {
+                & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 (Join-Path 'build/release' $exe)
+                if ($LASTEXITCODE -ne 0) { throw "signtool failed for $exe" }
+              }
+            } finally {
+              if (Test-Path -LiteralPath $pfx) { Remove-Item -LiteralPath $pfx -Force }
+            }
+          }
+          pwsh -NoProfile -File tools/build/package_release.ps1 -BuildDirectory build/release -OutputDirectory artifacts/release -NnuePath artifacts/release-nnue/koi.nnue
+          if ($LASTEXITCODE -ne 0) { throw "package_release.ps1 failed with exit code $LASTEXITCODE" }
+          $zip = Get-Item artifacts/release/koi-engine-*.zip | Select-Object -First 1
+          $pkgDir = Join-Path artifacts/release ([System.IO.Path]::GetFileNameWithoutExtension($zip.Name))
+          foreach ($exe in @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe')) {
+            $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $pkgDir $exe))
+            if ($vi.ProductName -cne 'Koi Chess Engine' -or $vi.CompanyName -cne 'Koi Chess Engine Contributors') {
+              throw "Missing PE version metadata on $exe"
+            }
+          }
+          $files = Get-ChildItem -LiteralPath $pkgDir -File -Recurse | ForEach-Object { $_.Name } | Sort-Object
+          $expected = @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe', 'koi.nnue', 'book.bin', 'LICENSE') | Sort-Object
+          if (($files -join ',') -cne ($expected -join ',')) {
+            throw "Unexpected archive files: $($files -join ', ')"
+          }
+          $smokeOutput = @("uci`nisready`nposition startpos`ngo depth 2`nstop`nquit" | & (Join-Path $pkgDir 'koi-engine.exe'))
+          if ($LASTEXITCODE -ne 0 -or -not ($smokeOutput -match '^bestmove ')) {
+            throw "Packaged koi-engine.exe smoke test failed"
+          }
       - uses: actions/upload-artifact@v5
         with:
           name: release-windows-assets
