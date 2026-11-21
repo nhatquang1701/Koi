@@ -804,15 +804,62 @@ constexpr std::array<StandardSyzygyFile, 290> kStandardSyzygyFiles{{
     {"KRvKR.rtbz", 3408},
 }};
 
+bool ascii_equals_ignore_case(std::string_view a, std::string_view b) noexcept {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        const auto lower = [](char c) noexcept -> unsigned char {
+            const unsigned char u = static_cast<unsigned char>(c);
+            return (u >= 'A' && u <= 'Z') ? static_cast<unsigned char>(u + ('a' - 'A')) : u;
+        };
+        if (lower(a[i]) != lower(b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<std::string> ascii_path_text(const std::filesystem::path& path) {
+    const auto& native = path.native();
+    std::string out;
+    out.reserve(native.size());
+    for (const auto ch : native) {
+        const std::uint32_t code = static_cast<std::uint32_t>(ch);
+        if ((code & ~std::uint32_t{0x7FU}) != 0U) {
+            return std::nullopt;
+        }
+        out.push_back(static_cast<char>(code));
+    }
+    return out;
+}
+
+std::optional<std::string_view> syzygy_table_extension(const std::filesystem::path& file) {
+    const std::optional<std::string> extension = ascii_path_text(file.extension());
+    if (!extension.has_value()) {
+        return std::nullopt;
+    }
+    if (ascii_equals_ignore_case(*extension, ".rtbw")) {
+        return std::string_view{".rtbw"};
+    }
+    if (ascii_equals_ignore_case(*extension, ".rtbz")) {
+        return std::string_view{".rtbz"};
+    }
+    return std::nullopt;
+}
+
 bool table_magic_matches(const std::filesystem::path& file) {
     static constexpr std::array<unsigned char, 4> kWdlMagic{0x71, 0xE8, 0x23, 0x5D};
     static constexpr std::array<unsigned char, 4> kDtzMagic{0xD7, 0x66, 0x0C, 0xA5};
-    const std::string extension = file.extension().string();
+    const std::optional<std::string_view> extension = syzygy_table_extension(file);
     const auto* expected = [&]() -> const std::array<unsigned char, 4>* {
-        if (extension == ".rtbw") {
+        if (!extension.has_value()) {
+            return nullptr;
+        }
+        if (*extension == ".rtbw") {
             return &kWdlMagic;
         }
-        if (extension == ".rtbz") {
+        if (*extension == ".rtbz") {
             return &kDtzMagic;
         }
         return nullptr;
@@ -830,7 +877,7 @@ bool table_magic_matches(const std::filesystem::path& file) {
 
 std::optional<std::uint64_t> expected_standard_syzygy_size(std::string_view filename) {
     for (const StandardSyzygyFile& file : kStandardSyzygyFiles) {
-        if (file.name == filename) {
+        if (ascii_equals_ignore_case(file.name, filename)) {
             return file.size;
         }
     }
@@ -844,16 +891,17 @@ SyzygyDirectoryStatus syzygy_directory_status(const std::filesystem::path& direc
     }
     std::filesystem::directory_iterator iterator(directory, error);
     if (error) {
-        return SyzygyDirectoryStatus::missing;
+        return SyzygyDirectoryStatus::unreadable;
     }
     bool has_table = false;
-    for (const std::filesystem::directory_entry& entry : iterator) {
+    const std::filesystem::directory_iterator end;
+    for (; iterator != end; iterator.increment(error)) {
+        const std::filesystem::directory_entry& entry = *iterator;
         std::error_code entry_error;
         if (!entry.is_regular_file(entry_error) || entry_error) {
             continue;
         }
-        const std::string extension = entry.path().extension().string();
-        if (extension != ".rtbw" && extension != ".rtbz") {
+        if (!syzygy_table_extension(entry.path()).has_value()) {
             continue;
         }
         has_table = true;
@@ -865,11 +913,13 @@ SyzygyDirectoryStatus syzygy_directory_status(const std::filesystem::path& direc
         std::error_code size_error;
         const std::uintmax_t file_size = std::filesystem::file_size(entry.path(), size_error);
         if (!size_error) {
-            const auto expected =
-                expected_standard_syzygy_size(entry.path().filename().string());
-            if (expected.has_value() &&
-                static_cast<std::uint64_t>(file_size) != *expected) {
-                return SyzygyDirectoryStatus::corrupt;
+            if (const std::optional<std::string> filename = ascii_path_text(entry.path().filename());
+                filename.has_value()) {
+                const auto expected = expected_standard_syzygy_size(*filename);
+                if (expected.has_value() &&
+                    static_cast<std::uint64_t>(file_size) != *expected) {
+                    return SyzygyDirectoryStatus::corrupt;
+                }
             }
         }
         // A zero-filled payload that happens to match the canonical size used
@@ -894,6 +944,9 @@ SyzygyDirectoryStatus syzygy_directory_status(const std::filesystem::path& direc
         if (!payload_nonzero) {
             return SyzygyDirectoryStatus::corrupt;
         }
+    }
+    if (error) {
+        return SyzygyDirectoryStatus::unreadable;
     }
     return has_table ? SyzygyDirectoryStatus::usable : SyzygyDirectoryStatus::empty;
 }

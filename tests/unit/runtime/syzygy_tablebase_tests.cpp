@@ -191,8 +191,11 @@ void test_standard_syzygy_size_manifest() {
                 "standard Syzygy size manifest mismatch");
     };
     expect("KQvK.rtbw", 272);
+    expect("KQvK.RTBW", 272);
+    expect("kqvk.rtbw", 272);
     expect("KNvK.rtbw", 80);
     expect("KBvK.rtbz", 80);
+    expect("KBVK.RTBZ", 80);
     expect("KBBBvK.rtbz", 1938576);
     require(!koi::expected_standard_syzygy_size("KQvK.bin").has_value(),
             "non-tablebase suffixes must not be size-validated");
@@ -569,6 +572,48 @@ void test_concurrent_enabled_wdl_probes_agree() {
     }
 }
 
+void test_syzygy_case_insensitive_extensions_and_non_table_files() {
+    const koi::test::TempDirectory root;
+    const std::filesystem::path upper_corrupt = root.file("upper-corrupt");
+    const std::filesystem::path upper_bad_size = root.file("upper-bad-size");
+    const std::filesystem::path with_non_table = root.file("with-non-table");
+    std::filesystem::create_directories(upper_corrupt);
+    std::filesystem::create_directories(upper_bad_size);
+    std::filesystem::create_directories(with_non_table);
+
+    {
+        std::ofstream bad(upper_corrupt / "KQvK.RTBW", std::ios::binary);
+        bad << "corrupt-uppercase-extension";
+    }
+    require(koi::syzygy_directory_status(upper_corrupt) == koi::SyzygyDirectoryStatus::corrupt,
+            "corrupt tables with uppercase .RTBW suffixes must be rejected before Fathom sees them");
+
+    {
+        std::ofstream bad_dtz(upper_bad_size / "KNvK.RTBZ", std::ios::binary);
+        const unsigned char dtz_magic[4] = {0xD7, 0x66, 0x0C, 0xA5};
+        bad_dtz.write(reinterpret_cast<const char*>(dtz_magic), 4);
+        bad_dtz.write("\x01", 1);
+        bad_dtz.write(std::string(40, '\0').data(), 40);
+    }
+    require(koi::syzygy_directory_status(upper_bad_size) == koi::SyzygyDirectoryStatus::corrupt,
+            "truncated standard tables with uppercase .RTBZ suffixes must be classified corrupt");
+
+    {
+        std::ofstream note(with_non_table / std::filesystem::path(u8"not\u00e9-\U0001F600.txt"),
+                           std::ios::binary);
+        note << "unrelated file";
+    }
+    {
+        std::ofstream table(with_non_table / "KNvK.rtbw", std::ios::binary);
+        const unsigned char magic[4] = {0x71, 0xE8, 0x23, 0x5D};
+        table.write(reinterpret_cast<const char*>(magic), 4);
+        table.write("\x01", 1);
+        table.write(std::string(75, '\0').data(), 75);
+    }
+    require(koi::syzygy_directory_status(with_non_table) == koi::SyzygyDirectoryStatus::usable,
+            "unrelated non-ASCII files beside valid tables must not break Syzygy validation");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -607,6 +652,8 @@ int main(int argc, char** argv) {
         {"probe eligibility is a cheap conservative gate",
          test_probe_eligibility_is_a_cheap_conservative_gate},
         {"concurrent enabled WDL probes agree", test_concurrent_enabled_wdl_probes_agree},
+        {"case-insensitive Syzygy validation and unrelated files",
+         test_syzygy_case_insensitive_extensions_and_non_table_files},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

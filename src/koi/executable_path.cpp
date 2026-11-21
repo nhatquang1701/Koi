@@ -32,7 +32,7 @@ std::filesystem::path current_executable_path() noexcept {
 #elif defined(__linux__)
     std::array<char, PATH_MAX + 1> buffer{};
     const ssize_t length = ::readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
-    if (length > 0) {
+    if (length > 0 && static_cast<std::size_t>(length) < buffer.size() - 1) {
         buffer[static_cast<std::size_t>(length)] = '\0';
         return std::filesystem::path(buffer.data());
     }
