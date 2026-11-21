@@ -23,7 +23,7 @@ set -euo pipefail
 
 BOT_HOME="${KOI_BOT_HOME:-$HOME/koi-bot}"
 UPSTREAM="https://github.com/lichess-bot-devs/lichess-bot.git"
-REPO="nhatquang1701/Koi-engine"
+REPO="nhatquang1701/Koi"
 ENGINE_DIR="$BOT_HOME/engines"
 ENGINE="$ENGINE_DIR/koi-engine"
 NET="$ENGINE_DIR/koi.nnue"

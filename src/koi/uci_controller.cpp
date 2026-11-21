@@ -42,21 +42,8 @@ using detail::UciOptionDescriptor;
 using detail::UciOptionId;
 using detail::UciOptionKind;
 using detail::find_uci_option;
-using detail::kMaximumBookDepth;
-using detail::kMaximumBookSafetyDepth;
-using detail::kMaximumContemptCp;
-using detail::kMaximumHashMegabytes;
 using detail::kMaximumMoveOverheadMs;
-using detail::kMaximumMultiPv;
 using detail::kMaximumRandomSeed;
-using detail::kMaximumSlowMoverPercent;
-using detail::kMaximumSyzygyInteriorDepth;
-using detail::kMaximumSyzygyProbeDepth;
-using detail::kMaximumSyzygyProbeLimit;
-using detail::kMinimumHashMegabytes;
-using detail::kMinimumMultiPv;
-using detail::kMinimumSlowMoverPercent;
-using detail::kMinimumSyzygyProbeDepth;
 using detail::kUciOptions;
 
 enum class BoundedLineRead : std::uint8_t {

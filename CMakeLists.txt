@@ -459,8 +459,8 @@ endif()
 # library's own std::popcount/countr_zero already dispatch on __isa_available.
 koi_add_core_target(koi_core_generic "")
 
-# Deterministic evaluator + controller shim used only by tests after the HCE
-# removal (the production engine requires NNUE).
+# Deterministic evaluator + controller shim used by lightweight unit tests that
+# construct UciController directly without loading an NNUE file from disk.
 add_library(koi_material_evaluator_test_support STATIC
     tests/support/uci_controller_test_constructor.cpp
     tests/support/nnue_synthetic.cpp
@@ -1047,23 +1047,18 @@ if(KOI_TARGET_X86_64)
     koi_set_timeout(koi_engine_variant_process 60)
 endif()
 
-add_test(
-    NAME koi_engine_en_croissant_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/en_croissant_uci_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
+function(koi_add_engine_ps_test test_name script_relpath release_seconds)
+    add_test(
+        NAME ${test_name}
+        COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/${script_relpath}"
+                -EnginePath "$<TARGET_FILE:koi_engine>"
+    )
+    koi_set_timeout(${test_name} ${release_seconds})
+endfunction()
 
-koi_set_timeout(koi_engine_en_croissant_process 30)
-
-add_test(
-    NAME koi_engine_time_safety_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/time_safety_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_engine_time_safety_process 180)
+koi_add_engine_ps_test(koi_engine_en_croissant_process tests/integration/uci/en_croissant_uci_test.ps1 30)
+koi_add_engine_ps_test(koi_engine_time_safety_process tests/integration/uci/time_safety_test.ps1 180)
 
 add_test(
     NAME koi_benchmark_process
@@ -1074,32 +1069,9 @@ add_test(
 
 koi_set_timeout(koi_benchmark_process 300)
 
-add_test(
-    NAME koi_uci_match_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/matches/uci_match_process_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_uci_match_process 120)
-
-add_test(
-    NAME koi_stockfish_strength_option
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/matches/stockfish_strength_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_stockfish_strength_option 60)
-
-add_test(
-    NAME koi_uci_match_clock
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/matches/uci_match_clock_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_uci_match_clock 120)
+koi_add_engine_ps_test(koi_uci_match_process tests/integration/matches/uci_match_process_test.ps1 120)
+koi_add_engine_ps_test(koi_stockfish_strength_option tests/integration/matches/stockfish_strength_test.ps1 60)
+koi_add_engine_ps_test(koi_uci_match_clock tests/integration/matches/uci_match_clock_test.ps1 120)
 
 add_test(
     NAME koi_sprt_compare_decision
@@ -1147,14 +1119,7 @@ else()
     message(STATUS "cutechess-cli not found; the real Cutechess smoke test is omitted")
 endif()
 
-add_test(
-    NAME hash_memory_stability
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/runtime/hash_memory_stability_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(hash_memory_stability 60)
+koi_add_engine_ps_test(hash_memory_stability tests/integration/runtime/hash_memory_stability_test.ps1 60)
 
 endif() # WIN32
 
@@ -1315,21 +1280,21 @@ if(Python3_Interpreter_FOUND)
     # The trainer parity test shells out to the built boundary executable to
     # compare the Python encoder and integer reference against C++ scores.
     set_tests_properties(
-        koi_trainer_python
-        PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1;KOI_NNUE_BOUNDARY_EXE=$<TARGET_FILE:nnue_boundary_tests>"
-    )
-    set_tests_properties(
         spsa_search_python nnue_training_python nnue_info_python nnue_wrapper_python koi_dataset_python gen_training_data_python
         koi_chess_python koi_chess_pgn_python koi_chess_engine_python
         measurement_phase_python measurement_forensics_python
         uci_benchmark_python
         strength_report_python
+        koi_trainer_python
         bullet_data_python bullet_conversion_python build_verified_book_python release_candidate_games_python release_strength_openings_python strength_bound_python
         PROPERTIES
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
             ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+    )
+    set_property(
+        TEST koi_trainer_python
+        APPEND
+        PROPERTY ENVIRONMENT "KOI_NNUE_BOUNDARY_EXE=$<TARGET_FILE:nnue_boundary_tests>"
     )
 else()
     message(STATUS
@@ -1482,10 +1447,11 @@ if(Python3_Interpreter_FOUND)
         endforeach()
 endif()
 
-# Engine-spawning tests need a valid NNUE network now that the classical
-# evaluator is gone. Generate a small fixture network in the build directory and
-# point every test at it explicitly (an explicit KOI_NNUE_PATH keeps the UCI
-# handshake's EvalFile default empty, matching the fixture).
+# Engine-spawning tests need a valid NNUE network for default boot (when
+# KOI_EVALUATOR is not overridden). Generate a small fixture network in the
+# build directory and point every test at it explicitly (an explicit
+# KOI_NNUE_PATH keeps the UCI handshake's EvalFile default empty, matching the
+# fixture).
 add_custom_command(
     OUTPUT "${CMAKE_BINARY_DIR}/koi.nnue"
     COMMAND koi_nnue_fixture --arch v4 --output "${CMAKE_BINARY_DIR}/koi.nnue"
@@ -1497,32 +1463,33 @@ add_custom_target(koi_test_nnue_fixture ALL DEPENDS "${CMAKE_BINARY_DIR}/koi.nnu
 # Bound every registered test. A pathological search, an unresponsive child
 # process, or a stalled network call must fail the test instead of hanging the
 # whole suite. Tests that need a different budget set an explicit TIMEOUT above;
-# this loop only fills in the ones that would otherwise run unbounded.
+# python tests keep their shorter dedicated budget, and this loop fills in the
+# default bound for everything else.
 get_property(KOI_REGISTERED_TESTS DIRECTORY PROPERTY TESTS)
 
 # Tests that construct a UciController without an explicit evaluator use the
 # test-only material evaluator shim (see tests/support/).
 target_link_libraries(uci_controller_tests PRIVATE koi_material_evaluator_test_support)
-set_tests_properties(${KOI_REGISTERED_TESTS} PROPERTIES
-    ENVIRONMENT "KOI_NNUE_PATH=${CMAKE_BINARY_DIR}/koi.nnue")
-foreach(KOI_TEST_NAME IN LISTS KOI_REGISTERED_TESTS)
-    get_test_property(${KOI_TEST_NAME} TIMEOUT KOI_TEST_TIMEOUT)
-    if(KOI_TEST_TIMEOUT STREQUAL "NOTFOUND")
-        math(EXPR KOI_DEFAULT_TIMEOUT "${KOI_TEST_TIMEOUT_SECONDS} * ${KOI_TIMEOUT_SCALE}")
-        set_tests_properties(${KOI_TEST_NAME} PROPERTIES TIMEOUT ${KOI_DEFAULT_TIMEOUT})
-    endif()
-endforeach()
+set_property(
+    TEST ${KOI_REGISTERED_TESTS}
+    APPEND
+    PROPERTY ENVIRONMENT "KOI_NNUE_PATH=${CMAKE_BINARY_DIR}/koi.nnue"
+)
 
-# The Python tooling tests are deterministic and take well under a minute on
-# every platform; a hung subprocess must fail quickly instead of burning the
-# generic search budget, so they get their own bound.
 set(KOI_PYTHON_TEST_TIMEOUT_SECONDS "90" CACHE STRING
     "Timeout in seconds for tests labeled python")
 math(EXPR KOI_PYTHON_TIMEOUT
     "${KOI_PYTHON_TEST_TIMEOUT_SECONDS} * ${KOI_TIMEOUT_SCALE}")
+math(EXPR KOI_DEFAULT_TIMEOUT
+    "${KOI_TEST_TIMEOUT_SECONDS} * ${KOI_TIMEOUT_SCALE}")
 foreach(KOI_TEST_NAME IN LISTS KOI_REGISTERED_TESTS)
     get_test_property(${KOI_TEST_NAME} LABELS KOI_TEST_LABELS)
     if(KOI_TEST_LABELS MATCHES "(^|;)python(;|$)")
         set_tests_properties(${KOI_TEST_NAME} PROPERTIES TIMEOUT ${KOI_PYTHON_TIMEOUT})
+    else()
+        get_test_property(${KOI_TEST_NAME} TIMEOUT KOI_TEST_TIMEOUT)
+        if(KOI_TEST_TIMEOUT STREQUAL "NOTFOUND")
+            set_tests_properties(${KOI_TEST_NAME} PROPERTIES TIMEOUT ${KOI_DEFAULT_TIMEOUT})
+        endif()
     endif()
 endforeach()

@@ -17,8 +17,6 @@ constexpr int kHistoryTableMaximum = 16'384;
 constexpr int kMaximumHistoryScore = kHistoryTableMaximum;
 constexpr int kCaptureHistoryMaximum = 16'384;
 constexpr int kCounterMoveMinimumConfidence = 7 * 7;
-constexpr int kMaximumPly = 64;
-constexpr int kMaximumKillerPly = 128;
 
 // These priors match the neutral starting point used by Stockfish 19's
 // search histories.  The fixed tables are value-initialized, but the two
