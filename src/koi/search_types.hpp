@@ -394,6 +394,11 @@ struct SearchOptions {
     // A non-positive value disables interim publication. This is not exposed
     // as a UCI option; the default is the product cadence.
     std::chrono::milliseconds interim_report_interval{250};
+    // Wall-clock timestamp when the protocol controller accepted the search
+    // command (`go` / xboard search). When supplied, TimeManager anchors its
+    // deadline here so controller teardown, book checks, and worker thread
+    // startup count inside the requested movetime/clock budget.
+    std::chrono::steady_clock::time_point search_started{};
 };
 
 [[nodiscard]] inline std::size_t maximum_search_threads() noexcept {

@@ -57,10 +57,10 @@ namespace {
 // default) and ignores the linker's PT_GNU_STACK size, so raise the process
 // default before any search thread exists; deep tactical lines rely on it.
 //
-// macOS is skipped: Darwin has no process-wide equivalent (Apple's pthread.h
-// declares neither pthread_setattr_default_np nor a setter for the default
-// stack size), so std::thread workers keep the system default there and only
-// the main thread follows the shell's `ulimit -s`.
+// macOS is skipped: Darwin has no process-wide default setter (Apple's pthread.h
+// declares no pthread_setattr_default_np), so bare `std::thread` workers keep
+// the 512 KiB default while `koi::detail::WorkerThread` raises its explicit
+// stack size to 64 MiB and the main thread follows the shell's `ulimit -s`.
 void configure_worker_stack() noexcept {
     pthread_attr_t attributes;
     if (pthread_getattr_default_np(&attributes) != 0) {
@@ -256,7 +256,7 @@ int main(int argc, char* argv[]) {
         environment_path != nullptr && *environment_path != '\0') {
         nnue_path = environment_path;
     } else {
-        // Auto-discovery: packaged `nnue/koi.nnue`, `koi.nnue` beside the binary,
+        // Auto-discovery: `koi.nnue` beside the binary, packaged `nnue/koi.nnue`,
         // or a single `*.nnue` in either place.  Falls back to the working
         // directory for development runs.  KOI_NNUE_AUTODETECT=0 disables it and
         // `EvalFile` still overrides the boot-time choice at runtime.

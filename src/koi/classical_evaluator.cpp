@@ -36,9 +36,9 @@ struct Score {
 }
 
 // Internal development/tuning seam: term-group scales in percent.  The
-// production defaults are 100 and are used unless KOI_HCE_* is set, so normal
-// engine behavior is unaffected; tuners can screen variants by launching the
-// same binary with different environments.
+// production defaults are 100 (75 for king_safety) and are used unless
+// KOI_HCE_* is set, so normal engine behavior is unaffected; tuners can
+// screen variants by launching the same binary with different environments.
 struct HceTuning {
     int passed = 100;
     int mobility = 100;

@@ -73,7 +73,7 @@ The repository's measurement scripts drive the Mac over SSH:
    ssh <host> "cd ~/koi-run && nohup bash <script> > <script>.log 2>&1 &"
    ```
 
-2. The script echoes a marker line (for example `C44-FAST-DONE`) as its last
+2. The script echoes a marker line (for example `JOB-DONE`) as its last
    action.
 3. A watcher on the driving side polls for the marker, then `scp`s the results
    back. Keep poll windows generous — long sweeps outlive short ones.

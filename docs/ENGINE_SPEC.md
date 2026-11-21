@@ -1018,8 +1018,9 @@ name and version while the tag is the version alone.
   form lost its matches (33.75% against the official net) and its export
   saturates the L1 head; `--arch v8` writes the halfka-only layout instead.
 - **Wide networks were rejected at equal time.** A 1024-wide v8 candidate scored
-  48.75-49.00% against the 512-wide official net at equal nodes but only 50.78%
-  against classical at equal time, where the official net scores 62.50%.
+  48.75-49.00% against the historical 512-wide v3 official net at equal nodes but
+  only 50.78% against classical at equal time, where that baseline net scored 62.50%
+  (1.1.5+ ships the faster h128 v4 net).
 - **Node-limited matches cannot promote a network on their own.** Equal-node
   results can hide an evaluation-cost regression; the equal-time gate is required.
 - **No strength limiting.** `UCI_LimitStrength` and `UCI_Elo` are not advertised
@@ -1044,8 +1045,9 @@ name and version while the tag is the version alone.
 - **Sanitizer coverage is partial:** ASan is MSVC-only and runs the fast subset;
   TSan exists only on Linux; macOS has no sanitizer leg.
 - **PGO is MSVC-only.** `KOI_PGO` rejects non-MSVC configurations.
-- **Version readability.** `uci` reports `id name Koi <version>` (CMake pin);
-  commit-level build identity lives in benchmark JSON and package provenance.
+- **Version readability.** `uci` reports `id name Koi <version>` (CMake pin) and
+  `info string build <commit>`; commit-level build identity also lives in
+  `--version`, benchmark JSON, and package provenance.
 - **NNUE v1 containers are not accepted** by the current loader (versions 2, 3,
   4, 5, 6, and 8 are).
 - **Test count depends on optional features:** `tests/README.md`,

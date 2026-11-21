@@ -26,8 +26,6 @@ if str(NNUE_DIR) not in sys.path:
 if str(MEASUREMENT_DIR) not in sys.path:
     sys.path.insert(0, str(MEASUREMENT_DIR))
 
-import koi_chess  # noqa: E402,F401
-
 try:
     import run_bullet  # noqa: E402  (also puts tools/measurement on sys.path)
     import export_bullet_v4  # noqa: E402

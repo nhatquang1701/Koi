@@ -21,7 +21,8 @@ public:
     TimeManager(SearchLimits limits, Color side_to_move, std::uint8_t speed_percent,
                 std::uint32_t move_overhead_ms, std::uint32_t slow_mover_percent,
                 RootTimingContext root_context, TimePointProvider now = {},
-                bool dynamic_move_overhead = false);
+                bool dynamic_move_overhead = false,
+                std::chrono::steady_clock::time_point search_started = {});
 
     [[nodiscard]] std::optional<std::chrono::milliseconds> time_budget() const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> node_limit() const noexcept;

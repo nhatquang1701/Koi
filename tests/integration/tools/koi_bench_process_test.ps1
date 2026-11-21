@@ -16,8 +16,9 @@ $scratchDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("koi-bench-" + 
 New-Item -ItemType Directory -Path $scratchDirectory -Force | Out-Null
 try {
 
-# The classical evaluator was removed (2026-10-28); koi-bench requires a
-# network. CTest supplies KOI_NNUE_PATH, with a fallback beside the binary.
+# koi-bench defaults to NNUE (--nnue), while -Hce switches to --hce to test the
+# clean ClassicalEvaluator. CTest supplies KOI_NNUE_PATH, with a fallback beside
+# the binary.
 $nnuePath = if ($env:KOI_NNUE_PATH) { $env:KOI_NNUE_PATH } else { Join-Path (Split-Path -Parent $BenchPath) 'koi.nnue' }
 if (-not (Test-Path -LiteralPath $nnuePath -PathType Leaf)) {
     throw "NNUE test network is missing: $nnuePath"

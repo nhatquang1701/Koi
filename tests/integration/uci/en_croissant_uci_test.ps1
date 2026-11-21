@@ -93,14 +93,36 @@ try {
         throw "Infinite analysis emitted an invalid bestmove: $thirdBestmove"
     }
 
-    Write-TestProgress 4 4 'shutdown and transcript verification'
+    Write-TestProgress 4 5 'go movetime 1000 stays strictly under 1000 ms (Threads 1 and 4)'
+    foreach ($threadCount in @(1, 4)) {
+        Send-UciCommand $session "setoption name Threads value $threadCount"
+        foreach ($moves in @(
+            'e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 a7a6',
+            'd2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 f8e7 e2e3 e8g8'
+        )) {
+            Send-UciCommand $session "position startpos moves $moves"
+            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+            Send-UciCommand $session 'go movetime 1000'
+            $bestmove = Read-UciUntil -Session $session -Description "bestmove after go movetime 1000 (Threads=$threadCount)" -ValidateUciOutput -Predicate { param($line) $line -match '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$' }
+            $stopwatch.Stop()
+            if ($bestmove -notmatch '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$') {
+                throw "movetime 1000 search emitted an invalid bestmove: $bestmove"
+            }
+            if ($stopwatch.ElapsedMilliseconds -ge 1000) {
+                throw "go movetime 1000 (Threads=$threadCount) took $($stopwatch.ElapsedMilliseconds) ms (>= 1000 ms GUI deadline)."
+            }
+        }
+    }
+    Send-UciCommand $session 'setoption name Threads value 1'
+
+    Write-TestProgress 5 5 'shutdown and transcript verification'
     Send-UciCommand $session 'register later'
     Send-UciCommand $session 'debug on'
     $null = Complete-UciSession $session $true
 
     $bestmoves = @($session.Lines | Where-Object { $_ -like 'bestmove *' })
-    if ($bestmoves.Count -ne 3) {
-        throw "En Croissant transcript emitted $($bestmoves.Count) bestmoves; expected exactly three."
+    if ($bestmoves.Count -ne 7) {
+        throw "En Croissant transcript emitted $($bestmoves.Count) bestmoves; expected exactly seven."
     }
     foreach ($line in $session.Lines) {
         if ($line -notmatch '^(id |option |uciok$|readyok$|info )' -and $line -notmatch '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$') {

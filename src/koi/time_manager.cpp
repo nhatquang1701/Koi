@@ -12,8 +12,16 @@ std::chrono::milliseconds with_safety_margin(std::chrono::milliseconds duration)
         return std::chrono::milliseconds::zero();
     }
 
-    const auto margin = std::min(std::chrono::milliseconds{50},
-                                 std::max(std::chrono::milliseconds{1}, duration / 20));
+    const auto base_margin = std::min(std::chrono::milliseconds{50},
+                                      std::max(std::chrono::milliseconds{1}, duration / 20));
+    // Longer explicit requests (such as 1000 ms GUI moves) reserve up to an
+    // extra 50 ms for thread-pool teardown, validation, and pipe round-trip
+    // jitter without altering short <= 500 ms allocations.
+    const auto extra_teardown_margin = duration > std::chrono::milliseconds{500}
+        ? std::min(std::chrono::milliseconds{50},
+                   (duration - std::chrono::milliseconds{500}) / 10)
+        : std::chrono::milliseconds::zero();
+    const auto margin = base_margin + extra_teardown_margin;
     return duration > margin ? duration - margin : std::chrono::milliseconds{1};
 }
 
@@ -91,9 +99,17 @@ TimeManager::TimeManager(SearchLimits limits, Color side_to_move, std::uint8_t s
 TimeManager::TimeManager(SearchLimits limits, Color side_to_move, std::uint8_t speed_percent,
                          std::uint32_t move_overhead_ms, std::uint32_t slow_mover_percent,
                          RootTimingContext root_context,
-                         TimePointProvider now, bool dynamic_move_overhead)
+                         TimePointProvider now, bool dynamic_move_overhead,
+                         std::chrono::steady_clock::time_point search_started)
     : limits_(std::move(limits)), root_context_(root_context), now_(std::move(now)) {
-    const std::int64_t start_ns = now_nanoseconds();
+    std::int64_t start_ns = now_nanoseconds();
+    if (!now_ && search_started != std::chrono::steady_clock::time_point{}) {
+        const std::int64_t supplied_ns =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                search_started.time_since_epoch())
+                .count();
+        start_ns = std::min(start_ns, supplied_ns);
+    }
     initialize(side_to_move, speed_percent, move_overhead_ms, slow_mover_percent,
                dynamic_move_overhead, start_ns);
 }

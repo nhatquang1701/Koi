@@ -100,7 +100,11 @@ private:
     void start_xboard_search(bool analyze_mode);
     void apply_pending_xboard_move();
     void start_search(GameState root, SearchLimits limits, bool skip_book = false,
-                      bool force_analyze = false);
+                      bool force_analyze = false,
+                      std::chrono::steady_clock::time_point search_started = {});
+    [[nodiscard]] bool debug_logging_enabled() const noexcept;
+    bool try_install_nnue_file(const std::filesystem::path& path, std::string_view option_label,
+                               std::filesystem::path* resolved_out = nullptr);
     // Records the clock baseline for the previous/current timed move and folds
     // the observed GUI round trip into `observed_gui_overhead_ms_`.
     void note_clock_baseline(const SearchLimits& limits) noexcept;

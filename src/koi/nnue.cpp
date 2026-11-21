@@ -3924,10 +3924,10 @@ private:
 
 namespace {
 
-// A network is only usable when its manifest and arrays still validate. The
-// public library seam must treat an invalid in-memory network the same way the
-// load path treats a rejected file: fall back to the classical evaluator
-// instead of returning silent zero scores.
+// A network is only usable when its manifest and arrays still validate. Missing
+// or rejected network files are a boot/option failure (make_evaluator leaves
+// `evaluator` null), while the public evaluator seam guards invalid in-memory
+// weights by returning 0 rather than fabricating bogus centipawn scores.
 bool network_is_usable(const NnueNetwork& network) {
     return !validate_manifest(network.manifest).has_value() && arrays_match_manifest(network);
 }
@@ -3948,7 +3948,7 @@ int NnueEvaluator::evaluate(const GameState& state, const Color perspective) con
     }
     // One-shot evaluation uses the stateless feature overload: the worker is a
     // temporary, so allocating and zeroing the per-ply incremental slots would
-    // only add ~1 MB of pointless work to every fallback evaluation.
+    // only add ~1 MB of pointless work to every one-shot evaluation.
     NnueWorker worker(weights_, true, int16_accumulator_safe_);
     return worker.evaluate(EvaluationFeatureExtractor::extract(state), perspective);
 }

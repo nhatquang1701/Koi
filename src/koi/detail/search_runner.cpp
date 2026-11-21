@@ -198,7 +198,8 @@ void SearchRunner::run_impl() {
         table_access.new_generation();
         TimeManager time_manager(limits, root.side_to_move(), options.speed_percent,
                                  options.move_overhead_ms, options.slow_mover_percent,
-                                 timing_context, {}, options.dynamic_move_overhead);
+                                 timing_context, {}, options.dynamic_move_overhead,
+                                 options.search_started);
         const FallbackControl fallback_control{&time_manager, &session->stop_requested()};
         result.timing = time_manager.diagnostics();
         result.best_move = legal_moves.empty() ? std::nullopt :

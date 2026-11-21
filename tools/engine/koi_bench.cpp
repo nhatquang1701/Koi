@@ -24,7 +24,7 @@
 #include "koi/strength_suite.hpp"
 
 #ifndef KOI_ENGINE_BUILD_VERSION
-#define KOI_ENGINE_BUILD_VERSION "1.1.1"
+#define KOI_ENGINE_BUILD_VERSION "1.2.0"
 #endif
 
 namespace {

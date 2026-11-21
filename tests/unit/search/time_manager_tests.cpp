@@ -208,10 +208,20 @@ void test_movetime_keeps_its_own_budget() {
     require(budget.has_value(), "a movetime search must allocate a budget");
     require(*budget <= milliseconds{1000} - milliseconds{kMoveOverheadMs},
             "a movetime budget must pay the move overhead");
+    require(*budget <= milliseconds{920},
+            "a one second movetime budget must reserve teardown and GUI pipe margin");
     require(*budget >= milliseconds{800},
             "a one second movetime budget must stay close to one second");
     require(manager.diagnostics().hard_budget == *budget,
             "movetime diagnostics must report the enforced deadline");
+
+    SearchLimits short_limits;
+    short_limits.movetime = milliseconds{100};
+    const auto backdated_start = std::chrono::steady_clock::now() - milliseconds{120};
+    TimeManager backdated(short_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                          koi::RootTimingContext{}, {}, false, backdated_start);
+    require(backdated.should_stop(0),
+            "pre-search latency reflected in search_started must count toward movetime");
 }
 
 void test_deadline_is_fixed_at_construction_and_cannot_be_extended() {

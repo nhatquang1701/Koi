@@ -11,6 +11,35 @@
 
 namespace koi::detail {
 
+namespace {
+
+[[nodiscard]] bool target_triggers_fork(const Piece target, const std::uint8_t square,
+                                        const std::uint8_t enemy,
+                                        const bool minors_only_pair,
+                                        int& paired_hits) noexcept {
+    if (target.empty() || target.type == PieceType::king ||
+        (target.color == Color::white ? 0U : 1U) != enemy) {
+        return false;
+    }
+    if (target.type == PieceType::queen || target.type == PieceType::rook) {
+        return true;
+    }
+    if (target.type == PieceType::pawn) {
+        const int target_file = square % 8;
+        const int target_rank = square / 8;
+        if (target_file >= 2 && target_file <= 5 &&
+            (target_rank == 3 || target_rank == 4)) {
+            return true;
+        }
+        if (minors_only_pair) {
+            return false;
+        }
+    }
+    return ++paired_hits >= 2;
+}
+
+} // namespace
+
 int piece_value(const PieceType type) noexcept {
     return piece_material_value(type);
 }
@@ -125,47 +154,19 @@ bool quiet_move_is_forcing(const PositionFeatures& before,
             const std::uint8_t square =
                 static_cast<std::uint8_t>(std::countr_zero(attacks));
             attacks &= attacks - 1;
-            const Piece target = features.board[square];
-            if (target.empty() || target.type == PieceType::king ||
-                (target.color == Color::white ? 0U : 1U) != enemy) {
-                continue;
-            }
-            if (target.type == PieceType::queen || target.type == PieceType::rook) {
-                return true;
-            }
-            if (target.type == PieceType::pawn) {
-                const int target_file = square % 8;
-                const int target_rank = square / 8;
-                if (target_file >= 2 && target_file <= 5 &&
-                    (target_rank == 3 || target_rank == 4)) {
-                    return true;
-                }
-            }
-            if (++attacked_valuable_pieces >= 2) {
+            if (target_triggers_fork(features.board[square], square, enemy, false,
+                                     attacked_valuable_pieces)) {
                 return true;
             }
         }
     } else {
         // Synthetic fixtures carry no bitboards; keep the board-scanning path.
         for (std::uint8_t square = 0; square < 64; ++square) {
-            const Piece target = features.board[square];
-            if (target.empty() || target.type == PieceType::king ||
-                (target.color == Color::white ? 0U : 1U) != enemy ||
-                !piece_attacks_square(features, destination, square)) {
+            if (!piece_attacks_square(features, destination, square)) {
                 continue;
             }
-            if (target.type == PieceType::queen || target.type == PieceType::rook) {
-                return true;
-            }
-            if (target.type == PieceType::pawn) {
-                const int target_file = square % 8;
-                const int target_rank = square / 8;
-                if (target_file >= 2 && target_file <= 5 &&
-                    (target_rank == 3 || target_rank == 4)) {
-                    return true;
-                }
-            }
-            if (++attacked_valuable_pieces >= 2) {
+            if (target_triggers_fork(features.board[square], square, enemy, false,
+                                     attacked_valuable_pieces)) {
                 return true;
             }
         }
@@ -219,28 +220,11 @@ bool quiet_move_is_forcing(const PositionFeatures& before,
 
 namespace {
 
-// Byte-exact copy of game_state.cpp's file-local king_zone_mask().  That
-// helper is not exported and this change does not own game_state.cpp, so the
-// 3x3 file/rank clipping (and the out-of-range guard) is duplicated verbatim
-// to keep the compact king-zone count identical to
-// PositionFeatures::king_zone_attacks[enemy].
 [[nodiscard]] std::uint64_t compact_king_zone_mask(const std::uint8_t square) noexcept {
     if (square >= Square::kInvalid) {
         return 0;
     }
-    const int file = square % 8;
-    const int rank = square / 8;
-    std::uint64_t mask = 0;
-    for (int rank_delta = -1; rank_delta <= 1; ++rank_delta) {
-        for (int file_delta = -1; file_delta <= 1; ++file_delta) {
-            const int target_file = file + file_delta;
-            const int target_rank = rank + rank_delta;
-            if (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
-                mask |= std::uint64_t{1} << (target_rank * 8 + target_file);
-            }
-        }
-    }
-    return mask;
+    return king_attacks(square) | (std::uint64_t{1} << square);
 }
 
 // Mirror of a single native_feature_attacks() lookup (game_state.cpp): the
@@ -397,23 +381,8 @@ bool quiet_move_is_forcing(const PositionFeatures& before, const GameState& afte
         const std::uint8_t square =
             static_cast<std::uint8_t>(std::countr_zero(attacks));
         attacks &= attacks - 1;
-        const Piece target = after_state.piece_at(Square::from_index(square));
-        if (target.empty() || target.type == PieceType::king ||
-            (target.color == Color::white ? 0U : 1U) != enemy) {
-            continue;
-        }
-        if (target.type == PieceType::queen || target.type == PieceType::rook) {
-            return true;
-        }
-        if (target.type == PieceType::pawn) {
-            const int target_file = square % 8;
-            const int target_rank = square / 8;
-            if (target_file >= 2 && target_file <= 5 &&
-                (target_rank == 3 || target_rank == 4)) {
-                return true;
-            }
-        }
-        if (++attacked_valuable_pieces >= 2) {
+        if (target_triggers_fork(after_state.piece_at(Square::from_index(square)),
+                                 square, enemy, false, attacked_valuable_pieces)) {
             return true;
         }
     }
@@ -494,27 +463,9 @@ bool quiet_move_has_direct_forcing_target(const PositionFeatures& before,
             const std::uint8_t square =
                 static_cast<std::uint8_t>(std::countr_zero(attacks));
             attacks &= attacks - 1;
-            const Piece target = before.board[square];
-            if (target.empty() || target.type == PieceType::king ||
-                (target.color == Color::white ? 0U : 1U) != enemy) {
-                continue;
-            }
-            if (target.type == PieceType::queen || target.type == PieceType::rook) {
+            if (target_triggers_fork(before.board[square], square, enemy, true,
+                                     attacked_minor_pieces)) {
                 return true;
-            }
-            if (target.type == PieceType::pawn) {
-                const int target_file = square % 8;
-                const int target_rank = square / 8;
-                if (target_file >= 2 && target_file <= 5 &&
-                    (target_rank == 3 || target_rank == 4)) {
-                    return true;
-                }
-            }
-            if (target.type == PieceType::bishop || target.type == PieceType::knight) {
-                ++attacked_minor_pieces;
-                if (attacked_minor_pieces >= 2) {
-                    return true;
-                }
             }
         }
         return false;
@@ -524,28 +475,12 @@ bool quiet_move_has_direct_forcing_target(const PositionFeatures& before,
     projected.board[source] = {};
     projected.board[destination] = moving;
     for (std::uint8_t square = 0; square < 64; ++square) {
-        const Piece target = projected.board[square];
-        if (target.empty() || target.type == PieceType::king ||
-            (target.color == Color::white ? 0U : 1U) != enemy ||
-            !piece_attacks_square(projected, destination, square)) {
+        if (!piece_attacks_square(projected, destination, square)) {
             continue;
         }
-        if (target.type == PieceType::queen || target.type == PieceType::rook) {
+        if (target_triggers_fork(projected.board[square], square, enemy, true,
+                                 attacked_minor_pieces)) {
             return true;
-        }
-        if (target.type == PieceType::pawn) {
-            const int target_file = square % 8;
-            const int target_rank = square / 8;
-            if (target_file >= 2 && target_file <= 5 &&
-                (target_rank == 3 || target_rank == 4)) {
-                return true;
-            }
-        }
-        if (target.type == PieceType::bishop || target.type == PieceType::knight) {
-            ++attacked_minor_pieces;
-            if (attacked_minor_pieces >= 2) {
-                return true;
-            }
         }
     }
     return false;

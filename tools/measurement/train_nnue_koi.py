@@ -60,7 +60,7 @@ inserts the int8 diff weights directly after the int8 pair weights, and the v6
 header writes ``l1_diff_shift`` into the byte v5 reserves (0 selects the legacy
 combined ``(pairs + diff) >> l1_shift`` head, nonzero the split head).
 
-The trainer prints the studio progress contract lines:
+The trainer prints structured epoch and quantization progress lines:
 
     epoch <i>/<n> train_loss <f> val_loss <f> val_mae_cp <f> time <f>s
     quantization <arch> ... val_mae_cp <f> [saturation <f>]
@@ -1372,8 +1372,8 @@ def resolve_training_device() -> "torch.device":
     return torch.device("cpu")
 
 
-def main_v5(args, rng) -> int:
-    """Train, quantize, and export a v5 network (threats + dual-perspective head)."""
+def prepare_dual_training(args, *, check_l1: bool = False) -> tuple["torch.device", int, int]:
+    """Validate common trainer CLI flags, configure threads, and select the device."""
     if torch is None:  # pragma: no cover - environment dependent
         raise TrainerError("PyTorch is required for training; install torch")
     if not args.dataset and not args.corpus:
@@ -1385,8 +1385,90 @@ def main_v5(args, rng) -> int:
     if hidden_units < 32 or hidden_units % 2 != 0:
         raise TrainerError("hidden units must be even and at least 32")
     l1_units = args.l1_units
-    if l1_units < 8 or l1_units > 128:
+    if check_l1 and (l1_units < 8 or l1_units > 128):
         raise TrainerError("L1 units must be between 8 and 128")
+    return device, hidden_units, l1_units
+
+
+def split_train_val(rows: int, val_fraction: float, rng, scores: np.ndarray, *,
+                    target_dtype=np.float32) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Shuffle row indices, split out validation rows, and scale CP targets."""
+    order = rng.permutation(rows)
+    val_count = max(1, int(rows * val_fraction))
+    return order[:val_count], order[val_count:], scores.astype(target_dtype) / TARGET_SCALE
+
+
+def build_feature_head_param_groups(model: "nn.Module", learning_rate: float,
+                                    feature_lr_scale: float) -> list[dict]:
+    """Apply separate learning-rate scaling to the feature transformer vs head."""
+    return [
+        {"params": [model.feature.weight, model.hidden_bias],
+         "lr": learning_rate * feature_lr_scale},
+        {"params": [model.output_weight, model.output_bias],
+         "lr": learning_rate},
+    ]
+
+
+def write_nnue_artifact(net_out: pathlib.Path | str, meta_out: pathlib.Path | str,
+                        container: bytes, metadata: dict) -> None:
+    """Write the quantized container and its JSON metadata sidecar cleanly."""
+    net_path = pathlib.Path(net_out)
+    net_path.parent.mkdir(parents=True, exist_ok=True)
+    net_path.write_bytes(container)
+    meta_path = pathlib.Path(meta_out)
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    log(f"wrote {net_path} ({len(container)} bytes) and {meta_path}")
+
+
+class BestCheckpointTracker:
+    """Tracks the lowest-MAE validation checkpoint and early-stop patience."""
+
+    def __init__(self) -> None:
+        self.best_state: dict[str, "torch.Tensor"] | None = None
+        self.best_epoch = 0
+        self.best_val_mae = float("inf")
+        self.epochs_without_improvement = 0
+
+    def observe(self, epoch: int, val_mae: float, model: "nn.Module",
+                patience: int) -> bool:
+        if val_mae < self.best_val_mae:
+            self.best_val_mae = val_mae
+            self.best_epoch = epoch
+            self.best_state = {name: value.detach().cpu().clone()
+                               for name, value in model.state_dict().items()}
+            self.epochs_without_improvement = 0
+            log(f"best val epoch {epoch} mae {val_mae:.2f}")
+            return False
+        self.epochs_without_improvement += 1
+        if patience > 0 and self.epochs_without_improvement >= patience:
+            log(f"early stop at epoch {epoch} (best epoch {self.best_epoch})")
+            return True
+        return False
+
+    def finalize(self, model: "nn.Module", device: "torch.device",
+                 float_out: pathlib.Path | None, *,
+                 empty_cuda_cache: bool = False,
+                 saved_prefix: str = "saved float checkpoint to") -> None:
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        model.to("cpu")
+        if empty_cuda_cache and device.type == "cuda":
+            torch.cuda.empty_cache()
+        if self.best_state is not None:
+            model.load_state_dict(self.best_state)
+            log(f"exporting best-val checkpoint (epoch {self.best_epoch}, "
+                f"mae {self.best_val_mae:.2f})")
+        if float_out is not None:
+            float_path = pathlib.Path(float_out)
+            float_path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(model.state_dict(), float_path)
+            log(f"{saved_prefix} {float_out}")
+
+
+def main_v5(args, rng) -> int:
+    """Train, quantize, and export a v5 network (threats + dual-perspective head)."""
+    device, hidden_units, l1_units = prepare_dual_training(args, check_l1=True)
     if args.dataset:
         (own_indices, own_offsets, opp_indices, opp_offsets, scores,
          buckets) = load_binary_dataset_v2(pathlib.Path(args.dataset), args.rows)
@@ -1405,11 +1487,7 @@ def main_v5(args, rng) -> int:
     started = time.perf_counter()
     log(f"loaded {rows} rows ({own_active} own, {opp_active} opp, pad {pad_length}) "
         f"in {time.perf_counter() - started:.2f}s")
-    order = rng.permutation(rows)
-    val_count = max(1, int(rows * args.val_fraction))
-    val_order = order[:val_count]
-    train_order = order[val_count:]
-    targets = scores.astype(np.float32) / TARGET_SCALE
+    val_order, train_order, targets = split_train_val(rows, args.val_fraction, rng, scores)
     model = KoiNetV5(hidden_units, l1_units)
     if args.float_in:
         model.load_state_dict(torch.load(args.float_in, map_location="cpu"))
@@ -1420,10 +1498,7 @@ def main_v5(args, rng) -> int:
                                   weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs))
     loss_fn = torch.nn.SmoothL1Loss(reduction="sum")
-    best_state = None
-    best_epoch = 0
-    best_val_mae = float("inf")
-    epochs_without_improvement = 0
+    tracker = BestCheckpointTracker()
     for epoch in range(1, epochs + 1):
         model.train()
         epoch_started = time.perf_counter()
@@ -1455,31 +1530,9 @@ def main_v5(args, rng) -> int:
         val_mae = float(np.mean(np.abs(val_prediction - scores[val_order])))
         log(f"epoch {epoch}/{epochs} train_loss {train_loss:.5f} val_loss {val_loss:.5f} "
             f"val_mae_cp {val_mae:.2f} time {time.perf_counter() - epoch_started:.1f}s")
-        if val_mae < best_val_mae:
-            best_val_mae = val_mae
-            best_epoch = epoch
-            best_state = {name: value.detach().cpu().clone()
-                          for name, value in model.state_dict().items()}
-            epochs_without_improvement = 0
-            log(f"best val epoch {epoch} mae {val_mae:.2f}")
-        else:
-            epochs_without_improvement += 1
-            if (args.early_stop_patience > 0
-                    and epochs_without_improvement >= args.early_stop_patience):
-                log(f"early stop at epoch {epoch} (best epoch {best_epoch})")
-                break
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-    model.to("cpu")
-    if device.type == "cuda":
-        torch.cuda.empty_cache()
-    if best_state is not None:
-        model.load_state_dict(best_state)
-        log(f"exporting best-val checkpoint (epoch {best_epoch}, mae {best_val_mae:.2f})")
-    if args.float_out:
-        pathlib.Path(args.float_out).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(model.state_dict(), args.float_out)
-        log(f"saved float checkpoint to {args.float_out}")
+        if tracker.observe(epoch, val_mae, model, args.early_stop_patience):
+            break
+    tracker.finalize(model, device, args.float_out, empty_cuda_cache=True)
 
     tune_order = val_order
     if args.tune_samples and args.tune_samples < tune_order.size:
@@ -1539,9 +1592,6 @@ def main_v5(args, rng) -> int:
         net_out = str(pathlib.Path(net_out).with_name("koi-v5.nnue"))
     if pathlib.Path(meta_out).name == "koi-v4.metadata.json":
         meta_out = str(pathlib.Path(meta_out).with_name("koi-v5.metadata.json"))
-    net_path = pathlib.Path(net_out)
-    net_path.parent.mkdir(parents=True, exist_ok=True)
-    net_path.write_bytes(container)
     metadata = {
         "schema": "koi-nnue-training-metadata-v3",
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -1575,29 +1625,14 @@ def main_v5(args, rng) -> int:
         "network_sha256": hashlib.sha256(container).hexdigest(),
         "command": " ".join(sys.argv),
     }
-    meta_path = pathlib.Path(meta_out)
-    meta_path.parent.mkdir(parents=True, exist_ok=True)
-    meta_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    log(f"wrote {net_path} ({len(container)} bytes) and {meta_path}")
+    write_nnue_artifact(net_out, meta_out, container, metadata)
     return 0
 
 
 def main_v6(args, rng, *, format_version: int = V6_VERSION,
             arch_label: str = "v6") -> int:
     """Train, quantize, and export a v6 network (v5 head plus the diff channel)."""
-    if torch is None:  # pragma: no cover - environment dependent
-        raise TrainerError("PyTorch is required for training; install torch")
-    if not args.dataset and not args.corpus:
-        raise TrainerError("either --dataset or --corpus is required")
-    torch.set_num_threads(max(1, args.threads))
-    device = resolve_training_device()
-    log(f"training device {device} (torch {torch.__version__}, cuda {torch.version.cuda})")
-    hidden_units = args.hidden_units
-    if hidden_units < 32 or hidden_units % 2 != 0:
-        raise TrainerError("hidden units must be even and at least 32")
-    l1_units = args.l1_units
-    if l1_units < 8 or l1_units > 128:
-        raise TrainerError("L1 units must be between 8 and 128")
+    device, hidden_units, l1_units = prepare_dual_training(args, check_l1=True)
     if args.dataset:
         (own_indices, own_offsets, opp_indices, opp_offsets, scores,
          buckets) = load_binary_dataset_v2(pathlib.Path(args.dataset), args.rows)
@@ -1616,11 +1651,7 @@ def main_v6(args, rng, *, format_version: int = V6_VERSION,
     started = time.perf_counter()
     log(f"loaded {rows} rows ({own_active} own, {opp_active} opp, pad {pad_length}) "
         f"in {time.perf_counter() - started:.2f}s")
-    order = rng.permutation(rows)
-    val_count = max(1, int(rows * args.val_fraction))
-    val_order = order[:val_count]
-    train_order = order[val_count:]
-    targets = scores.astype(np.float32) / TARGET_SCALE
+    val_order, train_order, targets = split_train_val(rows, args.val_fraction, rng, scores)
     model = KoiNetV6(hidden_units, l1_units)
     if args.float_in:
         model.load_state_dict(torch.load(args.float_in, map_location="cpu"))
@@ -1631,10 +1662,7 @@ def main_v6(args, rng, *, format_version: int = V6_VERSION,
                                   weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs))
     loss_fn = torch.nn.SmoothL1Loss(reduction="sum")
-    best_state = None
-    best_epoch = 0
-    best_val_mae = float("inf")
-    epochs_without_improvement = 0
+    tracker = BestCheckpointTracker()
     epochs_run = 0
     for epoch in range(1, epochs + 1):
         model.train()
@@ -1668,31 +1696,9 @@ def main_v6(args, rng, *, format_version: int = V6_VERSION,
         val_mae = float(np.mean(np.abs(val_prediction - scores[val_order])))
         log(f"epoch {epoch}/{epochs} train_loss {train_loss:.5f} val_loss {val_loss:.5f} "
             f"val_mae_cp {val_mae:.2f} time {time.perf_counter() - epoch_started:.1f}s")
-        if val_mae < best_val_mae:
-            best_val_mae = val_mae
-            best_epoch = epoch
-            best_state = {name: value.detach().cpu().clone()
-                          for name, value in model.state_dict().items()}
-            epochs_without_improvement = 0
-            log(f"best val epoch {epoch} mae {val_mae:.2f}")
-        else:
-            epochs_without_improvement += 1
-            if (args.early_stop_patience > 0
-                    and epochs_without_improvement >= args.early_stop_patience):
-                log(f"early stop at epoch {epoch} (best epoch {best_epoch})")
-                break
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-    model.to("cpu")
-    if device.type == "cuda":
-        torch.cuda.empty_cache()
-    if best_state is not None:
-        model.load_state_dict(best_state)
-        log(f"exporting best-val checkpoint (epoch {best_epoch}, mae {best_val_mae:.2f})")
-    if args.float_out:
-        pathlib.Path(args.float_out).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(model.state_dict(), args.float_out)
-        log(f"saved float checkpoint to {args.float_out}")
+        if tracker.observe(epoch, val_mae, model, args.early_stop_patience):
+            break
+    tracker.finalize(model, device, args.float_out, empty_cuda_cache=True)
 
     tune_order = val_order
     if args.tune_samples and args.tune_samples < tune_order.size:
@@ -1783,9 +1789,6 @@ def main_v6(args, rng, *, format_version: int = V6_VERSION,
         net_out = str(pathlib.Path(net_out).with_name("koi-v6.nnue"))
     if pathlib.Path(meta_out).name in ("koi-v4.metadata.json", "koi-v5.metadata.json"):
         meta_out = str(pathlib.Path(meta_out).with_name("koi-v6.metadata.json"))
-    net_path = pathlib.Path(net_out)
-    net_path.parent.mkdir(parents=True, exist_ok=True)
-    net_path.write_bytes(container)
     metadata = {
         "schema": "koi-nnue-training-metadata-v3",
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -1809,7 +1812,7 @@ def main_v6(args, rng, *, format_version: int = V6_VERSION,
         "l1_diff_shift": best_l1_diff_shift,
         "output_shift": best_output_shift,
         "epochs": max(1, args.epochs),
-        "best_epoch": best_epoch,
+        "best_epoch": tracker.best_epoch,
         "epochs_run": epochs_run,
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate,
@@ -1826,25 +1829,13 @@ def main_v6(args, rng, *, format_version: int = V6_VERSION,
         "network_sha256": hashlib.sha256(container).hexdigest(),
         "command": " ".join(sys.argv),
     }
-    meta_path = pathlib.Path(meta_out)
-    meta_path.parent.mkdir(parents=True, exist_ok=True)
-    meta_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    log(f"wrote {net_path} ({len(container)} bytes) and {meta_path}")
+    write_nnue_artifact(net_out, meta_out, container, metadata)
     return 0
 
 
 def main_v4_dual(args, rng) -> int:
     """Train, quantize, and export a Dual-Perspective HalfKA v4 network ([9216 -> H]x2 -> 8)."""
-    if torch is None:  # pragma: no cover - environment dependent
-        raise TrainerError("PyTorch is required for training; install torch")
-    if not args.dataset and not args.corpus:
-        raise TrainerError("either --dataset or --corpus is required")
-    torch.set_num_threads(max(1, args.threads))
-    device = resolve_training_device()
-    log(f"training device {device} (torch {torch.__version__}, cuda {torch.version.cuda})")
-    hidden_units = args.hidden_units
-    if hidden_units < 32 or hidden_units % 2 != 0:
-        raise TrainerError("hidden units must be even and at least 32")
+    device, hidden_units, _ = prepare_dual_training(args)
     started = time.perf_counter()
     limit = args.rows if args.rows > 0 else 0
     if args.dataset is not None:
@@ -1865,11 +1856,7 @@ def main_v4_dual(args, rng) -> int:
     prepacked_dual = (all_own_flat, all_own_w, all_opp_flat, all_opp_w)
     log(f"loaded {rows} rows ({own_active} own, {opp_active} opp, pad {pad_length}) "
         f"in {time.perf_counter() - started:.2f}s")
-    order = rng.permutation(rows)
-    val_count = max(1, int(rows * args.val_fraction))
-    val_order = order[:val_count]
-    train_order = order[val_count:]
-    targets = scores.astype(np.float32) / TARGET_SCALE
+    val_order, train_order, targets = split_train_val(rows, args.val_fraction, rng, scores)
 
     model = KoiNetV4Dual(hidden_units)
     if args.init_nnue is not None:
@@ -1883,20 +1870,14 @@ def main_v4_dual(args, rng) -> int:
         log(f"loaded float checkpoint from {args.float_in}")
     model.to(device)
     epochs = 0 if args.float_in is not None else max(0, args.epochs)
-    param_groups = [
-        {"params": [model.feature.weight, model.hidden_bias],
-         "lr": args.learning_rate * args.feature_lr_scale},
-        {"params": [model.output_weight, model.output_bias],
-         "lr": args.learning_rate},
-    ]
+    param_groups = build_feature_head_param_groups(
+        model, args.learning_rate, args.feature_lr_scale
+    )
     optimizer = torch.optim.AdamW(param_groups, lr=args.learning_rate,
                                   weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs))
     smooth_l1_fn = torch.nn.SmoothL1Loss()
-    best_state = None
-    best_epoch = 0
-    best_val_mae = float("inf")
-    epochs_without_improvement = 0
+    tracker = BestCheckpointTracker()
     for epoch in range(1, epochs + 1):
         model.train()
         epoch_started = time.perf_counter()
@@ -1936,29 +1917,9 @@ def main_v4_dual(args, rng) -> int:
         val_mae = float(np.mean(np.abs(val_prediction - scores[val_order])))
         log(f"epoch {epoch}/{epochs} train_loss {train_loss:.5f} val_loss {val_loss:.5f} "
             f"val_mae_cp {val_mae:.2f} time {time.perf_counter() - epoch_started:.1f}s")
-        if val_mae < best_val_mae:
-            best_val_mae = val_mae
-            best_epoch = epoch
-            best_state = {name: value.detach().cpu().clone()
-                          for name, value in model.state_dict().items()}
-            epochs_without_improvement = 0
-            log(f"best val epoch {epoch} mae {val_mae:.2f}")
-        else:
-            epochs_without_improvement += 1
-            if (args.early_stop_patience > 0
-                    and epochs_without_improvement >= args.early_stop_patience):
-                log(f"early stop at epoch {epoch} (best epoch {best_epoch})")
-                break
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-    model.to("cpu")
-    if best_state is not None:
-        model.load_state_dict(best_state)
-        log(f"exporting best-val checkpoint (epoch {best_epoch}, mae {best_val_mae:.2f})")
-    if args.float_out is not None:
-        pathlib.Path(args.float_out).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(model.state_dict(), args.float_out)
-        log(f"saved float checkpoint to {args.float_out}")
+        if tracker.observe(epoch, val_mae, model, args.early_stop_patience):
+            break
+    tracker.finalize(model, device, args.float_out)
 
     tune_order = val_order if val_order.size <= args.tune_samples else \
         rng.choice(val_order, size=args.tune_samples, replace=False)
@@ -2011,8 +1972,6 @@ def main_v4_dual(args, rng) -> int:
     container, payload_hash = nnue_container_v4(
         payload, hidden_units, hidden_shift, output_shift, version=VERSION, dual=True
     )
-    args.net_out.parent.mkdir(parents=True, exist_ok=True)
-    args.net_out.write_bytes(container)
     metadata = {
         "schema": "koi-nnue-training-metadata-v2",
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -2047,9 +2006,7 @@ def main_v4_dual(args, rng) -> int:
         "network_sha256": hashlib.sha256(container).hexdigest(),
         "command": " ".join(sys.argv),
     }
-    args.meta_out.parent.mkdir(parents=True, exist_ok=True)
-    args.meta_out.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    log(f"wrote {args.net_out} ({len(container)} bytes) and {args.meta_out}")
+    write_nnue_artifact(args.net_out, args.meta_out, container, metadata)
     return 0
 
 
@@ -2099,11 +2056,9 @@ def main(argv: list[str] | None = None) -> int:
         f"active, pad {pad_length}) in {time.time() - started:.1f}s"
     )
 
-    order = rng.permutation(offsets.size - 1)
-    val_count = max(1, int((offsets.size - 1) * args.val_fraction))
-    val_order = order[:val_count]
-    train_order = order[val_count:]
-    targets = scores.astype(np.float64) / TARGET_SCALE
+    val_order, train_order, targets = split_train_val(
+        offsets.size - 1, args.val_fraction, rng, scores, target_dtype=np.float64
+    )
 
     model = KoiNet(args.hidden_units)
     if args.init_nnue is not None:
@@ -2114,12 +2069,9 @@ def main(argv: list[str] | None = None) -> int:
         log(f"loaded float checkpoint {args.float_in}; skipping training")
     model.to(device)
 
-    v4_param_groups = [
-        {"params": [model.feature.weight, model.hidden_bias],
-         "lr": args.learning_rate * args.feature_lr_scale},
-        {"params": [model.output_weight, model.output_bias],
-         "lr": args.learning_rate},
-    ]
+    v4_param_groups = build_feature_head_param_groups(
+        model, args.learning_rate, args.feature_lr_scale
+    )
     optimizer = torch.optim.AdamW(
         v4_param_groups, lr=args.learning_rate, weight_decay=args.weight_decay
     )
@@ -2128,10 +2080,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     loss_fn = nn.SmoothL1Loss()
     epochs = args.epochs if args.float_in is None else 0
-    best_state = None
-    best_epoch = 0
-    best_val_mae = float("inf")
-    epochs_without_improvement = 0
+    tracker = BestCheckpointTracker()
     for epoch in range(epochs):
         model.train()
         epoch_started = time.time()
@@ -2169,30 +2118,11 @@ def main(argv: list[str] | None = None) -> int:
             f"time {time.time() - epoch_started:.1f}s"
         )
         scheduler.step()
-        if val_mae < best_val_mae:
-            best_val_mae = val_mae
-            best_epoch = epoch + 1
-            best_state = {name: value.detach().cpu().clone()
-                          for name, value in model.state_dict().items()}
-            epochs_without_improvement = 0
-            log(f"best val epoch {epoch + 1} mae {val_mae:.2f}")
-        else:
-            epochs_without_improvement += 1
-            if (args.early_stop_patience > 0
-                    and epochs_without_improvement >= args.early_stop_patience):
-                log(f"early stop at epoch {epoch + 1} (best epoch {best_epoch})")
-                break
+        if tracker.observe(epoch + 1, val_mae, model, args.early_stop_patience):
+            break
 
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-    model.to("cpu")
-    if best_state is not None:
-        model.load_state_dict(best_state)
-        log(f"exporting best-val checkpoint (epoch {best_epoch}, mae {best_val_mae:.2f})")
-    if args.float_out is not None:
-        args.float_out.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(model.state_dict(), args.float_out)
-        log(f"wrote float checkpoint {args.float_out}")
+    tracker.finalize(model, device, args.float_out,
+                     saved_prefix="wrote float checkpoint")
 
     tune_order = val_order if val_order.size <= args.tune_samples else \
         rng.choice(val_order, size=args.tune_samples, replace=False)
@@ -2234,8 +2164,6 @@ def main(argv: list[str] | None = None) -> int:
     container, payload_hash = nnue_container_v4(
         payload, args.hidden_units, hidden_shift, output_shift,
         version=(V8_VERSION if v8_halfka else VERSION))
-    args.net_out.parent.mkdir(parents=True, exist_ok=True)
-    args.net_out.write_bytes(container)
     metadata = {
         "schema": "koi-nnue-training-metadata-v2",
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -2267,9 +2195,7 @@ def main(argv: list[str] | None = None) -> int:
         "network_sha256": hashlib.sha256(container).hexdigest(),
         "command": " ".join(sys.argv),
     }
-    args.meta_out.parent.mkdir(parents=True, exist_ok=True)
-    args.meta_out.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    log(f"wrote {args.net_out} ({len(container)} bytes) and {args.meta_out}")
+    write_nnue_artifact(args.net_out, args.meta_out, container, metadata)
     return 0
 
 

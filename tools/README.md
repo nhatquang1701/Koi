@@ -488,7 +488,7 @@ Studio GUI and its headless wrapper were removed on 2026-10-06 (see
   `--arch v4` trains the within-perspective `halfka-king-bucket-v1` network
   (hidden 1024); `--arch v5` trains the cross-perspective variant with group A
   `halfka-king-bucket-v1` (9216 inputs) plus group B `threat-pairs-v1` (27648
-  inputs) and full-width cross pairs `p[j] = own[j] * opp[j]` (hidden 1536 and
+  inputs) and full-width cross pairs `p[j] = own[j] * opp[j]` (hidden 1024 and
   l1 32 by default).
 - `tools/nnue/run_bullet.py` drives the pinned Rust/CUDA crate under
   `tools/nnue/bullet_train/` when cargo and a CUDA 12.x toolkit are installed;
@@ -522,3 +522,11 @@ colour, refuses a request that would repeat a game, and marks its report
 invalid if two games share a move sequence; pass `-OpeningFile` to override.
 Its promotion verdict is an SPRT (H0=0, H1=+10 Elo, alpha=beta=0.05) over the
 combined colour legs with a 200-effective-game target.
+
+Public standalone NNUE network releases are published as **signed orphan Git
+tags** under `nnue/<name>` (carrying only `<name>.nnue`, `<name>.sha256`,
+`<name>.metadata.json`, and `README.md`), rather than committing binaries to
+engine branches or creating GitHub Releases (which are reserved for engine
+semver tags `X.Y.Z` / `vX.Y.Z`). Engine release workflows can consume a public
+tag directly by passing its raw tag URL via `nnue_url` / `KOI_NNUE_URL` alongside
+`nnue_sha256` / `KOI_NNUE_SHA256`.

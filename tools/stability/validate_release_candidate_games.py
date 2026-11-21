@@ -196,6 +196,126 @@ def _validate_package_binding(
         errors.append("Koi engine executable SHA-256 does not match the expected executable")
 
 
+def _validate_uci_configuration(
+    report: dict,
+    errors: list[str],
+    *,
+    expected_color: str,
+    expected_time_control: str,
+    expected_threads: int,
+    expected_max_moves: int,
+    expected_evaluator_mode: str | None,
+    expected_evalfile_sha256: str | None,
+) -> dict:
+    configuration = report.get("configuration")
+    if not isinstance(configuration, dict):
+        errors.append("UCI match report has no configuration object")
+        configuration = {}
+    expected_configuration = {
+        "max_plies": expected_max_moves,
+        "koi_color": expected_color,
+        "time_control": expected_time_control,
+        "threads": expected_threads,
+        "koi_own_book": False,
+    }
+    for key, value in expected_configuration.items():
+        if configuration.get(key) != value:
+            errors.append(f"configuration {key} is {configuration.get(key)!r}; expected {value!r}")
+
+    if expected_evalfile_sha256 is not None and expected_evaluator_mode is None:
+        errors.append("expected evaluator mode is required with an expected EvalFile SHA-256")
+    if expected_evaluator_mode is None:
+        return configuration
+
+    if expected_evaluator_mode not in EVALUATOR_MODES:
+        errors.append(f"unsupported expected evaluator mode {expected_evaluator_mode!r}")
+    elif configuration.get("koi_evaluator_mode") != expected_evaluator_mode:
+        errors.append(
+            "configuration koi_evaluator_mode is "
+            f"{configuration.get('koi_evaluator_mode')!r}; expected {expected_evaluator_mode!r}"
+        )
+
+    if expected_evaluator_mode == "classical":
+        if expected_evalfile_sha256 is not None:
+            errors.append("classical evaluator mode must not specify an expected EvalFile SHA-256")
+        if configuration.get("koi_evalfile_sha256") not in (None, ""):
+            errors.append("classical evaluator report must not claim an EvalFile SHA-256")
+        return configuration
+
+    if expected_evaluator_mode in EVALUATOR_MODES:
+        if expected_evalfile_sha256 is None:
+            errors.append("expected EvalFile SHA-256 is required for a nonclassical evaluator mode")
+        elif not SHA256_HEX.fullmatch(expected_evalfile_sha256):
+            errors.append("expected EvalFile SHA-256 must contain 64 hexadecimal characters")
+
+        actual_hash = configuration.get("koi_evalfile_sha256")
+        if not isinstance(actual_hash, str) or not SHA256_HEX.fullmatch(actual_hash):
+            errors.append("configuration has no valid koi_evalfile_sha256")
+        elif expected_evalfile_sha256 is not None and actual_hash.casefold() != expected_evalfile_sha256.casefold():
+            errors.append("configuration koi_evalfile_sha256 does not match the expected EvalFile hash")
+
+        evalfile_path = configuration.get("koi_evalfile_path")
+        if not isinstance(evalfile_path, str) or not evalfile_path.strip():
+            errors.append("configuration has no koi_evalfile_path")
+
+        attestation = configuration.get("koi_evaluator_attestation")
+        if not isinstance(attestation, dict):
+            errors.append("configuration has no koi_evaluator_attestation object")
+            attestation = {}
+        confirmation = attestation.get("nnue_enabled_confirmation")
+        expected_confirmation = f"info string NNUE enabled from {evalfile_path}"
+        if not isinstance(confirmation, str) or confirmation.casefold() != expected_confirmation.casefold():
+            errors.append("Koi did not confirm NNUE enabled from the reported EvalFile path")
+        rejections = attestation.get("evalfile_rejections")
+        if not isinstance(rejections, list):
+            errors.append("Koi evaluator attestation has no EvalFile rejection list")
+        elif rejections:
+            errors.append("Koi evaluator attestation records an EvalFile rejection")
+    return configuration
+
+
+def _validate_uci_game_moves(
+    index: int,
+    board,
+    game_moves: list,
+    opening_plies: int,
+    has_opening: bool,
+    errors: list[str],
+) -> None:
+    for ply, move_record in enumerate(game_moves, 1):
+        if not isinstance(move_record, dict):
+            errors.append(f"game {index} ply {ply} is not a move record")
+            continue
+        move_text = move_record.get("move")
+        if not isinstance(move_text, str) or not UCI_MOVE.fullmatch(move_text):
+            errors.append(f"game {index} ply {ply} has invalid UCI move {move_text!r}")
+            continue
+        try:
+            move = chess.Move.from_uci(move_text)
+            if move_record.get("replay_legal") is not True or not board.is_legal(move):
+                errors.append(f"game {index} ply {ply} contains an illegal move")
+                continue
+            if move_record.get("side") != ("w" if board.turn else "b"):
+                errors.append(f"game {index} ply {ply} has an incorrect side-to-move record")
+            board.push(move)
+        except (ValueError, IndexError) as error:
+            errors.append(f"game {index} ply {ply} cannot be replayed: {error}")
+            continue
+        bestmove = move_record.get("bestmove_line")
+        if has_opening and ply <= opening_plies:
+            if move_record.get("engine_label") != "opening" or bestmove:
+                errors.append(f"game {index} ply {ply} has an invalid curated opening record")
+        else:
+            expected_bestmove = re.fullmatch(
+                rf"bestmove\s+{re.escape(move_text)}(?:\s+ponder\s+[a-h][1-8][a-h][1-8][nbrq]?)?",
+                str(bestmove or ""),
+            )
+            if expected_bestmove is None:
+                errors.append(f"game {index} ply {ply} has missing, duplicate, or mismatched bestmove")
+        if move_record.get("book_used") is True:
+            errors.append(f"game {index} ply {ply} used the Koi opening book")
+
+
 def _validate_uci_match(
     pgn_file: pathlib.Path,
     report: dict,
@@ -226,72 +346,22 @@ def _validate_uci_match(
         errors.append(
             f"opening file has {len(openings)} valid entries; expected {expected_opening_count}"
         )
-    configuration = report.get("configuration")
+    _validate_uci_configuration(
+        report,
+        errors,
+        expected_color=expected_color,
+        expected_time_control=expected_time_control,
+        expected_threads=expected_threads,
+        expected_max_moves=expected_max_moves,
+        expected_evaluator_mode=expected_evaluator_mode,
+        expected_evalfile_sha256=expected_evalfile_sha256,
+    )
     games = report.get("games")
-    if not isinstance(configuration, dict):
-        errors.append("UCI match report has no configuration object")
-        configuration = {}
     if not isinstance(games, list):
         errors.append("UCI match report has no games array")
         games = []
     if len(games) != expected_games:
         errors.append(f"report contains {len(games)} games; expected {expected_games}")
-    expected_configuration = {
-        "max_plies": expected_max_moves,
-        "koi_color": expected_color,
-        "time_control": expected_time_control,
-        "threads": expected_threads,
-        "koi_own_book": False,
-    }
-    for key, value in expected_configuration.items():
-        if configuration.get(key) != value:
-            errors.append(f"configuration {key} is {configuration.get(key)!r}; expected {value!r}")
-
-    if expected_evalfile_sha256 is not None and expected_evaluator_mode is None:
-        errors.append("expected evaluator mode is required with an expected EvalFile SHA-256")
-    if expected_evaluator_mode is not None:
-        if expected_evaluator_mode not in EVALUATOR_MODES:
-            errors.append(f"unsupported expected evaluator mode {expected_evaluator_mode!r}")
-        elif configuration.get("koi_evaluator_mode") != expected_evaluator_mode:
-            errors.append(
-                "configuration koi_evaluator_mode is "
-                f"{configuration.get('koi_evaluator_mode')!r}; expected {expected_evaluator_mode!r}"
-            )
-
-        if expected_evaluator_mode == "classical":
-            if expected_evalfile_sha256 is not None:
-                errors.append("classical evaluator mode must not specify an expected EvalFile SHA-256")
-            if configuration.get("koi_evalfile_sha256") not in (None, ""):
-                errors.append("classical evaluator report must not claim an EvalFile SHA-256")
-        elif expected_evaluator_mode in EVALUATOR_MODES:
-            if expected_evalfile_sha256 is None:
-                errors.append("expected EvalFile SHA-256 is required for a nonclassical evaluator mode")
-            elif not SHA256_HEX.fullmatch(expected_evalfile_sha256):
-                errors.append("expected EvalFile SHA-256 must contain 64 hexadecimal characters")
-
-            actual_hash = configuration.get("koi_evalfile_sha256")
-            if not isinstance(actual_hash, str) or not SHA256_HEX.fullmatch(actual_hash):
-                errors.append("configuration has no valid koi_evalfile_sha256")
-            elif expected_evalfile_sha256 is not None and actual_hash.casefold() != expected_evalfile_sha256.casefold():
-                errors.append("configuration koi_evalfile_sha256 does not match the expected EvalFile hash")
-
-            evalfile_path = configuration.get("koi_evalfile_path")
-            if not isinstance(evalfile_path, str) or not evalfile_path.strip():
-                errors.append("configuration has no koi_evalfile_path")
-
-            attestation = configuration.get("koi_evaluator_attestation")
-            if not isinstance(attestation, dict):
-                errors.append("configuration has no koi_evaluator_attestation object")
-                attestation = {}
-            confirmation = attestation.get("nnue_enabled_confirmation")
-            expected_confirmation = f"info string NNUE enabled from {evalfile_path}"
-            if not isinstance(confirmation, str) or confirmation.casefold() != expected_confirmation.casefold():
-                errors.append("Koi did not confirm NNUE enabled from the reported EvalFile path")
-            rejections = attestation.get("evalfile_rejections")
-            if not isinstance(rejections, list):
-                errors.append("Koi evaluator attestation has no EvalFile rejection list")
-            elif rejections:
-                errors.append("Koi evaluator attestation records an EvalFile rejection")
 
     pgn_games = _uci_pgn_games(pgn_file, errors)
     if len(pgn_games) != expected_games:
@@ -392,38 +462,9 @@ def _validate_uci_match(
         elif any(status != "clean shutdown" for status in process_status.values()):
             errors.append(f"game {index} has an engine crash or unclean process status")
 
-        for ply, move_record in enumerate(game_moves, 1):
-            if not isinstance(move_record, dict):
-                errors.append(f"game {index} ply {ply} is not a move record")
-                continue
-            move_text = move_record.get("move")
-            if not isinstance(move_text, str) or not UCI_MOVE.fullmatch(move_text):
-                errors.append(f"game {index} ply {ply} has invalid UCI move {move_text!r}")
-                continue
-            try:
-                move = chess.Move.from_uci(move_text)
-                if move_record.get("replay_legal") is not True or not board.is_legal(move):
-                    errors.append(f"game {index} ply {ply} contains an illegal move")
-                    continue
-                if move_record.get("side") != ("w" if board.turn else "b"):
-                    errors.append(f"game {index} ply {ply} has an incorrect side-to-move record")
-                board.push(move)
-            except (ValueError, IndexError) as error:
-                errors.append(f"game {index} ply {ply} cannot be replayed: {error}")
-                continue
-            bestmove = move_record.get("bestmove_line")
-            if opening_name is not None and ply <= opening_plies:
-                if move_record.get("engine_label") != "opening" or bestmove:
-                    errors.append(f"game {index} ply {ply} has an invalid curated opening record")
-            else:
-                expected_bestmove = re.fullmatch(
-                    rf"bestmove\s+{re.escape(move_text)}(?:\s+ponder\s+[a-h][1-8][a-h][1-8][nbrq]?)?",
-                    str(bestmove or ""),
-                )
-                if expected_bestmove is None:
-                    errors.append(f"game {index} ply {ply} has missing, duplicate, or mismatched bestmove")
-            if move_record.get("book_used") is True:
-                errors.append(f"game {index} ply {ply} used the Koi opening book")
+        _validate_uci_game_moves(
+            index, board, game_moves, opening_plies, opening_name is not None, errors
+        )
 
     missing_openings = sorted(set(openings) - set(opening_counts))
     if missing_openings:

@@ -373,13 +373,11 @@ Release archives bundle the promoted gated network flat as `koi.nnue` beside
 the executables; when it was discovered at boot the UCI handshake advertises `EvalFile` default
 `<autodiscovery>` (informational; echoing it back keeps the boot evaluator).
 Point the `KOI_NNUE_PATH` environment variable at a specific file to override the
-scan, or set `KOI_NNUE_AUTODETECT=0` to disable discovery; NNUE is required, and the UCI
-`EvalFile` option still swaps the network at runtime. A missing or rejected file is a boot error (the classical fallback was removed) and
-writes one explanatory line to stderr. Trained networks are local artifacts and are
-not committed. On the local single-thread probe the version 4 `halfka-king-bucket-v1`
+scan, or set `KOI_NNUE_AUTODETECT=0` to disable discovery; NNUE is the default
+production evaluator, and the UCI `EvalFile` option still swaps the network at runtime. A missing or rejected file is a boot error under default NNUE selection (the legacy automatic fallback was removed, though a clean classical rewrite later restored explicit `KOI_EVALUATOR=hce` / `EvalMode=hce` opt-in) and writes one explanatory line to stderr. Trained networks are local artifacts and are not committed. On the local single-thread probe the version 4 `halfka-king-bucket-v1`
 network runs at about 76k nodes/s. Those fallback-era comparisons are historical:
-the promoted h128 network replaced the classical evaluator, which was removed on
-2026-10-28, and NNUE is now required.
+the promoted h128 network replaced the original classical evaluator (removed on
+2026-10-28 and later rewritten as an explicit opt-in HCE for development/measurement).
 The version 5 architecture ships with loader, inference, incremental, dataset, and
 trainer support only: no version 5 network has been trained or strength-validated, so
 every probe number above still describes version 4 networks.
@@ -669,7 +667,7 @@ The same program added the Stockfish-labeled NNUE pipeline described above:
 1,200,002 depth-10 labels produced a 960-256-32-1 network that round-trips
 through the version 3 container and runs at about 65k nps against about 87k
 for the classical evaluator. It lost the equal-node A/B match that finished,
-so at that point the classical evaluator was the default and NNUE was opt-in (both were later superseded: NNUE is now required).
+so at that point the classical evaluator was the default and NNUE was opt-in (later reversed: NNUE is now the default and HCE is explicit opt-in).
 
 The 2026-09-17/18 NNUE and evaluation overhaul replaced that model with the
 `halfka-king-bucket-v1` feature set (9,216 inputs, 12 king buckets, CReLU pair
@@ -681,7 +679,7 @@ the first v4 candidate reached a quantized round-trip validation MAE of about
 nps against about 144k for the classical evaluator. It lost the equal-node
 color-balanced A/B to classical and drew every game against the earlier v3
 network, so at that point the classical evaluator was the default and NNUE was
-opt-in (both were later superseded: NNUE is now required). The same overhaul deduplicated the classical evaluator's material and
+opt-in (later reversed: NNUE is now the default and HCE is explicit opt-in). The same overhaul deduplicated the original classical evaluator's material and
 attack logic without changing its fixed-depth benchmark rows, and added a
 classical term tuner whose first candidate was not adopted. Version 2 and
 version 3 containers still load. No Elo or CPL claim is made.

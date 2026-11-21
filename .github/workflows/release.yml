@@ -12,7 +12,7 @@ on:
         required: false
         default: ''
       nnue_url:
-        description: 'URL to the promoted koi.nnue network (defaults to verified v1.1.5 net)'
+        description: 'URL to the promoted koi.nnue network (e.g. a signed nnue/<name> tag raw URL; defaults to verified v1.1.5 net)'
         required: false
         default: ''
       nnue_sha256:

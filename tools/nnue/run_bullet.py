@@ -1,4 +1,4 @@
-"""Drives the bullet GPU trainer for Koi and speaks the studio progress contract.
+"""Drives the bullet GPU trainer for Koi and logs structured epoch progress.
 
 The wrapper chains the whole pipeline:
 
@@ -7,8 +7,8 @@ The wrapper chains the whole pipeline:
 2. ``bullet_train.exe`` (built from ``tools/nnue/bullet_train``) trains the
    configured architecture (v4 or v5) on the GPU.
 3. After each saved checkpoint the wrapper measures validation MAE and prints an
-   ``epoch i/n train_loss ... val_loss ... val_mae_cp ... time ...s`` line so the
-   studio can chart progress.
+   ``epoch i/n train_loss ... val_loss ... val_mae_cp ... time ...s`` progress
+   line.
 4. The matching exporter (``export_bullet_v4.py`` or ``export_bullet_v5.py``)
    quantizes the final checkpoint into a ``KOI-NNUE`` container and prints the
    ``quantization``/``selected``/``wrote`` contract lines.

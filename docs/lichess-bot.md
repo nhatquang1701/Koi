@@ -104,16 +104,16 @@ uci_options:
 
 `EvalFile` is an absolute path on purpose: the engine resolves the network
 against its own working directory, and a relative path silently falls back to
-the required NNUE network (`koi.nnue`). `move_overhead: 2000` in the config leaves the engine a
-buffer on the Lichess clock.
+the required NNUE network (`koi.nnue`). `move_overhead: 150` in the config
+leaves the engine a buffer on the Lichess clock.
 
 ## Opening book
 
-Release archives are kept minimal and do not bundle opening books. To use a
-book with the bot, build or supply a Polyglot book (for example with
+You can use either the bundled CC0 `book.bin` shipped in release archives or
+build/supply your own Polyglot book (for example with
 `tools/book/build_database_book.py` or `tools/build/install_book.ps1`, or a
-local book such as Cerebellum Light) and place or copy it next to the engine
-binary as `book.bin`:
+local book such as Cerebellum Light) placed next to the engine binary as
+`book.bin`:
 
 ```bash
 cp path/to/your-book.bin ~/koi-bot/engines/book.bin
@@ -142,7 +142,7 @@ the opening, which matters most in short games.
 - Optional assets stay optional: a book beside the executable and a conventional
   Syzygy directory (`syzygy/`, `syzygy345/`, `tablebases/`, `3-4-5/`) are
   auto-detected; `OwnBook`/`BookFile` and `SyzygyPath` only override that.
-  Release archives ship only the executables, `koi.nnue`, and `LICENSE`.
+  Release archives ship only the executables, `koi.nnue`, `book.bin`, `README.md`, and `LICENSE`.
 - For analysis-style use (no clock, infinite search, MultiPV), a GUI is a better
   fit than a bot; see the [user guide](USER_GUIDE.md).
 - **Desktop status window.** While the bot is online, `koi-bot.sh start` opens a

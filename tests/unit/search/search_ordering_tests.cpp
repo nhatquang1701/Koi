@@ -443,10 +443,11 @@ void verify_quiescence_picker_against_reference(
         ordering.order(state, single, std::nullopt, context);
         const int priority = single[0].ordering_score;
         const std::uint32_t tie_break = koi::detail::move_tie_break_key(source.move);
+        const std::uint32_t inverted_priority =
+            ~(static_cast<std::uint32_t>(priority) ^ 0x80000000U);
         stages[tactical ? 0 : 1].push_back(QuiescenceReferenceEntry{
             single[0], priority, tie_break,
-            (static_cast<std::uint64_t>(
-                 ~(static_cast<std::uint32_t>(priority) ^ 0x80000000U)) << 32U) | tie_break});
+            (static_cast<std::uint64_t>(inverted_priority) << 32U) | tie_break});
         if (source.move.promotion() != koi::Promotion::none) {
             ++reference_promotions;
         }

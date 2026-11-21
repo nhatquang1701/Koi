@@ -16,12 +16,13 @@ flowchart TD
     ABS["tools/measurement/elo_estimate.py<br/>--koi-eval-file anchor ladder"]
     GATE{"promotion gate<br/>SPRT target met AND<br/>equal-time Elo >= classical"}
     OFFICIAL["artifacts/networks/<br/>koi-vX-official/<br/>.nnue + .metadata.json + .sha256"]
-    RELEASE["release package<br/>nnue payload + provenance"]
+    TAG["signed Git tag nnue/name<br/>public .nnue + .metadata.json + .sha256"]
+    RELEASE["engine release package<br/>nnue payload + provenance"]
 
     DATA --> TEXT --> ENCODE --> TRAIN --> FLOAT --> EXPORT --> NET
     NET --> UNIT --> AB --> GATE
     NET --> ABS --> GATE
-    GATE -- "accepted" --> OFFICIAL --> RELEASE
+    GATE -- "accepted" --> OFFICIAL --> TAG --> RELEASE
     GATE -- "rejected" --> DATA
     GATE -- "rejected" --> TRAIN
 ```
@@ -204,5 +205,9 @@ The first NNUE-primary promotion is a v4-container halfka network:
   `<autodiscovery>`.
 
 The network file is a local artifact under `artifacts/networks/` and is not
-committed; release packaging requires it plus its accepted `koi-nnue-gate-v1`
-report (`-ReleasePackage -NnuePath -NnueGateReport`).
+committed to engine branches. Standalone public NNUE net releases are published
+as signed orphan Git tags under `nnue/<name>` (containing `<name>.nnue`,
+`<name>.sha256`, `<name>.metadata.json`, and `README.md`) rather than GitHub
+Releases, which remain engine-only under semver tags (`X.Y.Z` / `vX.Y.Z`).
+Release packaging consumes a promoted network plus its accepted
+`koi-nnue-gate-v1` report (`-ReleasePackage -NnuePath -NnueGateReport`).

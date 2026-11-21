@@ -51,7 +51,17 @@ enum class BoundedLineRead : std::uint8_t {
     line,
 };
 
-// Reads one protocol line while caping the retained size at `limit` bytes.
+[[nodiscard]] const char* disposition_name(const CompletionDisposition disposition) noexcept {
+    switch (disposition) {
+    case CompletionDisposition::emit: return "emit";
+    case CompletionDisposition::suppress_stale: return "suppress_stale";
+    case CompletionDisposition::fallback: return "fallback";
+    case CompletionDisposition::quarantine: return "quarantine";
+    }
+    return "unknown";
+}
+
+// Reads one protocol line while capping the retained size at `limit` bytes.
 // The rest of an oversized line is consumed (so the next command still starts
 // at a line boundary) and `truncated` reports that it must be rejected.
 BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& line,
@@ -952,6 +962,7 @@ void UciController::apply_pending_xboard_move() {
 }
 
 void UciController::start_xboard_search(const bool analyze_mode) {
+    const auto search_started = std::chrono::steady_clock::now();
     ensure_auto_syzygy_loaded();
     stop_and_suppress_active_search();
     apply_pending_xboard_move();
@@ -979,7 +990,7 @@ void UciController::start_xboard_search(const bool analyze_mode) {
             limits.movetime = std::chrono::milliseconds{1'000};
         }
     }
-    start_search(position_, std::move(limits), analyze_mode, analyze_mode);
+    start_search(position_, std::move(limits), analyze_mode, analyze_mode, search_started);
 }
 
 bool UciController::handle_xboard_command(const std::string_view name, std::istream& command,
@@ -1307,7 +1318,9 @@ int UciController::run() {
             std::lock_guard lock(output_mutex_);
             last_command_ = line;
         }
-        debug_event("command " + line);
+        if (debug_logging_enabled()) {
+            debug_event("command " + line);
+        }
         std::istringstream command(line);
         std::string name;
         if (!(command >> name)) {
@@ -1497,12 +1510,12 @@ void UciController::handle_position(std::istream& command, std::string_view comm
     position_origin_ = std::move(origin);
     position_moves_ = std::move(parsed_moves);
     position_ = std::move(candidate);
-    const std::vector<Move> legal = position_.legal_moves();
-    debug_event("position accepted generation " + std::to_string(generation_) +
-                " key " + std::to_string(position_.position_key()) +
-                " fen " + position_.fen() +
-                " legal_moves " + std::to_string(legal.size()));
-    if (debug_log_->enabled()) {
+    if (debug_logging_enabled()) {
+        const std::vector<Move> legal = position_.legal_moves();
+        debug_event("position accepted generation " + std::to_string(generation_) +
+                    " key " + std::to_string(position_.position_key()) +
+                    " fen " + position_.fen() +
+                    " legal_moves " + std::to_string(legal.size()));
         const PositionConsistencySnapshot snapshot = position_.consistency_snapshot();
         debug_json_event(
             "position",
@@ -1672,14 +1685,9 @@ void UciController::handle_setoption(std::istream& command) {
         break;
     }
 
-    case UciOptionId::analyse_mode: {
-        bool analyse_mode = false;
-        if (parse_boolean(value, analyse_mode) && analyse_mode_ != analyse_mode) {
-            stop_and_suppress_active_search();
-            analyse_mode_ = analyse_mode;
-        }
+    case UciOptionId::analyse_mode:
+        apply_boolean(analyse_mode_, [this](bool analyse_mode) { analyse_mode_ = analyse_mode; });
         break;
-    }
 
     case UciOptionId::multi_pv:
         apply_unsigned(*option, multi_pv_, [this](std::uint64_t multi_pv) {
@@ -1725,7 +1733,8 @@ void UciController::handle_setoption(std::istream& command) {
             stop_and_suppress_active_search();
             book_file_ = value;
             opening_book_.set_file(value);
-        }        break;
+        }
+        break;
 
     case UciOptionId::book_depth:
         apply_unsigned(*option, book_depth_, [this](std::uint64_t book_depth) {
@@ -1766,14 +1775,9 @@ void UciController::handle_setoption(std::istream& command) {
         });
         break;
 
-    case UciOptionId::strength_mode: {
-        bool strength_mode = false;
-        if (parse_boolean(value, strength_mode) && strength_mode_ != strength_mode) {
-            stop_and_suppress_active_search();
-            strength_mode_ = strength_mode;
-        }
+    case UciOptionId::strength_mode:
+        apply_boolean(strength_mode_, [this](bool strength_mode) { strength_mode_ = strength_mode; });
         break;
-    }
 
     case UciOptionId::syzygy_path: {
         // Any explicit SyzygyPath (including an empty one) disables automatic
@@ -1856,22 +1860,8 @@ void UciController::handle_setoption(std::istream& command) {
         }
         stop_and_suppress_active_search();
         if (!eval_file_.empty()) {
-            std::filesystem::path resolved = eval_file_;
-            if (resolved.is_relative() && !executable_directory_.empty()) {
-                resolved = executable_directory_ / resolved;
-            }
-            std::expected<NnueNetwork, NnueError> network = NnueLoader::load_file(resolved);
-            if (!network.has_value()) {
-                write_uci_info_string("EvalMode nnue rejected: " + network.error().message);
-                break;
-            }
-            try {
-                auto weights = std::make_shared<const NnueNetwork>(std::move(*network));
-                search_service_.set_evaluator(std::make_shared<NnueEvaluator>(weights));
-                hce_active_ = false;
+            if (try_install_nnue_file(eval_file_, "EvalMode nnue")) {
                 write_uci_info_string("evaluator nnue");
-            } catch (const std::exception& error) {
-                write_uci_info_string(std::string("EvalMode nnue rejected: ") + error.what());
             }
             break;
         }
@@ -1897,35 +1887,16 @@ void UciController::handle_setoption(std::istream& command) {
             // rather than failing a GUI that replays every default value.
             break;
         }
-        // Relative paths resolve against the engine directory so a GUI can
-        // pass a bare file name that sits next to koi-engine.exe.
-        std::filesystem::path resolved = value;
-        if (resolved.is_relative() && !executable_directory_.empty()) {
-            resolved = executable_directory_ / resolved;
-        }
         stop_and_suppress_active_search();
-        std::expected<NnueNetwork, NnueError> network = NnueLoader::load_file(resolved);
-        if (!network.has_value()) {
-            debug_event("EvalFile rejected " + resolved.string() + ": " +
-                        network.error().message);
-            write_uci_info_string("EvalFile rejected: " + network.error().message);
-            break;
-        }
-        try {
-            auto weights = std::make_shared<const NnueNetwork>(std::move(*network));
-            search_service_.set_evaluator(std::make_shared<NnueEvaluator>(weights));
-            hce_active_ = false;
-        } catch (const std::exception& install_error) {
-            // Installing a network allocates; a failure here must keep the
-            // previous evaluator and the process alive.
-            debug_event("EvalFile installation failed " + resolved.string() + ": " +
-                        install_error.what());
-            write_uci_info_string(std::string("EvalFile rejected: ") + install_error.what());
+        std::filesystem::path resolved;
+        if (!try_install_nnue_file(value, "EvalFile", &resolved)) {
             break;
         }
         eval_file_ = value;
-        debug_json_event("eval_file", "\"path\":" + debug_quoted(resolved.string()) +
-                                           ",\"enabled\":true");
+        if (debug_logging_enabled()) {
+            debug_json_event("eval_file", "\"path\":" + debug_quoted(resolved.string()) +
+                                               ",\"enabled\":true");
+        }
         std::lock_guard lock(output_mutex_);
         if (protocol_mode_ != ProtocolMode::xboard) {
             output_ << "info string evaluator nnue\n"
@@ -1973,6 +1944,7 @@ void UciController::handle_setoption(std::istream& command) {
 }
 
 void UciController::handle_go(std::istream& command) {
+    const auto go_received = std::chrono::steady_clock::now();
     ensure_auto_syzygy_loaded();
     std::string arguments;
     std::getline(command, arguments);
@@ -2011,7 +1983,7 @@ void UciController::handle_go(std::istream& command) {
         ponder_predicted_move_.reset();
         active_ponder_ = true;
     }
-    start_search(position_, std::move(limits));
+    start_search(position_, std::move(limits), false, false, go_received);
 }
 
 void UciController::handle_annotate(std::istream& command) {
@@ -2205,7 +2177,11 @@ std::uint32_t UciController::effective_move_overhead_ms() const noexcept {
 }
 
 void UciController::start_search(GameState root, SearchLimits limits, bool skip_book,
-                                 bool force_analyze) {
+                                 bool force_analyze,
+                                 std::chrono::steady_clock::time_point search_started) {
+    if (search_started == std::chrono::steady_clock::time_point{}) {
+        search_started = std::chrono::steady_clock::now();
+    }
     const std::uint64_t generation = begin_generation();
     note_clock_baseline(limits);
     ProtocolMode search_protocol = ProtocolMode::uci;
@@ -2219,10 +2195,12 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         xboard_thinking = xboard_post_ || xboard_analyze_snapshot;
     }
     const auto completion_once = std::make_shared<CompletionOnce>();
-    debug_event("search start generation " + std::to_string(generation));
-    debug_event("search root generation " + std::to_string(generation) +
-                " key " + std::to_string(root.position_key()) +
-                " fen " + root.fen());
+    if (debug_logging_enabled()) {
+        debug_event("search start generation " + std::to_string(generation));
+        debug_event("search root generation " + std::to_string(generation) +
+                    " key " + std::to_string(root.position_key()) +
+                    " fen " + root.fen());
+    }
     const bool book_eligible = !skip_book && !force_analyze && !analyse_mode_ && multi_pv_ == 1 &&
         !limits.infinite && !limits.ponder && !limits.search_moves_specified;
     std::optional<BookChoice> book_choice;
@@ -2247,20 +2225,24 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                                            random_seed_, book_random_, book_safety_,
                                            book_safety_depth_);
     }
-    debug_json_event(
-        "go",
-        "\"message\":" + debug_quoted(
-            "go_record generation=" + std::to_string(generation) +
-            " root_fen=" + root.fen()) +
-            ",\"generation\":" + std::to_string(generation) +
-            ",\"root_fen\":" + debug_quoted(root.fen()) +
-            ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
-            ",\"limits\":" + debug_quoted(debug_limits(limits)) +
-            ",\"threads\":" + std::to_string(threads_) +
-            ",\"source\":" + debug_quoted(book_choice.has_value() ? "book" : "search"));
+    if (debug_logging_enabled()) {
+        debug_json_event(
+            "go",
+            "\"message\":" + debug_quoted(
+                "go_record generation=" + std::to_string(generation) +
+                " root_fen=" + root.fen()) +
+                ",\"generation\":" + std::to_string(generation) +
+                ",\"root_fen\":" + debug_quoted(root.fen()) +
+                ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
+                ",\"limits\":" + debug_quoted(debug_limits(limits)) +
+                ",\"threads\":" + std::to_string(threads_) +
+                ",\"source\":" + debug_quoted(book_choice.has_value() ? "book" : "search"));
+    }
     if (book_choice.has_value()) {
-        debug_event("book completion candidate generation " + std::to_string(generation) +
-                    " move " + book_choice->move.uci() + " root " + root.fen());
+        if (debug_logging_enabled()) {
+            debug_event("book completion candidate generation " + std::to_string(generation) +
+                        " move " + book_choice->move.uci() + " root " + root.fen());
+        }
         write_book_completion(generation, root, limits, *book_choice, ply, completion_once,
                               search_protocol);
         return;
@@ -2274,7 +2256,7 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                     xboard_thinking](const SearchInfo& info) {
         SearchInfo safe_info = info;
         safe_info.pv = legal_pv_prefix(search_root, info.pv);
-        if (safe_info.pv.size() != info.pv.size()) {
+        if (safe_info.pv.size() != info.pv.size() && debug_logging_enabled()) {
             debug_event("invalid PV prefix suppressed generation " + std::to_string(generation));
         }
         if (safe_info.multipv == 1 && safe_info.pv.size() >= 2) {
@@ -2297,7 +2279,9 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
     sink.on_complete = [this, generation, allow_ponder_move, search_root, limits, completion_once,
                         search_protocol, is_ponder_search,
                         xboard_analyze_snapshot](const SearchResult& result) {
-        debug_event("search complete generation " + std::to_string(generation));
+        if (debug_logging_enabled()) {
+            debug_event("search complete generation " + std::to_string(generation));
+        }
         CompletionCandidate candidate;
         candidate.best_move = result.best_move;
         candidate.pv = result.pv;
@@ -2313,77 +2297,74 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                 candidate.best_move == principal_variation_best_move_) {
                 candidate.ponder_move = principal_variation_ponder_move_;
             }
-            last_command = last_command_;
+            if (debug_logging_enabled()) {
+                last_command = last_command_;
+            }
         }
         const CompletionValidation validation = completion_gate_.validate(
             search_root, limits, expected, candidate);
-        const auto disposition_name = [](CompletionDisposition disposition) {
-            switch (disposition) {
-            case CompletionDisposition::emit: return "emit";
-            case CompletionDisposition::suppress_stale: return "suppress_stale";
-            case CompletionDisposition::fallback: return "fallback";
-            case CompletionDisposition::quarantine: return "quarantine";
-            }
-            return "unknown";
-        };
-        const std::string source = result.stats.tbhits != 0 ? "tablebase" :
-            (limits.ponder ? "ponder" : "search");
-        debug_json_event(
-            "completion_validation",
-            "\"message\":" + debug_quoted(
-                "completion_record generation=" + std::to_string(generation)) +
-                ",\"generation\":" + std::to_string(generation) +
-                ",\"result_generation\":" + std::to_string(result.identity.generation) +
-                ",\"root_fen\":" + debug_quoted(search_root.fen()) +
-                ",\"root_key\":" + debug_quoted(debug_hex(search_root.position_key())) +
-                ",\"result_root_key\":" + debug_quoted(debug_hex(result.identity.root_key)) +
-                ",\"root_key_match\":" +
-                    (result.identity.root_key == search_root.position_key() ? "true" : "false") +
-                ",\"root_fen_match\":" +
-                    (result.identity.root_fen == search_root.fen() ? "true" : "false") +
-                ",\"identity_match\":" + (validation.identity_match ? "true" : "false") +
-                ",\"candidate\":" + debug_quoted(
-                    candidate.best_move.has_value() ? candidate.best_move->uci() : "0000") +
-                ",\"native_legal\":" + (validation.native_legal ? "true" : "false") +
-                ",\"shadow_legal\":" + (validation.shadow_legal ? "true" : "false") +
-                ",\"searchmoves_legal\":" + (validation.searchmoves_legal ? "true" : "false") +
-                ",\"pv_legal\":" + (validation.pv_legal ? "true" : "false") +
-                ",\"ponder_legal\":" + (validation.ponder_legal ? "true" : "false") +
-                ",\"fallback_used\":" + (validation.fallback_used ? "true" : "false") +
-                ",\"validated\":" + debug_quoted(
-                    validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
-                ",\"source\":" + debug_quoted(source) +
-                ",\"disposition\":" + debug_quoted(disposition_name(validation.disposition)) +
-                ",\"reason\":" + debug_quoted(validation.reason) +
-                ",\"completed\":" + (result.completed ? "true" : "false") +
-                ",\"cancelled\":" + (result.cancelled ? "true" : "false") +
-                 ",\"failed\":" + (result.failed ? "true" : "false") +
-                 ",\"timing_reserve_ms\":" +
-                     std::to_string(result.timing.reserve.count()) +
-                 ",\"timing_usable_ms\":" +
-                     std::to_string(result.timing.usable.count()) +
-                 ",\"timing_soft_ms\":" +
-                     std::to_string(result.timing.soft_budget.count()) +
-                 ",\"timing_hard_ms\":" +
-                     std::to_string(result.timing.hard_budget.count()) +
-                 ",\"timing_horizon\":" + std::to_string(result.timing.horizon) +
-                 ",\"timing_initial_hardness\":" +
-                     std::to_string(result.timing.initial_hardness) +
-                 ",\"timing_observed_hardness\":" +
-                     std::to_string(result.timing.observed_hardness) +
-                 ",\"timing_extended\":" +
-                     (result.timing.extended_for_hard_position ? "true" : "false") +
-                 ",\"timing_hard_deadline\":" +
-                     (result.timing.hard_deadline_reached ? "true" : "false") +
-                 ",\"last_command\":" + debug_quoted(last_command));
+        if (debug_logging_enabled()) {
+            const std::string source = result.stats.tbhits != 0 ? "tablebase" :
+                (limits.ponder ? "ponder" : "search");
+            debug_json_event(
+                "completion_validation",
+                "\"message\":" + debug_quoted(
+                    "completion_record generation=" + std::to_string(generation)) +
+                    ",\"generation\":" + std::to_string(generation) +
+                    ",\"result_generation\":" + std::to_string(result.identity.generation) +
+                    ",\"root_fen\":" + debug_quoted(search_root.fen()) +
+                    ",\"root_key\":" + debug_quoted(debug_hex(search_root.position_key())) +
+                    ",\"result_root_key\":" + debug_quoted(debug_hex(result.identity.root_key)) +
+                    ",\"root_key_match\":" +
+                        (result.identity.root_key == search_root.position_key() ? "true" : "false") +
+                    ",\"root_fen_match\":" +
+                        (result.identity.root_fen == search_root.fen() ? "true" : "false") +
+                    ",\"identity_match\":" + (validation.identity_match ? "true" : "false") +
+                    ",\"candidate\":" + debug_quoted(
+                        candidate.best_move.has_value() ? candidate.best_move->uci() : "0000") +
+                    ",\"native_legal\":" + (validation.native_legal ? "true" : "false") +
+                    ",\"shadow_legal\":" + (validation.shadow_legal ? "true" : "false") +
+                    ",\"searchmoves_legal\":" + (validation.searchmoves_legal ? "true" : "false") +
+                    ",\"pv_legal\":" + (validation.pv_legal ? "true" : "false") +
+                    ",\"ponder_legal\":" + (validation.ponder_legal ? "true" : "false") +
+                    ",\"fallback_used\":" + (validation.fallback_used ? "true" : "false") +
+                    ",\"validated\":" + debug_quoted(
+                        validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
+                    ",\"source\":" + debug_quoted(source) +
+                    ",\"disposition\":" + debug_quoted(disposition_name(validation.disposition)) +
+                    ",\"reason\":" + debug_quoted(validation.reason) +
+                    ",\"completed\":" + (result.completed ? "true" : "false") +
+                    ",\"cancelled\":" + (result.cancelled ? "true" : "false") +
+                    ",\"failed\":" + (result.failed ? "true" : "false") +
+                    ",\"timing_reserve_ms\":" +
+                        std::to_string(result.timing.reserve.count()) +
+                    ",\"timing_usable_ms\":" +
+                        std::to_string(result.timing.usable.count()) +
+                    ",\"timing_soft_ms\":" +
+                        std::to_string(result.timing.soft_budget.count()) +
+                    ",\"timing_hard_ms\":" +
+                        std::to_string(result.timing.hard_budget.count()) +
+                    ",\"timing_horizon\":" + std::to_string(result.timing.horizon) +
+                    ",\"timing_initial_hardness\":" +
+                        std::to_string(result.timing.initial_hardness) +
+                    ",\"timing_observed_hardness\":" +
+                        std::to_string(result.timing.observed_hardness) +
+                    ",\"timing_extended\":" +
+                        (result.timing.extended_for_hard_position ? "true" : "false") +
+                    ",\"timing_hard_deadline\":" +
+                        (result.timing.hard_deadline_reached ? "true" : "false") +
+                    ",\"last_command\":" + debug_quoted(last_command));
+        }
         if (validation.disposition == CompletionDisposition::suppress_stale) {
-            debug_event("stale search completion suppressed generation " +
-                        std::to_string(generation) + " result_generation " +
-                        std::to_string(result.identity.generation) + " result_key " +
-                        std::to_string(result.identity.root_key));
+            if (debug_logging_enabled()) {
+                debug_event("stale search completion suppressed generation " +
+                            std::to_string(generation) + " result_generation " +
+                            std::to_string(result.identity.generation) + " result_key " +
+                            std::to_string(result.identity.root_key));
+            }
             return;
         }
-        if (validation.fallback_used) {
+        if (validation.fallback_used && debug_logging_enabled()) {
             debug_event("illegal or shadow-rejected search move replaced generation " +
                         std::to_string(generation) + " fallback " +
                         (validation.best_move.has_value() ? validation.best_move->uci() : "0000"));
@@ -2395,12 +2376,16 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
             // 0000. The engine stays alive for the next command; the previous
             // quick_exit(74) turned a recoverable root inconsistency into
             // engine death.
-            debug_event("no common legal move for nonterminal search root generation " +
-                        std::to_string(generation) + " fen " + search_root.fen() +
-                        "; answering 0000");
+            if (debug_logging_enabled()) {
+                debug_event("no common legal move for nonterminal search root generation " +
+                            std::to_string(generation) + " fen " + search_root.fen() +
+                            "; answering 0000");
+            }
             if (!completion_once->try_claim()) {
-                debug_event("duplicate search completion suppressed generation " +
-                            std::to_string(generation));
+                if (debug_logging_enabled()) {
+                    debug_event("duplicate search completion suppressed generation " +
+                                std::to_string(generation));
+                }
                 return;
             }
             std::lock_guard lock(output_mutex_);
@@ -2418,30 +2403,36 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
             return;
         }
         if (!completion_once->try_claim()) {
-            debug_event("duplicate search completion suppressed generation " +
-                        std::to_string(generation));
+            if (debug_logging_enabled()) {
+                debug_event("duplicate search completion suppressed generation " +
+                            std::to_string(generation));
+            }
             return;
         }
         SearchResult completed = result;
         completed.best_move = validation.best_move;
         completed.pv = validation.pv;
         completed.ponder_move = validation.ponder_move;
-        std::string after_fen = search_root.fen();
-        if (validation.best_move.has_value()) {
-            GameState after_move = search_root;
-            if (after_move.make_move(*validation.best_move)) {
-                after_fen = after_move.fen();
+        if (debug_logging_enabled()) {
+            std::string after_fen = search_root.fen();
+            if (validation.best_move.has_value()) {
+                GameState after_move = search_root;
+                if (after_move.make_move(*validation.best_move)) {
+                    after_fen = after_move.fen();
+                }
             }
+            const std::string source = result.stats.tbhits != 0 ? "tablebase" :
+                (limits.ponder ? "ponder" : "search");
+            debug_json_event(
+                "move",
+                "\"generation\":" + std::to_string(generation) +
+                    ",\"root_fen\":" + debug_quoted(search_root.fen()) +
+                    ",\"root_key\":" + debug_quoted(debug_hex(search_root.position_key())) +
+                    ",\"move\":" + debug_quoted(
+                        validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
+                    ",\"after_fen\":" + debug_quoted(after_fen) +
+                    ",\"source\":" + debug_quoted(source));
         }
-        debug_json_event(
-            "move",
-            "\"generation\":" + std::to_string(generation) +
-                ",\"root_fen\":" + debug_quoted(search_root.fen()) +
-                ",\"root_key\":" + debug_quoted(debug_hex(search_root.position_key())) +
-                ",\"move\":" + debug_quoted(
-                    validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
-                ",\"after_fen\":" + debug_quoted(after_fen) +
-                ",\"source\":" + debug_quoted(source));
         if (result.failed) {
             // A setup/internal failure still answers with a legal fallback move,
             // but it must not be indistinguishable from a real result at the
@@ -2472,27 +2463,48 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
     options.strength_mode = strength_mode_;
     options.syzygy = syzygy_;
     options.syzygy_interior_depth = syzygy_interior_depth_;
-    // Hold a legal root move so a resource failure (thread creation, an
-    // allocation inside the session) can still answer with exactly one
-    // bestmove. Resource exhaustion must not terminate the UCI loop.
-    SearchResult start_failure_fallback;
-    start_failure_fallback.identity = SearchRequestIdentity::from(search_root, generation);
-    start_failure_fallback.completed = true;
-    start_failure_fallback.failed = true;
-    start_failure_fallback.failure_reason = SearchFailureReason::setup_failed;
-    for (const Move& move : search_root.legal_moves()) {
-        if (!limits.search_moves_specified ||
-            std::find(limits.search_moves.begin(), limits.search_moves.end(), move) !=
-                limits.search_moves.end()) {
-            start_failure_fallback.best_move = move;
-            start_failure_fallback.pv = {move};
-            break;
-        }
+    options.search_started = search_started;
+    std::optional<std::chrono::milliseconds> movetime_watchdog_budget;
+    if (limits.movetime.has_value() && !limits.infinite && !limits.ponder) {
+        const TimeManager preview(
+            limits, search_root.side_to_move(), kFixedSpeedPercent,
+            options.move_overhead_ms, options.slow_mover_percent,
+            RootTimingContext{}, {}, options.dynamic_move_overhead, search_started);
+        movetime_watchdog_budget = preview.time_budget();
     }
+    const bool has_search_moves = limits.search_moves_specified;
+    const std::vector<Move> fallback_search_moves =
+        has_search_moves ? limits.search_moves : std::vector<Move>{};
     try {
         active_search_.emplace(
             search_service_.start(std::move(root), std::move(limits), std::move(sink), options));
+        if (movetime_watchdog_budget.has_value() &&
+            *movetime_watchdog_budget >= std::chrono::milliseconds{100}) {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - search_started);
+            if (elapsed >= *movetime_watchdog_budget) {
+                active_search_->stop();
+            } else {
+                active_search_->stop_after(*movetime_watchdog_budget - elapsed);
+            }
+        }
     } catch (const std::exception& error) {
+        // Defer root legal move generation to the rare setup-failure path so
+        // normal timed searches do not spend start latency building moves twice.
+        SearchResult start_failure_fallback;
+        start_failure_fallback.identity = SearchRequestIdentity::from(search_root, generation);
+        start_failure_fallback.completed = true;
+        start_failure_fallback.failed = true;
+        start_failure_fallback.failure_reason = SearchFailureReason::setup_failed;
+        for (const Move& move : search_root.legal_moves()) {
+            if (!has_search_moves ||
+                std::find(fallback_search_moves.begin(), fallback_search_moves.end(), move) !=
+                    fallback_search_moves.end()) {
+                start_failure_fallback.best_move = move;
+                start_failure_fallback.pv = {move};
+                break;
+            }
+        }
         debug_event("search failed to start: " + std::string(error.what()));
         {
             std::lock_guard lock(output_mutex_);
@@ -3008,40 +3020,33 @@ void UciController::write_book_completion(const std::uint64_t generation, const 
         std::lock_guard lock(output_mutex_);
         last_command = last_command_;
     }
-    const auto disposition_name = [](CompletionDisposition disposition) {
-        switch (disposition) {
-        case CompletionDisposition::emit: return "emit";
-        case CompletionDisposition::suppress_stale: return "suppress_stale";
-        case CompletionDisposition::fallback: return "fallback";
-        case CompletionDisposition::quarantine: return "quarantine";
-        }
-        return "unknown";
-    };
-    debug_json_event(
-        "completion_validation",
-        "\"message\":" + debug_quoted(
-            "book_completion_record generation=" + std::to_string(generation)) +
-            ",\"generation\":" + std::to_string(generation) +
-            ",\"result_generation\":" + std::to_string(candidate.identity.generation) +
-            ",\"root_fen\":" + debug_quoted(root.fen()) +
-            ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
-            ",\"result_root_key\":" + debug_quoted(debug_hex(candidate.identity.root_key)) +
-            ",\"root_key_match\":true" +
-            ",\"root_fen_match\":true" +
-            ",\"identity_match\":" + (validation.identity_match ? "true" : "false") +
-            ",\"candidate\":" + debug_quoted(choice.move.uci()) +
-            ",\"native_legal\":" + (validation.native_legal ? "true" : "false") +
-            ",\"shadow_legal\":" + (validation.shadow_legal ? "true" : "false") +
-            ",\"searchmoves_legal\":" + (validation.searchmoves_legal ? "true" : "false") +
-            ",\"pv_legal\":" + (validation.pv_legal ? "true" : "false") +
-            ",\"ponder_legal\":" + (validation.ponder_legal ? "true" : "false") +
-            ",\"fallback_used\":" + (validation.fallback_used ? "true" : "false") +
-            ",\"validated\":" + debug_quoted(
-                validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
-            ",\"source\":\"book\"" +
-            ",\"disposition\":" + debug_quoted(disposition_name(validation.disposition)) +
-            ",\"reason\":" + debug_quoted(validation.reason) +
-            ",\"last_command\":" + debug_quoted(last_command));
+    if (debug_logging_enabled()) {
+        debug_json_event(
+            "completion_validation",
+            "\"message\":" + debug_quoted(
+                "book_completion_record generation=" + std::to_string(generation)) +
+                ",\"generation\":" + std::to_string(generation) +
+                ",\"result_generation\":" + std::to_string(candidate.identity.generation) +
+                ",\"root_fen\":" + debug_quoted(root.fen()) +
+                ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
+                ",\"result_root_key\":" + debug_quoted(debug_hex(candidate.identity.root_key)) +
+                ",\"root_key_match\":true" +
+                ",\"root_fen_match\":true" +
+                ",\"identity_match\":" + (validation.identity_match ? "true" : "false") +
+                ",\"candidate\":" + debug_quoted(choice.move.uci()) +
+                ",\"native_legal\":" + (validation.native_legal ? "true" : "false") +
+                ",\"shadow_legal\":" + (validation.shadow_legal ? "true" : "false") +
+                ",\"searchmoves_legal\":" + (validation.searchmoves_legal ? "true" : "false") +
+                ",\"pv_legal\":" + (validation.pv_legal ? "true" : "false") +
+                ",\"ponder_legal\":" + (validation.ponder_legal ? "true" : "false") +
+                ",\"fallback_used\":" + (validation.fallback_used ? "true" : "false") +
+                ",\"validated\":" + debug_quoted(
+                    validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
+                ",\"source\":\"book\"" +
+                ",\"disposition\":" + debug_quoted(disposition_name(validation.disposition)) +
+                ",\"reason\":" + debug_quoted(validation.reason) +
+                ",\"last_command\":" + debug_quoted(last_command));
+    }
     if (validation.disposition == CompletionDisposition::suppress_stale) {
         debug_event("book completion suppressed as stale generation " + std::to_string(generation));
         return;
@@ -3110,12 +3115,54 @@ void UciController::write_book_completion(const std::uint64_t generation, const 
              << "bestmove " << validation.best_move->uci() << '\n' << std::flush;
 }
 
+bool UciController::debug_logging_enabled() const noexcept {
+    return debug_log_ && debug_log_->enabled();
+}
+
+bool UciController::try_install_nnue_file(const std::filesystem::path& path,
+                                          const std::string_view option_label,
+                                          std::filesystem::path* resolved_out) {
+    // Relative paths resolve against the engine directory so a GUI can pass a
+    // bare filename sitting next to the executable.
+    std::filesystem::path resolved = path;
+    if (resolved.is_relative() && !executable_directory_.empty()) {
+        resolved = executable_directory_ / resolved;
+    }
+    std::expected<NnueNetwork, NnueError> network = NnueLoader::load_file(resolved);
+    if (!network.has_value()) {
+        debug_event(std::string(option_label) + " rejected " + resolved.string() + ": " +
+                    network.error().message);
+        write_uci_info_string(std::string(option_label) + " rejected: " +
+                              network.error().message);
+        return false;
+    }
+    try {
+        auto weights = std::make_shared<const NnueNetwork>(std::move(*network));
+        search_service_.set_evaluator(std::make_shared<NnueEvaluator>(weights));
+        hce_active_ = false;
+    } catch (const std::exception& install_error) {
+        // Installing a network allocates; a failure here must keep the previous
+        // evaluator and keep the protocol loop alive.
+        debug_event(std::string(option_label) + " installation failed " + resolved.string() +
+                    ": " + install_error.what());
+        write_uci_info_string(std::string(option_label) + " rejected: " + install_error.what());
+        return false;
+    }
+    if (resolved_out != nullptr) {
+        *resolved_out = std::move(resolved);
+    }
+    return true;
+}
+
 void UciController::debug_event(std::string message) noexcept {
+    if (!debug_logging_enabled()) {
+        return;
+    }
     debug_json_event("log", "\"message\":" + debug_quoted(message));
 }
 
 void UciController::debug_json_event(std::string event, std::string fields) noexcept {
-    if (debug_log_) {
+    if (debug_logging_enabled()) {
         debug_log_->write_event(event, fields);
     }
 }

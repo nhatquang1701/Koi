@@ -1220,57 +1220,55 @@ def run_search_analysis(
                 actual_side_cp, actual_side_mate = _mover_eval(actual_score, True)
                 koi_side_cp, koi_side_mate = _mover_eval(koi_score, True)
                 legal_count = len(chess.Board(fen).legal_moves)
-                actual_annotation = annotate_move_eval(
-                    best_side_cp,
-                    actual_side_cp,
-                    best_mate=best_side_mate,
-                    played_mate=actual_side_mate,
-                    legal_move_count=legal_count,
-                    played_move=position["actual_move_uci"],
-                    best_move=sf_best_move,
-                )
-                koi_annotation = annotate_move_eval(
-                    best_side_cp,
-                    koi_side_cp,
-                    best_mate=best_side_mate,
-                    played_mate=koi_side_mate,
-                    legal_move_count=legal_count,
-                    played_move=koi_result.bestmove,
-                    best_move=sf_best_move,
-                )
+
+                def _annotation_for(played_move: str, played_cp: int, played_mate: Optional[int]) -> Dict[str, Any]:
+                    return annotate_move_eval(
+                        best_side_cp,
+                        played_cp,
+                        best_mate=best_side_mate,
+                        played_mate=played_mate,
+                        legal_move_count=legal_count,
+                        played_move=played_move,
+                        best_move=sf_best_move,
+                    )
+
+                def _candidate_move_entry(
+                    move_uci: str,
+                    san: str,
+                    resulting_fen: str,
+                    child_result: SearchResult,
+                    cpl: int,
+                    annotation: Dict[str, Any],
+                ) -> Dict[str, Any]:
+                    return {
+                        "uci": move_uci,
+                        "san": san,
+                        "resulting_fen": resulting_fen,
+                        "stockfish_resulting_position": _result_dict(child_result),
+                        "cpl": cpl,
+                        "classification": classify_cpl(cpl),
+                        "annotation": annotation["annotation"],
+                        "glyph": annotation["glyph"],
+                        "nag": annotation["nag"],
+                        "win_prob_before": annotation["win_prob_before"],
+                        "win_prob_after": annotation["win_prob_after"],
+                        "accuracy_percent": annotation["accuracy_percent"],
+                    }
+                actual_annotation = _annotation_for(position["actual_move_uci"], actual_side_cp, actual_side_mate)
+                koi_annotation = _annotation_for(koi_result.bestmove, koi_side_cp, koi_side_mate)
 
                 record = _position_record(position)
                 record["search"] = {
                     "koi_search": _result_dict(koi_result),
                     "stockfish_root": _result_dict(root_result),
-                    "actual_game_move": {
-                        "uci": position["actual_move_uci"],
-                        "san": actual_san,
-                        "resulting_fen": actual_child_fen,
-                        "stockfish_resulting_position": _result_dict(actual_result),
-                        "cpl": actual_cpl,
-                        "classification": classify_cpl(actual_cpl),
-                        "annotation": actual_annotation["annotation"],
-                        "glyph": actual_annotation["glyph"],
-                        "nag": actual_annotation["nag"],
-                        "win_prob_before": actual_annotation["win_prob_before"],
-                        "win_prob_after": actual_annotation["win_prob_after"],
-                        "accuracy_percent": actual_annotation["accuracy_percent"],
-                    },
-                    "koi_suggested_move": {
-                        "uci": koi_result.bestmove,
-                        "san": koi_san,
-                        "resulting_fen": koi_child_fen,
-                        "stockfish_resulting_position": _result_dict(koi_child_result),
-                        "cpl": koi_cpl,
-                        "classification": classify_cpl(koi_cpl),
-                        "annotation": koi_annotation["annotation"],
-                        "glyph": koi_annotation["glyph"],
-                        "nag": koi_annotation["nag"],
-                        "win_prob_before": koi_annotation["win_prob_before"],
-                        "win_prob_after": koi_annotation["win_prob_after"],
-                        "accuracy_percent": koi_annotation["accuracy_percent"],
-                    },
+                    "actual_game_move": _candidate_move_entry(
+                        position["actual_move_uci"], actual_san, actual_child_fen,
+                        actual_result, actual_cpl, actual_annotation,
+                    ),
+                    "koi_suggested_move": _candidate_move_entry(
+                        koi_result.bestmove, koi_san, koi_child_fen,
+                        koi_child_result, koi_cpl, koi_annotation,
+                    ),
                     "timings_ms": {
                         "koi_search": koi_result.elapsed_ms,
                         "stockfish_root": root_result.elapsed_ms,
