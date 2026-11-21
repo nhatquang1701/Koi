@@ -21,8 +21,6 @@ from .attacks import (
 )
 from .core import (
     BB_DARK_SQUARES,
-    BB_FILE_A,
-    BB_FILE_H,
     BB_LIGHT_SQUARES,
     BB_RANK_1,
     BB_RANK_2,

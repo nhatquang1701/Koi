@@ -7,7 +7,7 @@ performance of table-driven implementations.
 
 from __future__ import annotations
 
-from .core import BISHOP, KING, KNIGHT, PAWN, QUEEN, ROOK, WHITE, BLACK
+from .core import WHITE, BLACK
 
 # Ray order: N, S, E, W (rook rays) then NE, NW, SE, SW (bishop rays).
 _DIRECTIONS = (

@@ -13,7 +13,6 @@ import re
 import weakref
 
 from .board import Board
-from .core import Move
 
 __all__ = ["Game", "Node", "read_game"]
 

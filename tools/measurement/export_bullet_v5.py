@@ -55,7 +55,6 @@ L1_LIMIT = 127
 W2_LIMIT = 127
 MIN_HIDDEN = 32
 MAX_HIDDEN = 8192
-DEFAULT_HIDDEN = 1536
 DEFAULT_SEED = 20260916
 DEFAULT_TUNE_SAMPLES = 4000
 # A quantized output weight at +/-W2_LIMIT means the float weight was clipped,

@@ -140,7 +140,7 @@ struct SearchContext {
 
     // Direct-mapped static-evaluation cache.  Iterative deepening re-evaluates
     // the same subtree repeatedly, so collisions between distinct positions
-    // cost real evaluator work; 64K entries keep the working set of a search
+    // cost real evaluator work; 16K entries keep the working set of a search
     // comfortably inside the table on this hardware.
     static constexpr std::size_t kEvaluationCacheSize = 16 * 1024;
     // 16K entries (256 KiB) keeps the direct-mapped quotient-cache collision

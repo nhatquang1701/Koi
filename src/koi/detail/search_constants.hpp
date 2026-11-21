@@ -85,11 +85,6 @@ inline constexpr auto kShortTimedFallbackThreshold = std::chrono::milliseconds{3
 inline constexpr auto kShortTimedSerialThreshold = std::chrono::milliseconds{500};
 inline constexpr std::size_t kNullMoveSparsePieceLimit = 8;
 inline constexpr std::uint16_t kNullMoveRuleSafetyHalfmoves = 90;
-// Koi's pinned NNUE evaluation has a different positional-score distribution
-// than the reference search.  The null fail-high is still verified before it
-// can cut off, so use a smaller static confidence margin and let depth supply
-// the remaining safety distance.
-inline constexpr int kNullMoveStaticMargin = 96;
 // Null-move verification is a deep-node safety net.  Below this depth an
 // eligible null fail-high is accepted when the reduced probe itself reached
 // beta without a selective cutoff; at and above it, a no-null, no-TT

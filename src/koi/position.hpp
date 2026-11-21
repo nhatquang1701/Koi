@@ -56,8 +56,6 @@ public:
     [[nodiscard]] bool legal_tactical_search_metadata_into(
         MoveMetadataList& output,
         bool include_quiet_checks) const noexcept;
-    void legal_quiet_checking_search_metadata_into(
-        MoveMetadataList& output) const noexcept;
     void legal_tactical_only_search_metadata_into(
         MoveMetadataList& output) const noexcept;
     void append_quiet_search_metadata_into(

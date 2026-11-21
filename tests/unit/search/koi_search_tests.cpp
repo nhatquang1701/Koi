@@ -47,26 +47,6 @@ koi::GameState require_state(std::string_view fen) {
                                     "test FEN must construct a game state");
 }
 
-koi::GameState require_evaluation_fixture(std::string_view name) {
-    const std::filesystem::path path =
-        koi::test::fixture_path("positions/evaluation-positions.txt");
-    std::ifstream input(path);
-    require(input.good(), "evaluation fixture data must be readable");
-
-    std::string line;
-    while (std::getline(input, line)) {
-        if (line.empty() || line.front() == '#') {
-            continue;
-        }
-        const std::size_t separator = line.find('|');
-        require(separator != std::string::npos, "evaluation fixture must contain a name and FEN");
-        if (std::string_view(line).substr(0, separator) == name) {
-            return require_state(std::string_view(line).substr(separator + 1));
-        }
-    }
-    throw std::runtime_error("missing evaluation fixture: " + std::string(name));
-}
-
 struct CompletedSearch {
     mutable std::mutex mutex;
     std::optional<koi::SearchResult> result;

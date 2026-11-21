@@ -241,7 +241,6 @@ std::uint32_t move_tie_break_key(const Move move) noexcept {
 
 void SearchMoveOrdering::clear() noexcept {
     tables_.clear();
-    scored_move_count_ = 0;
 }
 
 void SearchMoveOrdering::update_correction(const std::uint64_t pawn_key,
@@ -280,16 +279,17 @@ void SearchMoveOrdering::order(const GameState& state, std::vector<Move>& moves,
     }
 }
 
-void SearchMoveOrdering::order(const GameState& state, MoveMetadataList& moves,
-                               const std::optional<Move> tt_move, const int ply,
-                               const std::optional<Move> previous_move) const {
-    scored_move_count_ = 0;
+template <typename PriorityFn>
+void SearchMoveOrdering::order_with_priority(const GameState& state,
+                                               std::span<MoveMetadata> moves,
+                                               PriorityFn&& priority_fn) const {
     // One exchange baseline serves every capture in this pass, mirroring
     // GameState::finalize_metadata; it is built at most once and only when a
     // capture still needs SEE.  Ordering never mutates the position, so the
     // baseline stays valid for the whole loop.
     std::optional<ExchangeContext> exchange_context;
-    for (MoveMetadata& metadata : moves) {
+    for (std::size_t index = 0; index < moves.size(); ++index) {
+        MoveMetadata& metadata = moves[index];
         if (!metadata.see_computed && metadata.is_capture()) {
             if (!exchange_context.has_value()) {
                 exchange_context = exchange_context_from(state);
@@ -300,10 +300,10 @@ void SearchMoveOrdering::order(const GameState& state, MoveMetadataList& moves,
                 static_cast<int>(std::numeric_limits<std::int16_t>::max())));
             metadata.see_computed = true;
         }
-        const int score = priority(state, metadata, tt_move, ply, previous_move);
+        const int score = priority_fn(metadata);
         MoveMetadata scored_metadata = metadata;
         scored_metadata.ordering_score = score;
-        scored_moves_[scored_move_count_++] = ScoredMove{
+        scored_moves_[index] = ScoredMove{
             scored_metadata, score, move_tie_break_key(metadata.move)};
     }
 
@@ -319,38 +319,19 @@ void SearchMoveOrdering::order(const GameState& state, MoveMetadataList& moves,
 }
 
 void SearchMoveOrdering::order(const GameState& state, MoveMetadataList& moves,
+                               const std::optional<Move> tt_move, const int ply,
+                               const std::optional<Move> previous_move) const {
+    order_with_priority(state, moves, [&](const MoveMetadata& metadata) {
+        return priority(state, metadata, tt_move, ply, previous_move);
+    });
+}
+
+void SearchMoveOrdering::order(const GameState& state, MoveMetadataList& moves,
                                const std::optional<Move> tt_move,
                                const SearchHistoryContext& history_context) const {
-    scored_move_count_ = 0;
-    // Same shared baseline as the ply/previous-move overload above.
-    std::optional<ExchangeContext> exchange_context;
-    for (MoveMetadata& metadata : moves) {
-        if (!metadata.see_computed && metadata.is_capture()) {
-            if (!exchange_context.has_value()) {
-                exchange_context = exchange_context_from(state);
-            }
-            metadata.see_score = static_cast<std::int16_t>(std::clamp(
-                static_exchange_gain(*exchange_context, metadata),
-                static_cast<int>(std::numeric_limits<std::int16_t>::min()),
-                static_cast<int>(std::numeric_limits<std::int16_t>::max())));
-            metadata.see_computed = true;
-        }
-        const int score = priority(state, metadata, tt_move, history_context);
-        MoveMetadata scored_metadata = metadata;
-        scored_metadata.ordering_score = score;
-        scored_moves_[scored_move_count_++] = ScoredMove{
-            scored_metadata, score, move_tie_break_key(metadata.move)};
-    }
-
-    std::sort(scored_moves_.begin(), scored_moves_.begin() + moves.size(),
-              [](const ScoredMove& lhs, const ScoredMove& rhs) {
-                  return lhs.priority != rhs.priority ? lhs.priority > rhs.priority :
-                      lhs.tie_break < rhs.tie_break;
-              });
-
-    for (std::size_t index = 0; index < moves.size(); ++index) {
-        moves[index] = scored_moves_[index].metadata;
-    }
+    order_with_priority(state, moves, [&](const MoveMetadata& metadata) {
+        return priority(state, metadata, tt_move, history_context);
+    });
 }
 
 int SearchMoveOrdering::priority(const GameState& state, const MoveMetadata& metadata,
@@ -410,36 +391,9 @@ int SearchMoveOrdering::priority(const GameState& state, const MoveMetadata& met
 void SearchMoveOrdering::order(const GameState& state, std::vector<MoveMetadata>& moves,
                                const std::optional<Move> tt_move, const int ply,
                                const std::optional<Move> previous_move) const {
-    scored_move_count_ = 0;
-    // Same shared baseline as the other ordering overloads.
-    std::optional<ExchangeContext> exchange_context;
-    for (MoveMetadata& metadata : moves) {
-        if (!metadata.see_computed && metadata.is_capture()) {
-            if (!exchange_context.has_value()) {
-                exchange_context = exchange_context_from(state);
-            }
-            metadata.see_score = static_cast<std::int16_t>(std::clamp(
-                static_exchange_gain(*exchange_context, metadata),
-                static_cast<int>(std::numeric_limits<std::int16_t>::min()),
-                static_cast<int>(std::numeric_limits<std::int16_t>::max())));
-            metadata.see_computed = true;
-        }
-        const int score = priority(state, metadata, tt_move, ply, previous_move);
-        MoveMetadata scored_metadata = metadata;
-        scored_metadata.ordering_score = score;
-        scored_moves_[scored_move_count_++] = ScoredMove{
-            scored_metadata, score, move_tie_break_key(metadata.move)};
-    }
-
-    std::sort(scored_moves_.begin(), scored_moves_.begin() + moves.size(),
-              [](const ScoredMove& lhs, const ScoredMove& rhs) {
-                  return lhs.priority != rhs.priority ? lhs.priority > rhs.priority :
-                      lhs.tie_break < rhs.tie_break;
-              });
-
-    for (std::size_t index = 0; index < moves.size(); ++index) {
-        moves[index] = scored_moves_[index].metadata;
-    }
+    order_with_priority(state, moves, [&](const MoveMetadata& metadata) {
+        return priority(state, metadata, tt_move, ply, previous_move);
+    });
 }
 
 int SearchMoveOrdering::quiet_history_score(

@@ -71,15 +71,9 @@ inline constexpr std::uint32_t kKoiNnuePieceSquareKingPawnV2FeatureCount =
 using NnueLayerSizes = std::array<std::uint32_t, 4>;
 inline constexpr NnueLayerSizes kKoiNnueLayerSizes{768, 128, 32, 1};
 inline constexpr NnueLayerSizes kKoiNnuePieceSquareKingPawnV2LayerSizes{960, 256, 32, 1};
-inline constexpr std::uint32_t kKoiNnueV2FeatureCount =
-    kKoiNnuePieceSquareKingPawnV2FeatureCount;
-inline constexpr NnueLayerSizes kKoiNnueV2LayerSizes =
-    kKoiNnuePieceSquareKingPawnV2LayerSizes;
 inline constexpr std::string_view kKoiNnueFeatureSet = kNnuePieceSquareV1FeatureSet;
 inline constexpr std::string_view kKoiNnuePieceSquareKingPawnV2FeatureSet =
     kNnuePieceSquareKingPawnV2FeatureSet;
-inline constexpr std::string_view kKoiNnueV2FeatureSet =
-    kKoiNnuePieceSquareKingPawnV2FeatureSet;
 inline constexpr std::string_view kKoiNnueQuantization = "int16/int8";
 inline constexpr std::int32_t kKoiNnueClippedReluMaximum = 127;
 

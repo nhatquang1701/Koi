@@ -8,10 +8,9 @@ import csv
 import hashlib
 import json
 import pathlib
-import re
 import struct
 import sys
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable
 
 
 MEASUREMENT_DIR = pathlib.Path(__file__).resolve().parent

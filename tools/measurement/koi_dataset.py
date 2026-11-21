@@ -52,7 +52,6 @@ import koi_chess as chess
 FEATURE_SET = "halfka-king-bucket-v1"
 THREAT_FEATURE_SET = "threat-pairs-v1"
 GROUP_FEATURE_SETS = (FEATURE_SET, THREAT_FEATURE_SET)
-COMBINED_FEATURE_SET = "halfka-king-bucket-v1+threat-pairs-v1"
 MAGIC = b"KOI-DATA"
 VERSION = 2
 V1_VERSION = 1

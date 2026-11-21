@@ -2,7 +2,6 @@
 
 import importlib.util
 import pathlib
-import struct
 import sys
 import tempfile
 import unittest

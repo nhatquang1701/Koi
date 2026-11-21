@@ -4,6 +4,7 @@
 #include <bitset>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "koi/detail/search_ordering_tables.hpp"
@@ -105,6 +106,10 @@ private:
                                std::optional<Move> tt_move,
                                const SearchHistoryContext& history_context) const;
 
+    template <typename PriorityFn>
+    void order_with_priority(const GameState& state, std::span<MoveMetadata> moves,
+                             PriorityFn&& priority_fn) const;
+
     struct ScoredMove {
         MoveMetadata metadata{};
         int priority = 0;
@@ -113,7 +118,6 @@ private:
 
     SearchOrderingTables tables_;
     mutable std::array<ScoredMove, kMaximumLegalMoves> scored_moves_{};
-    mutable std::size_t scored_move_count_ = 0;
 };
 
 // SearchMovePicker mirrors Stockfish's staged MovePicker while retaining

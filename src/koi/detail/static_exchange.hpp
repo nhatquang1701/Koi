@@ -147,14 +147,6 @@ inline bool exchange_square_attacked_by_masked(
     return false;
 }
 
-inline bool exchange_square_attacked_by(const ExchangeContext& context, int target,
-                                        Color attacker) noexcept {
-    const std::size_t color_index = exchange_color_index(attacker);
-    return exchange_square_attacked_by_masked(
-        context.piece_bitboards[color_index], context.occupied, target, attacker,
-        ~std::uint64_t{0});
-}
-
 #if defined(__clang__) || defined(__GNUC__)
 #define KOI_SEE_ALWAYS_INLINE __attribute__((always_inline)) inline
 #elif defined(_MSC_VER)

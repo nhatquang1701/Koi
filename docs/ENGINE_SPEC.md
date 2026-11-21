@@ -32,12 +32,12 @@ and measurement with `EvalMode=hce` or the `KOI_EVALUATOR=hce` boot override.
 | Language | C++26 (`CMAKE_CXX_STANDARD 26`) | `CMakeLists.txt` |
 | License | GPL-3.0 | `LICENSE` |
 | Current build version pin | `1.2.0` | `project(koi_engine VERSION 1.2.0 ...)`, `CMakeLists.txt:3` |
-| Compiled build identity | `KOI_ENGINE_BUILD_VERSION="${PROJECT_VERSION}"` | `CMakeLists.txt:412-414` |
+| Compiled build identity | `KOI_ENGINE_BUILD_VERSION="${PROJECT_VERSION}"` | `CMakeLists.txt` |
 | UCI identity/version | `id name Koi <version>` (CMake project pin), `id author`, and `info string build <commit>`; there is no separate `uci` version field | `src/koi/uci_controller.cpp` |
 
 The version rides in `id name`; the CMake project version is also compiled into
 the core library and is consumed by `koi-bench` for its JSON
-`build` field (`tools/engine/koi_bench.cpp:577` and `:685`). Release provenance
+`build` field (`tools/engine/koi_bench.cpp`). Release provenance
 instead comes from the external package manifest written by
 `tools/build/package_release.ps1` (`<package>.package.json` beside the
 archive): schema `koi-engine-package-v1`, hard-coded
@@ -173,7 +173,7 @@ Other environment variables relevant to operation:
    answered.
 
 Three unrelated "generation" concepts are deliberately distinct
-(`src/koi/search_types.hpp:205-236`): the controller's protocol staleness
+(`src/koi/search_types.hpp`): the controller's protocol staleness
 counter, `SearchRequestIdentity` request identity (carries that counter plus root
 key and FEN), and the transposition table's replacement epoch advanced once per
 search by `new_generation()`.
@@ -244,7 +244,7 @@ a fixed 256-entry, intentionally uninitialized container for the search hot path
 
 ### 3.4 Draw and terminal-status model
 
-`DrawStatus` (`src/koi/game_state.hpp:27-36`) separates optional claims from
+`DrawStatus` (`src/koi/game_state.hpp`) separates optional claims from
 automatic results:
 
 | Status | Condition | Search/terminal treatment |
@@ -417,7 +417,7 @@ multi-threaded CPU NNUE path.
 
 ### 4.4 Automatic discovery and `EvalFile`
 
-`discover_nnue_network(directory)` (`src/koi/nnue.cpp:2350-2393`) uses this order:
+`discover_nnue_network(directory)` (`src/koi/nnue.cpp`) uses this order:
 
 1. `<dir>/koi.nnue`
 2. `<dir>/nnue/koi.nnue` (packaged layout)
@@ -439,7 +439,7 @@ the current evaluator usable and produce one explanatory stderr line or UCI
 
 ### 5.1 Driver and iterative deepening
 
-`SearchRunner::run` (`src/koi/detail/search_runner.cpp:2696`) selects one of
+`SearchRunner::run` (`src/koi/detail/search_runner.cpp`) selects one of
 three drivers after root setup:
 
 - **Serial driver**: `Threads=1` and `MultiPV=1`, forced-draw roots, roots with
@@ -548,41 +548,39 @@ unless another file is named.
 | `kMaximumQuiescenceSafetyDepth` | 16 | same |
 | `kMaximumCheckExtensionsPerPath` | 2 | same |
 | `kMaximumSingularExtensionsPerPath` | 2 | same |
-| `kMaximumQuiescenceCheckDepth` | 3 (2 for budgets ≤ 500 ms) | same / `SearchContext` constructor |
+| `kMaximumQuiescenceCheckDepth` | 2 (1 for budgets ≤ 500 ms) | same / `SearchContext` constructor |
 | `kQuiescenceFutilityMargin` | 200 | same |
 | `kQuiescenceFutilityMoveLimit` | 2 | same |
 | `kQuiescenceSeeThreshold` | -74 | same |
 | `kRazorMarginPerDepthSquared` | 120 | same |
-| `kRazorMaximumDepth` | 1 | same |
 | `kInternalIterativeReductionMinimumDepth` | 6 | same |
 | `kTrueInternalIterativeDeepeningMinimumDepth` | 6 | same |
 | `kTranspositionProbCutMargin` | 428 | same |
-| `kReverseFutilityMinimumDepth` / `MaximumDepth` | 2 / 18 | same |
+| `kReverseFutilityMinimumDepth` / `MaximumDepth` | 1 / 18 | same |
 | `kReverseFutilityBaseMargin` / `DepthMargin` / `ImprovingDiscount` / `WorseningSurcharge` | 80 / 60 / 32 / 24 | same |
 | `kNegativeContinuationHistoryBase` | 4,136 | same |
-| `kNullMoveStaticMargin` | 96 | same |
 | `kNullMoveVerificationMinimumDepth` | 16 | same |
 | `kTablebaseInteriorWinScore` / `LossScore` | ±90,000 | same |
-| `kAspirationWindow` | 50 (+ min(32, 2·depth)) | `detail/search_runner.cpp:42,3054` |
-| `kRootSelectiveDepth` / `Margin` / `Improvement` | 3 / 20 / 15 | `detail/search_runner.cpp:43-45` |
-| `kRootShallowConfirmationDepth` / `Margin` / `ForcingMargin` | 2 / 32 / 200 | `detail/search_runner.cpp:52-54` |
-| `kRootKingSafetySelectiveDepth` / `TieMargin` | 5 / 50 | `detail/search_runner.cpp:56-57` |
-| `kMaximumMultiPv` | 16 | `detail/search_runner.cpp:89` |
-| `kEvaluationCacheSize` | 64 × 1024 | `detail/search_context.hpp:166` |
-| `kQSearchCacheSize` | 16 × 1024 | `detail/search_context.hpp:170` |
-| `kClockPollInterval` | 256 nodes | `detail/search_context.hpp:175` |
-| `kSearchContinuationPlies` | 6 | `detail/search_ordering_tables.hpp:13` |
+| `kAspirationWindow` | 50 (+ min(32, 2·depth)) | same / `detail/search_runner.cpp` |
+| `kRootSelectiveDepth` / `Margin` / `Improvement` | 3 / 20 / 15 | `detail/search_runner.cpp` |
+| `kRootShallowConfirmationDepth` / `Margin` / `ForcingMargin` | 2 / 32 / 200 | `detail/search_runner.cpp` |
+| `kRootKingSafetySelectiveDepth` / `TieMargin` | 5 / 50 | `detail/search_runner.cpp` |
+| `kMaximumMultiPv` | 16 | `detail/search_constants.hpp` |
+| `kEvaluationCacheSize` | 16 × 1024 | `detail/search_context.hpp` |
+| `kQSearchCacheSize` | 16 × 1024 | `detail/search_context.hpp` |
+| `kClockPollInterval` | 256 nodes | `detail/search_context.hpp` |
+| `kSearchContinuationPlies` | 6 | `detail/search_ordering_tables.hpp` |
 | `kLowPlyHistoryPlies` | 5 | same |
 | `PawnHistorySize` | 32 × 1024 | same |
 | `ContinuationHistorySize` | 16 × 1024 | same |
-| `CorrectionEntryLimit` / `TotalLimit` | 128 / 192 | same |
-| TT entry size | 24 bytes | `transposition_table.hpp:76` |
+| `CorrectionEntryLimit` / `TotalLimit` | 192 / 192 | same |
+| TT entry size | 24 bytes | `transposition_table.hpp` |
 
 ## 6. Time management
 
 ### 6.1 Budget construction
 
-`TimeManager::initialize` (`src/koi/time_manager.cpp:124-281`) applies these rules
+`TimeManager::initialize` (`src/koi/time_manager.cpp`) applies these rules
 in order. `Slow Mover` is a percentage (10..1000, default 100); `Move Overhead`
 is milliseconds (0..5000,
 default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.

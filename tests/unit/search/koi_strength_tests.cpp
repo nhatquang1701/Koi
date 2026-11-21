@@ -26,11 +26,6 @@ namespace {
 
 using koi::test::require;
 
-bool accepts_move(const koi::StrengthPosition& position, std::string_view move) {
-    return std::find(position.accepted_moves.begin(), position.accepted_moves.end(), move) !=
-        position.accepted_moves.end();
-}
-
 std::size_t color_index(koi::Color color) {
     return color == koi::Color::white ? 0U : 1U;
 }
@@ -264,8 +259,12 @@ void validate_fixture_contract(std::span<const koi::StrengthPosition> positions,
         }
         require(!accepted.empty(), "every fixture must carry an explicit accepted-move allowlist");
         multi_solution_count += accepted.size() > 1 ? 1U : 0U;
-        require(accepted.size() == std::count_if(position.accepted_moves.begin(), position.accepted_moves.end(),
-                                                  [](std::string_view move) { return !move.empty(); }),
+        require(accepted.size() ==
+                    static_cast<std::size_t>(std::count_if(position.accepted_moves.begin(),
+                                                           position.accepted_moves.end(),
+                                                           [](std::string_view move) {
+                                                               return !move.empty();
+                                                           })),
                 "accepted-move allowlists must not contain duplicate moves");
     }
 

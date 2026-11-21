@@ -9,13 +9,11 @@
 
 namespace koi {
 
-inline constexpr std::string_view kClassicalEvaluationFeatureSet = "koi-classical-v1";
 inline constexpr std::string_view kNnuePieceSquareV1FeatureSet = "piece-square-v1";
 inline constexpr std::string_view kNnuePieceSquareKingPawnV2FeatureSet =
     "piece-square-king-pawn-v2";
 inline constexpr std::string_view kNnueHalfkaKingBucketV1FeatureSet =
     "halfka-king-bucket-v1";
-inline constexpr std::string_view kNnueThreatPairsV1FeatureSet = "threat-pairs-v1";
 inline constexpr std::string_view kNnueHalfkaThreatV5FeatureSet =
     "halfka-king-bucket-v1+threat-pairs-v1";
 

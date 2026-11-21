@@ -1498,16 +1498,6 @@ bool GameState::legal_tactical_search_moves_with_metadata(
         moves, include_quiet_checks, false, CheckFlagMode::all_moves, true);
 }
 
-void GameState::legal_quiet_checking_search_moves_with_metadata(
-    MoveMetadataList& moves) const noexcept {
-    if (!impl_->mirror_tracking) {
-        impl_->native_position.legal_quiet_checking_search_metadata_into(moves);
-        return;
-    }
-    legal_moves_with_metadata_impl(
-        moves, true, false, CheckFlagMode::quiet_moves_only, true);
-}
-
 bool GameState::legal_tactical_only_search_moves_with_metadata(
     MoveMetadataList& moves) const noexcept {
     if (!impl_->mirror_tracking) {

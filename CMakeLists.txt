@@ -1265,6 +1265,8 @@ if(Python3_Interpreter_FOUND)
         NAME koi_trainer_python
         COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/nnue/koi_trainer_test.py -v
     )
+    # Launches several subprocesses importing PyTorch (~100s on Windows CPU).
+    koi_set_timeout(koi_trainer_python 240)
     add_test(
         NAME bullet_data_python
         COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/nnue/bullet_data_test.py -v
@@ -1483,12 +1485,12 @@ math(EXPR KOI_PYTHON_TIMEOUT
 math(EXPR KOI_DEFAULT_TIMEOUT
     "${KOI_TEST_TIMEOUT_SECONDS} * ${KOI_TIMEOUT_SCALE}")
 foreach(KOI_TEST_NAME IN LISTS KOI_REGISTERED_TESTS)
-    get_test_property(${KOI_TEST_NAME} LABELS KOI_TEST_LABELS)
-    if(KOI_TEST_LABELS MATCHES "(^|;)python(;|$)")
-        set_tests_properties(${KOI_TEST_NAME} PROPERTIES TIMEOUT ${KOI_PYTHON_TIMEOUT})
-    else()
-        get_test_property(${KOI_TEST_NAME} TIMEOUT KOI_TEST_TIMEOUT)
-        if(KOI_TEST_TIMEOUT STREQUAL "NOTFOUND")
+    get_test_property(${KOI_TEST_NAME} TIMEOUT KOI_TEST_TIMEOUT)
+    if(KOI_TEST_TIMEOUT STREQUAL "NOTFOUND")
+        get_test_property(${KOI_TEST_NAME} LABELS KOI_TEST_LABELS)
+        if(KOI_TEST_LABELS MATCHES "(^|;)python(;|$)")
+            set_tests_properties(${KOI_TEST_NAME} PROPERTIES TIMEOUT ${KOI_PYTHON_TIMEOUT})
+        else()
             set_tests_properties(${KOI_TEST_NAME} PROPERTIES TIMEOUT ${KOI_DEFAULT_TIMEOUT})
         endif()
     endif()

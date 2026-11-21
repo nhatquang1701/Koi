@@ -303,8 +303,6 @@ public:
         CheckFlagMode check_flag_mode = CheckFlagMode::all_moves) const noexcept;
     [[nodiscard]] bool legal_tactical_search_moves_with_metadata(
         MoveMetadataList& moves, bool include_quiet_checks = true) const noexcept;
-    void legal_quiet_checking_search_moves_with_metadata(
-        MoveMetadataList& moves) const noexcept;
     // Generates only captures, en-passant, and promotions for staged move
     // ordering. Returns true if only tactical moves were generated (quiets
     // deferred), or false if compatibility mirror tracking forced full movegen.

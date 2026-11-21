@@ -613,8 +613,7 @@ template <typename MoveSink>
     return moves.emplace_back(from, to, Promotion::knight);
 }
 
-template <bool IncludeCheckFlags, bool QuietChecksOnly,
-          bool DropNonCheckingQuiets, bool SkipTactical>
+template <bool IncludeCheckFlags, bool QuietChecksOnly, bool DropNonCheckingQuiets>
 class SearchMetadataSink {
 public:
     using MetadataTag = void;
@@ -687,11 +686,6 @@ public:
                                        const PieceType moving, const PieceType captured,
                                        const MoveKind kind,
                                        const bool from_safe) noexcept {
-        if constexpr (SkipTactical) {
-            if (kind == MoveKind::capture) {
-                return true;
-            }
-        }
         bool gives_check = false;
         if constexpr (IncludeCheckFlags) {
             if (!(QuietChecksOnly && kind == MoveKind::capture)) {
@@ -742,11 +736,6 @@ public:
     bool emit_pawn_move(const Square from_sq, const int from, const int to,
                                       const bool is_promotion, const Piece target,
                                       const bool from_safe) noexcept {
-        if constexpr (SkipTactical) {
-            if (is_promotion || !target.empty()) {
-                return true;
-            }
-        }
         const Square to_sq = Square::from_index(static_cast<std::uint8_t>(to));
         const PieceType cap = target.empty() ? PieceType::none : target.type;
         if (!is_promotion) {
@@ -772,9 +761,6 @@ public:
 
     [[nodiscard]] bool emit_en_passant(const Square from_sq, const Square to_sq,
                                        const int from, const int to) noexcept {
-        if constexpr (SkipTactical) {
-            return true;
-        }
         const bool gives_check = IncludeCheckFlags && !QuietChecksOnly &&
             fallback_gives_check(from, to, PieceType::pawn, MoveKind::en_passant);
         return append_record(Move(from_sq, to_sq),
@@ -961,9 +947,6 @@ private:
     std::uint64_t direct_king_checks_ = 0;
     int king_square_ = -1;
     bool can_fast_direct_ = false;
-
-public:
-    [[nodiscard]] static constexpr bool skip_tactical() noexcept { return SkipTactical; }
 };
 
 template <typename T>
@@ -1294,16 +1277,16 @@ public:
         output.clear();
         if (include_check_flags) {
             if (quiet_checks_only) {
-                SearchMetadataSink<true, true, false, false> sink(state, output);
+                SearchMetadataSink<true, true, false> sink(state, output);
                 generate_pseudo<PseudoGenMode::all>(sink);
                 sink.finish();
             } else {
-                SearchMetadataSink<true, false, false, false> sink(state, output);
+                SearchMetadataSink<true, false, false> sink(state, output);
                 generate_pseudo<PseudoGenMode::all>(sink);
                 sink.finish();
             }
         } else {
-            SearchMetadataSink<false, false, false, false> sink(state, output);
+            SearchMetadataSink<false, false, false> sink(state, output);
             generate_pseudo<PseudoGenMode::all>(sink);
             sink.finish();
         }
@@ -1314,39 +1297,32 @@ public:
         output.clear();
         const bool checked = state.checkers[state.side == Color::white ? 0U : 1U] != 0;
         if (checked) {
-            SearchMetadataSink<true, false, false, false> sink(state, output);
+            SearchMetadataSink<true, false, false> sink(state, output);
             generate_pseudo<PseudoGenMode::all>(sink);
             sink.finish();
             return !output.empty();
         }
         if (include_quiet_checks) {
-            SearchMetadataSink<true, false, true, false> sink(state, output);
+            SearchMetadataSink<true, false, true> sink(state, output);
             generate_pseudo<PseudoGenMode::tactical_and_checks>(sink);
             sink.finish();
         } else {
-            SearchMetadataSink<true, false, false, false> sink(state, output);
+            SearchMetadataSink<true, false, false> sink(state, output);
             generate_pseudo<PseudoGenMode::tactical_only>(sink);
             sink.finish();
         }
         return !output.empty() || has_legal_move();
     }
 
-    void legal_quiet_checking_search_metadata_into(MoveMetadataList& output) noexcept {
-        output.clear();
-        SearchMetadataSink<true, true, true, true> sink(state, output);
-        generate_pseudo<PseudoGenMode::tactical_and_checks>(sink);
-        sink.finish();
-    }
-
     void legal_tactical_only_search_metadata_into(MoveMetadataList& output) noexcept {
         output.clear();
-        SearchMetadataSink<false, false, false, false> sink(state, output);
+        SearchMetadataSink<false, false, false> sink(state, output);
         generate_pseudo<PseudoGenMode::tactical_only>(sink);
         sink.finish();
     }
 
     void append_quiet_search_metadata_into(MoveMetadataList& output) noexcept {
-        SearchMetadataSink<true, true, false, false> sink(state, output);
+        SearchMetadataSink<true, true, false> sink(state, output);
         generate_pseudo<PseudoGenMode::quiet_only>(sink);
         sink.finish();
     }
@@ -2069,7 +2045,7 @@ private:
         }
 
         if constexpr (is_metadata_sink_v<MoveSink>) {
-            if (!tactical_and_checks || !moves.skip_tactical()) {
+            {
                 if (king >= 0) {
                     const Square king_sq = Square::from_index(static_cast<std::uint8_t>(king));
                     const bool king_safe = !moves.pre_ray_hits(king);
@@ -2813,29 +2789,27 @@ private:
             const bool diagonal = piece.type == PieceType::bishop || piece.type == PieceType::queen;
             const bool orthogonal = piece.type == PieceType::rook || piece.type == PieceType::queen;
             if constexpr (is_metadata_sink_v<MoveSink>) {
-                if (!tactical_and_checks || !moves.skip_tactical()) {
-                    std::uint64_t slider_targets = 0;
-                    if (diagonal) {
-                        slider_targets |= detail::bishop_attacks(from, state.occupied);
-                    }
-                    if (orthogonal) {
-                        slider_targets |= detail::rook_attacks(from, state.occupied);
-                    }
-                    slider_targets &= slider_mask;
-                    while (slider_targets != 0) {
-                        const int to = static_cast<int>(std::countr_zero(slider_targets));
-                        slider_targets &= slider_targets - 1;
-                        const bool cap = tactical_only || ((enemy_non_king & bit(to)) != 0);
-                        const PieceType cap_pt = cap ?
-                            state.board[static_cast<std::size_t>(to)].type : PieceType::none;
-                        if (!moves.emit_piece_move(
-                                source, from, to, piece.type, cap_pt,
-                                cap ? MoveKind::capture : MoveKind::quiet, from_safe)) {
-                            return;
-                        }
-                    }
-                    continue;
+                std::uint64_t slider_targets = 0;
+                if (diagonal) {
+                    slider_targets |= detail::bishop_attacks(from, state.occupied);
                 }
+                if (orthogonal) {
+                    slider_targets |= detail::rook_attacks(from, state.occupied);
+                }
+                slider_targets &= slider_mask;
+                while (slider_targets != 0) {
+                    const int to = static_cast<int>(std::countr_zero(slider_targets));
+                    slider_targets &= slider_targets - 1;
+                    const bool cap = tactical_only || ((enemy_non_king & bit(to)) != 0);
+                    const PieceType cap_pt = cap ?
+                        state.board[static_cast<std::size_t>(to)].type : PieceType::none;
+                    if (!moves.emit_piece_move(
+                            source, from, to, piece.type, cap_pt,
+                            cap ? MoveKind::capture : MoveKind::quiet, from_safe)) {
+                        return;
+                    }
+                }
+                continue;
             }
             if (diagonal) {
                 const std::uint64_t diag_targets =
@@ -3105,12 +3079,6 @@ bool Position::legal_tactical_search_metadata_into(
     MoveMetadataList& output, const bool include_quiet_checks) const noexcept {
     return const_cast<NativePosition&>(impl_->position)
         .legal_tactical_search_metadata_into(output, include_quiet_checks);
-}
-
-void Position::legal_quiet_checking_search_metadata_into(
-    MoveMetadataList& output) const noexcept {
-    const_cast<NativePosition&>(impl_->position)
-        .legal_quiet_checking_search_metadata_into(output);
 }
 
 void Position::legal_tactical_only_search_metadata_into(
