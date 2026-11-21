@@ -112,6 +112,7 @@ jobs:
             dumpbin /nologo /imports build\release\%%F | findstr /I "CreateProcess" >nul
             if not errorlevel 1 exit /b 1
           )
+          exit /b 0
       - name: Sign (if configured), package, and verify Windows Release
         shell: pwsh
         env:
