@@ -546,6 +546,87 @@ void test_interior_tablebase_default_off_is_byte_identical() {
             "the default SyzygyInteriorDepth = 0 must preserve the result");
 }
 
+void test_stop_after_extreme_duration_does_not_overflow() {
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
+    const GameState root = GameState::startpos();
+
+    std::atomic<int> info_count{0};
+    std::atomic<int> completions{0};
+    SearchEventSink sink;
+    sink.on_info = [&info_count](const SearchInfo&) {
+        info_count.fetch_add(1, std::memory_order_relaxed);
+    };
+    sink.on_complete = [&completions](const SearchResult&) {
+        completions.fetch_add(1, std::memory_order_relaxed);
+    };
+
+    SearchLimits limits;
+    limits.infinite = true;
+    auto handle = service.start(root, limits, sink);
+    require(wait_for([&info_count] { return info_count.load() > 0; }, 10s),
+            "the infinite search must emit info before testing stop_after");
+
+    handle.stop_after(std::chrono::milliseconds::max());
+    std::this_thread::sleep_for(50ms);
+    require(handle.running() && completions.load() == 0,
+            "an extreme stop_after duration must not overflow into an immediate stop");
+
+    // Re-arming and cancelling the long-horizon timer must wake immediately.
+    handle.stop_after(std::chrono::hours{1});
+    handle.stop_after(40ms);
+    const bool finished = wait_for([&handle] { return !handle.running(); }, 10s);
+    if (!finished) {
+        handle.stop();
+    }
+    handle.wait();
+
+    require(finished, "the re-armed short stop_after must stop the search");
+    require(completions.load() == 1, "the stopped search must publish one completion");
+}
+
+void test_stop_after_and_ponderhit_races_complete_cleanly() {
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
+    const GameState root = GameState::startpos();
+
+    for (int round = 0; round < 16; ++round) {
+        std::atomic<int> completions{0};
+        std::optional<SearchResult> result;
+        SearchEventSink sink;
+        sink.on_complete = [&completions, &result](const SearchResult& completed) {
+            result = completed;
+            completions.fetch_add(1, std::memory_order_relaxed);
+        };
+
+        SearchLimits limits;
+        limits.ponder = true;
+        limits.infinite = true;
+        auto handle = service.start(root, limits, sink);
+
+        SearchLimits converted;
+        converted.infinite = true;
+        if ((round % 2) == 0) {
+            handle.stop_after(1ms);
+            handle.request_ponderhit(converted);
+        } else {
+            handle.stop_after(std::chrono::milliseconds::max());
+            handle.request_ponderhit(converted);
+            handle.stop_after(5ms);
+        }
+
+        const bool finished = wait_for([&handle] { return !handle.running(); }, 10s);
+        if (!finished) {
+            handle.stop();
+        }
+        handle.wait();
+
+        require(finished, "stop_after racing ponderhit must never stall search completion");
+        require(completions.load() == 1 && result.has_value() && result->best_move.has_value(),
+                "each stop_after/ponderhit race must yield one completion with a legal move");
+        require(root.is_legal(*result->best_move),
+                "the best move produced during stop_after/ponderhit races must be legal");
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -565,6 +646,8 @@ int main(int argc, char** argv) {
         {"interior tablebase hook fifty move", test_interior_tablebase_hook_respects_the_fifty_move_rule},
         {"interior tablebase hook exception", test_interior_tablebase_hook_exceptions_are_swallowed},
         {"interior tablebase default off", test_interior_tablebase_default_off_is_byte_identical},
+        {"search service stop_after overflow", test_stop_after_extreme_duration_does_not_overflow},
+        {"search service stop_after ponderhit races", test_stop_after_and_ponderhit_races_complete_cleanly},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

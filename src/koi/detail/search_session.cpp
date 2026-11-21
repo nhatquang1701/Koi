@@ -95,21 +95,28 @@ void SearchSession::request_stop_after(std::chrono::milliseconds delay) {
         return;
     }
     stop_timer_ = std::jthread([this, delay](std::stop_token token) {
-        const auto deadline = std::chrono::steady_clock::now() + delay;
-        while (!token.stop_requested()) {
-            if (stop_requested_.load(std::memory_order_relaxed)) {
+        std::mutex wait_mutex;
+        std::condition_variable_any wait_cv;
+        auto remaining = delay;
+        constexpr std::chrono::milliseconds kMaxSlice{24LL * 60 * 60 * 1000};
+        while (remaining > std::chrono::milliseconds::zero()) {
+            if (token.stop_requested() || stop_requested_.load(std::memory_order_acquire)) {
                 return;
             }
-            if (std::chrono::steady_clock::now() >= deadline) {
-                break;
+            const auto slice = remaining < kMaxSlice ? remaining : kMaxSlice;
+            std::unique_lock<std::mutex> lock(wait_mutex);
+            const bool already_stopped = wait_cv.wait_for(lock, token, slice, [this] {
+                return stop_requested_.load(std::memory_order_acquire);
+            });
+            if (already_stopped || token.stop_requested()) {
+                return;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds{5});
+            remaining -= slice;
         }
         if (token.stop_requested()) {
             return;
         }
-        stop_requested_.store(true, std::memory_order_relaxed);
-        stop_condition_.notify_all();
+        stop();
     });
 }
 

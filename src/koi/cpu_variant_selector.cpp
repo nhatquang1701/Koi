@@ -39,27 +39,22 @@ int launch_variant(const std::filesystem::path& directory, CpuVariant variant,
                                ::GetStdHandle(STD_OUTPUT_HANDLE),
                                ::GetStdHandle(STD_ERROR_HANDLE)};
     HANDLE duplicates[3] = {nullptr, nullptr, nullptr};
-    bool duplicated = true;
+    bool any_duplicated = false;
     for (int index = 0; index < 3; ++index) {
-        if (sources[index] == nullptr || sources[index] == INVALID_HANDLE_VALUE ||
-            !::DuplicateHandle(::GetCurrentProcess(), sources[index], ::GetCurrentProcess(),
-                               &duplicates[index], 0, TRUE, DUPLICATE_SAME_ACCESS)) {
-            duplicated = false;
-            break;
+        if (sources[index] == nullptr || sources[index] == INVALID_HANDLE_VALUE) {
+            continue;
         }
-    }
-    if (!duplicated) {
-        for (HANDLE& handle : duplicates) {
-            if (handle != nullptr) {
-                ::CloseHandle(handle);
-                handle = nullptr;
-            }
+        if (::DuplicateHandle(::GetCurrentProcess(), sources[index], ::GetCurrentProcess(),
+                              &duplicates[index], 0, TRUE, DUPLICATE_SAME_ACCESS)) {
+            any_duplicated = true;
+        } else {
+            duplicates[index] = nullptr;
         }
     }
 
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
-    if (duplicated) {
+    if (any_duplicated) {
         startup.dwFlags = STARTF_USESTDHANDLES;
         startup.hStdInput = duplicates[0];
         startup.hStdOutput = duplicates[1];
@@ -82,9 +77,10 @@ int launch_variant(const std::filesystem::path& directory, CpuVariant variant,
         ::CreateProcessW(child_path.c_str(), command_line.data(), nullptr, nullptr, TRUE, 0,
                          nullptr, directory.c_str(), &startup, &process);
 
-    if (duplicated) {
-        for (HANDLE& handle : duplicates) {
+    for (HANDLE& handle : duplicates) {
+        if (handle != nullptr) {
             ::CloseHandle(handle);
+            handle = nullptr;
         }
     }
 
