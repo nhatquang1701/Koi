@@ -92,11 +92,18 @@ void DebugLog::set_enabled(bool enabled) noexcept {
 }
 
 std::filesystem::path DebugLog::path() const {
+    std::error_code error;
     const std::filesystem::path base = executable_directory_.empty() ?
-        std::filesystem::current_path() : executable_directory_;
+        std::filesystem::current_path(error) : executable_directory_;
     const std::filesystem::path requested = requested_path_.empty() ?
         std::filesystem::path{"koi-debug.log"} : requested_path_;
-    return requested.is_absolute() ? requested : base / requested;
+    if (requested.is_absolute()) {
+        return requested;
+    }
+    if (executable_directory_.empty() && (error || base.empty())) {
+        return requested;
+    }
+    return base / requested;
 }
 
 void DebugLog::configure_locked() {

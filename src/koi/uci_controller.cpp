@@ -679,6 +679,45 @@ std::vector<Move> legal_pv_prefix(const GameState& root, const std::vector<Move>
     return prefix;
 }
 
+bool parse_annotate_limits(const std::vector<std::string>& tokens, const std::size_t first_index,
+                           SearchLimits& limits, std::string& error) {
+    for (std::size_t index = first_index; index < tokens.size();) {
+        const std::string& token = tokens[index];
+        if (token == "depth") {
+            std::uint64_t parsed = 0;
+            if (index + 1 >= tokens.size() || !parse_uint64(tokens[index + 1], parsed) ||
+                parsed == 0 ||
+                parsed > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+                error = "annotation depth must be positive";
+                return false;
+            }
+            limits.depth = static_cast<int>(parsed);
+            index += 2;
+        } else if (token == "movetime") {
+            std::chrono::milliseconds parsed{};
+            if (index + 1 >= tokens.size() || !parse_milliseconds(tokens[index + 1], parsed)) {
+                error = "annotation movetime must be non-negative";
+                return false;
+            }
+            limits.movetime = parsed;
+            index += 2;
+        } else if (token == "nodes") {
+            std::uint64_t parsed = 0;
+            if (index + 1 >= tokens.size() || !parse_uint64(tokens[index + 1], parsed) ||
+                parsed == 0) {
+                error = "annotation nodes must be positive";
+                return false;
+            }
+            limits.nodes = parsed;
+            index += 2;
+        } else {
+            error = "unsupported annotation limit: " + token;
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 namespace uci {
@@ -2022,7 +2061,12 @@ void UciController::handle_annotate(std::istream& command) {
 
     SearchLimits limits;
     if (tokens.size() > 1) {
-        limits = uci::parse_go_limits(join_tokens(tokens, 1, tokens.size()));
+        std::string limit_error;
+        if (!parse_annotate_limits(tokens, 1, limits, limit_error)) {
+            std::lock_guard lock(output_mutex_);
+            output_ << "info string annotate error: " << limit_error << '\n' << std::flush;
+            return;
+        }
     }
 
     MoveAnnotationOptions options;

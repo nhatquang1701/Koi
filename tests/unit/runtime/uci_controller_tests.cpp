@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "koi/position.hpp"
+#include "koi/detail/debug_log.hpp"
 #include "../../support/material_evaluator.hpp"
 #include "koi/time_manager.hpp"
 #include "koi/uci_controller.hpp"
@@ -2814,6 +2815,51 @@ void test_xboard_terminal_and_failure_replies_stay_protocol_clean() {
     }
 }
 
+void test_annotate_rejects_invalid_limits_and_debug_log_stays_nonthrowing() {
+    const ControllerResult result = run_controller(
+        "uci\n"
+        "isready\n"
+        "position startpos\n"
+        "annotate e2e4 depth 0\n"
+        "annotate e2e4 depth\n"
+        "annotate e2e4 movetime -1\n"
+        "annotate e2e4 infinite\n"
+        "annotate e2e4 ponder\n"
+        "annotate e2e4 nodes 100\n"
+        "quit\n");
+    require(result.exit_code == 0 && result.diagnostics.empty(),
+            "invalid annotate limit rejection must keep controller clean");
+    const std::vector<std::string> lines =
+        lines_starting_with(output_lines(result.output), "info string annotate ");
+    require(lines.size() == 6,
+            "expected five annotate errors followed by one valid default/node-capped annotation");
+    require(lines[0].find("annotate error: annotation depth must be positive") != std::string::npos &&
+                lines[1].find("annotate error: annotation depth must be positive") !=
+                    std::string::npos &&
+                lines[2].find("annotate error: annotation movetime must be non-negative") !=
+                    std::string::npos &&
+                lines[3].find("annotate error: unsupported annotation limit: infinite") !=
+                    std::string::npos &&
+                lines[4].find("annotate error: unsupported annotation limit: ponder") !=
+                    std::string::npos,
+            "invalid or unsupported annotate limits must report explicit errors");
+    require(lines[5].find("annotate move e2e4 ") != std::string::npos,
+            "valid annotate limits after errors must still run");
+
+    koi::test::TempDirectory temp;
+    koi::detail::DebugLog log;
+    log.set_requested_path("missing_subdir/koi-debug.log");
+    log.set_enabled(true);
+    log.configure();
+    log.write_event("probe", "\"ok\":true");
+    log.set_executable_directory(temp.path());
+    log.set_requested_path("clean-debug.log");
+    log.configure();
+    log.write_event("probe", "\"ok\":true");
+    require(std::filesystem::exists(temp.path() / "clean-debug.log"),
+            "DebugLog must recover and write once configured with a valid directory");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2899,6 +2945,8 @@ int main(int argc, char** argv) {
          test_cross_protocol_switch_stops_active_search_and_preserves_cyclone},
         {"XBoard terminal and failure replies",
          test_xboard_terminal_and_failure_replies_stay_protocol_clean},
+        {"annotate limit validation and debug log safety",
+         test_annotate_rejects_invalid_limits_and_debug_log_stays_nonthrowing},
     };
 
     return koi::test::run_tests(tests, argc, argv);

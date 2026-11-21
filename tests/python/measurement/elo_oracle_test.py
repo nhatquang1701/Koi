@@ -768,6 +768,50 @@ class MoveAnnotationTests(unittest.TestCase):
         self.assertEqual(payload["games"][0]["white_summary"]["blunder"], 1)
         self.assertEqual(payload["games"][0]["moves"][2]["classification"], "blunder")
 
+    def test_annotate_pgn_rejects_invalid_limits_and_control_char_fen(self):
+        import tools.measurement.annotate_pgn as annotate_pgn
+        import tools.measurement.elo_oracle as elo_oracle
+
+        with tempfile.TemporaryDirectory(prefix="koi annotate invalid ") as temporary_directory:
+            tmp = Path(temporary_directory)
+            pgn_path = tmp / "game.pgn"
+            pgn_path.write_text('[Result "*"]\n\n1. e4 *\n', encoding="utf-8")
+            koi_path = tmp / "fake_koi.cmd"
+            koi_path.write_text("@echo off\n", encoding="utf-8")
+
+            invalid_kwargs_list = [
+                {"depth": 0},
+                {"movetime_ms": -1},
+                {"nodes": 0},
+                {"threads": 0},
+                {"hash_mb": 0},
+                {"max_games": 0},
+            ]
+            for kwargs in invalid_kwargs_list:
+                with self.assertRaises(elo_oracle.OracleError):
+                    annotate_pgn.annotate_pgn_file(pgn_path, koi_path, **kwargs)
+
+        class _NeverSendEngine:
+            def _set_options(self, _options):
+                pass
+
+            def _wait_ready(self):
+                pass
+
+            def _send(self, command):
+                raise AssertionError(f"unexpected command sent: {command!r}")
+
+        with self.assertRaises(elo_oracle.OracleError):
+            annotate_pgn._annotate_game_with_engine(
+                _NeverSendEngine(),
+                "8/8/8/8/8/8/8/K6k w - - 0 1\nquit",
+                ["a1a2"],
+                depth=1,
+                movetime_ms=None,
+                nodes=None,
+                engine_options={},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

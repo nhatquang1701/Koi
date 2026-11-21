@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import io
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -164,6 +165,37 @@ def format_pgn_eval_tag(score_cp: int, mate: Optional[int], side: str) -> str:
     return f"{white_cp / 100.0:+.2f}"
 
 
+_UCI_MOVE_RE = re.compile(r"^[a-h][1-8][a-h][1-8][nbrq]?$")
+
+
+def _has_control_chars(value: str) -> bool:
+    return any(ord(ch) < 32 or ord(ch) == 127 for ch in value)
+
+
+def _validate_annotation_options(
+    depth: Optional[int],
+    movetime_ms: Optional[int],
+    nodes: Optional[int],
+    threads: int,
+    hash_mb: Optional[int],
+    max_games: Optional[int],
+) -> None:
+    if depth is not None and int(depth) <= 0:
+        raise elo_oracle.OracleError(f"Annotation --depth must be positive (got {depth}).")
+    if movetime_ms is not None and int(movetime_ms) < 0:
+        raise elo_oracle.OracleError(
+            f"Annotation --movetime-ms must be non-negative (got {movetime_ms})."
+        )
+    if nodes is not None and int(nodes) <= 0:
+        raise elo_oracle.OracleError(f"Annotation --nodes must be positive (got {nodes}).")
+    if int(threads) < 1:
+        raise elo_oracle.OracleError(f"Annotation --threads must be at least 1 (got {threads}).")
+    if hash_mb is not None and int(hash_mb) < 1:
+        raise elo_oracle.OracleError(f"Annotation --hash-mb must be at least 1 (got {hash_mb}).")
+    if max_games is not None and int(max_games) < 1:
+        raise elo_oracle.OracleError(f"Annotation --max-games must be at least 1 (got {max_games}).")
+
+
 def _annotate_game_with_engine(
     engine: elo_oracle.UciEngine,
     start_fen: Optional[str],
@@ -179,6 +211,12 @@ def _annotate_game_with_engine(
 
     engine._set_options(engine_options)
     engine._wait_ready()
+
+    if start_fen is not None and _has_control_chars(start_fen):
+        raise elo_oracle.OracleError("Invalid control characters in PGN FEN header.")
+    for move in uci_moves:
+        if not _UCI_MOVE_RE.fullmatch(move):
+            raise elo_oracle.OracleError(f"Invalid UCI move extracted from PGN: {move!r}")
 
     position_cmd = f"position fen {start_fen}" if start_fen else "position startpos"
     position_cmd += " moves " + " ".join(uci_moves)
@@ -337,6 +375,8 @@ def annotate_pgn_file(
     include_glyphs: bool = False,
 ) -> Dict[str, Any]:
     """Read `pgn_path`, annotate every game with Koi, and return PGN text + structured JSON."""
+
+    _validate_annotation_options(depth, movetime_ms, nodes, threads, hash_mb, max_games)
 
     chess, pgn = elo_oracle._load_chess_modules()
     raw_pgn, pgn_bytes = elo_oracle._read_pgn(pgn_path)
