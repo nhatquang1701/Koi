@@ -1,24 +1,16 @@
-# Stockfish 19 (vendored reference)
+# Stockfish 19 (external opponent binary location)
 
-This directory vendors the upstream Stockfish 19 source tree for two
-non-production purposes:
+Koi does not compile, link, or vendor Stockfish C++ source code. This folder
+serves as the conventional location for a local, untracked external Stockfish 19
+executable used by optional match, training-data, and Elo tools:
 
-- **Search guidance.** Historical design and planning records referenced the
-  Stockfish 19
-  source under
-  `stockfish-windows-x86-64-universal/stockfish/src` when comparing search
-  heuristics. Koi does not compile, link, or include any of this code.
-- **Measurement oracle.** The Windows x64 executable
-  `stockfish-windows-x86-64-universal/stockfish/stockfish-windows-x86-64-universal.exe`
-  is used by the optional match and Elo tooling (`tools/measurement/`) as an
-  external opponent. It is a local, untracked build artifact (ignored by
-  `.gitignore` via `*.exe`); do not commit it.
+- Windows x64 path:
+  `third_party/stockfish-19/stockfish-windows-x86-64-universal/stockfish/stockfish-windows-x86-64-universal.exe`
 
-The source tree is unmodified upstream material. Its version is identified by
-the directory name (`stockfish-19`); see `stockfish-windows-x86-64-universal/stockfish/AUTHORS`
-and `CITATION.cff` for upstream attribution.
+Binaries (`*.exe`) are ignored by `.gitignore`; download or build Stockfish
+upstream and place the executable locally without committing binaries or
+upstream source trees.
 
 Stockfish is licensed under the GNU General Public License, version 3. See
-`stockfish-windows-x86-64-universal/stockfish/Copying.txt`. Because none of this
-code is linked into `koi-engine`, the Koi binaries do not inherit that license,
-but any redistribution of this reference tree must retain the GPLv3 terms.
+[https://stockfishchess.org/](https://stockfishchess.org/) for upstream releases
+and licensing terms.

@@ -397,7 +397,7 @@ if ((Count-Lines $ponderEof '^bestmove ') -ne 0) {
 # 9. Fail-closed asset matrix: malformed/missing NNUE, book and Syzygy inputs
 # must leave the engine usable, protocol-clean and crash-free.
 Write-TestProgress 5 25 'fail-closed asset matrix: malformed book/NNUE/Syzygy and hot-swap'
-$assetRoot = Join-Path (Split-Path -Parent $EnginePath) ("protocol-fuzz-assets-" + $PID)
+$assetRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("koi-protocol-fuzz-assets-" + $PID + "-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 $assetEngine = Join-Path $assetRoot 'engine'
 $assetAuto = Join-Path $assetRoot 'engine-auto'
 $assetAutoBadBook = Join-Path $assetRoot 'engine-auto-bad-book'

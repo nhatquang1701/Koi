@@ -36,9 +36,9 @@ Polyglot/book compatibility, completion validation, explicit differential
 diagnostics, and other legacy adapters; `FeatureState` owns cached
 `PositionFeatures` derived from the native `Position`. The mirror is not part
 of the public API and is covered by the opt-in `KOI_BUILD_SHADOW_DIFF`
-differential target. Search moves still update the mirror transactionally, while
-interior search skips the expensive mirror comparison; explicit validation and
-diagnostic boundaries retain it. The NNUE evaluator, time management, the
+differential target. Explicit validation and diagnostic boundaries still check
+the mirror, while search-only copies detach it at root (`GameState::detach_mirror()`)
+so search moves never maintain or copy the shadow board. The NNUE evaluator, time management, the
 transposition table, and the `SearchService` build on Koi-owned types. The UCI
 controller owns the current position and worker lifecycle, and is the only layer
 that writes protocol output.
@@ -146,8 +146,8 @@ On macOS arm64 (Apple Silicon):
 - CMake 3.31 or newer, for example `python3 -m pip install --upgrade cmake`.
 - C++26 named modules are disabled on macOS (`-DKOI_BUILD_MODULES=OFF`), and
   the Linux static-runtime policy does not apply (`-DKOI_STATIC_RUNTIME=OFF`).
-  The engine is CPU-only and uses the CPU NNUE network when one is loaded; NNUE
-  is required since the 2026-10-28 HCE removal.
+  The engine is CPU-only and uses the CPU NNUE evaluator by default (unless
+  `KOI_EVALUATOR=hce` or `EvalMode=hce` selects the clean classical evaluator).
 - Optional: `pwsh` for the PowerShell process tests and Python 3 for the
   Python tooling tests.
 
@@ -393,15 +393,15 @@ Networks are trained with the Python trainer directly. The Koi NNUE Studio GUI
 ```powershell
 python .\tools\measurement\train_nnue_koi.py --corpus .\artifacts\training\corpus.txt `
   --net-out .\artifacts\training\koi-v4.nnue --arch v4 --hidden-units 1024 --epochs 10
-pwsh -NoProfile -File .\tools\nnue\ab_match.ps1 -NnueNet .\artifacts\training\koi.nnue -Games 20
 pwsh -NoProfile -File .\tools\nnue\net_match.ps1 -NnueNet .\artifacts\training\koi-v4-1024.nnue `
   -OpponentNet .\artifacts\training\koi-sf-v1.nnue -Games 20
 ```
 
-Validation runs the 64-position `koi-bench --nnue` gate and a colour-split A/B
-match against the classical evaluator (`tools/nnue/ab_match.ps1`, schema
-`koi-nnue-ab-match-v1`) or against an earlier network (`tools/nnue/net_match.ps1`,
-schema `koi-nnue-net-match-v1`). Validation output is a local report, not an Elo
+Validation runs the 64-position `koi-bench --nnue` gate and a colour-split
+network-vs-network match (`tools/nnue/net_match.ps1`, schema
+`koi-nnue-net-match-v1`), or `tools/stability/uci_match.ps1` with
+`-OpponentOptions @{ EvalMode = 'hce' }` against the clean classical evaluator.
+Validation output is a local report, not an Elo
 claim or a CI threshold. Use `Threads` to configure multi-threaded CPU search.
 
 For a reproducible local match against Stockfish or another UCI engine, use the
@@ -598,13 +598,14 @@ continues to evaluate standard FIDE chess.
 
 ### Test inventory and known gaps
 
-The reference Windows Release configuration with Python 3 registers 76 CTest
-tests (`KOI_BUILD_SHADOW_DIFF=OFF`); enabling the shadow-diff oracle adds
-`koi_shadow_diff_tests`, and a local `cutechess-cli.exe` adds the optional
-stability smoke, so the count varies with those optional pieces. Run `ctest -N`
+The reference Windows Release configuration with Python 3 and Cute Chess registers
+86 CTest tests (`85` without `cutechess_stability_smoke`; `KOI_BUILD_SHADOW_DIFF=OFF`);
+enabling the shadow-diff oracle adds `koi_shadow_diff_tests`, so the count
+varies with those optional pieces. Run `ctest -N`
 on the actual build instead of relying on a fixed number. Continuous
-integration runs the suite on Windows (`.github/workflows/windows.yml`) and on
-Linux with GCC 14 and Clang 18 (`.github/workflows/linux.yml`). `koi_search_tests`, the heaviest suite, is
+integration runs the suite on Windows (`.github/workflows/windows.yml`),
+Linux with GCC 14 and Clang 18 (`.github/workflows/linux.yml`), and macOS
+arm64 (`.github/workflows/macos.yml`). `koi_search_tests`, the heaviest suite, is
 registered as four shards, every test carries labels (`unit`, `integration`,
 `process`, `python`, `heavy`, and focused sub-labels), and the whole suite runs
 in parallel (`ctest -j`; `tools/test/run_tests.ps1` builds, runs it with JUnit
@@ -615,7 +616,7 @@ full inventory, how to run the whole suite or a single test (`KOI_TEST_FILTER`,
 `KOI_ALLOW_XPASS`, `KOI_TEST_TIMEOUT_SECONDS`, `KOI_UCI_TIMEOUT_MS`,
 `KOI_REPLAY_PATH`, `PYTHONDONTWRITEBYTECODE`, `KOI_NNUE_BOUNDARY_EXE`),
 optional-dependency skips, and per-test timeouts. The search suite's
-`known_failures` and `intermittent` registries are empty for v1.2.0; all 152
+`known_failures` and `intermittent` registries are empty for v1.2.0; all 147
 search behavior cases run as ordinary fatal tests. The dated counts in the
 verification snapshots below ("17 targets", "26 tests") are historical records
 from the 2026-09-05 and 2026-09-06 runs, not the current inventory.

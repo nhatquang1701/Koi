@@ -1,2 +1,0 @@
-# Separate one-game load/protocol smoke; not part of the held-out match set.
-mcts-e1-smoke | e2e4 e7e5

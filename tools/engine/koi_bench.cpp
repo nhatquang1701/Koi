@@ -205,7 +205,7 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
             continue;
         }
         if (argument == "--nnue") {
-            // Required since the HCE removal (2026-10-28).
+            // Default production mode requires an explicit `--nnue <path>` (use `--hce` for ClassicalEvaluator).
             if (index + 1 >= argc) {
                 return std::nullopt;
             }

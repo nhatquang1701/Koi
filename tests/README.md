@@ -62,15 +62,19 @@ ctest --test-dir build\release -N
 ctest --test-dir build\release -C Release -R koi_strength_tests --output-on-failure
 ```
 
-The current Windows Release configuration with Python 3 registers **76 tests**
-(`KOI_BUILD_SHADOW_DIFF=OFF`); `ctest -N` is authoritative for a given build. The count varies
-with optional dependencies:
+The current Windows Release configuration with Python 3 and Cute Chess registers
+**86 tests** (`85` without `cutechess_stability_smoke`; `KOI_BUILD_SHADOW_DIFF=OFF`);
+`ctest -N` is authoritative for a given build. The count varies with optional
+dependencies:
 `koi_shadow_diff_tests` requires `-DKOI_BUILD_SHADOW_DIFF=ON`, and
 `cutechess_stability_smoke` is only registered when `cutechess-cli.exe` is
 found. `cutechess_stability_diagnostics` is always registered and exercises the
-fabricated-engine harness. The Windows-only packaging and stability tests are
-registered only on Windows, and `koi_module_tests` is registered only when
-C++26 named modules are built (pass `-DKOI_BUILD_MODULES=OFF` to skip them).
+fabricated-engine harness. Packaging (`package_release_layout`,
+`windows_ci_configuration`, `install_book_script`) and UCI process tests register
+whenever PowerShell (`pwsh`) is available (Windows, Linux, and macOS), while
+Windows-only stability/Cutechess tests require Windows and `koi_module_tests`
+is registered only when C++26 named modules are built (pass
+`-DKOI_BUILD_MODULES=OFF` to skip them).
 
 The previously monolithic `koi_search_tests` CTest entry is now four shards
 (`koi_search_tests_1of4` … `koi_search_tests_4of4`) so the heaviest suite

@@ -245,10 +245,10 @@ int main(int argc, char* argv[]) {
     // option before a large default allocation is charged to the first clock.
     // UciController materializes the configured 512 MB default at isready.
     //
-    // Evaluator selection: a network named `koi.nnue` beside the executable
-    // (or the path in KOI_NNUE_PATH) is required since the HCE removal
-    // (2026-10-28). `setoption name EvalFile` can load a different network at
-    // runtime; a rejected file keeps the boot network instead of failing.
+    // Default NNUE evaluator selection: discover `koi.nnue` beside the binary
+    // (or `KOI_NNUE_PATH`), unless `KOI_EVALUATOR=hce` is explicitly selected
+    // below. `setoption name EvalFile` can load a different network at
+    // runtime; a rejected file keeps the boot evaluator instead of failing.
     const std::filesystem::path engine_directory = executable_directory(argc, argv);
     std::filesystem::path nnue_path;
     bool autodiscovered_network = false;

@@ -552,8 +552,8 @@ function Start-UciEngine([string]$Path, [string]$Label, [string]$BootEvalFile = 
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
     if (-not [string]::IsNullOrWhiteSpace($BootEvalFile)) {
-        # NNUE is mandatory since the HCE removal (2026-10-28): the engine must
-        # see a network at boot, before `EvalFile` can be applied over UCI.
+        # Default NNUE boot requires seeing a network before UCI `EvalFile`
+        # can be applied, unless `KOI_EVALUATOR=hce` is configured.
         $startInfo.EnvironmentVariables['KOI_NNUE_PATH'] = $BootEvalFile
     }
 

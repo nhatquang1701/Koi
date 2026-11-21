@@ -58,8 +58,8 @@ function Invoke-BoundedProcess {
     if (-not [string]::IsNullOrWhiteSpace($CpuVariant)) {
         $startInfo.EnvironmentVariables['KOI_CPU_VARIANT'] = $CpuVariant
     }
-    # NNUE is mandatory since the HCE removal, so a packaged engine without a
-    # bundled network must still be smoked with the build-tree fixture network.
+    # Default NNUE boot requires a usable network, so a packaged engine tested
+    # without a bundled network must receive the build-tree fixture network.
     if (-not [string]::IsNullOrWhiteSpace($NnuePath)) {
         $startInfo.EnvironmentVariables['KOI_NNUE_PATH'] = $NnuePath
     }

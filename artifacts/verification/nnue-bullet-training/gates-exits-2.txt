@@ -1,3 +1,0 @@
-AB2_EXIT=0 
-NET2_EXIT=0 
-DONE 

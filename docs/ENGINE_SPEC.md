@@ -13,11 +13,11 @@ SMP. Release packages ship the gated Koi-native NNUE evaluator as the primary
 evaluator: the network is bundled flat beside the executables as `koi.nnue`,
 auto-discovered at boot, and
 advertised through the `EvalFile` default `<autodiscovery>`. The original hand-crafted
-classical evaluator was **removed on 2026-10-28** and is being cleanly rewritten
-(`src/koi/classical_evaluator.*`); NNUE stays the default and production
-evaluator, and a default boot without a usable network exits 4 with a diagnostic.
-The HCE is selectable for development and measurement with `EvalMode=hce` or the
-`KOI_EVALUATOR=hce` boot override.
+classical evaluator was removed on 2026-10-28 and replaced with the clean rewrite
+in `src/koi/classical_evaluator.hpp` and `src/koi/classical_evaluator.cpp`; NNUE
+stays the default and production evaluator, and a default boot without a usable
+network exits 4 with a diagnostic. The clean HCE is selectable for development
+and measurement with `EvalMode=hce` or the `KOI_EVALUATOR=hce` boot override.
 
 ## 1. Identity and platforms
 
@@ -93,7 +93,7 @@ stack to 16 MiB in `main.cpp`.
 | `koi-bench` | AVX2 on x86-64; baseline on macOS arm64 | 64-position hard tactical suite and 128-position optional positional corpus; JSON profiles and speed reports |
 | `koi-perft`, `koi-replay`, `koi-eval-features`, `koi-nnue-fixture` | Same policy as `koi-bench` | Rules/perft, replay, evaluator-feature dump, NNUE fixture generator |
 
-CPU variant selection lives in `src/koi/cpu_variant.cpp` and `src/koi/main.cpp`:
+CPU variant selection lives in `src/koi/cpu_variant.cpp` and `src/main.cpp`:
 
 - The selector is compiled only into the baseline `koi-engine` (`KOI_CPU_SELECTOR=1`).
 - `KOI_CPU_VARIANT` accepts `generic`, `avx2`, `avx512` case-insensitively; `auto`
@@ -340,8 +340,9 @@ with this evaluator; the unit suite lives in `classical_evaluator_tests`.
 The loader accepts Koi NNUE containers with magic `KOI-NNUE`, quantization
 `int16/int8`, a SHA-256 payload digest, and a 256 MiB maximum file size
 (`src/koi/nnue.cpp`). Supported versions are 2, 3, 4, 5, 6, and 8; version 1 is
-not accepted by `validate_manifest` even though legacy v1 constants remain in the
-header. **There is no version 7 container:** no v7 constant or parser branch
+not accepted by `validate_manifest` (v2 uses the `"piece-square-v1"` feature
+set name and is the earliest container version defined in `src/koi/nnue.hpp`).
+**There is no version 7 container:** no v7 constant or parser branch
 exists, and the `koi-v7-*` names under `artifacts/training/` are trainer
 experiment labels whose exports are v4 containers. Version 8 accepts either
 the 36864-input v6 threat layout or the 9216-input v4 HalfKA-only layout,
@@ -938,7 +939,8 @@ unit -LE heavy` is the fast unit set. Search shards, `koi_strength_tests`,
 
 The exact registered count depends on optional dependencies (`pwsh`, Python 3,
 Cute Chess, `KOI_BUILD_SHADOW_DIFF`, modules). The reference Windows Release +
-Python configuration registers 76 tests; always treat `ctest -N` on the actual
+Python + Cute Chess configuration registers **86 tests** (`85` without
+`cutechess_stability_smoke`); always treat `ctest -N` on the actual
 build as authoritative.
 
 ### 9.2 Sanitizer and differential legs
@@ -1038,8 +1040,9 @@ name and version while the tag is the version alone.
   `SearchPolicy::dynamic_late_move`; any documentation that describes a "LMR
   table" is inaccurate for this tree.
 - **Platform feature gaps:** macOS arm64 ships no AVX2/AVX-512 siblings, uses
-  scalar NNUE (NEON only vectorizes the v4 CReLU clamp), disables named modules in
-  the documented build, cannot use the static-runtime option, and no CUDA path. Windows requires MSVC; Linux requires x86-64.
+  vectorized NEON fused inference for v4 and scalar NNUE otherwise, disables
+  named modules in the documented build, cannot use the static-runtime option,
+  and has no CUDA path. Windows requires MSVC; Linux requires x86-64.
 - **Sanitizer coverage is partial:** ASan is MSVC-only and runs the fast subset;
   TSan exists only on Linux; macOS has no sanitizer leg.
 - **PGO is MSVC-only.** `KOI_PGO` rejects non-MSVC configurations.
@@ -1047,7 +1050,8 @@ name and version while the tag is the version alone.
   commit-level build identity lives in benchmark JSON and package provenance.
 - **NNUE v1 containers are not accepted** by the current loader (versions 2, 3,
   4, 5, 6, and 8 are).
-- **Test count depends on optional features:** both `tests/README.md` and
-  `docs/USER_GUIDE.md` document 76 registered tests in the reference Windows
-  Release + Python configuration, while `ctest -N` is authoritative for any
+- **Test count depends on optional features:** `tests/README.md`,
+  `docs/USER_GUIDE.md`, and §9.1 document 86 registered tests in the reference
+  Windows Release + Python + Cute Chess configuration (`85` without
+  `cutechess_stability_smoke`), while `ctest -N` is authoritative for any
   specific build tree.

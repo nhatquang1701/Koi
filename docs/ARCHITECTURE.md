@@ -166,7 +166,7 @@ flowchart TD
 | `detail/search_context.*` | Search-local recursive state: move loop, quiescence, pruning call sites, fixed-capacity stack. |
 | `detail/search_policy.hpp` | Centralized scalar gates: null move, late-move reductions, futility, probcut, check extensions. |
 | `position.cpp` | Production authority for legality, position keys, rule state, and move generation. |
-| `game_state.cpp` | Compatibility facade used by the evaluator, search, and UCI APIs; keeps its private mirror synchronized. |
+| `game_state.cpp` | Compatibility facade used by the evaluator, search, and UCI APIs; synchronizes its private mirror when attached (`GameState::detach_mirror()` disables shadow tracking on search copies). |
 | `transposition_table.cpp` | Physical storage, locking, generations, clearing, resizing, and mate-score normalization. |
 | `static_exchange.cpp` | Bitboard static-exchange evaluation used by pruning and ordering. |
 | `search_ordering.cpp` | History, killers, and continuation counters for move ordering. |

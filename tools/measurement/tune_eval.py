@@ -533,8 +533,8 @@ def main(argv: list[str]) -> int:
     if argv and argv[0] == "nnue":
         return nnue_main(argv[1:])
     print(
-        "tune_eval.py: the classical evaluator was removed (2026-10-28); "
-        "only the 'nnue' subcommand remains (see docs/HCE_REMOVAL_PLAN.md).",
+        "tune_eval.py: legacy classical parameter tuning was retired (2026-10-28); "
+        "only the 'nnue' subcommand remains.",
         file=sys.stderr,
     )
     return 2

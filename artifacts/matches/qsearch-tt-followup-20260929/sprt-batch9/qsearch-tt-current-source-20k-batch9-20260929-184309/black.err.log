@@ -1,5 +1,0 @@
-Exception: C:\Users\ntATh\AI test\Koi engine\tools\stability\uci_match.ps1:949
-Line |
- 949 |          throw "koi-replay exited with ${LASTEXITCODE}: $($output -joi .
-     |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     | koi-replay exited with -1073741205: 

@@ -1,5 +1,0 @@
-Exception: /work/tools/stability/uci_match.ps1:410
-Line |
- 410 |          throw "Opening file contains no positions: $OpeningFile"
-     |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     | Opening file contains no positions: /inputs/openings.txt

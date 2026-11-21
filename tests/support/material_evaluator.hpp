@@ -1,9 +1,9 @@
 #pragma once
 
 // Deterministic, deliberately simple material + centralisation evaluator used
-// only by tests. It exists because the hand-crafted classical evaluator (HCE)
-// was removed from the engine on 2026-10-28; a clean HCE rewrite is planned
-// (docs/HCE_REMOVAL_PLAN.md). Production code must use NNUE.
+// only by tests to isolate search contracts from NNUE network or ClassicalEvaluator
+// calibration changes. Production code uses NNUE by default (or ClassicalEvaluator
+// via EvalMode=hce).
 
 #include "koi/evaluator.hpp"
 #include "koi/game_state.hpp"

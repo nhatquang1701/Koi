@@ -4015,8 +4015,9 @@ std::optional<std::filesystem::path> discover_nnue_network(
 
 EvaluatorSelection make_evaluator(std::optional<std::filesystem::path> nnue_path) {
     EvaluatorSelection selection;
-    // HCE was removed on 2026-10-28; a network is required. Missing or rejected
-    // networks leave `evaluator` null and the caller reports the failure.
+    // NNUE is the default boot evaluator (`KOI_EVALUATOR=hce` / `EvalMode=hce`
+    // select ClassicalEvaluator separately). Missing or rejected network files
+    // leave `evaluator` null so the caller reports the failure explicitly.
     if (!nnue_path.has_value()) {
         selection.nnue_error = NnueError{NnueErrorCode::malformed_manifest,
                                           "no network path given"};

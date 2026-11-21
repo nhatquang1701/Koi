@@ -344,12 +344,13 @@ private:
     bool int16_accumulator_safe_ = false;
 };
 
-// Selection seam used by the engine entry points and by the advertised
+// NNUE selection seam used by the engine entry points and by the advertised
 // `EvalFile` option. At boot `main.cpp` resolves `KOI_NNUE_PATH` or `koi.nnue`
-// beside the executable through `make_evaluator`; at runtime
-// `uci_controller.cpp` swaps the evaluator when `EvalFile` is set. NNUE is
-// required since the HCE removal (2026-10-28): a null evaluator means the
-// network was missing or rejected, and the caller reports it.
+// beside the executable through `make_evaluator()` unless `KOI_EVALUATOR=hce`
+// selects the clean classical evaluator; at runtime `uci_controller.cpp` swaps
+// the NNUE evaluator via `EvalFile` and switches evaluators via `EvalMode`. A
+// null evaluator means the requested network was missing or rejected, and the
+// caller reports it.
 struct EvaluatorSelection {
     std::shared_ptr<const Evaluator> evaluator;
     bool nnue_enabled = false;

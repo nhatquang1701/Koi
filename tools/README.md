@@ -41,25 +41,6 @@ archive on its own platform. Each package includes a file
 manifest with SHA-256 hashes and source provenance; the archive has a matching
 `.sha256` sidecar.
 
-## Curating legacy evidence
-
-`tools/build/curate_artifacts.ps1` is a one-time, allowlisted importer for
-previous Koi result bundles. It copies only approved report/evidence file types,
-verifies every destination hash, and writes
-`artifacts/manifests/external-evidence-manifest.json`. The source is explicit so
-normal commands never create or depend on an external results directory:
-
-```powershell
-$approvedLegacyEvidenceRoot = Read-Host 'Path to the approved legacy evidence directory'
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\tools\build\curate_artifacts.ps1 `
-  -SourceRoot $approvedLegacyEvidenceRoot `
-  -DestinationRoot .\artifacts
-```
-
-Review the manifest before optionally repeating the command with `-PruneSource`;
-that switch removes only the selected, verified source bundles.
-
 ## Generated-tree organization
 
 `tools/build/prune_generated_trees.ps1` previews stale direct children of
@@ -72,16 +53,6 @@ previewed as stale):
 & .\tools\build\prune_generated_trees.ps1
 & .\tools\build\prune_generated_trees.ps1 -Apply
 ```
-
-After a verified build and Release CTest run, write the ignored provenance
-manifest with:
-
-```powershell
-& .\tools\build\write_organization_manifest.ps1
-```
-
-It records tracked moves, canonical build/executable hashes, toolchain versions,
-the verification result, and every hash in the curated evidence manifest.
 
 ## Fixed-depth performance gate
 
@@ -541,12 +512,10 @@ python .\tools\nnue\run_bullet.py --help
 
 Validation runs the 64-position gate (`koi-bench --nnue`) and a node-limited,
 colour-split network-vs-network match (`tools/nnue/net_match.ps1`, schema
-`koi-nnue-net-match-v1`). The classical A/B (`tools/nnue/ab_match.ps1`) is
-historical only: the classical evaluator was removed 2026-10-28. Those results
-are local reports and no reported number is an Elo claim. `ab_match.ps1` defaults to the 32 curated openings in
-`tests/data/openings/openings-curated-32.txt` but still repeats openings across
-its per-position games, so its screens are half-duplicated; use `net_match.ps1`
-(or another deduplicated protocol) for evidence runs. `net_match.ps1` prefers the
+`koi-nnue-net-match-v1`), or `tools/stability/uci_match.ps1` with
+`-OpponentOptions @{ EvalMode = 'hce' }` against the clean classical
+evaluator. Those results are local reports and no reported number is an Elo
+claim. `net_match.ps1` prefers the
 160-opening `tests/data/openings/openings-release-strength-160.txt` corpus
 (falling back to the curated book), plays exactly one game per opening per
 colour, refuses a request that would repeat a game, and marks its report

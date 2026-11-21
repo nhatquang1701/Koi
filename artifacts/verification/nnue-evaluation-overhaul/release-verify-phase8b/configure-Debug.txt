@@ -1,3 +1,0 @@
--- Configuring done (1.3s)
--- Generating done (0.2s)
--- Build files have been written to: C:/Users/ntATh/AI test/Koi engine/build/debug

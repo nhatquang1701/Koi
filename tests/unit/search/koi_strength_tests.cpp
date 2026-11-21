@@ -18,13 +18,9 @@
 
 #include "koi_test_support.hpp"
 
-// HCE-calibrated fixtures were retired when the classical evaluator was
-// removed (2026-10-28): their reviewed moves, scores, and pruning counters
-// were recorded against that score distribution. Re-record them with the
-// clean HCE rewrite (docs/HCE_REMOVAL_PLAN.md).
-
-// HCE-calibrated strength fixtures were retired when the classical evaluator
-// was removed (2026-10-28); re-record them with the clean HCE rewrite.
+// HCE-calibrated fixtures were retired when the original classical evaluator
+// was removed (2026-10-28); these tactical tests isolate search behavior
+// with `MaterialEvaluator`.
 
 namespace {
 
