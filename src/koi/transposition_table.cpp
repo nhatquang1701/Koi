@@ -449,7 +449,7 @@ HashResizeResult TranspositionTable::set_size_mb(std::size_t megabytes) noexcept
     // callback would block on the same mutex and the resize would deadlock.
     if (retired != nullptr) {
         for (const HazardSlot& hazard : hazards_) {
-            while (hazard.storage.load(std::memory_order_acquire) == retired.get()) {
+            while (hazard.storage.load(std::memory_order_seq_cst) == retired.get()) {
                 std::this_thread::yield();
             }
         }
@@ -462,7 +462,7 @@ void TranspositionTable::reap_deferred_storage_locked() noexcept {
         Storage* const candidate = entry->get();
         bool referenced = false;
         for (const HazardSlot& hazard : hazards_) {
-            if (hazard.storage.load(std::memory_order_acquire) == candidate) {
+            if (hazard.storage.load(std::memory_order_seq_cst) == candidate) {
                 referenced = true;
                 break;
             }
@@ -486,7 +486,7 @@ HashResizeResult TranspositionTable::try_set_size_mb(std::size_t megabytes) noex
     if (retired != nullptr) {
         bool referenced = false;
         for (const HazardSlot& hazard : hazards_) {
-            if (hazard.storage.load(std::memory_order_acquire) == retired.get()) {
+            if (hazard.storage.load(std::memory_order_seq_cst) == retired.get()) {
                 referenced = true;
                 break;
             }
@@ -592,7 +592,7 @@ HashResizeResult TranspositionTable::resize_locked(std::size_t megabytes,
             // reader can no longer keep a freed storage alive the way the old
             // "keep the last two storages" cap could.
             storage_ = std::move(replacement);
-            hot_storage_.store(raw, std::memory_order_release);
+            hot_storage_.store(raw, std::memory_order_seq_cst);
             // The caller owns the wait (outside the maintenance lock) so it can
             // keep the retired storage alive without stalling hashfull/size
             // readers on the maintenance mutex.
@@ -662,6 +662,7 @@ std::size_t TranspositionTable::hashfull_permill() const noexcept {
 
 void TranspositionTable::clear() noexcept {
     std::lock_guard maintenance_lock(maintenance_mutex_);
+    reap_deferred_storage_locked();
     const std::shared_ptr<Storage> storage = storage_;
     if (storage == nullptr || storage->total_slot_count == 0) {
         return;
@@ -686,6 +687,7 @@ void TranspositionTable::new_generation() noexcept {
     // the table; it is neither the UCI protocol generation nor a search
     // request identity (see transposition_table.hpp).
     std::lock_guard maintenance_lock(maintenance_mutex_);
+    reap_deferred_storage_locked();
     const std::shared_ptr<Storage> storage = storage_;
     if (storage == nullptr || storage->total_slot_count == 0) {
         return;

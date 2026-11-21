@@ -339,6 +339,39 @@ void test_exclusive_session_pin_blocks_resize_until_release() {
             "the resized table must remain usable after the session");
 }
 
+void test_nested_locked_access_preserves_session_pin() {
+    TranspositionTable table(1);
+    SearchTableAccess access(table);
+    const Move move = parse_move("e2e4");
+
+    access.set_exclusive(true);
+    access.store(0x71ULL, 5, 19, TranspositionBound::exact, move, 0, false, 7);
+
+    // Locked probe/prefetch/store on the same thread construct temporary Lease
+    // guards while the outer SessionLease owns the thread's hazard slot.
+    // Tearing down those nested leases must leave the outer session pin intact.
+    table.prefetch(0x71ULL);
+    const auto nested_probe = table.probe(0x71ULL);
+    require(nested_probe.has_value() && nested_probe->depth == 5,
+            "nested locked probe while pinned must observe the active table");
+    table.store(0x72ULL, 3, -9, TranspositionBound::lower, move);
+
+    const koi::HashResizeResult deferred = table.try_set_size_mb(2);
+    require(deferred.reclamation_deferred,
+            "nested locked Lease teardown must not clear an active SessionLease pin");
+
+    access.set_exclusive(false);
+    table.new_generation();
+    table.clear();
+    const koi::HashResizeResult drained = table.try_set_size_mb(3);
+    require(!drained.reclamation_deferred,
+            "drained retired storages must reap cleanly once the session ends");
+    table.store(0x73ULL, 4, 21, TranspositionBound::exact, move);
+    const auto post = table.probe(0x73ULL);
+    require(post.has_value() && post->score == 21,
+            "the table must remain usable after nested-lease resize and reaping");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -356,6 +389,7 @@ int main(int argc, char** argv) {
         {"transposition try resize defers reclamation", test_try_resize_defers_reclamation_while_pinned},
         {"transposition repeated deferred resizes", test_repeated_deferred_resizes_are_safe},
         {"transposition exclusive pin blocks resize", test_exclusive_session_pin_blocks_resize_until_release},
+        {"transposition nested locked lease preserves pin", test_nested_locked_access_preserves_session_pin},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

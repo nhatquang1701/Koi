@@ -170,7 +170,12 @@ private:
             if (slot >= kTranspositionHazardSlots) {
                 slot = register_thread_hazard_slot();
             }
-            if (slot < kTranspositionHazardSlots) {
+            // Only the owning thread writes this slot, so relaxed load is exact:
+            // if a nested Lease (e.g. a locked access while an outer SessionLease
+            // holds the thread's pin) is created for the same table, fall back to
+            // a ref-counted snapshot so ~Lease() never clears the outer pin.
+            if (slot < kTranspositionHazardSlots &&
+                table.hazards_[slot].storage.load(std::memory_order_relaxed) == nullptr) {
                 hazard_slot_ = slot;
                 publish(table);
                 return;
@@ -191,30 +196,17 @@ private:
 
     private:
         void publish(const TranspositionTable& table) noexcept {
-            // Hazard fast path: when this thread's slot already pins the live
-            // storage, no publication or revalidation is needed.  The pin was
-            // taken by an earlier access and a resize cannot complete while
-            // the slot still holds the retired pointer, so the value stays
-            // valid for this whole lease.
-            Storage* const live = table.hot_storage_.load(std::memory_order_acquire);
-            if (live != nullptr &&
-                table.hazards_[hazard_slot_].storage.load(std::memory_order_relaxed) == live) {
-                storage_ = live;
-                return;
-            }
             for (;;) {
-                Storage* const candidate = table.hot_storage_.load(std::memory_order_acquire);
+                Storage* const candidate = table.hot_storage_.load(std::memory_order_seq_cst);
                 if (candidate == nullptr) {
-                    table.hazards_[hazard_slot_].storage.store(nullptr, std::memory_order_release);
+                    table.hazards_[hazard_slot_].storage.store(nullptr, std::memory_order_seq_cst);
                     return;
                 }
-                table.hazards_[hazard_slot_].storage.store(candidate, std::memory_order_release);
-                // Revalidation closes the window where a resize swapped the
-                // live pointer between the load and the hazard publication:
-                // the writer scanned the slots before this one was published,
-                // so only a reader that re-observes its candidate may
-                // dereference it.
-                if (table.hot_storage_.load(std::memory_order_acquire) == candidate) {
+                table.hazards_[hazard_slot_].storage.store(candidate, std::memory_order_seq_cst);
+                // seq_cst on both publication and revalidation pairs with the
+                // resizer's seq_cst hot_storage_ store + hazard scan so StoreLoad
+                // reordering cannot let a retired storage be freed mid-lease.
+                if (table.hot_storage_.load(std::memory_order_seq_cst) == candidate) {
                     storage_ = candidate;
                     return;
                 }
