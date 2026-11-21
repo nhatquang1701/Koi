@@ -113,10 +113,6 @@ public:
         return *picker_;
     }
 
-    [[nodiscard]] SearchMovePicker* picker() noexcept {
-        return picker_;
-    }
-
 private:
     SearchContext::FrameScratch& scratch_;
     std::size_t index_;
@@ -536,9 +532,9 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         if (lower_bound_path != nullptr) {
             *lower_bound_path = false;
         }
-        const LowerBoundPathGuard lower_bound_path_guard{
+        const PathFlagGuard lower_bound_path_guard{
             lower_bound_path, &path_lower_bound};
-        const SelectiveBoundPathGuard selective_path_guard{
+        const PathFlagGuard selective_path_guard{
             selective_bound_path, &path_selective_bound};
         // A regular search near the fixed-stack boundary may enter qsearch
         // with only the final frame available.  Do not let qsearch clamp a
@@ -766,48 +762,13 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // and rule-clock identity but not these qsearch-only dimensions, so
         // the worker-local cache below includes them.
 
-        // The ordinary tactical generator intentionally stops probing quiet
-        // checks after the shallow horizon. At a later qsearch ply, inspect a
-        // bounded quiet-check candidate set and retain only checks with a
-        // narrow evasion set.
-        // This rescues short mating nets without paying the full quiet-check
-        // annotation cost at every quiescence node.
-        if constexpr (kNarrowQuietCheckProbeStartDepth < kMaximumQuiescenceNarrowQuietCheckDepth) {
-            if (!checked && qdepth >= kNarrowQuietCheckProbeStartDepth &&
-                qdepth < kMaximumQuiescenceNarrowQuietCheckDepth) {
-                if (lease.slot().aux_moves == nullptr) {
-                    lease.slot().aux_moves = std::make_unique<MoveMetadataList>();
-                }
-                MoveMetadataList& quiet_check_candidates = *lease.slot().aux_moves;
-                quiet_check_candidates.clear();
-                ++stats.qsearch_move_generations;
-                state.legal_quiet_checking_search_moves_with_metadata(
-                    quiet_check_candidates);
-                int quiet_checks_added = 0;
-                for (const MoveMetadata& candidate : quiet_check_candidates) {
-                    if (candidate.is_capture() || !candidate.gives_check ||
-                        !narrow_deep_quiet_check_candidate(state, candidate)) {
-                        continue;
-                    }
-                    (void)moves.push_back(candidate);
-                    if (++quiet_checks_added >= kMaximumQuiescenceNarrowQuietChecks) {
-                        break;
-                    }
-                }
-            }
-        }
-
         // Pawn history is read only when a quiet move is ranked.  The tactical
         // generator stops adding quiet checks at the check-depth horizon, so
         // an ordinary deeper node has no quiet candidate whose ranking could
-        // observe the pawn key; the narrow deep quiet-check probe above is the
-        // only late re-entry.  Checked nodes generate the full list and both
-        // quiet-check windows keep real keys, so an unreachable context is
-        // skipped there without changing a priority.
-        const bool quiet_history_reachable = checked ||
-            qdepth < quiescence_check_depth_limit ||
-            (qdepth >= kNarrowQuietCheckProbeStartDepth &&
-             qdepth < kMaximumQuiescenceNarrowQuietCheckDepth);
+        // observe the pawn key.  Checked nodes generate the full list and
+        // shallow quiet-check windows keep real keys, so an unreachable context
+        // is skipped there without changing a priority.
+        const bool quiet_history_reachable = checked || qdepth < quiescence_check_depth_limit;
         // With no quiet candidate every entry in `moves` is a capture or
         // promotion whose priority() branches return before any history read,
         // and the lazy re-priority path that could re-read it is main-mode only.
@@ -858,7 +819,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         }
 #endif
         SearchMovePicker& picker = lease.emplace_picker(
-            ordering, state, moves, tt_move, &history_storage[0], ply,
+            ordering, state, moves, tt_move, &history_storage[0],
             checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::quiescence);
         const Square previous_destination = previous_move.has_value() ?
             previous_move->to() : Square::from_index(Square::kInvalid);
@@ -1104,7 +1065,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // the two reads on the path that reaches that status.
         const std::size_t repetitions = state.repetition_count();
         bool path_repetition_sensitive = repetitions >= 2;
-        const RepetitionPathGuard repetition_path_guard{
+        const PathFlagGuard repetition_path_guard{
             repetition_sensitive_path, &path_repetition_sensitive};
         bool path_selective_bound = false;
         if (selective_bound_path != nullptr) {
@@ -1117,9 +1078,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         if (lower_bound_path != nullptr) {
             *lower_bound_path = false;
         }
-        const LowerBoundPathGuard lower_bound_path_guard{
+        const PathFlagGuard lower_bound_path_guard{
             lower_bound_path, &path_lower_bound};
-        const SelectiveBoundPathGuard selective_bound_path_guard{
+        const PathFlagGuard selective_bound_path_guard{
             selective_bound_path, &path_selective_bound};
         const bool excluded_search = !excluded_move.is_no_move();
         SearchFrame& parent_frame = ply > 0 ?
@@ -1605,8 +1566,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             !state.has_non_pawn_material(opposite(side_to_move));
         const DynamicNullMoveDecision null_move_decision = SearchPolicy::dynamic_null_move(
             depth, alpha, beta, static_eval, checked,
-            null_move_allowed,
-            improving, pawn_endgame);
+            null_move_allowed, pawn_endgame);
         if (null_move_decision.eligible && null_move_is_safe(state, node_game_phase)) {
             if (make_null_observed(state, ply)) {
                 PrincipalVariation& null_pv = lease.slot().child_pv;
@@ -1725,7 +1685,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // Stockfish 19's two-stage tactical verification and avoids turning a
         // speculative capture into a PV score.
         const ProbCutDecision probcut = SearchPolicy::prob_cut(
-            depth, alpha, beta, static_eval, checked, improving,
+            depth, beta, static_eval, checked, improving,
             excluded_search, repetition_sensitive);
         if (!claimable_draw && probcut.eligible && cut_node && !repetition_sensitive &&
             !pawn_endgame &&
@@ -1816,14 +1776,14 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 picker = &lease.emplace_picker(
                     ordering, state, moves,
                     tactical_only_deferred ? std::nullopt : picker_tt,
-                    &ensure_history(), ply, SearchMovePicker::Mode::main,
+                    &ensure_history(), SearchMovePicker::Mode::main,
                     picker_excluded,
                     tactical_only_deferred ? &moves : nullptr);
                 return;
             }
             (void)ensure_moves();
             picker = &lease.emplace_picker(
-                ordering, state, moves, picker_tt, &ensure_history(), ply,
+                ordering, state, moves, picker_tt, &ensure_history(),
                 checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::main,
                 picker_excluded);
         };

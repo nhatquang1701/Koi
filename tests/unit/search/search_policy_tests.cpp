@@ -42,27 +42,27 @@ void test_dynamic_null_move_owns_reduction_and_verification_depth() {
     using koi::detail::SearchPolicy;
 
     const auto deep_candidate =
-        SearchPolicy::dynamic_null_move(16, 20, 21, 600, false, true, false, false);
+        SearchPolicy::dynamic_null_move(16, 20, 21, 600, false, true, false);
     require(deep_candidate.eligible && deep_candidate.verify,
             "a deep eligible null fail-high must be verified");
     require(deep_candidate.reduction == 3 + 16 / 3 + std::min((600 - 21) / 200, 3),
             "the dynamic null reduction must keep the calibrated depth/excess shape");
 
-    const auto shallow = SearchPolicy::dynamic_null_move(15, 20, 21, 600, false, true, false, false);
+    const auto shallow = SearchPolicy::dynamic_null_move(15, 20, 21, 600, false, true, false);
     require(shallow.eligible && !shallow.verify,
             "null verification must stay off below the deep-search threshold");
 
-    const auto min_ply_floor = SearchPolicy::dynamic_null_move(4, 20, 21, 600, false, true, false, false);
+    const auto min_ply_floor = SearchPolicy::dynamic_null_move(4, 20, 21, 600, false, true, false);
     require(min_ply_floor.eligible && min_ply_floor.reduction <= 3,
             "shallow null move must retain at least one regular reply ply");
 
-    require(!SearchPolicy::dynamic_null_move(3, 20, 21, 600, false, true, false, false).eligible,
+    require(!SearchPolicy::dynamic_null_move(3, 20, 21, 600, false, true, false).eligible,
             "dynamic null move must require depth >= 4");
-    require(!SearchPolicy::dynamic_null_move(16, 20, 21, 20, false, true, false, false).eligible,
+    require(!SearchPolicy::dynamic_null_move(16, 20, 21, 20, false, true, false).eligible,
             "a static evaluation below beta must reject null move");
-    require(!SearchPolicy::dynamic_null_move(16, 20, 21, 600, false, true, false, true).eligible,
+    require(!SearchPolicy::dynamic_null_move(16, 20, 21, 600, false, true, true).eligible,
             "a pawn endgame must reject null move");
-    require(!SearchPolicy::dynamic_null_move(16, 20, 21, 600, true, true, false, false).eligible,
+    require(!SearchPolicy::dynamic_null_move(16, 20, 21, 600, true, true, false).eligible,
             "checked nodes must reject null move");
 }
 
@@ -199,7 +199,7 @@ void test_ordering_tables_own_mutation_and_reset() {
     require(tables.is_proven_counter_move(koi::Color::black, previous, counter),
             "cutoff updates must prove the counter move");
 
-    tables.record_quiet_fail(koi::Color::black, counter, 4, 8, previous);
+    tables.record_quiet_fail(koi::Color::black, counter, 8, previous);
     require(!tables.is_proven_counter_move(koi::Color::black, previous, counter),
             "an exact counter failure must clear counter confidence");
 

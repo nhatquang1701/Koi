@@ -53,27 +53,6 @@ if ($Parallel -le 0) {
 
 $isWindowsHost = $env:OS -eq 'Windows_NT'
 
-function Invoke-WithEnvironment {
-    param([scriptblock]$Action)
-    $needsWrapper = $isWindowsHost -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue)
-    if (-not $needsWrapper) {
-        & $Action
-        return
-    }
-    if (-not $EnvironmentScript) {
-        throw "cl.exe is not on PATH and no -EnvironmentScript was provided. Run from a Visual Studio developer shell or pass a wrapper .cmd that calls vcvars64.bat."
-    }
-    if (-not (Test-Path -LiteralPath $EnvironmentScript)) {
-        throw "Environment wrapper '$EnvironmentScript' does not exist."
-    }
-    $env:KOI_TEST_WRAPPER = $EnvironmentScript
-    try {
-        & $Action
-    } finally {
-        Remove-Item Env:\KOI_TEST_WRAPPER -ErrorAction SilentlyContinue
-    }
-}
-
 if (-not (Test-Path -LiteralPath $BuildDirectory)) {
     throw "Build directory '$BuildDirectory' does not exist. Configure the tree first (see tests/README.md)."
 }

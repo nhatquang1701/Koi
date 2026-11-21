@@ -127,33 +127,11 @@ struct SearchContext {
         bool lower_bound = false;
     };
 
-    struct RepetitionPathGuard {
+    struct PathFlagGuard {
         bool* output = nullptr;
         const bool* value = nullptr;
 
-        ~RepetitionPathGuard() noexcept {
-            if (output != nullptr && value != nullptr) {
-                *output = *value;
-            }
-        }
-    };
-
-    struct SelectiveBoundPathGuard {
-        bool* output = nullptr;
-        const bool* value = nullptr;
-
-        ~SelectiveBoundPathGuard() noexcept {
-            if (output != nullptr && value != nullptr) {
-                *output = *value;
-            }
-        }
-    };
-
-    struct LowerBoundPathGuard {
-        bool* output = nullptr;
-        const bool* value = nullptr;
-
-        ~LowerBoundPathGuard() noexcept {
+        ~PathFlagGuard() noexcept {
             if (output != nullptr && value != nullptr) {
                 *output = *value;
             }
@@ -314,11 +292,11 @@ struct SearchContext {
         : evaluation(evaluator, evaluator_mutex), table_access(table, use_transposition_table),
           budget(time_manager, global_nodes), time_manager(time_manager),
           stop_requested(stop_requested), root_moves(root_moves),
-          frame_scratch(create_frame_scratch()),
-          evaluation_cache(std::make_unique<EvaluationCacheEntry[]>(kEvaluationCacheSize)),
+          root_color(root_color), contempt_cp(contempt_cp),
           quiet_history_side_hook(std::move(quiet_history_side_hook)),
-          tablebase(std::move(tablebase_binding)), root_color(root_color),
-          contempt_cp(contempt_cp) {
+          tablebase(std::move(tablebase_binding)),
+          frame_scratch(create_frame_scratch()),
+          evaluation_cache(std::make_unique<EvaluationCacheEntry[]>(kEvaluationCacheSize)) {
         if (const auto budget = time_manager.time_budget(); budget.has_value() &&
             *budget <= kShortTimedSerialThreshold) {
             // A short timed search must finish its first root iteration before

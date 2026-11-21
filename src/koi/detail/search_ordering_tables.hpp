@@ -263,7 +263,7 @@ public:
                              const SearchHistoryContext& context) noexcept;
     void record_quiet_best(Color side, const MoveMetadata& metadata, int depth,
                            const SearchHistoryContext& context) noexcept;
-    void record_quiet_fail(Color side, Move move, int ply, int depth,
+    void record_quiet_fail(Color side, Move move, int depth,
                            std::optional<Move> previous_move = std::nullopt) noexcept;
     void record_quiet_fail(Color side, const MoveMetadata& metadata, int depth,
                            const SearchHistoryContext& context) noexcept;

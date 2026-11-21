@@ -388,7 +388,8 @@ void SearchRunner::run_impl() {
             const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - started);
             SearchInfo info{1, result.score_cp, result.mate, 0, 0, elapsed,
-                            {result.best_move.value()}, 0, 0, 0, 1, 1};
+                            {result.best_move.value()}, 0, 0, 0, 1, 1,
+                            SearchInfo::Bound::exact, std::nullopt, Move::no_move(), 0};
             info.exact_wdl = syzygy_wdl_permill(tablebase_result->wdl);
             safely_report_info(sink, info);
         } else if ((root_is_claimable_draw && options.multi_pv == 1) ||
@@ -1717,7 +1718,8 @@ void SearchRunner::run_impl() {
                 SearchInfo info{depth, score, result.mate, visited,
                                 elapsed.count() > 0 ? visited * 1000 /
                                     static_cast<std::uint64_t>(elapsed.count()) : visited,
-                                elapsed, pv.to_vector()};
+                                elapsed, pv.to_vector(), 0, 0, 0, 1, 0,
+                                SearchInfo::Bound::exact, std::nullopt, Move::no_move(), 0};
                 info.seldepth = lazy_pool != nullptr ?
                     std::max(context.stats.seldepth, lazy_pool->live_seldepth()) :
                     context.stats.seldepth;
@@ -1881,7 +1883,6 @@ void SearchRunner::run_impl() {
             std::optional<int> previous_score;
             std::chrono::milliseconds previous_iteration_elapsed{1};
             std::chrono::milliseconds previous_report_elapsed{0};
-            std::uint64_t previous_report_main_visited = 0;
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
                 in_flight_depth = depth;
                 if (auto conversion = session->take_ponderhit_limits(); conversion.has_value()) {
@@ -2665,7 +2666,8 @@ void SearchRunner::run_impl() {
                 for (std::size_t rank = 0; rank < line_count; ++rank) {
                     const RootLine& line = lines[ranked_indices[rank]];
                     SearchInfo info{depth, line.score, mate_from_score(line.score), visited,
-                                    nps, elapsed, line.pv.to_vector()};
+                                    nps, elapsed, line.pv.to_vector(), 0, 0, 0, 1, 0,
+                                    SearchInfo::Bound::exact, std::nullopt, Move::no_move(), 0};
                     info.seldepth = lazy_pool != nullptr ?
                         std::max(total_stats.seldepth, lazy_pool->live_seldepth()) :
                         total_stats.seldepth;
@@ -2771,14 +2773,14 @@ void SearchRunner::run_impl() {
                 static_cast<std::uint64_t>(elapsed.count()) : visited;
             result.pv = {*result.best_move};
             SearchInfo info{0, result.score_cp, mate_from_score(result.score_cp), visited,
-                            nps, elapsed, result.pv};
+                            nps, elapsed, result.pv, 0, 0, 0, 1, 0,
+                            SearchInfo::Bound::estimate, std::nullopt, Move::no_move(), 0};
             info.seldepth = result.stats.seldepth;
             info.qnodes = result.stats.qnodes;
             info.tt_hits = result.stats.tt_hits;
             info.tbhits = result.stats.tbhits;
             // The emergency line is a safety choice without a proven score
             // direction.
-            info.bound = SearchInfo::Bound::estimate;
             safely_report_info(sink, info);
         }
         result.timing = time_manager.diagnostics();

@@ -54,17 +54,6 @@ std::chrono::milliseconds scale_fraction(std::chrono::milliseconds duration,
     return std::chrono::milliseconds{static_cast<Rep>((count * numerator) / denominator)};
 }
 
-std::chrono::milliseconds subtract_overhead(std::chrono::milliseconds duration,
-                                             std::uint32_t overhead_ms) noexcept {
-    using Rep = std::chrono::milliseconds::rep;
-    const Rep overhead = static_cast<Rep>(std::min<std::uint64_t>(
-        overhead_ms, static_cast<std::uint64_t>(std::numeric_limits<Rep>::max())));
-    if (duration.count() <= overhead) {
-        return std::chrono::milliseconds{1};
-    }
-    return duration - std::chrono::milliseconds{overhead};
-}
-
 std::chrono::milliseconds three_quarters(std::chrono::milliseconds duration) noexcept {
     return scale_fraction(duration, 3, 4);
 }

@@ -225,10 +225,9 @@ if ($KoiEvaluatorMode -ne 'classical' -and [string]::IsNullOrWhiteSpace($evalFil
     throw "Koi evaluator mode '$KoiEvaluatorMode' requires -KoiEvalFile or -KoiOptions EvalFile."
 }
 if (-not [string]::IsNullOrWhiteSpace($evalFileValue)) {
-    # Resolve and expose the network for the boot environment. This is needed
-    # even in legacy `classical` mode since NNUE became mandatory (HCE removed
-    # 2026-10-28): the engine exits 4 if no network is visible at boot, before
-    # `EvalFile` can be applied over UCI.
+    # Resolve and expose the network for the boot environment. Without an NNUE
+    # file visible at boot (and without KOI_EVALUATOR=hce), the engine exits 4
+    # before UCI options such as `EvalFile` or `EvalMode` can be applied.
     if (-not (Test-Path -LiteralPath $evalFileValue -PathType Leaf)) {
         throw "Koi EvalFile is missing: $evalFileValue"
     }
@@ -1060,23 +1059,6 @@ function Set-EngineProcessStatus($Status, $Engine, [string]$Value) {
     } else {
         $Status.opponent = $Value
     }
-}
-
-function Get-InitialSide([string]$Fen) {
-    if ($Fen -ceq 'startpos') {
-        return 'w'
-    }
-    return ($Fen -split '\s+')[1]
-}
-
-function Get-SideForPly([string]$InitialSide, [int]$Ply) {
-    if (($Ply % 2) -eq 0) {
-        return $InitialSide
-    }
-    if ($InitialSide -ceq 'w') {
-        return 'b'
-    }
-    return 'w'
 }
 
 function Get-PgnHeaderValue([string]$Value) {

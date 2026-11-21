@@ -481,9 +481,9 @@ void SearchMoveOrdering::record_quiet_cutoff(
 }
 
 void SearchMoveOrdering::record_quiet_fail(
-    const Color side, const Move move, const int ply, const int depth,
+    const Color side, const Move move, const int depth,
     const std::optional<Move> previous_move) noexcept {
-    tables_.record_quiet_fail(side, move, ply, depth, previous_move);
+    tables_.record_quiet_fail(side, move, depth, previous_move);
 }
 
 void SearchMoveOrdering::record_quiet_cutoff(
@@ -537,11 +537,11 @@ void SearchMoveOrdering::record_parent_refuted(
 SearchMovePicker::SearchMovePicker(
     const SearchMoveOrdering& ordering, const GameState& state,
     const MoveMetadataList& moves, std::optional<Move> tt_move,
-    const SearchHistoryContext* history_context, const int ply, const Mode mode,
+    const SearchHistoryContext* history_context, const Mode mode,
     const Move excluded_move, MoveMetadataList* const mutable_moves) noexcept
     : ordering_(ordering), state_(state), moves_(moves),
       history_context_(history_context), tt_move_(tt_move),
-      excluded_move_(excluded_move), ply_(ply), mode_(mode), stage_(first_stage()),
+      excluded_move_(excluded_move), mode_(mode), stage_(first_stage()),
       mutable_moves_(mutable_moves), defer_quiets_(mutable_moves != nullptr) {
     // Only a main-mode picker reads the capture-check guard (materialize's
     // capture-check probe); quiescence and evasion pickers never reach that

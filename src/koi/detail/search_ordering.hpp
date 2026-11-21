@@ -37,7 +37,7 @@ public:
                std::optional<Move> previous_move = std::nullopt) const;
     void record_quiet_cutoff(Color side, Move move, int ply, int depth,
                              std::optional<Move> previous_move = std::nullopt) noexcept;
-    void record_quiet_fail(Color side, Move move, int ply, int depth,
+    void record_quiet_fail(Color side, Move move, int depth,
                            std::optional<Move> previous_move = std::nullopt) noexcept;
     void record_quiet_cutoff(Color side, const MoveMetadata& metadata, int depth,
                              const SearchHistoryContext& history_context) noexcept;
@@ -126,7 +126,7 @@ public:
 
     SearchMovePicker(const SearchMoveOrdering& ordering, const GameState& state,
                      const MoveMetadataList& moves, std::optional<Move> tt_move,
-                     const SearchHistoryContext* history_context, int ply, Mode mode,
+                     const SearchHistoryContext* history_context, Mode mode,
                      Move excluded_move = Move::no_move(),
                      MoveMetadataList* mutable_moves = nullptr) noexcept;
 
@@ -227,7 +227,6 @@ private:
     const SearchHistoryContext* history_context_;
     std::optional<Move> tt_move_;
     Move excluded_move_;
-    int ply_ = 0;
     Mode mode_ = Mode::main;
     Stage stage_ = Stage::done;
     // The bitsets below must start zeroed: they are the guards that decide

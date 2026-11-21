@@ -194,9 +194,6 @@ public:
     void on_make_null_move(const GameState&, int ply, std::uint64_t parent_key);
     void on_unmake_null_move(int child_ply);
 
-    [[nodiscard]] std::size_t incremental_make_count() const noexcept {
-        return incremental_make_count_;
-    }
     [[nodiscard]] std::size_t incremental_fallback_count() const noexcept {
         return incremental_fallback_count_;
     }
@@ -325,7 +322,6 @@ private:
     bool int16_safe_known_ = false;
     bool int16_safe_ = false;
     bool storage_ready_ = false;
-    std::size_t incremental_make_count_ = 0;
     std::size_t incremental_fallback_count_ = 0;
 };
 

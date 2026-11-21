@@ -115,22 +115,3 @@ def _build_step_tables():
 
 
 KNIGHT_ATTACKS, KING_ATTACKS, PAWN_ATTACKS = _build_step_tables()
-
-
-def attacks_from(piece_type: int, color: bool, square: int, occupied: int) -> int:
-    """Return the attack set of a piece type on a square for a position."""
-    if piece_type == PAWN:
-        return PAWN_ATTACKS[color][square]
-    if piece_type == KNIGHT:
-        return KNIGHT_ATTACKS[square]
-    if piece_type == KING:
-        return KING_ATTACKS[square]
-    if piece_type == BISHOP:
-        return sliding_attacks(square, occupied, BISHOP_RAYS)
-    if piece_type == ROOK:
-        return sliding_attacks(square, occupied, ROOK_RAYS)
-    if piece_type == QUEEN:
-        return sliding_attacks(square, occupied, BISHOP_RAYS) | sliding_attacks(
-            square, occupied, ROOK_RAYS
-        )
-    raise ValueError(f"invalid piece type: {piece_type!r}")

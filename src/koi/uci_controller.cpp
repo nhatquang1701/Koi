@@ -575,10 +575,6 @@ std::string debug_quoted(std::string_view value) {
     return result;
 }
 
-std::string debug_color(Color color) {
-    return color == Color::white ? "w" : "b";
-}
-
 std::string debug_square(Square square) {
     return square.index() < Square::kInvalid ? square.uci() : "-";
 }
@@ -893,9 +889,9 @@ UciController::UciController(std::istream& input, std::ostream& output,
                              bool nnue_autodiscovered)
     : input_(input), output_(output), diagnostics_(diagnostics),
       executable_directory_(std::move(executable_directory)),
-      nnue_autodiscovered_(nnue_autodiscovered),
       opening_book_(executable_directory_),
-      search_service_(std::move(search_service)) {
+      search_service_(std::move(search_service)),
+      nnue_autodiscovered_(nnue_autodiscovered) {
     boot_evaluator_ = search_service_.evaluator();
     hce_active_ = dynamic_cast<const ClassicalEvaluator*>(boot_evaluator_.get()) != nullptr;
     debug_log_ = std::make_unique<detail::DebugLog>();

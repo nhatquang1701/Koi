@@ -130,13 +130,6 @@ public:
         return true;
     }
 
-    [[nodiscard]] MoveMetadata* reserve_next_slot() noexcept {
-        if (size_ >= kMaximumLegalMoves) {
-            return nullptr;
-        }
-        return &storage_[size_++];
-    }
-
     constexpr void resize(std::size_t size) noexcept {
         size_ = std::min(size, kMaximumLegalMoves);
     }
@@ -448,7 +441,6 @@ private:
         CheckFlagMode check_flag_mode, bool include_validation_token) const noexcept;
     void finalize_metadata(MoveMetadataList&, std::uint64_t position_key,
                            bool include_see, bool include_validation_token = true) const noexcept;
-    void invalidate_feature_cache() noexcept;
 
     friend int detail::static_exchange_gain(const GameState&, const MoveMetadata&) noexcept;
     friend PositionConsistencySnapshot detail::build_consistency_snapshot(const GameState&);

@@ -71,14 +71,14 @@ public:
     // verified before Koi accepts the selective cutoff.
     [[nodiscard]] static constexpr DynamicNullMoveDecision dynamic_null_move(
         const int depth, const int alpha, const int beta, const int static_eval,
-        const bool checked, const bool allowed, const bool improving,
-        const bool pawn_endgame) noexcept {
+        const bool checked, const bool allowed, const bool pawn_endgame) noexcept {
         const NullMoveDecision base = null_move(depth, alpha, beta, checked, allowed);
         // Stockfish 19 uses a +365 NNUE-calibrated confidence margin here.
         // Koi's pinned NNUE evaluation has a different positional-score range,
-        // so retain the same depth/improving slope but calibrate the margin to
+        // so retain the depth-scaled reduction while calibrating the margin to
         // Koi's scale.  A null fail-high is still re-searched before cutoff,
-        // while the node-type, repetition, and sparse-material gates provide
+        // while the node-type, repetition, and sparse-material gates prevent
+        // zugzwang blindness.
         // Require a static evaluation at least at beta before allowing a
         // null-move cutoff, and clamp the reduction so depth >= 4 probes
         // always search at least one regular ply (preventing 0-ply qsearch
@@ -216,7 +216,7 @@ public:
     }
 
     [[nodiscard]] static constexpr ProbCutDecision prob_cut(
-        const int depth, const int alpha, const int beta, const int static_eval,
+        const int depth, const int beta, const int static_eval,
         const bool checked, const bool improving, const bool excluded_move,
         const bool repetition_sensitive) noexcept {
         const bool eligible = !checked && !excluded_move && !repetition_sensitive &&

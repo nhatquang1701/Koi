@@ -41,9 +41,6 @@ class RootCoordinator {
 public:
     [[nodiscard]] static std::vector<std::size_t>
     rank(const std::vector<RootLine>& lines);
-
-    [[nodiscard]] static std::optional<std::size_t>
-    best_completed(const std::vector<RootLine>& lines);
 };
 
 } // namespace koi::detail

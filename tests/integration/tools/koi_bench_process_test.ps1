@@ -218,7 +218,7 @@ if ($coldJson.schema -ne 'koi-bench-profile-v1' -or $coldJson.warm_hash -ne $fal
 }
 if ($coldJson.evaluator -cne 'nnue' -or $null -eq $coldJson.nnue -or
     $coldJson.nnue.active -ne $true) {
-    throw 'the profile must identify the active NNUE evaluator (HCE was removed 2026-10-28).'
+    throw 'the profile must identify the active NNUE evaluator for a default NNUE bench run.'
 }
 if ($warmJson.schema -ne 'koi-bench-profile-v1' -or $warmJson.warm_hash -ne $true -or
     $warmJson.hash_state -cne 'warm' -or $warmJson.timed -ne $false -or

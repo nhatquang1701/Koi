@@ -458,7 +458,7 @@ bool CompatibilityMirror::matches(const Position& native) const {
         }
     }
 
-    if (native.piece_count() != board_.occ().count()) {
+    if (native.piece_count() != static_cast<std::size_t>(board_.occ().count())) {
         return false;
     }
 

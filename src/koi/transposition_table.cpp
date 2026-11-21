@@ -121,28 +121,6 @@ void clear_slot(AtomicSlot& slot) noexcept {
     slot.word2.store(0, std::memory_order_relaxed);
 }
 
-[[nodiscard]] UnpackedSlot read_slot(const AtomicSlot& slot) noexcept {
-    const std::uint64_t tag = slot.key_tag.load(std::memory_order_relaxed);
-    const std::uint64_t w1 = slot.word1.load(std::memory_order_relaxed);
-    const std::uint64_t w2 = slot.word2.load(std::memory_order_relaxed);
-    UnpackedSlot out;
-    out.word1 = w1;
-    out.word2 = w2;
-    out.key = tag ^ w1 ^ w2;
-    out.occupied = slot_occupied(w2);
-    out.generation_age = slot_epoch(w2);
-    out.generation = static_cast<std::uint8_t>((w2 >> 24U) & 0xFFU);
-    out.depth = static_cast<std::int8_t>(static_cast<std::uint8_t>((w2 >> 16U) & 0xFFU));
-    out.eval = static_cast<std::int16_t>(static_cast<std::uint16_t>(w2 & 0xFFFFU));
-    const std::uint8_t bound_raw = static_cast<std::uint8_t>((w2 >> 40U) & 0xFFU);
-    out.bound = bound_raw <= static_cast<std::uint8_t>(TranspositionBound::upper) ?
-        static_cast<TranspositionBound>(bound_raw) : TranspositionBound::exact;
-    out.pv = ((w2 >> 56U) & 0xFFU) != 0U;
-    out.score = static_cast<int>(static_cast<std::int32_t>(static_cast<std::uint32_t>(w1 & 0xFFFFFFFFULL)));
-    out.best_move = Move::from_raw(static_cast<std::uint32_t>(w1 >> 32U));
-    return out;
-}
-
 int score_for_storage(int score, int ply) noexcept {
     if (score >= kMateThreshold) {
         return score + ply;
@@ -582,7 +560,6 @@ HashResizeResult TranspositionTable::resize_locked(std::size_t megabytes,
             result.reason = HashResizeReason::request_clamped;
         }
         Storage* const raw = replacement.get();
-        Storage* const retired = current.get();
         try {
             // Publish the replacement first so no new reader can lease the
             // retired storage, then wait for every reader that already leased

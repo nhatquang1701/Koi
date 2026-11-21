@@ -28,13 +28,4 @@ std::vector<std::size_t> RootCoordinator::rank(const std::vector<RootLine>& line
     return ranked;
 }
 
-std::optional<std::size_t> RootCoordinator::best_completed(
-    const std::vector<RootLine>& lines) {
-    const std::vector<std::size_t> ranked = rank(lines);
-    if (ranked.empty()) {
-        return std::nullopt;
-    }
-    return ranked.front();
-}
-
 } // namespace koi::detail

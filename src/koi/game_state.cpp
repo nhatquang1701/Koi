@@ -1958,14 +1958,6 @@ bool GameState::unmake_null_move() noexcept {
     return impl_->native_position.unmake_null_move();
 }
 
-void GameState::invalidate_feature_cache() noexcept {
-    // Kept for callers that want to force a rebuild.  Make and unmake no
-    // longer call it: every lookup validates the cached position key, so a
-    // stale slot is rejected on its own, and leaving the entries in place lets
-    // a re-search of the same child (PVS or LMR re-search) reuse them.
-    impl_->feature_state.invalidate(impl_->native_position.history_size());
-}
-
 bool GameState::is_capture(const Move& move) const noexcept {
     return impl_->native_position.is_capture(move);
 }

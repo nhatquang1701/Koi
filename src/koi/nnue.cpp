@@ -3821,7 +3821,6 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
         slot_keys_[child_idx] = child.position_key();
         slot_valid_[child_idx] = 1;
         slot_cursor_ = child_slot;
-        ++incremental_make_count_;
         return;
     }
     std::array<const std::int32_t*, kIncrementalPerspectives> parent_values{};
@@ -3832,7 +3831,6 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
     slot_keys_[child_idx] = child.position_key();
     slot_valid_[child_idx] = 1;
     slot_cursor_ = child_slot;
-    ++incremental_make_count_;
 }
 
 void NnueWorker::on_unmake_move(const int child_ply) {
@@ -3878,7 +3876,6 @@ void NnueWorker::on_make_null_move(const GameState& child, const int ply,
         slot_keys_[child_idx] = child.position_key();
         slot_valid_[child_idx] = 1;
         slot_cursor_ = child_slot;
-        ++incremental_make_count_;
         return;
     }
     if (!prepare_child_slot(ply, child_slot, parent_key)) {
@@ -3887,7 +3884,6 @@ void NnueWorker::on_make_null_move(const GameState& child, const int ply,
     slot_keys_[child_idx] = child.position_key();
     slot_valid_[child_idx] = 1;
     slot_cursor_ = child_slot;
-    ++incremental_make_count_;
 }
 
 void NnueWorker::on_unmake_null_move(const int child_ply) {
@@ -3945,8 +3941,8 @@ NnueEvaluator::NnueEvaluator(std::shared_ptr<const NnueNetwork> weights)
 
 int NnueEvaluator::evaluate(const GameState& state, const Color perspective) const {
     // The factory only constructs this evaluator for a loaded, usable network;
-    // a missing network is a boot error (HCE removed 2026-10-28), so this is an
-    // unreachable defensive path and must not silently become a normal score.
+    // a missing network under default NNUE selection is a boot error, so this
+    // is an unreachable defensive path and must not silently become a score.
     if (!weights_ || !network_is_usable(*weights_)) {
         return 0;
     }

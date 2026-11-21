@@ -354,26 +354,6 @@ int king_square(const NativeState& state, Color color) noexcept {
     return static_cast<int>(std::countr_zero(kings));
 }
 
-bool aligned_slider_attacks(const Board& board, int source, int target, PieceType type) noexcept {
-    const int file_delta = file_of(target) - file_of(source);
-    const int rank_delta = rank_of(target) - rank_of(source);
-    const int abs_file = std::abs(file_delta);
-    const int abs_rank = std::abs(rank_delta);
-    const bool diagonal = abs_file == abs_rank && abs_file != 0;
-    const bool orthogonal = (file_delta == 0) != (rank_delta == 0);
-    const bool valid = type == PieceType::bishop ? diagonal :
-        type == PieceType::rook ? orthogonal : (diagonal || orthogonal);
-    if (!valid) return false;
-    const int file_step = file_delta == 0 ? 0 : (file_delta > 0 ? 1 : -1);
-    const int rank_step = rank_delta == 0 ? 0 : (rank_delta > 0 ? 1 : -1);
-    for (int file = file_of(source) + file_step, rank = rank_of(source) + rank_step;
-         file != file_of(target) || rank != rank_of(target);
-         file += file_step, rank += rank_step) {
-        if (!board[static_cast<std::size_t>(rank * 8 + file)].empty()) return false;
-    }
-    return true;
-}
-
 bool square_attacked(const NativeState& state, int target, Color attacker) noexcept {
     if (!valid_square(target)) return false;
     const std::size_t color_index = attacker == Color::white ? 0U : 1U;

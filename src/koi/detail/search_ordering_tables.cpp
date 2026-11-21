@@ -35,21 +35,9 @@ constexpr int kInitialLowPlyHistory = 102;
 // mis-centred and every fresh quiet move looked "bad" to LMR.  The score
 // functions subtract the neutral baseline for the current history context so a
 // never-updated move reads exactly 0.
-constexpr std::size_t kLowPlyHistoryPliesForBaseline = 5;
 
 int color_index(const Color color) noexcept {
     return color == Color::white ? 0 : 1;
-}
-
-// Zero in `continuation_previous_scaled` marks a context that was not sealed by
-// SearchContext::history_context(); recompute the same pure component for it so
-// hand-built contexts keep the exact previous slot arithmetic.
-std::size_t continuation_previous_component(
-    const SearchHistoryContext& context, const std::size_t distance,
-    const Move previous) noexcept {
-    const std::uint32_t cached = context.continuation_previous_scaled[distance];
-    return cached != 0U ? static_cast<std::size_t>(cached)
-                        : table_move_index(previous) * 131U;
 }
 
 int clamp_history(const std::int64_t value, const int maximum) noexcept {
@@ -575,7 +563,7 @@ void SearchOrderingTables::record_quiet_best(
 }
 
 void SearchOrderingTables::record_quiet_fail(
-    const Color side, const Move move, const int ply, const int depth,
+    const Color side, const Move move, const int depth,
     const std::optional<Move> previous_move) noexcept {
     if (move.is_no_move() || move.promotion() != Promotion::none) {
         return;
@@ -602,7 +590,7 @@ void SearchOrderingTables::record_quiet_fail(
         metadata.move.promotion() != Promotion::none) {
         return;
     }
-    record_quiet_fail(side, metadata.move, context.ply, depth,
+    record_quiet_fail(side, metadata.move, depth,
                       context.count > 0 ? std::optional<Move>{context.continuation_moves[0]} :
                                           std::nullopt);
     const int depth_bonus = std::clamp(depth, 1, kMaximumPly);

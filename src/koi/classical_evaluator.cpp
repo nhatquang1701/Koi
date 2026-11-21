@@ -100,10 +100,6 @@ constexpr std::size_t kBlack = 1;
     return color == Color::white ? kWhite : kBlack;
 }
 
-[[nodiscard]] constexpr Color color_of(std::size_t index) noexcept {
-    return index == kWhite ? Color::white : Color::black;
-}
-
 [[nodiscard]] constexpr int sign_of(std::size_t index) noexcept {
     return index == kWhite ? 1 : -1;
 }
@@ -112,15 +108,6 @@ constexpr std::size_t kBlack = 1;
 [[nodiscard]] constexpr int rank_of(int square) noexcept { return square >> 3; }
 [[nodiscard]] constexpr std::uint64_t bit_of(int square) noexcept {
     return std::uint64_t{1} << static_cast<unsigned>(square);
-}
-[[nodiscard]] constexpr int distance_to_center(int square) noexcept {
-    const int file = file_of(square);
-    const int rank = rank_of(square);
-    return abs_int(file - 3) + abs_int(file - 4) + abs_int(rank - 3) + abs_int(rank - 4);
-}
-[[nodiscard]] constexpr int file_center(int file) noexcept {
-    constexpr std::array<int, 8> kFileCenter{0, 1, 2, 3, 3, 2, 1, 0};
-    return kFileCenter[static_cast<std::size_t>(file)];
 }
 
 [[nodiscard]] constexpr int square_distance(int first, int second) noexcept {
@@ -224,8 +211,6 @@ inline constexpr std::array<int, 64> kQueenPst{
     const int normalized = color == Color::white ? square : (square ^ 56);
     const int file = file_of(normalized);
     const int rank = rank_of(normalized);
-    const int center = file_center(file);
-    const int distance = distance_to_center(normalized);
     const std::size_t index = static_cast<std::size_t>(rank * 8 + file);
     switch (type) {
     case PieceType::pawn:

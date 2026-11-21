@@ -236,7 +236,7 @@ void test_countermove_failure_clears_exact_confidence() {
                 std::find(moves.begin(), moves.end(), history),
             "a proven counter must receive the special counter tier before it fails");
 
-    ordering.record_quiet_fail(state.side_to_move(), counter, 4, 8, previous);
+    ordering.record_quiet_fail(state.side_to_move(), counter, 8, previous);
     moves = quiet_moves(state, state.legal_moves());
     ordering.order(state, moves, std::nullopt, 3, previous);
     require(std::find(moves.begin(), moves.end(), history) <
@@ -278,7 +278,7 @@ void test_history_malus_and_continuation_history_shape_quiet_ordering() {
 
     ordering.record_quiet_cutoff(state.side_to_move(), preferred, 0, 6, prior);
     for (int count = 0; count < 8; ++count) {
-        ordering.record_quiet_fail(state.side_to_move(), penalized, 0, 6, prior);
+        ordering.record_quiet_fail(state.side_to_move(), penalized, 6, prior);
     }
 
     std::vector<koi::Move> moves = quiet_moves(state, state.legal_moves());
@@ -395,7 +395,7 @@ void test_picker_emitted_scores_match_recomputed_priority() {
                 state.legal_moves_with_metadata(moves, true, false);
             }
             koi::detail::SearchMovePicker picker(ordering, state, moves, std::nullopt,
-                                                 &context, 0, mode);
+                                                 &context, mode);
             while (const koi::MoveMetadata* emitted = picker.next()) {
                 koi::MoveMetadataList single;
                 static_cast<void>(single.push_back(*emitted));
@@ -468,7 +468,7 @@ void verify_quiescence_picker_against_reference(
     reference_checks += static_cast<int>(stages[1].size());
 
     koi::detail::SearchMovePicker picker(
-        ordering, state, candidates, std::nullopt, &context, 0,
+        ordering, state, candidates, std::nullopt, &context,
         koi::detail::SearchMovePicker::Mode::quiescence);
     const auto verify_emitted = [&picker](const QuiescenceReferenceEntry& expected) {
         const koi::MoveMetadata* emitted = picker.next();

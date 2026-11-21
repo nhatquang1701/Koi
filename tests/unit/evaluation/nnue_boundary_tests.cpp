@@ -151,8 +151,8 @@ void test_malformed_or_absent_network_requires_a_network() {
     const koi::GameState state = require_state("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
     const koi::test::TempDirectory scratch;
 
-    // HCE was removed on 2026-10-28: without a network there is no evaluator,
-    // and the caller must report the failure instead of evaluating classically.
+    // Without a network under make_evaluator(), NNUE selection must fail
+    // explicitly instead of silently falling back to another evaluator.
     const koi::EvaluatorSelection absent = koi::make_evaluator(std::nullopt);
     require(!absent.nnue_enabled && !absent.evaluator && absent.nnue_error.has_value(),
             "absent NNUE must leave the evaluator unset and report an error");
@@ -1351,8 +1351,8 @@ void test_invalid_in_memory_network_is_unusable() {
     const auto weights = std::make_shared<const koi::NnueNetwork>(std::move(broken));
     const koi::NnueEvaluator evaluator(weights);
     const koi::GameState state = require_state("4k3/8/8/8/8/8/P7/4K3 w - - 0 1");
-    // HCE was removed (2026-10-28): an unusable network must not silently
-    // fabricate a hand-crafted score; the boot path rejects it instead.
+    // An unusable NNUE network must fail cleanly rather than fabricating scores;
+    // the boot path rejects invalid networks instead of substituting HCE.
     require(evaluator.evaluate(state, state.side_to_move()) == 0,
             "an unusable in-memory network must not fall back to a classical score");
     require(evaluator.create_worker() == nullptr,

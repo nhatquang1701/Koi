@@ -1,7 +1,7 @@
 // Test-only factory for a UciController backed by the in-repo material
-// evaluator.  The engine no longer ships a classical evaluator (HCE removed
-// 2026-10-28), so the historical three-argument constructor cannot live in the
-// production class; tests go through this factory instead.
+// evaluator.  The production engine requires an NNUE network or explicit
+// ClassicalEvaluator injection, so tests use this factory to keep lightweight
+// unit fixtures decoupled from NNUE loading.
 
 #include "uci_controller_test_support.hpp"
 

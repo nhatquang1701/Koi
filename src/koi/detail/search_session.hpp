@@ -49,9 +49,6 @@ public:
     // unless it completed or was stopped earlier.  A jthread timer owned by the
     // session; re-arming joins the previous timer.
     void request_stop_after(std::chrono::milliseconds delay);
-    [[nodiscard]] bool ponderhit_requested() const noexcept {
-        return ponderhit_requested_.load(std::memory_order_acquire);
-    }
     [[nodiscard]] std::optional<SearchLimits> take_ponderhit_limits();
 
 private:

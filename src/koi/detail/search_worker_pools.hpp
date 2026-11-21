@@ -136,11 +136,6 @@ public:
         return failed_.load(std::memory_order_relaxed);
     }
 
-    [[nodiscard]] std::string failure_message() const {
-        std::lock_guard lock(failure_mutex_);
-        return failure_message_;
-    }
-
 private:
     // A helper's iteration counters are appended to the live totals once the
     // iteration returns; the helper is the only writer of its own stats, so the
@@ -157,16 +152,7 @@ private:
         }
     }
 
-    void record_failure(const char* message) noexcept {
-        try {
-            std::lock_guard lock(failure_mutex_);
-            if (failure_message_.empty()) {
-                failure_message_ = message;
-            }
-        } catch (...) {
-            // The diagnostic is best-effort; the flags below are what stop the
-            // search and keep the process alive.
-        }
+    void record_failure() noexcept {
         failed_.store(true, std::memory_order_relaxed);
         helper_abort_.store(true, std::memory_order_relaxed);
     }
@@ -174,10 +160,8 @@ private:
     void helper_loop(std::size_t helper_index) noexcept {
         try {
             helper_body(helper_index);
-        } catch (const std::exception& error) {
-            record_failure(error.what());
         } catch (...) {
-            record_failure("an unknown error");
+            record_failure();
         }
     }
 
@@ -343,8 +327,6 @@ private:
     std::atomic<std::uint64_t> live_tt_hits_{0};
     std::atomic<std::uint64_t> live_tbhits_{0};
     std::atomic<int> live_seldepth_{0};
-    mutable std::mutex failure_mutex_;
-    std::string failure_message_;
 };
 
 class RootWorkerPool {
