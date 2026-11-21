@@ -13,6 +13,11 @@
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <cerrno>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 namespace {
@@ -61,15 +66,39 @@ int run_fixture(std::string_view arch, const std::filesystem::path* output = nul
     CloseHandle(process.hProcess);
     return static_cast<int>(exit_code);
 #else
-    const auto quote_argument = [](std::string_view argument) {
-        return '"' + std::string(argument) + '"';
-    };
-    std::string command = quote_argument(fixture_path.string()) + " --arch " +
-                          quote_argument(arch);
+    std::string executable = fixture_path.string();
+    std::string arch_flag = "--arch";
+    std::string arch_value(arch);
+    std::string output_flag = "--output";
+    std::string output_value = output != nullptr ? output->string() : std::string{};
+    std::vector<char*> argv{executable.data(), arch_flag.data(), arch_value.data()};
     if (output != nullptr) {
-        command += " --output " + quote_argument(output->string());
+        argv.push_back(output_flag.data());
+        argv.push_back(output_value.data());
     }
-    return std::system(command.c_str());
+    argv.push_back(nullptr);
+
+    const pid_t pid = ::fork();
+    if (pid < 0) {
+        return errno != 0 ? errno : 1;
+    }
+    if (pid == 0) {
+        ::execv(executable.c_str(), argv.data());
+        ::_exit(127);
+    }
+    int status = 0;
+    while (::waitpid(pid, &status, 0) < 0) {
+        if (errno != EINTR) {
+            return errno != 0 ? errno : 1;
+        }
+    }
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+        return 128 + WTERMSIG(status);
+    }
+    return 1;
 #endif
 }
 
