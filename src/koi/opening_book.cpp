@@ -26,6 +26,7 @@ struct Record {
 struct FileSignature {
     std::filesystem::path path;
     std::filesystem::file_time_type timestamp{};
+    std::uintmax_t size = 0;
     bool exists = false;
 
     friend bool operator==(const FileSignature&, const FileSignature&) = default;
@@ -55,13 +56,17 @@ std::optional<FileSignature> signature_for(const std::filesystem::path& path) {
         return std::nullopt;
     }
     if (!exists) {
-        return FileSignature{canonical, {}, false};
+        return FileSignature{canonical, {}, 0, false};
     }
     const std::filesystem::file_time_type timestamp = std::filesystem::last_write_time(canonical, error);
     if (error) {
         return std::nullopt;
     }
-    return FileSignature{canonical, timestamp, true};
+    const std::uintmax_t size = std::filesystem::file_size(canonical, error);
+    if (error) {
+        return std::nullopt;
+    }
+    return FileSignature{canonical, timestamp, size, true};
 }
 
 std::optional<Move> decode_move(std::uint16_t encoded, const GameState& state) {

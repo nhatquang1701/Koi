@@ -460,9 +460,14 @@ template <typename Integer>
         if (w > max_w) max_w = w;
     }
     constexpr std::int64_t kMaxActivePlusDeltaTerms = 34;
-    return min_bias + kMaxActivePlusDeltaTerms * min_w >=
+    // Clamp the per-feature extrema at 0 before scaling: every partial sum from
+    // the initial bias through kMaxActivePlusDeltaTerms additions must remain
+    // representable in int16_t even when all weights share the same sign.
+    const std::int64_t min_delta_w = std::min<std::int16_t>(0, min_w);
+    const std::int64_t max_delta_w = std::max<std::int16_t>(0, max_w);
+    return min_bias + kMaxActivePlusDeltaTerms * min_delta_w >=
             std::numeric_limits<std::int16_t>::min() &&
-        max_bias + kMaxActivePlusDeltaTerms * max_w <=
+        max_bias + kMaxActivePlusDeltaTerms * max_delta_w <=
             std::numeric_limits<std::int16_t>::max();
 }
 

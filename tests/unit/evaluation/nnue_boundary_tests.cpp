@@ -2325,6 +2325,36 @@ void test_v4_non_multiple_hidden_int16_safe_and_extreme_bias_finny_parity() {
                           0xE374E3EULL, extreme_weights);
 }
 
+void test_v4_same_sign_weights_with_out_of_range_bias_disables_int16() {
+    const koi::GameState bare_kings = require_state("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+    const koi::EvaluationFeatures features = koi::EvaluationFeatureExtractor::extract(bare_kings);
+    for (const std::int16_t constant_weight : {std::int16_t{500}, std::int16_t{-500}}) {
+        koi::NnueNetwork net = make_v4_network_with_hidden(32U, 0U, constant_weight, 10);
+        std::fill(net.feature_weights.begin(), net.feature_weights.end(), constant_weight);
+        // Same-sign weights + out-of-int16 bias: (bias + 34 * weight) appears
+        // inside [-32768, 32767], yet initializing sums[h] in int16_t would wrap.
+        const std::int32_t out_of_range_bias = constant_weight > 0 ? -40'000 : 40'000;
+        std::fill(net.hidden_bias.begin(), net.hidden_bias.end(), out_of_range_bias);
+        const auto encoded = koi::NnueLoader::serialize(net);
+        require(encoded.has_value(), "same-sign extreme-bias v4 network must serialize");
+        const auto decoded = koi::NnueLoader::load(*encoded);
+        require(decoded.has_value(), "same-sign extreme-bias v4 network must load");
+        const auto weights = std::make_shared<const koi::NnueNetwork>(std::move(*decoded));
+
+        const int expected = reference_v4_score(
+            *weights, koi::EvaluationFeatureExtractor::encode_sparse_v4(features),
+            reference_v4_bucket(features));
+        koi::NnueWorker scalar_worker(weights);
+        koi::NnueWorker avx2_worker(weights);
+        const int scalar = scalar_worker.evaluate(features, koi::Color::white,
+                                                  koi::NnueInferencePath::scalar);
+        const int avx2 = avx2_worker.evaluate(features, koi::Color::white,
+                                              koi::NnueInferencePath::avx2_compatible);
+        require(scalar == expected && avx2 == expected,
+                "same-sign weights with out-of-int16 bias must not take wrapping int16 accumulator");
+    }
+}
+
 } // namespace
 
 // Test-only seam: serialize a deterministic v4 fixture network and print the
@@ -2672,6 +2702,8 @@ int main(int argc, char** argv) {
         {"NNUE auto discovery", test_nnue_auto_discovery_prefers_bundled_layout},
         {"NNUE v4 hidden=34 int16-safe and extreme bias Finny parity",
          test_v4_non_multiple_hidden_int16_safe_and_extreme_bias_finny_parity},
+        {"NNUE v4 same-sign extreme bias disables int16",
+         test_v4_same_sign_weights_with_out_of_range_bias_disables_int16},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

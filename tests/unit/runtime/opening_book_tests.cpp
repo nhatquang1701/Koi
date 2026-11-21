@@ -270,6 +270,40 @@ void test_transient_open_failure_is_not_cached() {
 }
 #endif
 
+void test_same_timestamp_size_change_invalidates_book_cache() {
+    koi::test::TempDirectory files;
+    const std::filesystem::path book_path = files.path() / "swap.bin";
+    const GameState start = GameState::startpos();
+    write_book(book_path, {
+        {start.polyglot_key(), polyglot_move("e2", "e4"), 10, 0},
+        {start.polyglot_key(), polyglot_move("d2", "d4"), 5, 0},
+    });
+    const auto pinned_time = std::filesystem::last_write_time(book_path);
+
+    OpeningBook book(files.path());
+    book.set_file(book_path);
+    const auto first = book.choose(start, 0, true, 16, 1);
+    require(first && first->move == require_move("e2e4"),
+            "initial book load must return highest-weight entry");
+
+    write_book(book_path, {
+        {start.polyglot_key(), polyglot_move("c2", "c4"), 20, 0},
+    });
+    std::filesystem::last_write_time(book_path, pinned_time);
+
+    const auto swapped = book.choose(start, 0, true, 16, 1);
+    require(swapped && swapped->move == require_move("c2c4"),
+            "book file size change at the same timestamp must invalidate the cached book");
+
+    {
+        std::ofstream corrupt(book_path, std::ios::binary | std::ios::trunc);
+        corrupt << "corrupt";
+    }
+    std::filesystem::last_write_time(book_path, pinned_time);
+    require(!book.choose(start, 0, true, 16, 1).has_value(),
+            "corrupted same-timestamp size replacement must fail closed");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -281,6 +315,7 @@ int main(int argc, char** argv) {
         {"book fallback behavior", test_book_falls_back_for_unavailable_or_unusable_inputs},
         {"oversized book fallback", test_book_rejects_oversized_record_aligned_input_without_throwing},
         {"book safety", test_book_safety_rejects_an_immediate_hanging_piece},
+        {"same-timestamp book replacement invalidated", test_same_timestamp_size_change_invalidates_book_cache},
 #if defined(_WIN32)
         {"transient open failure retried", test_transient_open_failure_is_not_cached},
 #endif
