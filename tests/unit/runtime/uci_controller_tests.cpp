@@ -2860,6 +2860,68 @@ void test_annotate_rejects_invalid_limits_and_debug_log_stays_nonthrowing() {
             "DebugLog must recover and write once configured with a valid directory");
 }
 
+void test_xboard_suppresses_uci_info_strings_across_all_handlers() {
+    koi::test::TempDirectory temp;
+    const std::filesystem::path book = temp.path() / "xboard-book.bin";
+    const koi::GameState start = koi::GameState::startpos();
+    write_book(book, {
+        {start.polyglot_key(), polyglot_move("e2", "e4"), 100, 0},
+    });
+    const std::filesystem::path syzygy_dir = temp.path() / "syzygy";
+    std::filesystem::create_directories(syzygy_dir);
+    {
+        std::ofstream corrupt(syzygy_dir / "KQvK.rtbw", std::ios::binary);
+        corrupt << "not-syzygy";
+    }
+
+    const std::string oversized(koi::uci::kMaximumProtocolLineBytes + 32, 'x');
+    std::istringstream input(
+        "xboard\n"
+        "protover 2\n"
+        "memory 999999999\n"
+        "cores 9999\n"
+        "option EvalFile=does-not-exist-xboard.nnue\n"
+        "option SyzygyPath=" + syzygy_dir.string() + "\n"
+        "option SyzygyPath=\n"
+        "option BookFile=" + book.string() + "\n"
+        "option OwnBook=true\n"
+        "setboard 7k/6Q1/6K1/8/8/8/8/8 b - - 0 1\n"
+        "new\n"
+        "position malformed_in_xboard\n"
+        "perft 1\n"
+        "annotate e2e4 depth 1\n" +
+        oversized + "\n"
+        "sd 1\n"
+        "go\n"
+        "option OwnBook=false\n"
+        "new\n"
+        "sd 1\n"
+        "go\n"
+        "ping 42\n"
+        "quit\n");
+    std::ostringstream output;
+    std::ostringstream diagnostics;
+    koi::UciController controller(
+        input, output, diagnostics,
+        koi::SearchService(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16), temp.path());
+    const int exit_code = controller.run();
+
+    const std::string raw = output.str();
+    const std::vector<std::string> lines = output_lines(raw);
+    const std::vector<std::string> info_lines = lines_starting_with(lines, "info ");
+    const std::vector<std::string> bestmove_lines = lines_starting_with(lines, "bestmove ");
+    const std::vector<std::string> uciok_lines = lines_starting_with(lines, "uciok");
+    const std::vector<std::string> move_lines = lines_starting_with(lines, "move ");
+
+    require(exit_code == 0, "XBoard info-suppression session must exit cleanly with 0");
+    require(info_lines.empty() && bestmove_lines.empty() && uciok_lines.empty(),
+            "XBoard session must never emit UCI info/bestmove/uciok lines; got:\n" + raw);
+    require(raw.find("pong 42") != std::string::npos,
+            "XBoard ping must remain responsive after oversized/rejected commands");
+    require(move_lines.size() == 2 && move_lines[0] == "move e2e4",
+            "XBoard book and search moves must still emit clean CECP move replies");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2947,6 +3009,8 @@ int main(int argc, char** argv) {
          test_xboard_terminal_and_failure_replies_stay_protocol_clean},
         {"annotate limit validation and debug log safety",
          test_annotate_rejects_invalid_limits_and_debug_log_stays_nonthrowing},
+        {"XBoard UCI info string suppression",
+         test_xboard_suppresses_uci_info_strings_across_all_handlers},
     };
 
     return koi::test::run_tests(tests, argc, argv);

@@ -106,17 +106,22 @@ XBOARD_OPS = [
     "setboard rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -",
     "undo",
     "remove",
+    "cores 9999",
+    "memory 999999999",
+    "option Threads=9999",
+    "option Hash=999999999",
+    "option EvalFile=does-not-exist-xboard.nnue",
+    "option SyzygyPath=missing-syzygy-xboard",
+    "option SyzygyPath=",
     "option OwnBook=false",
     "option BogusOption=1",
+    "perft 1",
+    "annotate e2e4 depth 1",
+    "position fen malformed",
 ]
 
 MOVE_RE = r"[a-h][1-8][a-h][1-8][nbrq]?"
-VALID_STDOUT_PATTERNS = [
-    re.compile(r"^id (?:name|author) .+$"),
-    re.compile(r"^option name .+$"),
-    re.compile(r"^(?:uciok|usiok|ucciok|readyok|nobestmove)$"),
-    re.compile(r"^info .+$"),
-    re.compile(rf"^bestmove (?:{MOVE_RE}|0000|resign)(?: ponder (?:{MOVE_RE}|0000))?$"),
+XBOARD_PURE_VALID_PATTERNS = [
     re.compile(r"^feature .+$"),
     re.compile(r"^pong \S+$"),
     re.compile(rf"^move {MOVE_RE}$"),
@@ -127,9 +132,21 @@ VALID_STDOUT_PATTERNS = [
     re.compile(rf"^\d+\s+-?\d+\s+\d+\s+\d+(?:\s+{MOVE_RE})*$"),
 ]
 
+VALID_STDOUT_PATTERNS = [
+    re.compile(r"^id (?:name|author) .+$"),
+    re.compile(r"^option name .+$"),
+    re.compile(r"^(?:uciok|usiok|ucciok|readyok|nobestmove)$"),
+    re.compile(r"^info .+$"),
+    re.compile(rf"^bestmove (?:{MOVE_RE}|0000|resign)(?: ponder (?:{MOVE_RE}|0000))?$"),
+] + XBOARD_PURE_VALID_PATTERNS
+
 
 def _is_valid_protocol_line(line: str) -> bool:
     return any(pattern.fullmatch(line) is not None for pattern in VALID_STDOUT_PATTERNS)
+
+
+def _is_valid_xboard_line(line: str) -> bool:
+    return any(pattern.fullmatch(line) is not None for pattern in XBOARD_PURE_VALID_PATTERNS)
 
 
 def _run_cli_contract_case(engine: str, case: int) -> dict:
@@ -181,6 +198,42 @@ def _run_cli_contract_case(engine: str, case: int) -> dict:
                 result["bad_stdout"].append(f"invalid --engine-json JSON: {exc}")
             if stderr:
                 result["bad_stderr"].append(f"unexpected stderr on --engine-json: {stderr!r}")
+        elif case == 6:
+            if sys.platform == "win32":
+                helper = (
+                    "import ctypes, subprocess, sys\n"
+                    "ctypes.windll.kernel32.SetStdHandle(-12, ctypes.c_void_p(0))\n"
+                    "p = subprocess.Popen([sys.argv[1]], stdin=subprocess.PIPE, "
+                    "stdout=subprocess.PIPE, stderr=None, creationflags=0x08000008)\n"
+                    "out, _ = p.communicate(b'uci\\nisready\\nposition startpos\\ngo depth 2\\nstop\\nquit\\n', timeout=20)\n"
+                    "sys.stdout.buffer.write(out)\n"
+                    "sys.exit(p.returncode)\n"
+                )
+                proc = subprocess.run(
+                    [sys.executable, "-c", helper, engine],
+                    input=b"",
+                    capture_output=True,
+                    env=env,
+                    timeout=25,
+                )
+            else:
+                proc = subprocess.run(
+                    [engine],
+                    input=b"uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n",
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    env=env,
+                    timeout=25,
+                )
+            result["exit"] = proc.returncode
+            stdout = proc.stdout.decode("utf-8", errors="replace")
+            stderr = proc.stderr.decode("utf-8", errors="replace") if proc.stderr else ""
+            if proc.returncode != 0:
+                result["bad_stderr"].append(f"expected exit 0 with unavailable stderr, got {proc.returncode}")
+            if stderr:
+                result["bad_stderr"].append(f"unexpected stderr in child helper: {stderr!r}")
+            if "uciok" not in stdout or "bestmove " not in stdout:
+                result["bad_stdout"].append(f"missing uciok/bestmove with unavailable stderr: {stdout!r}")
         else:
             cli_cases = {
                 2: ([engine, "--protocol"], 2, "missing argument for --protocol"),
@@ -208,11 +261,13 @@ def _run_cli_contract_case(engine: str, case: int) -> dict:
 def run_case(config: dict) -> dict:
     case = int(config["case"])
     engine = str(config["engine"])
-    if case < 6:
+    if case < 7:
         return _run_cli_contract_case(engine, case)
 
     rng = random.Random(20261121 + case)
-    start_proto = PROTOCOLS[(case - 6) % len(PROTOCOLS)]
+    end_mode = case % 5
+    pure_xboard = end_mode == 4
+    start_proto = rng.choice(["xboard", "XBOARD"]) if pure_xboard else PROTOCOLS[(case - 7) % len(PROTOCOLS)]
     argv = [engine]
     flag_style = rng.randrange(3)
     env = os.environ.copy()
@@ -230,18 +285,20 @@ def run_case(config: dict) -> dict:
 
     op_count = rng.randint(6, 18)
     for step in range(op_count):
-        pool = XBOARD_OPS if rng.random() < 0.5 else UCI_LIKE_OPS
+        if pure_xboard:
+            pool = XBOARD_OPS
+        else:
+            pool = XBOARD_OPS if rng.random() < 0.5 else UCI_LIKE_OPS
         cmd = rng.choice(pool).encode("utf-8")
         if rng.random() < 0.12:
             cmd = b"\x00" + cmd
         if rng.random() < 0.08:
             cmd = cmd + b" " + (b"x" * rng.randint(64, 512))
         body.append(cmd)
-        if step % 5 == 4:
+        if not pure_xboard and step % 5 == 4:
             # Ensure cross-protocol switches happen cleanly in between storms.
             body.append(rng.choice([b"uci", b"usi", b"ucci", b"xboard\nprotover 2"]))
 
-    end_mode = case % 5
     if end_mode == 0:
         tail = [
             b"uci",
@@ -286,8 +343,6 @@ def run_case(config: dict) -> dict:
         ]
     else:
         tail = [
-            b"xboard",
-            b"protover 2",
             b"new",
             b"option OwnBook=false",
             b"sd 1",
@@ -304,7 +359,7 @@ def run_case(config: dict) -> dict:
 
     result = {
         "case": case,
-        "mode": f"{start_proto}->end_{end_mode}",
+        "mode": "xboard_pure" if pure_xboard else f"{start_proto}->end_{end_mode}",
         "exit": None,
         "timeout": False,
         "bad_stderr": [],
@@ -328,8 +383,9 @@ def run_case(config: dict) -> dict:
                 result["bad_stderr"].append(err_line)
 
         out_lines = [line.rstrip("\r") for line in stdout.splitlines()]
+        validator = _is_valid_xboard_line if pure_xboard else _is_valid_protocol_line
         for out_line in out_lines:
-            if out_line and not _is_valid_protocol_line(out_line):
+            if out_line and not validator(out_line):
                 result["bad_stdout"].append(f"invalid protocol line: {out_line!r}")
 
         if end_mode == 4:

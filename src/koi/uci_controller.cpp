@@ -1310,12 +1310,8 @@ int UciController::run() {
         if (oversized) {
             // A hostile or broken GUI must not force an unbounded allocation;
             // report a protocol-valid diagnostic and keep serving.
-            {
-                std::lock_guard lock(output_mutex_);
-                output_ << "info string command rejected: line exceeds "
-                        << uci::kMaximumProtocolLineBytes << " bytes\n"
-                        << std::flush;
-            }
+            write_uci_info_string("command rejected: line exceeds " +
+                                  std::to_string(uci::kMaximumProtocolLineBytes) + " bytes");
             debug_event("command rejected: oversized line");
             continue;
         }
@@ -1441,11 +1437,9 @@ int UciController::run() {
             // A malformed or resource-starved command must not terminate the
             // engine mid-game: report it as a protocol-valid info line and keep
             // serving.  quit/EOF cancellation semantics are unchanged.
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string command failed: " << error.what() << '\n' << std::flush;
+            write_uci_info_string(std::string("command failed: ") + error.what());
         } catch (...) {
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string command failed\n" << std::flush;
+            write_uci_info_string("command failed");
         }
     }
 
@@ -1660,15 +1654,16 @@ void UciController::handle_setoption(std::istream& command) {
                     result.status == HashResizeStatus::disabled ||
                     result.reason != HashResizeReason::none) {
                     std::lock_guard lock(output_mutex_);
-                    output_ << "info string hash requested " << result.requested_mb
-                            << " MB effective " << result.effective_mb << " MB status "
-                            << hash_status_name(result.status) << " reason "
-                            << hash_reason_name(result.reason) << '\n' << std::flush;
+                    if (protocol_mode_ != ProtocolMode::xboard) {
+                        output_ << "info string hash requested " << result.requested_mb
+                                << " MB effective " << result.effective_mb << " MB status "
+                                << hash_status_name(result.status) << " reason "
+                                << hash_reason_name(result.reason) << '\n' << std::flush;
+                    }
                 }
             } catch (...) {
                 debug_event("hash resize failed outside the guarded allocation boundary");
-                std::lock_guard lock(output_mutex_);
-                output_ << "info string hash resize failed; previous table preserved\n" << std::flush;
+                write_uci_info_string("hash resize failed; previous table preserved");
             }
         }
         break;
@@ -1687,9 +1682,8 @@ void UciController::handle_setoption(std::istream& command) {
                 threads_ = static_cast<std::size_t>(clamped);
             }
             if (clamped != requested) {
-                std::lock_guard lock(output_mutex_);
-                output_ << "info string Threads " << requested << " clamped to " << clamped
-                        << '\n' << std::flush;
+                write_uci_info_string("Threads " + std::to_string(requested) + " clamped to " +
+                                      std::to_string(clamped));
             }
         }
         break;
@@ -1868,8 +1862,7 @@ void UciController::handle_setoption(std::istream& command) {
                 search_service_.set_evaluator(std::make_shared<ClassicalEvaluator>());
                 hce_active_ = true;
             }
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string evaluator hce\n" << std::flush;
+            write_uci_info_string("evaluator hce");
             break;
         }
         if (mode != "nnue") {
@@ -1886,21 +1879,16 @@ void UciController::handle_setoption(std::istream& command) {
             }
             std::expected<NnueNetwork, NnueError> network = NnueLoader::load_file(resolved);
             if (!network.has_value()) {
-                std::lock_guard lock(output_mutex_);
-                output_ << "info string EvalMode nnue rejected: " << network.error().message
-                        << '\n' << std::flush;
+                write_uci_info_string("EvalMode nnue rejected: " + network.error().message);
                 break;
             }
             try {
                 auto weights = std::make_shared<const NnueNetwork>(std::move(*network));
                 search_service_.set_evaluator(std::make_shared<NnueEvaluator>(weights));
                 hce_active_ = false;
-                std::lock_guard lock(output_mutex_);
-                output_ << "info string evaluator nnue\n" << std::flush;
+                write_uci_info_string("evaluator nnue");
             } catch (const std::exception& error) {
-                std::lock_guard lock(output_mutex_);
-                output_ << "info string EvalMode nnue rejected: " << error.what() << '\n'
-                        << std::flush;
+                write_uci_info_string(std::string("EvalMode nnue rejected: ") + error.what());
             }
             break;
         }
@@ -1908,12 +1896,9 @@ void UciController::handle_setoption(std::istream& command) {
             dynamic_cast<const ClassicalEvaluator*>(boot_evaluator_.get()) == nullptr) {
             search_service_.set_evaluator(boot_evaluator_);
             hce_active_ = false;
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string evaluator nnue\n" << std::flush;
+            write_uci_info_string("evaluator nnue");
         } else {
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string EvalMode nnue requires an EvalFile; keeping HCE\n"
-                    << std::flush;
+            write_uci_info_string("EvalMode nnue requires an EvalFile; keeping HCE");
         }
         break;
     }
@@ -1940,9 +1925,7 @@ void UciController::handle_setoption(std::istream& command) {
         if (!network.has_value()) {
             debug_event("EvalFile rejected " + resolved.string() + ": " +
                         network.error().message);
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string EvalFile rejected: " << network.error().message << '\n'
-                    << std::flush;
+            write_uci_info_string("EvalFile rejected: " + network.error().message);
             break;
         }
         try {
@@ -1954,17 +1937,17 @@ void UciController::handle_setoption(std::istream& command) {
             // previous evaluator and the process alive.
             debug_event("EvalFile installation failed " + resolved.string() + ": " +
                         install_error.what());
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string EvalFile rejected: " << install_error.what() << '\n'
-                    << std::flush;
+            write_uci_info_string(std::string("EvalFile rejected: ") + install_error.what());
             break;
         }
         eval_file_ = value;
         debug_json_event("eval_file", "\"path\":" + debug_quoted(resolved.string()) +
                                            ",\"enabled\":true");
         std::lock_guard lock(output_mutex_);
-        output_ << "info string evaluator nnue\n"
-                << "info string NNUE enabled from " << resolved.string() << '\n' << std::flush;
+        if (protocol_mode_ != ProtocolMode::xboard) {
+            output_ << "info string evaluator nnue\n"
+                    << "info string NNUE enabled from " << resolved.string() << '\n' << std::flush;
+        }
         break;
     }
 
@@ -2049,6 +2032,12 @@ void UciController::handle_go(std::istream& command) {
 }
 
 void UciController::handle_annotate(std::istream& command) {
+    {
+        std::lock_guard lock(output_mutex_);
+        if (protocol_mode_ == ProtocolMode::xboard) {
+            return;
+        }
+    }
     stop_and_suppress_active_search();
     ensure_auto_syzygy_loaded();
 
@@ -2614,7 +2603,7 @@ void UciController::start_perft(const int depth) {
                     std::lock_guard lock(output_mutex_);
                     if (generation == generation_ &&
                         state_ != ControllerState::ShuttingDown) {
-                        output_ << "info string perft failed\n" << std::flush;
+                        write_uci_info_string_locked("perft failed");
                         state_ = ControllerState::Idle;
                     }
                 }
@@ -2624,7 +2613,7 @@ void UciController::start_perft(const int depth) {
         debug_event("perft worker failed to start");
         std::lock_guard lock(output_mutex_);
         if (state_ != ControllerState::ShuttingDown) {
-            output_ << "info string perft could not start\n" << std::flush;
+            write_uci_info_string_locked("perft could not start");
             state_ = ControllerState::Idle;
         }
     }
@@ -2792,10 +2781,12 @@ void UciController::write_perft_results(GameState root, const int depth,
         state_ == ControllerState::ShuttingDown) {
         return;
     }
-    for (const auto& [move, nodes] : counts) {
-        output_ << "info string " << move.uci() << ": " << nodes << '\n';
+    if (protocol_mode_ != ProtocolMode::xboard) {
+        for (const auto& [move, nodes] : counts) {
+            output_ << "info string " << move.uci() << ": " << nodes << '\n';
+        }
+        output_ << "info string Nodes searched: " << total << '\n' << std::flush;
     }
-    output_ << "info string Nodes searched: " << total << '\n' << std::flush;
     state_ = ControllerState::Idle;
 }
 
@@ -2875,12 +2866,8 @@ void UciController::ensure_auto_syzygy_loaded() {
         }
     }
     syzygy_auto_loaded_ = true;
-    {
-        std::lock_guard lock(output_mutex_);
-        output_ << "info string syzygy detected: " << syzygy_path_.string()
-                << " (SyzygyPath not set, using it)\n"
-                << std::flush;
-    }
+    write_uci_info_string("syzygy detected: " + syzygy_path_.string() +
+                          " (SyzygyPath not set, using it)");
     rebuild_syzygy();
 }
 
@@ -2903,11 +2890,13 @@ void UciController::rebuild_syzygy() {
         const auto reject_unusable = [this](const std::filesystem::path& bad,
                                             SyzygyDirectoryStatus status) {
             std::lock_guard lock(output_mutex_);
-            output_ << "info string Syzygy: "
-                    << (status == SyzygyDirectoryStatus::unreadable ? "unreadable"
-                                                                    : "corrupt")
-                    << " tables at " << bad.string() << " (probing disabled)\n"
-                    << std::flush;
+            if (protocol_mode_ != ProtocolMode::xboard) {
+                output_ << "info string Syzygy: "
+                        << (status == SyzygyDirectoryStatus::unreadable ? "unreadable"
+                                                                        : "corrupt")
+                        << " tables at " << bad.string() << " (probing disabled)\n"
+                        << std::flush;
+            }
             syzygy_ = std::make_shared<SyzygyTablebase>();
         };
         const auto unusable = [](SyzygyDirectoryStatus status) {
@@ -2950,6 +2939,9 @@ void UciController::rebuild_syzygy() {
     // Surface load diagnostics and the largest registered table so a GUI can
     // tell an empty/mismatched directory apart from a working install.
     std::lock_guard lock(output_mutex_);
+    if (protocol_mode_ == ProtocolMode::xboard) {
+        return;
+    }
     switch (syzygy_->load_status()) {
     case SyzygyLoadStatus::loaded:
         output_ << "info string Syzygy: " << syzygy_->large_table_limit()
@@ -3145,11 +3137,20 @@ void UciController::debug_json_event(std::string event, std::string fields) noex
     }
 }
 
-void UciController::write_position_error(const char* message) {
-    {
-        std::lock_guard lock(output_mutex_);
-        output_ << "info string " << message << '\n' << std::flush;
+void UciController::write_uci_info_string_locked(const std::string_view message) {
+    if (protocol_mode_ == ProtocolMode::xboard) {
+        return;
     }
+    output_ << "info string " << message << '\n' << std::flush;
+}
+
+void UciController::write_uci_info_string(const std::string_view message) {
+    std::lock_guard lock(output_mutex_);
+    write_uci_info_string_locked(message);
+}
+
+void UciController::write_position_error(const char* message) {
+    write_uci_info_string(message);
     diagnostics_ << "UCI position error: " << message << '\n';
 }
 
