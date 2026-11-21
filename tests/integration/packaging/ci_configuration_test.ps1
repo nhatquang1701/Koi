@@ -228,6 +228,20 @@ Require-LinuxWorkflowPattern '(?i)"\$replay"\s+startpos\s+moves\s+"\$bestmove"' 
 Require-LinuxWorkflowPattern '(?i)for executable in koi-engine koi-engine-avx2 koi-engine-avx512; do' 'release archive ships engine binaries without developer tools'
 Require-LinuxWorkflowPattern '(?i)grep\s+-q\s+"legal\s+1"' 'acceptance of legal extracted-engine moves'
 Require-LinuxWorkflowPattern '(?i)KOI_CPU_VARIANT=generic' 'the forced generic UCI smoke'
+Require-LinuxWorkflowPattern '(?i)-o\s+Acquire::Retries=5' 'apt retry resilience on Ubuntu'
+Require-LinuxWorkflowPattern '(?i)koi_architecture_boundaries' 'the architecture boundary gate on Linux'
+Require-LinuxWorkflowPattern '(?i)koi_nnue_fixture_tests' 'the NNUE fixture binary integration test on Linux'
+foreach ($linuxJobName in @('linux-gcc', 'linux-clang')) {
+    $linuxJobMatch = [regex]::Match($linuxContent, "(?ms)^  $([regex]::Escape($linuxJobName)):\s*.*?(?=^  [a-z0-9_-]+:\s*$|\z)")
+    if (-not $linuxJobMatch.Success) {
+        throw "Linux CI workflow must define the '$linuxJobName' job."
+    }
+    foreach ($requiredStep in @('-L\s+reliability\s+-LE\s+heavy', 'run_tests_artifact_path', 'koi_architecture_boundaries', 'koi_nnue_fixture_tests')) {
+        if ($linuxJobMatch.Value -notmatch $requiredStep) {
+            throw "Linux CI job '$linuxJobName' must run '$requiredStep'."
+        }
+    }
+}
 Require-LinuxWorkflowPattern '(?i)actions/upload-artifact@v5' 'test diagnostic artifact upload'
 
 # The macOS arm64 leg: Homebrew LLVM, the modules-off/CPU-only fallback build,
@@ -244,6 +258,9 @@ Require-MacOSWorkflowPattern '(?i)-DKOI_STATIC_RUNTIME=OFF' 'the system-runtime 
 Require-MacOSWorkflowPattern '(?i)ctest\s+--test-dir\s+build/ci-release\s+-C\s+Release' 'the macOS CTest invocation'
 Require-MacOSWorkflowPattern '(?i)-L\s+unit\s+-LE\s+heavy' 'the fast unit label selection'
 Require-MacOSWorkflowPattern '(?i)-L\s+heavy\s+-LE\s+process' 'the heavy search label selection'
+Require-MacOSWorkflowPattern '(?i)-L\s+reliability\s+-LE\s+heavy' 'the reliability label selection on macOS'
+Require-MacOSWorkflowPattern '(?i)koi_architecture_boundaries' 'the architecture boundary gate on macOS'
+Require-MacOSWorkflowPattern '(?i)koi_nnue_fixture_tests' 'the NNUE fixture binary integration test on macOS'
 Require-MacOSWorkflowPattern '(?i)-L\s+python' 'the Python label selection'
 Require-MacOSWorkflowPattern '(?i)--output-on-failure' 'CTest failure output'
 Require-MacOSWorkflowPattern '(?i)KOI_TEST_RETRIES:\s*"3"' 'the shared-runner retry setting'

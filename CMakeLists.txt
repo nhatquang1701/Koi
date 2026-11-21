@@ -1156,6 +1156,8 @@ add_test(
 
 koi_set_timeout(hash_memory_stability 60)
 
+endif() # WIN32
+
 add_test(
     NAME windows_ci_configuration
     COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
@@ -1179,8 +1181,6 @@ add_test(
 )
 
 koi_set_timeout(package_release_layout 60)
-
-endif() # WIN32
 
 endif() # POWERSHELL_EXECUTABLE
 
@@ -1427,9 +1427,9 @@ set_tests_properties(koi_engine_process koi_engine_perft_responsiveness PROPERTI
                 PROPERTIES LABELS "process;matches;heavy" PROCESSORS 2)
         endif()
         set_tests_properties(hash_memory_stability PROPERTIES LABELS "process;runtime")
-        set_tests_properties(windows_ci_configuration install_book_script package_release_layout
-            PROPERTIES LABELS "process;packaging")
     endif()
+    set_tests_properties(windows_ci_configuration install_book_script package_release_layout
+        PROPERTIES LABELS "process;packaging")
 endif()
 
 if(TARGET koi_shadow_diff_tests)

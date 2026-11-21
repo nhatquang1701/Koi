@@ -21,8 +21,8 @@ jobs:
           cache-dependency-path: tools/measurement/requirements.txt
       - name: Install the GCC 14 toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends g++-14 ninja-build
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends g++-14 ninja-build
           python -m pip install --disable-pip-version-check --quiet --upgrade cmake -r tools/measurement/requirements.txt
       - name: Configure and build with GCC 14
         run: |
@@ -94,6 +94,21 @@ jobs:
         run: |
           ctest --test-dir build/ci-release -C Release -j 2 -L reliability -LE heavy \
             --output-on-failure --output-junit build/ci-release/ctest-reliability-junit.xml
+      - name: Packaging and architecture suite
+        timeout-minutes: 5
+        run: |
+          ctest --test-dir build/ci-release -C Release -j 1 \
+            -R "^(koi_architecture_boundaries|windows_ci_configuration|install_book_script)$" \
+            --output-on-failure --output-junit build/ci-release/ctest-packaging-junit.xml
+      - name: Process suite - tools and match helpers
+        env:
+          KOI_TEST_RETRIES: "3"
+        timeout-minutes: 8
+        run: |
+          ctest --test-dir build/ci-release -C Release -j 1 \
+            -R "^(koi_nnue_fixture_tests|koi_hce_process|koi_hce_bench_process|koi_hce_eval_features_process|koi_sprt_compare_decision)$" \
+            --repeat until-pass:2 \
+            --output-on-failure --output-junit build/ci-release/ctest-process-helpers-junit.xml
       # Every process test gets its own step with a hard step timeout so a hung
       # test names itself in the job summary instead of stalling the whole job,
       # and the diagnostics upload below still runs.
@@ -217,8 +232,8 @@ jobs:
           cache-dependency-path: tools/measurement/requirements.txt
       - name: Install the Clang 18 toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang-18 clang-tools-18 libclang-rt-18-dev libc++-18-dev libc++abi-18-dev ninja-build
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends clang-18 clang-tools-18 libclang-rt-18-dev libc++-18-dev libc++abi-18-dev ninja-build
           python -m pip install --disable-pip-version-check --quiet --upgrade cmake -r tools/measurement/requirements.txt
       - name: Configure and build with Clang 18
         run: |
@@ -267,6 +282,28 @@ jobs:
             -R "koi_engine_time_safety_process|koi_benchmark_process" \
             --repeat until-pass:2 \
             --output-on-failure --output-junit build/ci-release/ctest-heavy-process-junit.xml
+      - name: Reliability suite
+        env:
+          KOI_TEST_RETRIES: "2"
+        timeout-minutes: 15
+        run: |
+          ctest --test-dir build/ci-release -C Release -j 2 -L reliability -LE heavy \
+            --output-on-failure --output-junit build/ci-release/ctest-reliability-junit.xml
+      - name: Packaging and architecture suite
+        timeout-minutes: 5
+        run: |
+          ctest --test-dir build/ci-release -C Release -j 1 \
+            -R "^(koi_architecture_boundaries|windows_ci_configuration|install_book_script)$" \
+            --output-on-failure --output-junit build/ci-release/ctest-packaging-junit.xml
+      - name: Process suite - tools and match helpers
+        env:
+          KOI_TEST_RETRIES: "3"
+        timeout-minutes: 8
+        run: |
+          ctest --test-dir build/ci-release -C Release -j 1 \
+            -R "^(koi_nnue_fixture_tests|koi_hce_process|koi_hce_bench_process|koi_hce_eval_features_process|koi_sprt_compare_decision)$" \
+            --repeat until-pass:2 \
+            --output-on-failure --output-junit build/ci-release/ctest-process-helpers-junit.xml
       # Every process test gets its own step with a hard step timeout so a hung
       # test names itself in the job summary instead of stalling the whole job,
       # and the diagnostics upload below still runs.
@@ -334,6 +371,14 @@ jobs:
           ctest --test-dir build/ci-release -C Release -j 1 -R "^koi_engine_perft_responsiveness$" \
             --repeat until-pass:2 \
             --output-on-failure --output-junit build/ci-release/ctest-process-8-junit.xml
+      - name: Tool integration suite - run_tests_artifact_path
+        env:
+          KOI_TEST_RETRIES: "3"
+        timeout-minutes: 6
+        run: |
+          ctest --test-dir build/ci-release -C Release -j 1 -R "^run_tests_artifact_path$" \
+            --repeat until-pass:2 \
+            --output-on-failure --output-junit build/ci-release/ctest-process-9-junit.xml
       - name: Run the Python suite
         env:
           KOI_TEST_RETRIES: "3"
@@ -382,8 +427,8 @@ jobs:
           cache-dependency-path: tools/measurement/requirements.txt
       - name: Install the GCC 14 toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends g++-14 ninja-build
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends g++-14 ninja-build
           python -m pip install --disable-pip-version-check --quiet --upgrade cmake -r tools/measurement/requirements.txt
       - name: Configure and build without C++26 modules
         run: |
@@ -422,8 +467,8 @@ jobs:
           cache-dependency-path: tools/measurement/requirements.txt
       - name: Install the GCC 14 toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends g++-14 ninja-build
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends g++-14 ninja-build
           python -m pip install --disable-pip-version-check --quiet --upgrade cmake -r tools/measurement/requirements.txt
       - name: Configure and build with GCC 14
         run: |
@@ -596,8 +641,8 @@ jobs:
           cache-dependency-path: tools/measurement/requirements.txt
       - name: Install the GCC 14 toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends g++-14 ninja-build
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends g++-14 ninja-build
           python -m pip install --disable-pip-version-check --quiet --upgrade cmake -r tools/measurement/requirements.txt
       # TSan needs a shadow-memory mapping that Ubuntu 24.04's default ASLR
       # entropy can break ("unexpected memory mapping"), so lower it.

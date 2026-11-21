@@ -71,6 +71,21 @@ jobs:
         run: |
           ctest --test-dir build/ci-release -C Release -j 2 -L reliability -LE heavy \
             --output-on-failure --output-junit build/ci-release/ctest-reliability-junit.xml
+      - name: Packaging and architecture suite
+        timeout-minutes: 5
+        run: |
+          ctest --test-dir build/ci-release -C Release -j 1 \
+            -R "^(koi_architecture_boundaries|windows_ci_configuration|install_book_script)$" \
+            --output-on-failure --output-junit build/ci-release/ctest-packaging-junit.xml
+      - name: Process suite - tools and match helpers
+        env:
+          KOI_TEST_RETRIES: "3"
+        timeout-minutes: 8
+        run: |
+          ctest --test-dir build/ci-release -C Release -j 1 \
+            -R "^(koi_nnue_fixture_tests|koi_hce_process|koi_hce_bench_process|koi_hce_eval_features_process|koi_sprt_compare_decision)$" \
+            --repeat until-pass:2 \
+            --output-on-failure --output-junit build/ci-release/ctest-process-helpers-junit.xml
       # Every process test gets its own step with a hard step timeout so a hung
       # test names itself in the job summary instead of stalling the whole job,
       # and the diagnostics upload below still runs.

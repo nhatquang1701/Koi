@@ -146,7 +146,7 @@ $matchScript = Join-Path $PSScriptRoot 'uci_match.ps1'
 Assert-FileExists $matchScript 'match harness'
 
 $root = [System.IO.Path]::GetFullPath(
-    (Join-Path $OutputDirectory ("{0}-{1}" -f $Label, (Get-Date -Format 'yyyyMMdd-HHmmss'))))
+    (Join-Path $OutputDirectory ("{0}-{1}" -f $Label, (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))))
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $candidateOptionsCopy = ''
 $baselineOptionsCopy = ''
@@ -199,8 +199,9 @@ function Start-ColorRun([string]$Color) {
         $arguments += @('-OpponentOptionsJsonPath', (& $quote $baselineOptionsCopy))
     }
     $logBase = Join-Path $root $Color
+    $powerShellExecutable = (Get-Process -Id $PID).Path
     $startParameters = @{
-        FilePath = 'pwsh'
+        FilePath = $powerShellExecutable
         ArgumentList = $arguments
         PassThru = $true
         RedirectStandardOutput = "$logBase.out.log"
@@ -269,43 +270,58 @@ if ($TimeControl -ne '') {
 } else {
     Write-Output "sprt-compare: $Nodes nodes, $Games game(s) per opening and color"
 }
-$whiteProcess = Start-ColorRun 'white'
-$blackProcess = Start-ColorRun 'black'
-Write-Output "sprt-compare: white pid $($whiteProcess.Id), black pid $($blackProcess.Id)"
+$whiteProcess = $null
+$blackProcess = $null
+try {
+    $whiteProcess = Start-ColorRun 'white'
+    $blackProcess = Start-ColorRun 'black'
+    Write-Output "sprt-compare: white pid $($whiteProcess.Id), black pid $($blackProcess.Id)"
 
-$sprtCompareStartUtc = [DateTime]::UtcNow
-$lastProgressUtc = $sprtCompareStartUtc
-while (-not $whiteProcess.HasExited -or -not $blackProcess.HasExited) {
-    if (-not $whiteProcess.HasExited) { [void]$whiteProcess.WaitForExit(250) }
-    if (-not $blackProcess.HasExited) { [void]$blackProcess.WaitForExit(250) }
-    $now = [DateTime]::UtcNow
-    if (($now - $lastProgressUtc).TotalSeconds -ge 15.0 -and (-not $whiteProcess.HasExited -or -not $blackProcess.HasExited)) {
-        $lastProgressUtc = $now
-        $wp = Read-LatestSprtProgress (Join-Path $root 'white.out.log')
-        $bp = Read-LatestSprtProgress (Join-Path $root 'black.out.log')
-        if ($null -ne $wp -or $null -ne $bp) {
-            $curGames = $(if ($null -ne $wp) { $wp.games } else { 0 }) + $(if ($null -ne $bp) { $bp.games } else { 0 })
-            $curWins = $(if ($null -ne $wp) { $wp.wins } else { 0 }) + $(if ($null -ne $bp) { $bp.wins } else { 0 })
-            $curDraws = $(if ($null -ne $wp) { $wp.draws } else { 0 }) + $(if ($null -ne $bp) { $bp.draws } else { 0 })
-            $curLosses = $(if ($null -ne $wp) { $wp.losses } else { 0 }) + $(if ($null -ne $bp) { $bp.losses } else { 0 })
-            $wLlr = if ($null -ne $wp) { $wp.llr } else { 0.0 }
-            $bLlr = if ($null -ne $bp) { $bp.llr } else { 0.0 }
-            $curCombined = Get-CombinedSprtResult -WhiteLlr $wLlr -BlackLlr $bLlr `
-                -AcceptThreshold $acceptThreshold -RejectThreshold $rejectThreshold
-            $curDecision = if ($curGames -ge (2 * $MinGames)) { $curCombined.decision } else { 'running' }
-            $curEta = Get-SprtEta -Llr $curCombined.llr -Lower $rejectThreshold -Upper $acceptThreshold `
-                -Games $curGames -MinGames (2 * $MinGames) -MaxGames (2 * $MaxGames) `
-                -ElapsedSeconds ($now - $sprtCompareStartUtc).TotalSeconds -Decision $curDecision
-            Write-Output ("sprt-compare: Game {0}/{1} | +{2} ={3} -{4} | LLR {5:F3} [{6:F3}, {7:F3}] | Elapsed {8} | ETA {9}" -f `
-                $curGames, (2 * $MaxGames), $curWins, $curDraws, $curLosses, `
-                $curCombined.llr, $rejectThreshold, $acceptThreshold, $curEta.elapsed_text, $curEta.eta_text)
+    $sprtCompareStartUtc = [DateTime]::UtcNow
+    $lastProgressUtc = $sprtCompareStartUtc
+    while (-not $whiteProcess.HasExited -or -not $blackProcess.HasExited) {
+        if (-not $whiteProcess.HasExited) { [void]$whiteProcess.WaitForExit(250) }
+        if (-not $blackProcess.HasExited) { [void]$blackProcess.WaitForExit(250) }
+        $now = [DateTime]::UtcNow
+        if (($now - $lastProgressUtc).TotalSeconds -ge 15.0 -and (-not $whiteProcess.HasExited -or -not $blackProcess.HasExited)) {
+            $lastProgressUtc = $now
+            $wp = Read-LatestSprtProgress (Join-Path $root 'white.out.log')
+            $bp = Read-LatestSprtProgress (Join-Path $root 'black.out.log')
+            if ($null -ne $wp -or $null -ne $bp) {
+                $curGames = $(if ($null -ne $wp) { $wp.games } else { 0 }) + $(if ($null -ne $bp) { $bp.games } else { 0 })
+                $curWins = $(if ($null -ne $wp) { $wp.wins } else { 0 }) + $(if ($null -ne $bp) { $bp.wins } else { 0 })
+                $curDraws = $(if ($null -ne $wp) { $wp.draws } else { 0 }) + $(if ($null -ne $bp) { $bp.draws } else { 0 })
+                $curLosses = $(if ($null -ne $wp) { $wp.losses } else { 0 }) + $(if ($null -ne $bp) { $bp.losses } else { 0 })
+                $wLlr = if ($null -ne $wp) { $wp.llr } else { 0.0 }
+                $bLlr = if ($null -ne $bp) { $bp.llr } else { 0.0 }
+                $curCombined = Get-CombinedSprtResult -WhiteLlr $wLlr -BlackLlr $bLlr `
+                    -AcceptThreshold $acceptThreshold -RejectThreshold $rejectThreshold
+                $curDecision = if ($curGames -ge (2 * $MinGames)) { $curCombined.decision } else { 'running' }
+                $curEta = Get-SprtEta -Llr $curCombined.llr -Lower $rejectThreshold -Upper $acceptThreshold `
+                    -Games $curGames -MinGames (2 * $MinGames) -MaxGames (2 * $MaxGames) `
+                    -ElapsedSeconds ($now - $sprtCompareStartUtc).TotalSeconds -Decision $curDecision
+                Write-Output ("sprt-compare: Game {0}/{1} | +{2} ={3} -{4} | LLR {5:F3} [{6:F3}, {7:F3}] | Elapsed {8} | ETA {9}" -f `
+                    $curGames, (2 * $MaxGames), $curWins, $curDraws, $curLosses, `
+                    $curCombined.llr, $rejectThreshold, $acceptThreshold, $curEta.elapsed_text, $curEta.eta_text)
+            }
         }
     }
-}
-$whiteProcess.WaitForExit()
-$blackProcess.WaitForExit()
-if ($whiteProcess.ExitCode -ne 0 -or $blackProcess.ExitCode -ne 0) {
-    throw "SPRT color run failed (white exit $($whiteProcess.ExitCode), black exit $($blackProcess.ExitCode)); see $root"
+    $whiteProcess.WaitForExit()
+    $blackProcess.WaitForExit()
+    if ($whiteProcess.ExitCode -ne 0 -or $blackProcess.ExitCode -ne 0) {
+        throw "SPRT color run failed (white exit $($whiteProcess.ExitCode), black exit $($blackProcess.ExitCode)); see $root"
+    }
+} finally {
+    foreach ($proc in @($whiteProcess, $blackProcess)) {
+        if ($null -ne $proc) {
+            try {
+                if (-not $proc.HasExited) {
+                    try { $proc.Kill($true) } catch { try { $proc.Kill() } catch {} }
+                }
+            } catch {}
+            $proc.Dispose()
+        }
+    }
 }
 
 $white = Read-ColorResult 'white'

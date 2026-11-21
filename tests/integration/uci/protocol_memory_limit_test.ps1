@@ -25,33 +25,43 @@ $info.ArgumentList.Add('ulimit -v 300000; echo "KOI_RLIMIT_AS=$(ulimit -v)" >&2;
 $info.ArgumentList.Add('bash')
 $info.ArgumentList.Add($EnginePath)
 $proc = [System.Diagnostics.Process]::Start($info)
-$outTask = $proc.StandardOutput.ReadToEndAsync()
-$errTask = $proc.StandardError.ReadToEndAsync()
+try {
+    $outTask = $proc.StandardOutput.ReadToEndAsync()
+    $errTask = $proc.StandardError.ReadToEndAsync()
 
-function Send-Line([string]$line) {
-    $proc.StandardInput.WriteLine($line)
-    $proc.StandardInput.Flush()
+    function Send-Line([string]$line) {
+        $proc.StandardInput.WriteLine($line)
+        $proc.StandardInput.Flush()
+    }
+
+    Write-Output '[1/2] launch engine under RLIMIT_AS and send UCI resize transcript'
+    Send-Line 'uci'
+    Send-Line 'isready'
+    Send-Line 'setoption name Hash value 512'
+    Send-Line 'isready'
+    Send-Line 'position startpos'
+    Send-Line 'go depth 1'
+    Send-Line 'stop'
+    Send-Line 'quit'
+    $proc.StandardInput.Close()
+
+    if (-not $proc.WaitForExit(30000)) {
+        try { $proc.Kill($true) } catch { try { $proc.Kill() } catch {} }
+        throw 'engine hung under the virtual memory limit'
+    }
+    $out = $outTask.GetAwaiter().GetResult()
+    $err = $errTask.GetAwaiter().GetResult()
+    $exitCode = $proc.ExitCode
+} finally {
+    if ($null -ne $proc) {
+        try {
+            if (-not $proc.HasExited) {
+                try { $proc.Kill($true) } catch { try { $proc.Kill() } catch {} }
+            }
+        } catch {}
+        $proc.Dispose()
+    }
 }
-
-Write-Output '[1/2] launch engine under RLIMIT_AS and send UCI resize transcript'
-Send-Line 'uci'
-Send-Line 'isready'
-Send-Line 'setoption name Hash value 512'
-Send-Line 'isready'
-Send-Line 'position startpos'
-Send-Line 'go depth 1'
-Send-Line 'stop'
-Send-Line 'quit'
-$proc.StandardInput.Close()
-
-if (-not $proc.WaitForExit(30000)) {
-    try { $proc.Kill() } catch {}
-    throw 'engine hung under the virtual memory limit'
-}
-$out = $outTask.GetAwaiter().GetResult()
-$err = $errTask.GetAwaiter().GetResult()
-$exitCode = $proc.ExitCode
-$proc.Dispose()
 
 Write-Output '[2/2] verify memory-limit allocation failure and search completion'
 Write-Output '--- engine stdout ---'
