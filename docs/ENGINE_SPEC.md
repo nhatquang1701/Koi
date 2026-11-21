@@ -26,7 +26,7 @@ The HCE is selectable for development and measurement with `EvalMode=hce` or the
 | Property | Value | Source |
 | --- | --- | --- |
 | Product name | `Koi` | `src/koi/uci_controller.cpp` (`write_handshake`) |
-| Author string | `Nguyễn Nhật Quang` | `src/koi/uci_controller.cpp` |
+| Author string | `Koi team` | `src/koi/uci_controller.cpp` |
 | Protocol | UCI (Universal Chess Interface) | `src/koi/uci_controller.cpp` |
 | Rules variant | Standard chess only; no Chess960 or other variants | `src/koi/position.cpp` |
 | Language | C++26 (`CMAKE_CXX_STANDARD 26`) | `CMakeLists.txt` |
@@ -674,7 +674,7 @@ the search but cannot push it past the cap.
 ### 7.1 Handshake and options
 
 `uci` writes `id name Koi <version>` (the CMake `project()` version pin),
-`id author Nguyễn Nhật Quang`, an `info string build <commit>` line carrying the
+`id author Koi team`, an `info string build <commit>` line carrying the
 checkout commit recorded at configure time, then every advertised option in the
 fixed `kUciOptions` order, then `uciok`
 (`src/koi/uci_controller.cpp`). `Debug` and `DebugFile` are settable but
