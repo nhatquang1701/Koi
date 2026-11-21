@@ -1,0 +1,67 @@
+{
+  "schema": "koi-nnue-training-metadata-v2",
+  "name": "stage2-dual-f01-s95",
+  "created": "2026-11-08T04:33:00Z",
+  "derived_from": {
+    "network": "stage2-dual-f01",
+    "network_sha256": "90d8cbbdd4d248f02ef7cec7776fb42ea661cdd64e76c1891e6f4ab655bca57e",
+    "payload_sha256": "80c90062a2c3f9314088cb87bd1d1e23df4c5c2f3822b422d3da63c56750809e",
+    "modification": "Output head rescaled to output_scale 0.95 (0.95 / 1.02 from stage2-dual-f01)",
+    "parent_training": {
+      "corpus": "artifacts/training/combined-v2-dual.bin",
+      "rows_used": 3387289,
+      "val_rows": 169364,
+      "init_nnue": "artifacts/networks/koi-v7-h128-d8c-20261027.nnue",
+      "loss": "smooth-l1",
+      "epochs": 10,
+      "batch_size": 16384,
+      "learning_rate": 0.002,
+      "seed": 20260916,
+      "target_scale": 100.0
+    }
+  },
+  "feature_set": "halfka-king-bucket-v1",
+  "quantization": "int16/int8",
+  "arch": "v4-dual",
+  "format_version": 4,
+  "architecture": {
+    "input": 9216,
+    "hidden": 128,
+    "output_buckets": 8,
+    "perspectives": 2
+  },
+  "activation": "crelu-pair-dual",
+  "hidden_shift": 7,
+  "output_shift": 12,
+  "output_scale": 0.95,
+  "size_bytes": 2360971,
+  "payload_sha256": "3d5b2910e97bc4ff46411560af49434bd5e1232a98e99ce90f22f1b23f91a940",
+  "network_sha256": "d7d73645672ca23c4252d8548be65694b4d6d48f6683ca1b00d9c16972a47e41",
+  "validation_matches": {
+    "baseline_network": "koi-v7-h128-official-20261025.nnue",
+    "engine": "Koi 1.1.6 (macOS arm64, Threads=1, Hash=256, OwnBook=false)",
+    "screen_200ms": {
+      "time_control": "movetime 200",
+      "games": 80,
+      "wins": 36,
+      "draws": 17,
+      "losses": 27
+    },
+    "sprt_1plus0": {
+      "time_control": "1+0",
+      "elo0": 0.0,
+      "elo1": 10.0,
+      "alpha": 0.05,
+      "beta": 0.05,
+      "games": 789,
+      "wins": 263,
+      "draws": 333,
+      "losses": 193,
+      "aborted": 0,
+      "elo": 30.91,
+      "llr": 2.956512,
+      "upper": 2.944439,
+      "decision": "accept"
+    }
+  }
+}
