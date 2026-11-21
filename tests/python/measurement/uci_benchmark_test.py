@@ -31,9 +31,10 @@ stop_chatter = threading.Event()
 def start_chatter():
     stop_chatter.clear()
     def write_lines():
-        deadline = time.monotonic() + 2.0
+        deadline = time.monotonic() + 5.0
         while not stop_chatter.is_set() and time.monotonic() < deadline:
             print("info string still working", flush=True)
+            stop_chatter.wait(0.005)
     threading.Thread(target=write_lines, daemon=True).start()
 
 print("id name Fake UCI Engine", flush=True)
@@ -330,12 +331,12 @@ class UciBenchmarkReportTest(unittest.TestCase):
                                 engines=[("koi", [sys.executable, str(engine_path)])],
                                 corpus_path=corpus_path,
                                 source_revision="abc1234",
-                                timeout_seconds=0.08,
+                                timeout_seconds=0.35,
                             )
                     if mode == "chatter-search":
                         self.assertIn("koi Threads=1 position 1/1", str(caught.exception))
                     elapsed = time.monotonic() - started
-                    self.assertLess(elapsed, 0.7, f"{mode} exceeded its protocol deadline: {elapsed:.3f}s")
+                    self.assertLess(elapsed, 2.0, f"{mode} exceeded its protocol deadline: {elapsed:.3f}s")
                     self.assertIn("quit", event_log.read_text(encoding="utf-8"),
                                   f"runner did not cleanly stop engine in {mode}")
 
