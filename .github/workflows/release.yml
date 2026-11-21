@@ -55,11 +55,16 @@ jobs:
             curl -fsSL -o artifacts/release-nnue/koi.nnue "$url"
           else
             curl -fsSL -o /tmp/v115.tar.gz "$DEFAULT_NNUE_ARCHIVE_URL"
-            tar -xzf /tmp/v115.tar.gz -C /tmp nnue/koi.nnue 2>/dev/null || tar -xzf /tmp/v115.tar.gz -C /tmp koi.nnue
-            if [ -f /tmp/nnue/koi.nnue ]; then
-              mv /tmp/nnue/koi.nnue artifacts/release-nnue/koi.nnue
+            rm -rf /tmp/v115-extract
+            mkdir -p /tmp/v115-extract
+            tar -xzf /tmp/v115.tar.gz -C /tmp/v115-extract
+            if [ -f /tmp/v115-extract/nnue/koi.nnue ]; then
+              mv /tmp/v115-extract/nnue/koi.nnue artifacts/release-nnue/koi.nnue
+            elif [ -f /tmp/v115-extract/koi.nnue ]; then
+              mv /tmp/v115-extract/koi.nnue artifacts/release-nnue/koi.nnue
             else
-              mv /tmp/koi.nnue artifacts/release-nnue/koi.nnue
+              echo "Default NNUE file not found in $DEFAULT_NNUE_ARCHIVE_URL" >&2
+              exit 1
             fi
           fi
           actual_sha=$(sha256sum artifacts/release-nnue/koi.nnue | awk '{print $1}')
