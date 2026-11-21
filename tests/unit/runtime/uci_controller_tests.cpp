@@ -2350,11 +2350,15 @@ void test_legacy_strength_options_do_not_cap_clock_searches() {
 void test_reapplying_the_current_option_value_keeps_the_search_alive() {
     GatedInputBuffer input(
         "uci\n"
+        "setoption name Hash value 1\n"
+        "setoption name RandomSeed value 0\n"
         "isready\n"
         "setoption name Threads value 1\n"
         "position startpos\n"
         "go infinite\n",
         "setoption name Threads value 1\n"
+        "setoption name Hash value 0001\n"
+        "setoption name RandomSeed value 00\n"
         "stop\n"
         "quit\n");
     std::istream input_stream(&input);
@@ -2378,7 +2382,7 @@ void test_reapplying_the_current_option_value_keeps_the_search_alive() {
     require(marker_seen && exit_code == 0 && diagnostics.str().empty(),
             "re-applying the current option value must keep the controller quiet");
     require(bestmoves.size() == 1,
-            "re-applying the current Threads value must not abort the active search");
+            "re-applying the current Threads, Hash, or RandomSeed value must not abort the active search");
 }
 
 void test_bestmove_reports_the_ponder_move_without_the_option() {

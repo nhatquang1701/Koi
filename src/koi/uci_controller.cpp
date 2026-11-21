@@ -1617,7 +1617,7 @@ void UciController::handle_setoption(std::istream& command) {
     switch (option->id) {
     case UciOptionId::random_seed: {
         std::uint32_t seed = 0;
-        if (parse_random_seed(value, seed)) {
+        if (parse_random_seed(value, seed) && seed != random_seed_) {
             stop_and_suppress_active_search();
 
             random_seed_ = seed;
@@ -1627,7 +1627,7 @@ void UciController::handle_setoption(std::istream& command) {
     case UciOptionId::hash: {
         std::uint64_t megabytes = 0;
         if (parse_uint64(value, megabytes) && megabytes >= option->minimum &&
-            megabytes <= option->maximum) {
+            megabytes <= option->maximum && megabytes != hash_mb_) {
             stop_and_suppress_active_search();
             try {
                 const HashResizeResult result =

@@ -437,7 +437,8 @@ public:
                     return finished_workers_ == worker_count_ ||
                         failed_.load(std::memory_order_relaxed);
                 });
-                if (finished_workers_ == worker_count_) {
+                if (finished_workers_ == worker_count_ ||
+                    failed_.load(std::memory_order_relaxed)) {
                     break;
                 }
                 // A tick publishes interim progress from the runner thread
@@ -451,6 +452,13 @@ public:
                 }
                 lock.lock();
             }
+        }
+
+        if (failed_.load(std::memory_order_relaxed)) {
+            // A failed worker exits without advancing finished_workers_.  Abort
+            // and join every worker here so survivors cannot touch caller-owned
+            // root buffers after run() returns.
+            shutdown();
         }
 
         stats = {};
@@ -807,6 +815,9 @@ private:
         {
             std::lock_guard lock(mutex_);
             stopping_ = true;
+            if (job_) {
+                job_->aborted.store(true, std::memory_order_relaxed);
+            }
         }
         work_available_.notify_all();
         for (WorkerThread& worker : workers_) {
