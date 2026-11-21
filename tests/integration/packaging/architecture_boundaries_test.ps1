@@ -286,7 +286,7 @@ if ($cmakeForArtifacts -match 'artifacts/') {
 }
 
 # 5. Reliability fuzzers live in the test tree, not under artifacts.
-$fuzzers = @('fen_fuzz.py', 'move_fuzz.py', 'option_fuzz.py', 'go_fuzz.py', 'command_fuzz.py')
+$fuzzers = @('fen_fuzz.py', 'move_fuzz.py', 'option_fuzz.py', 'go_fuzz.py', 'command_fuzz.py', 'protocol_mode_fuzz.py')
 foreach ($fuzzer in $fuzzers) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot "tests/python/reliability/$fuzzer"))) {
         Fail "missing reliability fuzzer tests/python/reliability/$fuzzer"
