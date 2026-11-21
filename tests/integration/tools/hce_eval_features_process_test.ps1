@@ -10,6 +10,7 @@ if (-not (Test-Path -LiteralPath $ToolPath -PathType Leaf)) {
 
 $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("koi-hce-eval-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $scratch -Force | Out-Null
+try {
 $inputPath = Join-Path $scratch 'fens.txt'
 $outputPath = Join-Path $scratch 'evals.csv'
 @(
@@ -20,7 +21,9 @@ $outputPath = Join-Path $scratch 'evals.csv'
 function Invoke-Tool([string[]]$Arguments) {
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $ToolPath
-    $startInfo.Arguments = ($Arguments | ForEach-Object { "`"$_`"" }) -join ' '
+    foreach ($argument in $Arguments) {
+        $startInfo.ArgumentList.Add($argument)
+    }
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
@@ -28,16 +31,21 @@ function Invoke-Tool([string[]]$Arguments) {
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     if (-not $process.Start()) { throw 'Unable to start koi-eval-features.' }
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-    if (-not $process.WaitForExit(30000)) {
-        $process.Kill(); $process.WaitForExit()
-        throw 'koi-eval-features did not exit within 30000 ms.'
-    }
-    return [pscustomobject]@{
-        ExitCode = $process.ExitCode
-        Stdout = $stdoutTask.GetAwaiter().GetResult()
-        Stderr = $stderrTask.GetAwaiter().GetResult()
+    try {
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(30000)) {
+            try { $process.Kill($true) } catch { try { $process.Kill() } catch {} }
+            $null = $process.WaitForExit(2000)
+            throw 'koi-eval-features did not exit within 30000 ms.'
+        }
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Stdout = $stdoutTask.GetAwaiter().GetResult()
+            Stderr = $stderrTask.GetAwaiter().GetResult()
+        }
+    } finally {
+        $process.Dispose()
     }
 }
 
@@ -58,4 +66,9 @@ Write-Output '[2/2] verify --hce and --nnue conflict rejection'
 $conflict = Invoke-Tool @('--hce', '--nnue', 'missing.nnue')
 if ($conflict.ExitCode -eq 0) {
     throw 'koi-eval-features must reject --hce together with --nnue.'
+}
+} finally {
+    if (Test-Path -LiteralPath $scratch) {
+        Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

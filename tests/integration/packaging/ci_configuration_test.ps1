@@ -151,6 +151,8 @@ Require-WorkflowPattern '(?m)^\s*ctest\s+--test-dir\s+build/ci-debug\s+-C\s+Debu
 Require-WorkflowPattern '(?m)^\s*ctest\s+--test-dir\s+build/ci-release\s+-C\s+Release\s+-R\s+koi_shadow_diff_tests\s+--output-on-failure\s*$' 'the differential CTest command'
 Require-WorkflowPattern '(?m)^\s*cmake\s+-S\s+\.\s+-B\s+build/ci-asan\s+-G\s+Ninja\s+-DCMAKE_BUILD_TYPE=Debug\s+-DCMAKE_CXX_COMPILER=cl\s+-DKOI_SANITIZE=ON\s*$' 'the AddressSanitizer CMake configure command'
 Require-WorkflowPattern '(?m)^\s*ctest\s+--test-dir\s+build/ci-asan\s+-C\s+Debug\s+-j\s+2\s+-L\s+unit\s+-LE\s+heavy\s+--output-on-failure\s+--output-junit\s+build/ci-asan/ctest-junit\.xml\s*$' 'the AddressSanitizer CTest command'
+Require-WorkflowPattern '(?i)koi_protocol_mode_fuzz_process' 'multi-protocol ASan reliability coverage'
+Require-CMakePattern '(?s)spsa_search_python.*nnue_info_python.*PROPERTIES LABELS "python"' 'Python label assignment for spsa_search_python and nnue_info_python'
 Require-WorkflowPattern '(?i)-DKOI_BUILD_SHADOW_DIFF=ON' 'the opt-in differential configure switch'
 
 # The Windows packaging job builds the release zip with the shared release

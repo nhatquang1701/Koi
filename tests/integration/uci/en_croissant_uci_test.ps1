@@ -109,10 +109,5 @@ try {
     }
     Write-Output 'En Croissant UCI transcript passed.'
 } finally {
-    if (-not $session.Process.HasExited) {
-        $session.Process.Kill()
-        $session.Process.WaitForExit()
-    }
-    try { $null = $session.StderrTask.GetAwaiter().GetResult() } catch { }
-    $session.Process.Dispose()
+    Stop-UciSession $session
 }

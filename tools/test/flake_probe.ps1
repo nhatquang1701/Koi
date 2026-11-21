@@ -40,6 +40,7 @@ if (-not $OutputDirectory) {
 }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
+$hadPreviousFilter = Test-Path Env:\KOI_TEST_FILTER
 $previousFilter = $env:KOI_TEST_FILTER
 if ($CaseFilter) {
     $env:KOI_TEST_FILTER = $CaseFilter
@@ -59,8 +60,14 @@ try {
         }
         $logPath = Join-Path $OutputDirectory ("run-{0:D2}.log" -f $run)
         Write-Host (Format-StepProgress -Step $run -Total $Repeats -Label ("probe: {0}" -f ($arguments -join " ")) -StartedUtc $probeStartedUtc)
-        & $ctest @arguments 2>&1 | Tee-Object -FilePath $logPath | Out-Host
-        $code = $LASTEXITCODE
+        $previousErrorAction = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & $ctest @arguments 2>&1 | Tee-Object -FilePath $logPath | Out-Host
+            $code = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $previousErrorAction
+        }
         $status = if ($code -eq 0) { "pass" } else { "fail" }
         if ($code -ne 0) {
             ++$failures
@@ -71,7 +78,7 @@ try {
         Write-Host ("probe {0}/{1}: {2} | elapsed {3} | eta {4}" -f $run, $Repeats, $status, $probeEta.elapsed_text, $probeEta.eta_text)
     }
 } finally {
-    if ($CaseFilter) {
+    if ($hadPreviousFilter) {
         $env:KOI_TEST_FILTER = $previousFilter
     } else {
         Remove-Item Env:\KOI_TEST_FILTER -ErrorAction SilentlyContinue

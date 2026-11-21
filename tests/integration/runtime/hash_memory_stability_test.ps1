@@ -15,31 +15,37 @@ $soakScript = Join-Path $repositoryRoot 'tools/stability/hash_memory_soak.ps1'
 $outputDirectory = Join-Path $repositoryRoot ("artifacts\stability\hash-memory-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 
-Write-Output '[1/2] run hash_memory_soak.ps1 smoke'
-& $soakScript -EnginePath $EnginePath -HashValues '1,2' -Cycles 1 -OutputDirectory $outputDirectory
-if (-not $?) {
-    throw 'Hash memory stability smoke failed'
-}
+try {
+    Write-Output '[1/2] run hash_memory_soak.ps1 smoke'
+    & $soakScript -EnginePath $EnginePath -HashValues '1,2' -Cycles 1 -OutputDirectory $outputDirectory
+    if (-not $?) {
+        throw 'Hash memory stability smoke failed'
+    }
 
-$manifest = Get-ChildItem -LiteralPath $outputDirectory -Filter 'manifest.json' -Recurse -File |
-    Sort-Object LastWriteTimeUtc | Select-Object -Last 1
-if ($null -eq $manifest) {
-    throw 'Hash memory stability smoke did not produce a manifest'
-}
+    $manifest = Get-ChildItem -LiteralPath $outputDirectory -Filter 'manifest.json' -Recurse -File |
+        Sort-Object LastWriteTimeUtc | Select-Object -Last 1
+    if ($null -eq $manifest) {
+        throw 'Hash memory stability smoke did not produce a manifest'
+    }
 
-Write-Output '[2/2] verify hash memory manifest and telemetry records'
-$report = Get-Content -LiteralPath $manifest.FullName -Raw | ConvertFrom-Json
-foreach ($record in @($report.records)) {
-    if ($record.exit_code -ne 0 -or $record.bestmove_count -lt 1) {
-        throw "Hash memory record failed for requested hash $($record.hash_requested_mb) MB"
+    Write-Output '[2/2] verify hash memory manifest and telemetry records'
+    $report = Get-Content -LiteralPath $manifest.FullName -Raw | ConvertFrom-Json
+    foreach ($record in @($report.records)) {
+        if ($record.exit_code -ne 0 -or $record.bestmove_count -lt 1) {
+            throw "Hash memory record failed for requested hash $($record.hash_requested_mb) MB"
+        }
+        if ($record.hash_effective_mb -lt 1 -or $record.hash_effective_mb -gt $record.hash_requested_mb) {
+            throw "Hash memory record has invalid effective hash for requested hash $($record.hash_requested_mb) MB"
+        }
+        if ($record.peak_working_set_bytes -le 0 -or $record.peak_commit_bytes -le 0) {
+            throw "Hash memory record has incomplete memory telemetry for requested hash $($record.hash_requested_mb) MB"
+        }
+        if (-not (Test-Path -LiteralPath $record.diagnostics -PathType Leaf)) {
+            throw "Hash memory record is missing diagnostics for requested hash $($record.hash_requested_mb) MB"
+        }
     }
-    if ($record.hash_effective_mb -lt 1 -or $record.hash_effective_mb -gt $record.hash_requested_mb) {
-        throw "Hash memory record has invalid effective hash for requested hash $($record.hash_requested_mb) MB"
-    }
-    if ($record.peak_working_set_bytes -le 0 -or $record.peak_commit_bytes -le 0) {
-        throw "Hash memory record has incomplete memory telemetry for requested hash $($record.hash_requested_mb) MB"
-    }
-    if (-not (Test-Path -LiteralPath $record.diagnostics -PathType Leaf)) {
-        throw "Hash memory record is missing diagnostics for requested hash $($record.hash_requested_mb) MB"
+} finally {
+    if (Test-Path -LiteralPath $outputDirectory) {
+        Remove-Item -LiteralPath $outputDirectory -Recurse -Force -ErrorAction SilentlyContinue
     }
 }

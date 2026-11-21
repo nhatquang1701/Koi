@@ -31,8 +31,59 @@ $script:UciShutdownMilliseconds = 5000
 
 $script:KoiSessions = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
 
+$script:SearchInfoLinePattern =
+    'info depth [1-9][0-9]* seldepth [0-9]+ multipv [1-9][0-9]*( currmove [a-h][1-8][a-h][1-8][nbrq]?( currmovenumber [1-9][0-9]*)?)?( score (cp|mate) -?[0-9]+( (lowerbound|upperbound))?( wdl [0-9]+ [0-9]+ [0-9]+)?)? nodes [0-9]+ nps [0-9]+ hashfull [0-9]+ time [0-9]+ pv( [a-h][1-8][a-h][1-8][nbrq]?)*( tbhits [0-9]+)?'
+
 $script:UciTranscriptLinePattern =
-    '^(id |option |info string .*|info depth [1-9][0-9]* seldepth [0-9]+ multipv [1-9][0-9]*( currmove [a-h][1-8][a-h][1-8][nbrq]?( currmovenumber [1-9][0-9]*)?)?( score (cp|mate) -?[0-9]+( (lowerbound|upperbound))?( wdl [0-9]+ [0-9]+ [0-9]+)?)? nodes [0-9]+ nps [0-9]+ hashfull [0-9]+ time [0-9]+ pv( [a-h][1-8][a-h][1-8][nbrq]?)*( tbhits [0-9]+)?$)'
+    "^(id |option |info string .*|$($script:SearchInfoLinePattern)`$)"
+
+function Set-UciTimeoutMilliseconds {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Milliseconds
+    )
+
+    if ($Milliseconds -lt 100) {
+        throw "Timeout must be at least 100 ms, got $Milliseconds."
+    }
+    $script:UciTimeoutMilliseconds = $Milliseconds
+}
+
+function Stop-ProcessTreeSafely {
+    param([System.Diagnostics.Process]$Process)
+
+    if ($null -eq $Process) {
+        return
+    }
+    try {
+        if (-not $Process.HasExited) {
+            try { $Process.Kill($true) } catch {
+                try { $Process.Kill() } catch { }
+            }
+            $null = $Process.WaitForExit(2000)
+        }
+    } catch [System.ObjectDisposedException], [System.InvalidOperationException] {
+    }
+}
+
+function Prune-ExitedSessions {
+    for ($index = $script:KoiSessions.Count - 1; $index -ge 0; --$index) {
+        $candidate = $script:KoiSessions[$index]
+        $remove = $false
+        if ($null -eq $candidate) {
+            $remove = $true
+        } else {
+            try {
+                $remove = $candidate.HasExited
+            } catch [System.ObjectDisposedException], [System.InvalidOperationException] {
+                $remove = $true
+            }
+        }
+        if ($remove) {
+            $script:KoiSessions.RemoveAt($index)
+        }
+    }
+}
 
 function Start-UciSession {
     <#
@@ -49,6 +100,8 @@ function Start-UciSession {
         [string]$WorkingDirectory = '',
         [string[]]$Arguments = @()
     )
+
+    Prune-ExitedSessions
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $Executable
@@ -83,16 +136,15 @@ function Start-UciSession {
 function Stop-AllUciSessions {
     <#
     .SYNOPSIS
-        Kill every engine process started through Start-UciSession.
+        Kill every engine process tree started through Start-UciSession.
     .DESCRIPTION
         Intended for a script-level trap so a failed assertion can never leave a
         running koi-engine.exe behind.  Already exited processes are ignored.
     #>
     foreach ($tracked in $script:KoiSessions) {
-        if ($null -ne $tracked -and -not $tracked.HasExited) {
-            try { $tracked.Kill() } catch { }
-        }
+        Stop-ProcessTreeSafely $tracked
     }
+    Prune-ExitedSessions
 }
 
 function Send-UciCommand {
@@ -114,7 +166,7 @@ function Send-UciCommand {
 function Stop-TimedOutSession {
     <#
     .SYNOPSIS
-        Kill a session that exceeded its timeout and rethrow the failure.
+        Kill a session process tree that exceeded its timeout and rethrow the failure.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -123,10 +175,7 @@ function Stop-TimedOutSession {
         [string]$Message
     )
 
-    if (-not $Session.Process.HasExited) {
-        $Session.Process.Kill()
-        $Session.Process.WaitForExit()
-    }
+    Stop-ProcessTreeSafely $Session.Process
     throw $Message
 }
 
@@ -212,7 +261,7 @@ function Complete-UciSession {
     $Session.Process.StandardInput.Close()
 
     if (-not $Session.Process.WaitForExit($script:UciTimeoutMilliseconds)) {
-        Stop-TimedOutSession $Session 'koi-engine did not exit within 5000 ms.'
+        Stop-TimedOutSession $Session "koi-engine did not exit within $($script:UciTimeoutMilliseconds) ms."
     }
 
     $tail = $stdoutTailTask.GetAwaiter().GetResult()
@@ -221,8 +270,10 @@ function Complete-UciSession {
     }
     $diagnostics = $Session.StderrTask.GetAwaiter().GetResult()
 
-    if ($Session.Process.ExitCode -ne 0) {
-        throw "koi-engine exited with $($Session.Process.ExitCode): $diagnostics"
+    $exitCode = $Session.Process.ExitCode
+    $null = $script:KoiSessions.Remove($Session.Process)
+    if ($exitCode -ne 0) {
+        throw "koi-engine exited with $($exitCode): $diagnostics"
     }
     if ($diagnostics.Length -ne 0) {
         throw "koi-engine wrote diagnostics for a valid transcript: $diagnostics"
@@ -248,15 +299,17 @@ function Stop-UciSession {
     if ($null -eq $Session) {
         return
     }
-    if (-not $Session.Process.HasExited) {
-        try { Send-UciCommand $Session 'quit' } catch { }
-        try { $Session.Process.StandardInput.Close() } catch { }
-        if (-not $Session.Process.WaitForExit($script:UciShutdownMilliseconds)) {
-            try { $Session.Process.Kill($true) } catch {
-                try { $Session.Process.Kill() } catch { }
+    try {
+        if (-not $Session.Process.HasExited) {
+            try { Send-UciCommand $Session 'quit' } catch { }
+            try { $Session.Process.StandardInput.Close() } catch { }
+            if (-not $Session.Process.WaitForExit($script:UciShutdownMilliseconds)) {
+                Stop-ProcessTreeSafely $Session.Process
             }
         }
+    } catch [System.ObjectDisposedException] {
     }
+    $null = $script:KoiSessions.Remove($Session.Process)
     try { $null = $Session.StderrTask.GetAwaiter().GetResult() } catch { }
     try { $Session.Process.Dispose() } catch { }
 }
@@ -273,7 +326,7 @@ function Test-SearchInfo {
 
     # UCI permits an info line without score. Koi uses that form for a
     # selective estimate with no proven bound direction while retaining PV.
-    return $Line -match '^info depth [1-9][0-9]* seldepth [0-9]+ multipv ([1-9]|1[0-6])( currmove [a-h][1-8][a-h][1-8][nbrq]?( currmovenumber [1-9][0-9]*)?)?( score (cp|mate) -?[0-9]+( (lowerbound|upperbound))?( wdl [0-9]+ [0-9]+ [0-9]+)?)? nodes [0-9]+ nps [0-9]+ hashfull [0-9]+ time [0-9]+ pv( [a-h][1-8][a-h][1-8][nbrq]?)*( tbhits [0-9]+)?$'
+    return $Line -match "^$($script:SearchInfoLinePattern)`$"
 }
 
 $script:ProgressStartedUtc = $null
@@ -295,6 +348,6 @@ function Write-TestProgress {
     Write-Output (Format-StepProgress -Step $Step -Total $Total -Label $Label -StartedUtc $script:ProgressStartedUtc)
 }
 
-Export-ModuleMember -Function Start-UciSession, Stop-AllUciSessions, Send-UciCommand,
-    Stop-TimedOutSession, Read-UciLine, Read-UciUntil, Complete-UciSession,
+Export-ModuleMember -Function Start-UciSession, Set-UciTimeoutMilliseconds, Stop-AllUciSessions,
+    Send-UciCommand, Stop-TimedOutSession, Read-UciLine, Read-UciUntil, Complete-UciSession,
     Stop-UciSession, Test-SearchInfo, Write-TestProgress

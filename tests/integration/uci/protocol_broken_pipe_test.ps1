@@ -10,12 +10,25 @@ $ErrorActionPreference = 'Stop'
 $TimeoutMilliseconds = 15000
 $script:Processes = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
 
+function Stop-ProcessTreeSafely($Process) {
+    if ($null -eq $Process) {
+        return
+    }
+    try {
+        if (-not $Process.HasExited) {
+            try { $Process.Kill($true) } catch {
+                try { $Process.Kill() } catch {}
+            }
+            $null = $Process.WaitForExit(2000)
+        }
+    } catch [System.ObjectDisposedException] {
+    }
+}
+
 trap {
     foreach ($process in $script:Processes) {
-        if (-not $process.HasExited) {
-            try { $process.Kill() } catch {}
-        }
-        $process.Dispose()
+        Stop-ProcessTreeSafely $process
+        try { $process.Dispose() } catch {}
     }
     break
 }
@@ -39,7 +52,7 @@ function Start-EngineProcess {
 
 function Complete-BrokenPipeCase($Process, [string]$Label) {
     if (-not $Process.WaitForExit($TimeoutMilliseconds)) {
-        try { $Process.Kill() } catch {}
+        Stop-ProcessTreeSafely $Process
         throw "$Label did not exit after a closed stdout pipe"
     }
     $diagnostics = $Process.StandardError.ReadToEnd()
@@ -106,7 +119,7 @@ $stderrClosed.StandardInput.WriteLine('quit')
 $stderrClosed.StandardInput.Flush()
 $stderrClosed.StandardInput.Close()
 if (-not $stderrClosed.WaitForExit($TimeoutMilliseconds)) {
-    try { $stderrClosed.Kill() } catch {}
+    Stop-ProcessTreeSafely $stderrClosed
     throw 'engine hung after a written diagnostic with stderr closed'
 }
 if ($stderrClosed.ExitCode -ne 0) {
@@ -141,20 +154,39 @@ $slow.StandardInput.WriteLine('go infinite')
 $slow.StandardInput.Flush()
 # Deliberately leave stdout undrained long enough for the pipe to fill.
 Start-Sleep -Milliseconds 3000
-$slowOutTask = $slow.StandardOutput.ReadToEndAsync()
 $slow.StandardInput.WriteLine('stop')
 $slow.StandardInput.Flush()
-# Give the unblocked engine time to process stop and publish the completion
-# before quit is read; quit-during-search legitimately suppresses bestmove.
-Start-Sleep -Milliseconds 1000
+# Drain stdout until stop completes with bestmove before sending quit so a loaded
+# CI host cannot race quit ahead of bestmove publication.
+$drainDeadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+$bestmoveSeen = $false
+while (-not $bestmoveSeen) {
+    $remainingMs = [int][Math]::Ceiling(($drainDeadline - [DateTime]::UtcNow).TotalMilliseconds)
+    if ($remainingMs -le 0) {
+        Stop-ProcessTreeSafely $slow
+        throw 'slow-consumer drain did not produce a legal bestmove before timeout'
+    }
+    $lineTask = $slow.StandardOutput.ReadLineAsync()
+    if (-not $lineTask.Wait($remainingMs)) {
+        Stop-ProcessTreeSafely $slow
+        throw 'slow-consumer drain did not produce a legal bestmove before timeout'
+    }
+    $line = $lineTask.GetAwaiter().GetResult()
+    if ($null -eq $line) {
+        break
+    }
+    if ($line -match '^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)?$') {
+        $bestmoveSeen = $true
+    }
+}
 $slow.StandardInput.WriteLine('quit')
 $slow.StandardInput.Flush()
 $slow.StandardInput.Close()
+$null = $slow.StandardOutput.ReadToEndAsync().GetAwaiter().GetResult()
 if (-not $slow.WaitForExit($TimeoutMilliseconds)) {
-    try { $slow.Kill() } catch {}
+    Stop-ProcessTreeSafely $slow
     throw 'engine hung while a slow consumer drained its stdout'
 }
-$slowOut = $slowOutTask.GetAwaiter().GetResult()
 $slowErr = $slowErrTask.GetAwaiter().GetResult()
 if ($slow.ExitCode -ne 0) {
     throw "engine exited with $($slow.ExitCode) after slow-consumer drain"
@@ -162,7 +194,7 @@ if ($slow.ExitCode -ne 0) {
 if ($slowErr.Length -ne 0) {
     throw "slow-consumer drain produced stderr: $slowErr"
 }
-if ($slowOut -notmatch '(?m)^bestmove [a-h][1-8][a-h][1-8][nbrq]?( ponder [a-h][1-8][a-h][1-8][nbrq]?)??$') {
+if (-not $bestmoveSeen) {
     throw 'slow-consumer drain did not produce a legal bestmove'
 }
 $slow.Dispose()

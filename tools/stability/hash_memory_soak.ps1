@@ -105,7 +105,15 @@ function Invoke-HashProbe {
 
     $writer.WriteLine('quit')
     $writer.Close()
+    $shutdownDeadline = [DateTime]::UtcNow.AddSeconds(30)
     while (-not $process.WaitForExit(100)) {
+        if ([DateTime]::UtcNow -ge $shutdownDeadline) {
+            try { $process.Kill($true) } catch {
+                try { $process.Kill() } catch {}
+            }
+            $null = $process.WaitForExit(2000)
+            throw "Engine hung shutting down for Hash=$HashMegabytes cycle=$Cycle"
+        }
         $sample = Get-MemorySample -ObservedProcess $process
         $peakWorkingSet = [Math]::Max($peakWorkingSet, $sample.working_set)
         $peakCommitBytes = [Math]::Max($peakCommitBytes, $sample.commit)

@@ -10,6 +10,7 @@ if (-not (Test-Path -LiteralPath $BenchPath -PathType Leaf)) {
 
 $scratchDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("koi-hce-bench-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $scratchDirectory -Force | Out-Null
+try {
 $profilePath = Join-Path $scratchDirectory 'hce-profile.json'
 
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -17,7 +18,11 @@ Write-Output '[1/2] run koi-bench --hce --depth 3'
 $startInfo.FileName = $BenchPath
 $startInfo.UseShellExecute = $false
 $startInfo.CreateNoWindow = $true
-$startInfo.Arguments = "--hce --depth 3 --profile-json `"$profilePath`""
+$startInfo.ArgumentList.Add('--hce')
+$startInfo.ArgumentList.Add('--depth')
+$startInfo.ArgumentList.Add('3')
+$startInfo.ArgumentList.Add('--profile-json')
+$startInfo.ArgumentList.Add($profilePath)
 $startInfo.RedirectStandardOutput = $true
 $startInfo.RedirectStandardError = $true
 $process = [System.Diagnostics.Process]::new()
@@ -25,17 +30,22 @@ $process.StartInfo = $startInfo
 if (-not $process.Start()) {
     throw 'Unable to start koi-bench --hce.'
 }
+try {
 $stdoutTask = $process.StandardOutput.ReadToEndAsync()
 $stderrTask = $process.StandardError.ReadToEndAsync()
 if (-not $process.WaitForExit(180000)) {
-    $process.Kill()
-    $process.WaitForExit()
+    try { $process.Kill($true) } catch { try { $process.Kill() } catch {} }
+    $null = $process.WaitForExit(2000)
     throw 'koi-bench --hce --depth 3 did not exit within 180000 ms.'
 }
 $stdout = $stdoutTask.GetAwaiter().GetResult()
 $stderr = $stderrTask.GetAwaiter().GetResult()
-if ($process.ExitCode -ne 0) {
-    throw "koi-bench --hce exited with $($process.ExitCode): $stderr"
+$exitCode = $process.ExitCode
+} finally {
+    $process.Dispose()
+}
+if ($exitCode -ne 0) {
+    throw "koi-bench --hce exited with $($exitCode): $stderr"
 }
 if ($stderr.Length -ne 0) {
     throw "koi-bench --hce wrote stderr: $stderr"
@@ -60,4 +70,9 @@ $profile = Get-Content -LiteralPath $profilePath -Raw | ConvertFrom-Json
 if ($profile.evaluator -cne 'hce' -or $profile.hce.active -ne $true -or
     $profile.positions.Count -ne 64) {
     throw 'HCE profile must report evaluator=hce with 64 measured positions.'
+}
+} finally {
+    if (Test-Path -LiteralPath $scratchDirectory) {
+        Remove-Item -LiteralPath $scratchDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

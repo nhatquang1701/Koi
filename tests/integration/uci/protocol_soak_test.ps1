@@ -18,6 +18,7 @@ $TimeoutMilliseconds = if ($env:KOI_UCI_TIMEOUT_MS) {
 
 Import-Module ([System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '../../support/UciSession.psm1'))) -Force
+Set-UciTimeoutMilliseconds $TimeoutMilliseconds
 Import-Module ([System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '../../../tools/stability/EtaSupport.psm1'))) -Force
 

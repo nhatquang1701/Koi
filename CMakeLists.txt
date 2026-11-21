@@ -1248,12 +1248,6 @@ if(Python3_Interpreter_FOUND)
         NAME spsa_search_python
         COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/measurement/spsa_search_test.py -v
     )
-    set_tests_properties(
-        spsa_search_python
-        PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
-    )
     add_test(
         NAME nnue_training_python
         COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/nnue_training_test.py -v
@@ -1261,12 +1255,6 @@ if(Python3_Interpreter_FOUND)
     add_test(
         NAME nnue_info_python
         COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/nnue_info_test.py -v
-    )
-    set_tests_properties(
-        nnue_info_python
-        PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
     )
     add_test(
         NAME nnue_wrapper_python
@@ -1333,7 +1321,7 @@ if(Python3_Interpreter_FOUND)
             ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1;KOI_NNUE_BOUNDARY_EXE=$<TARGET_FILE:nnue_boundary_tests>"
     )
     set_tests_properties(
-        nnue_training_python nnue_wrapper_python koi_dataset_python gen_training_data_python
+        spsa_search_python nnue_training_python nnue_info_python nnue_wrapper_python koi_dataset_python gen_training_data_python
         koi_chess_python koi_chess_pgn_python koi_chess_engine_python
         measurement_phase_python measurement_forensics_python
         uci_benchmark_python
@@ -1451,7 +1439,7 @@ endif()
 if(Python3_Interpreter_FOUND)
     set_tests_properties(
         elo_estimate_python stockfish_match_python elo_openings_python
-        nnue_training_python nnue_wrapper_python
+        spsa_search_python nnue_training_python nnue_info_python nnue_wrapper_python
         koi_dataset_python gen_training_data_python
         koi_chess_python koi_chess_pgn_python koi_chess_engine_python
         measurement_phase_python measurement_forensics_python strength_report_python
@@ -1469,10 +1457,8 @@ if(Python3_Interpreter_FOUND)
     )
 endif()
 
-# Randomized adversarial fuzzers (FEN, move lists, setoption, go/state).  They
-# need python-chess to generate valid random positions/move lists; when the
-# module is unavailable (for example in a source-tarball build without the
-# measurement requirements) the tests are simply not registered.
+# Dependency-free adversarial fuzzers (FEN, move lists, setoption, go/state,
+# raw commands, and multi-protocol modes); skipped only when Python 3 is absent.
 if(Python3_Interpreter_FOUND)
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/reliability")
         set(KOI_RELIABILITY_FUZZ_DIR

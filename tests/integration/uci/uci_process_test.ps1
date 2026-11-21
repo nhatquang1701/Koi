@@ -12,6 +12,7 @@ $TimeoutMilliseconds = if ($env:KOI_UCI_TIMEOUT_MS) {
 $MaximumThreads = [Math]::Max(1, [Math]::Min(64, [Environment]::ProcessorCount))
 
 Import-Module ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../support/UciSession.psm1'))) -Force
+Set-UciTimeoutMilliseconds $TimeoutMilliseconds
 
 # Every engine process the shared session module starts is tracked there so a
 # failed assertion can never orphan a running koi-engine.exe. The trap runs on
@@ -617,8 +618,4 @@ $xboardMove = Read-UciUntil -Session $xboardSession -Description 'XBoard move re
 if ($xboardMove -notmatch '^move [a-h][1-8][a-h][1-8][nbrq]?$') {
     throw "Unexpected XBoard move reply: '$xboardMove'"
 }
-Send-UciCommand $xboardSession 'quit'
-[void]$xboardSession.Process.WaitForExit($TimeoutMilliseconds)
-if ($xboardSession.Process.ExitCode -ne 0) {
-    throw "XBoard process exited with $($xboardSession.Process.ExitCode)"
-}
+$null = Complete-UciSession $xboardSession $true

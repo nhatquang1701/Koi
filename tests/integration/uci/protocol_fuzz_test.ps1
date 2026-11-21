@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [string]$EnginePath
 )
@@ -24,6 +24,7 @@ $TimeoutMilliseconds = if ($env:KOI_UCI_TIMEOUT_MS) {
 
 Import-Module ([System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '../../support/UciSession.psm1'))) -Force
+Set-UciTimeoutMilliseconds $TimeoutMilliseconds
 
 trap {
     Stop-AllUciSessions
@@ -46,8 +47,10 @@ function Invoke-UciTranscript([string]$Transcript, [string]$Label,
 
     $output = $stdoutTask.GetAwaiter().GetResult()
     $diagnostics = $session.StderrTask.GetAwaiter().GetResult()
-    if ($session.Process.ExitCode -ne 0) {
-        throw "koi-engine exited with $($session.Process.ExitCode) on fuzz case '$Label': $diagnostics"
+    $exitCode = $session.Process.ExitCode
+    try { $session.Process.Dispose() } catch {}
+    if ($exitCode -ne 0) {
+        throw "koi-engine exited with $exitCode on fuzz case '$Label': $diagnostics"
     }
     return [pscustomobject]@{
         Label = $Label

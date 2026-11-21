@@ -45,7 +45,9 @@ function Invoke-BoundedProcess {
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $FilePath
-    $startInfo.Arguments = $Arguments -join ' '
+    foreach ($argument in $Arguments) {
+        $startInfo.ArgumentList.Add($argument)
+    }
     $startInfo.WorkingDirectory = Split-Path -Parent $FilePath
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
@@ -71,9 +73,15 @@ function Invoke-BoundedProcess {
         foreach ($line in $InputLines) { $process.StandardInput.WriteLine($line) }
         $process.StandardInput.Close()
         if (-not $process.WaitForExit($TimeoutMilliseconds)) {
-            & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
-            if (-not $process.HasExited) { $process.Kill() }
-            $process.WaitForExit()
+            if ($isWindowsHost) {
+                & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+            }
+            if (-not $process.HasExited) {
+                try { $process.Kill($true) } catch {
+                    try { $process.Kill() } catch {}
+                }
+            }
+            $null = $process.WaitForExit(2000)
             throw "$FilePath exceeded its $TimeoutMilliseconds ms timeout"
         }
         $process.WaitForExit()

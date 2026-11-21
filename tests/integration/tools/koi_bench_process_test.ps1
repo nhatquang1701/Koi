@@ -14,6 +14,7 @@ if (-not (Test-Path -LiteralPath $BenchPath -PathType Leaf)) {
 # in the shared temp directory would let one run read another run's file.
 $scratchDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("koi-bench-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $scratchDirectory -Force | Out-Null
+try {
 
 # The classical evaluator was removed (2026-10-28); koi-bench requires a
 # network. CTest supplies KOI_NNUE_PATH, with a fallback beside the binary.
@@ -41,16 +42,20 @@ function Invoke-Benchmark([string]$Executable, [string]$Arguments = '', [string]
 
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
-    if (-not $process.WaitForExit(120000)) {
-        $process.Kill()
-        $process.WaitForExit()
-        throw "koi-bench ($Label) did not exit within 120000 ms."
-    }
+    try {
+        if (-not $process.WaitForExit(120000)) {
+            try { $process.Kill($true) } catch { try { $process.Kill() } catch {} }
+            $null = $process.WaitForExit(2000)
+            throw "koi-bench ($Label) did not exit within 120000 ms."
+        }
 
-    return [pscustomobject]@{
-        ExitCode = $process.ExitCode
-        Stdout = $stdoutTask.GetAwaiter().GetResult()
-        Stderr = $stderrTask.GetAwaiter().GetResult()
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Stdout = $stdoutTask.GetAwaiter().GetResult()
+            Stderr = $stderrTask.GetAwaiter().GetResult()
+        }
+    } finally {
+        $process.Dispose()
     }
 }
 
@@ -508,4 +513,9 @@ $hceJson = Get-Content -LiteralPath $hceProfile -Raw | ConvertFrom-Json
 if ($hceJson.evaluator -cne 'hce' -or $hceJson.hce.active -ne $true -or
     $hceJson.positions.Count -lt 1) {
     throw 'koi-bench --hce must report the HCE evaluator and a non-empty profile.'
+}
+} finally {
+    if (Test-Path -LiteralPath $scratchDirectory) {
+        Remove-Item -LiteralPath $scratchDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
