@@ -708,7 +708,7 @@ void SearchRunner::run_impl() {
                     previous_iteration_elapsed = std::max(
                         std::chrono::milliseconds{1}, elapsed - previous_report_elapsed);
                     report_profile(false, true);
-                    if ((!unbounded && depth == maximum_depth) || root_is_forced_draw ||
+                    if (depth >= maximum_depth || root_is_forced_draw ||
                         time_manager.should_stop_after_iteration()) {
                         break;
                     }
@@ -1757,7 +1757,7 @@ void SearchRunner::run_impl() {
                 previous_iteration_elapsed = elapsed - previous_report_elapsed;
                 previous_report_elapsed = elapsed;
 
-                if ((!unbounded && depth == maximum_depth) ||
+                if (depth >= maximum_depth ||
                     time_manager.should_stop_after_iteration()) {
                     break;
                 }
@@ -2610,7 +2610,7 @@ void SearchRunner::run_impl() {
                     // withholding publication and aspiration state.
                     previous_iteration_elapsed = std::max(
                         std::chrono::milliseconds{1}, elapsed - previous_report_elapsed);
-                    if ((!unbounded && depth == maximum_depth) ||
+                    if (depth >= maximum_depth ||
                         time_manager.should_stop_after_iteration()) {
                         break;
                     }
@@ -2704,7 +2704,7 @@ void SearchRunner::run_impl() {
                 }
                 previous_iteration_elapsed = iteration_elapsed;
                 previous_report_elapsed = elapsed;
-                if ((!unbounded && depth == maximum_depth) ||
+                if (depth >= maximum_depth ||
                     time_manager.should_stop_after_iteration()) {
                     break;
                 }
@@ -2712,16 +2712,36 @@ void SearchRunner::run_impl() {
             result.stats = total_stats;
         }
 
+        if (lazy_pool != nullptr) {
+            // Stop helper workers before parking on a completed ponder/infinite
+            // root so idle waits do not spin helper cores, and merge their
+            // counts before any fallback info publication.
+            lazy_pool->stop();
+            accumulate_stats(result.stats, lazy_pool->stats());
+            if (lazy_pool->failed()) {
+                // The main iteration may have finished before the flag was
+                // observed; keep the diagnostic honest either way.
+                result.failed = true;
+                result.failure_reason = SearchFailureReason::helper_failed;
+            }
+            lazy_pool.reset();
+        }
         if (limits.ponder) {
             // A pondering search must never publish a bestmove on its own: UCI
             // requires one answer only after `stop` or `ponderhit`. A terminal
             // ponder root has nothing to deepen, and a node-limited ponder has
             // already spent its budget, so both wait here; a time/infinite
-            // ponder only reaches this point after stop/ponderhit anyway. The
-            // conversion (if any) is consumed so the caller can see the
-            // converted limits.
+            // ponder only reaches this point after stop/ponderhit or hitting
+            // kMaximumSearchDepth. The conversion (if any) is consumed so the
+            // caller can see the converted limits.
             session->wait_until_stopped_or_ponderhit();
             (void)session->take_ponderhit_limits();
+        } else if (limits.infinite && !limits.nodes.has_value() &&
+                   !session->stop_requested().load(std::memory_order_relaxed)) {
+            // Pure infinite search (without a node cap) must wait for explicit
+            // cancellation once deepening stops at kMaximumSearchDepth or a
+            // terminal/forced-draw root rather than spinning or exiting early.
+            session->wait_until_stopped();
         }
         if (result.completed_depth == 0 && result.best_move.has_value()) {
             // Retain the emergency line for non-UCI search consumers that
@@ -2744,19 +2764,6 @@ void SearchRunner::run_impl() {
             // direction.
             info.bound = SearchInfo::Bound::estimate;
             safely_report_info(sink, info);
-        }
-        if (lazy_pool != nullptr) {
-            // Helpers never publish a result; their only contribution is the
-            // transposition-table traffic they generated and the node counts
-            // merged here.
-            lazy_pool->stop();
-            accumulate_stats(result.stats, lazy_pool->stats());
-            if (lazy_pool->failed()) {
-                // The main iteration may have finished before the flag was
-                // observed; keep the diagnostic honest either way.
-                result.failed = true;
-                result.failure_reason = SearchFailureReason::helper_failed;
-            }
         }
         result.timing = time_manager.diagnostics();
     } catch (...) {

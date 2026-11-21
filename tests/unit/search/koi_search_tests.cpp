@@ -4412,6 +4412,84 @@ void test_ponder_ignores_time_but_honors_node_limits() {
     require(manager.should_stop(1), "ponder must stop at its explicit node limit");
 }
 
+void test_maximum_depth_ponder_and_infinite_wait_without_spinning() {
+    auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
+    koi::SearchService service(evaluator);
+    const koi::GameState mate_in_one = require_state("7k/6R1/5K2/8/8/8/8/8 w - - 0 1");
+
+    const auto verify_parks_at_terminal_depth = [&](const koi::GameState& root,
+                                                    koi::SearchLimits limits,
+                                                    koi::SearchOptions options,
+                                                    const int expected_final_depth,
+                                                    const bool use_ponderhit) {
+        std::atomic<int> final_depth_reports{0};
+        CompletedSearch completed;
+        koi::SearchHandle handle = service.start(
+            root, limits,
+            {.on_info =
+                 [&](const koi::SearchInfo& info) {
+                     if (info.depth == expected_final_depth && info.multipv <= 1) {
+                         final_depth_reports.fetch_add(1, std::memory_order_relaxed);
+                     }
+                 },
+             .on_complete = completed.sink().on_complete},
+            options);
+
+        const auto deadline = std::chrono::steady_clock::now() + 10s;
+        while (final_depth_reports.load(std::memory_order_relaxed) == 0 &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(1ms);
+        }
+        require(final_depth_reports.load(std::memory_order_relaxed) >= 1,
+                "unbounded search must reach the configured terminal depth within timeout");
+
+        std::this_thread::sleep_for(40ms);
+        require(handle.running(),
+                "completed infinite/ponder search must stay parked until stop or ponderhit");
+        require(completed.completion_count() == 0,
+                "completed infinite/ponder search must not publish before stop or ponderhit");
+        require(final_depth_reports.load(std::memory_order_relaxed) == 1,
+                "unbounded search must not spin-repeat its final depth iteration");
+
+        if (use_ponderhit) {
+            koi::SearchLimits converted = limits;
+            converted.ponder = false;
+            converted.white_clock = koi::ClockLimit{60s, 0ms};
+            handle.request_ponderhit(converted);
+        } else {
+            handle.stop();
+        }
+        handle.wait();
+        const koi::SearchResult result = completed.take_result();
+        require(result.completed && result.best_move.has_value() && root.is_legal(*result.best_move),
+                "parked infinite/ponder search must return one legal best move on release");
+    };
+
+    koi::SearchLimits infinite_max;
+    infinite_max.infinite = true;
+    koi::SearchOptions serial_opts;
+    serial_opts.threads = 1;
+    serial_opts.interim_report_interval = 0ms;
+    verify_parks_at_terminal_depth(mate_in_one, infinite_max, serial_opts, 64, false);
+
+    koi::SearchLimits ponder_max;
+    ponder_max.ponder = true;
+    koi::SearchOptions smp_opts;
+    smp_opts.threads = 2;
+    smp_opts.interim_report_interval = 0ms;
+    verify_parks_at_terminal_depth(mate_in_one, ponder_max, smp_opts, 64, true);
+
+    koi::SearchLimits parallel_infinite_capped;
+    parallel_infinite_capped.infinite = true;
+    parallel_infinite_capped.depth = 2;
+    koi::SearchOptions parallel_opts;
+    parallel_opts.threads = 2;
+    parallel_opts.multi_pv = 2;
+    parallel_opts.interim_report_interval = 0ms;
+    verify_parks_at_terminal_depth(koi::GameState::startpos(), parallel_infinite_capped,
+                                   parallel_opts, 2, false);
+}
+
 void test_ponderhit_converts_a_running_ponder_search_in_place() {
     auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
@@ -5306,6 +5384,8 @@ int main(int argc, char** argv) {
         {"ponder search lifecycle", test_ponder_search_runs_until_stopped_and_completes_once},
         {"ponder terminal lifecycle", test_ponder_terminal_and_empty_roots_wait_for_stop},
         {"ponder time and node limits", test_ponder_ignores_time_but_honors_node_limits},
+        {"deep ponder and infinite park without spin",
+         test_maximum_depth_ponder_and_infinite_wait_without_spinning},
         {"ponderhit in-place conversion", test_ponderhit_converts_a_running_ponder_search_in_place},
         {"service hash persistence", test_service_hash_configuration_survives_default_start_and_non_default_override},
         {"search timing context", test_search_result_reports_root_tt_timing_context},

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -8,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include "koi/time_manager.hpp"
@@ -413,6 +415,81 @@ void test_single_legal_move_paces_fast_in_clock_mode() {
             "a forced single-reply position must stop once the reduced optimum budget is reached");
 }
 
+void test_should_start_next_iteration_avoids_overflow_and_reconfigure_races() {
+    auto fake_now = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits extreme_limits;
+    extreme_limits.movetime = milliseconds::max();
+    TimeManager extreme(extreme_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                        RootTimingContext{}, [fake_now] { return *fake_now; });
+    *fake_now += milliseconds{10};
+    require(extreme.should_start_next_iteration(milliseconds{50}),
+            "near-max movetime budget with small elapsed time must allow next iteration");
+    require(!extreme.should_start_next_iteration(milliseconds::max()),
+            "extreme estimated next iteration duration must saturate without signed overflow");
+
+    SearchLimits initial_movetime;
+    initial_movetime.movetime = milliseconds{60'000};
+    TimeManager concurrent(initial_movetime, koi::Color::white, 100, kMoveOverheadMs, 100);
+    std::atomic_bool stop_readers{false};
+    std::atomic_bool saw_missing_budget{false};
+    std::atomic_bool saw_unexpected_stop{false};
+    std::vector<std::thread> readers;
+    for (int i = 0; i < 2; ++i) {
+        readers.emplace_back([&] {
+            while (!stop_readers.load(std::memory_order_acquire)) {
+                if (!concurrent.time_budget().has_value()) {
+                    saw_missing_budget.store(true, std::memory_order_relaxed);
+                }
+                if (concurrent.should_stop(1)) {
+                    saw_unexpected_stop.store(true, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+    for (int step = 0; step < 500; ++step) {
+        SearchLimits next;
+        next.movetime = milliseconds{40'000 + (step % 2) * 10'000};
+        concurrent.reconfigure(next, koi::Color::white, 100, kMoveOverheadMs, 100,
+                               RootTimingContext{});
+    }
+    stop_readers.store(true, std::memory_order_release);
+    for (std::thread& reader : readers) {
+        reader.join();
+    }
+    require(!saw_missing_budget.load() && !saw_unexpected_stop.load(),
+            "concurrent reconfigure between bounded limits must never expose a transient -1 budget");
+
+    SearchLimits ponder_limits;
+    ponder_limits.ponder = true;
+    ponder_limits.white_clock = ClockLimit{milliseconds{60'000}, milliseconds{0}};
+    ponder_limits.black_clock = ClockLimit{milliseconds{60'000}, milliseconds{0}};
+    TimeManager ponder_mgr(ponder_limits, koi::Color::white, 100, kMoveOverheadMs, 100);
+    stop_readers.store(false, std::memory_order_relaxed);
+    saw_unexpected_stop.store(false, std::memory_order_relaxed);
+    readers.clear();
+    for (int i = 0; i < 2; ++i) {
+        readers.emplace_back([&] {
+            while (!stop_readers.load(std::memory_order_acquire)) {
+                if (ponder_mgr.should_stop(1)) {
+                    saw_unexpected_stop.store(true, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+    for (int step = 0; step < 300; ++step) {
+        SearchLimits converted = ponder_limits;
+        converted.ponder = (step % 2) != 0;
+        ponder_mgr.reconfigure(converted, koi::Color::white, 100, kMoveOverheadMs, 100,
+                               RootTimingContext{});
+    }
+    stop_readers.store(true, std::memory_order_release);
+    for (std::thread& reader : readers) {
+        reader.join();
+    }
+    require(!saw_unexpected_stop.load(),
+            "ponderhit reconfigure must publish valid start timestamps and budgets before clearing unbounded_");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -429,6 +506,8 @@ int main(int argc, char** argv) {
         {"dynamic move overhead", test_dynamic_move_overhead_tracks_the_time_control},
         {"dynamic optimum budget scaling", test_dynamic_optimum_budget_scales_with_effort_and_falling_eval},
         {"single legal move fast pacing", test_single_legal_move_paces_fast_in_clock_mode},
+        {"overflow-safe lookahead and reconfigure ordering",
+         test_should_start_next_iteration_avoids_overflow_and_reconfigure_races},
     };
     return koi::test::run_tests(tests, argc, argv);
 }
