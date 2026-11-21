@@ -91,7 +91,7 @@ jobs:
           set "ATTEMPT=%1"
           ctest --test-dir build/ci-flake -C Release -j 1 --timeout 900 -R "^(koi_search_tests_[1-4]of4|transposition_table_tests|uci_controller_tests|search_service_tests|time_manager_tests|koi_engine_process|koi_engine_variant_process|koi_engine_en_croissant_process|koi_engine_time_safety_process)$" --output-on-failure --output-junit "build/ci-flake/ctest-flake-%ATTEMPT%.xml" > "build/ci-flake/ctest-flake-%ATTEMPT%.log" 2>&1
           set "ATTEMPT_STATUS=%ERRORLEVEL%"
-          type "build/ci-flake/ctest-flake-%ATTEMPT%.log"
+          type "build\ci-flake\ctest-flake-%ATTEMPT%.log"
           echo Flake attempt %ATTEMPT% exit=%ATTEMPT_STATUS%
           if not "%ATTEMPT_STATUS%"=="0" set "STATUS=1"
           exit /b 0

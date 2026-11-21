@@ -270,7 +270,7 @@ try {
     $optionalStdoutPath = Join-Path $verificationRoot 'bench-optional.txt'
     $optionalStderrPath = Join-Path $verificationRoot 'bench-optional.stderr.txt'
     $optionalProfilePath = Join-Path $verificationRoot 'bench-optional.json'
-    $optionalLines = Invoke-CapturedProcess $benchPath @('--optional', '--profile-json', $optionalProfilePath) $optionalStdoutPath $optionalStderrPath
+    $optionalLines = Invoke-CapturedProcess $benchPath @('--optional', '--nnue', $NnuePath, '--profile-json', $optionalProfilePath) $optionalStdoutPath $optionalStderrPath
     $optionalRows = @($optionalLines | Where-Object { $_ -like 'position *' })
     $optionalProfile = Get-Content -LiteralPath $optionalProfilePath -Raw | ConvertFrom-Json
     if ($optionalRows.Count -ne 128 -or $optionalProfile.positions.Count -ne 128 -or

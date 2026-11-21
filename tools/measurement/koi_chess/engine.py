@@ -14,9 +14,12 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 from collections import deque
 
 from .core import BLACK, WHITE, Move
+
+_UNSET = object()
 
 __all__ = [
     "Cp",
@@ -256,12 +259,15 @@ def _parse_int(token):
 class SimpleEngine:
     """A blocking UCI engine session."""
 
-    def __init__(self, process):
+    def __init__(self, process, *, timeout: float | None = 10.0):
+        if timeout is not None and timeout <= 0:
+            raise EngineError("engine timeout must be positive")
         self._process = process
+        self._timeout = None if timeout is None else float(timeout)
         self._stdout: queue.Queue = queue.Queue()
         self._stderr: deque = deque(maxlen=200)
         self._closed = False
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._reader_thread = threading.Thread(
             target=self._pump_stdout, name="koi-chess-engine-stdout", daemon=True
         )
@@ -275,6 +281,8 @@ class SimpleEngine:
 
     @classmethod
     def popen_uci(cls, command, *, timeout: float = 10.0, debug: bool = False, **popen_kwargs):
+        if timeout is not None and timeout <= 0:
+            raise EngineError("engine timeout must be positive")
         if isinstance(command, (str, bytes)) or hasattr(command, "__fspath__"):
             args = [str(command)]
         else:
@@ -294,7 +302,7 @@ class SimpleEngine:
             )
         except OSError as error:
             raise EngineError(f"failed to start the engine: {error}") from error
-        engine = cls(process)
+        engine = cls(process, timeout=timeout)
         try:
             engine._send("uci")
             engine._wait_for_line(lambda line: line.strip() == "uciok", timeout=timeout)
@@ -350,28 +358,37 @@ class SimpleEngine:
             raise EngineTerminatedError(message)
         return line
 
-    def _wait_for_line(self, predicate, *, timeout=None) -> str:
+    def _wait_for_line(self, predicate, *, timeout: float | None = None) -> str:
+        deadline = None if timeout is None else time.monotonic() + timeout
         while True:
-            line = self._read_line(timeout=timeout)
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            line = self._read_line(timeout=remaining)
             if predicate(line):
                 return line
 
     # -- python-chess style API ------------------------------------------
 
-    def configure(self, options: dict):
+    def configure(self, options: dict, *, timeout: float | None = _UNSET):
         if not options:
             return
-        for name, value in options.items():
-            formatted = _format_option_value(value)
-            if formatted is None:
-                self._send(f"setoption name {name}")
-            else:
-                self._send(f"setoption name {name} value {formatted}")
-        self._send("isready")
-        self._wait_for_line(lambda line: line.strip() == "readyok")
+        effective_timeout = self._timeout if timeout is _UNSET else timeout
+        if effective_timeout is not None and effective_timeout <= 0:
+            raise EngineError("configure timeout must be positive")
+        with self._lock:
+            for name, value in options.items():
+                formatted = _format_option_value(value)
+                if formatted is None:
+                    self._send(f"setoption name {name}")
+                else:
+                    self._send(f"setoption name {name} value {formatted}")
+            self._send("isready")
+            self._wait_for_line(
+                lambda line: line.strip() == "readyok",
+                timeout=effective_timeout,
+            )
 
-    def setoption(self, name: str, value=None):
-        self.configure({name: value})
+    def setoption(self, name: str, value=None, *, timeout: float | None = _UNSET):
+        self.configure({name: value}, timeout=timeout)
 
     def _send_position(self, board):
         fen = board.fen()
@@ -415,27 +432,35 @@ class SimpleEngine:
                 )
             return moves
 
-    def analyse(self, board, limit: Limit, multipv=None) -> dict:
-        if multipv is not None:
-            self.setoption("MultiPV", multipv)
+    def analyse(self, board, limit: Limit, multipv=None, *, timeout: float | None = None) -> dict:
+        if timeout is not None and timeout <= 0:
+            raise EngineError("analyse timeout must be positive")
         with self._lock:
+            if multipv is not None:
+                self.setoption("MultiPV", multipv, timeout=timeout if timeout is not None else self._timeout)
             self._send_position(board)
             self._send(limit.go_command())
-            return self._read_search_result(board)
+            return self._read_search_result(board, timeout=timeout)
 
-    def play(self, board, limit: Limit) -> PlayResult:
+    def play(self, board, limit: Limit, *, timeout: float | None = None) -> PlayResult:
+        if timeout is not None and timeout <= 0:
+            raise EngineError("play timeout must be positive")
         with self._lock:
             self._send_position(board)
             self._send(limit.go_command())
-            info, bestmove, ponder = self._read_search_result(board, return_bestmove=True)
+            info, bestmove, ponder = self._read_search_result(
+                board, return_bestmove=True, timeout=timeout
+            )
         return PlayResult(move=bestmove, ponder=ponder)
 
-    def _read_search_result(self, board, return_bestmove: bool = False):
+    def _read_search_result(self, board, return_bestmove: bool = False, *, timeout: float | None = None):
         last_info: dict = {}
         bestmove_token = None
         ponder_token = None
+        deadline = None if timeout is None else time.monotonic() + timeout
         while True:
-            line = self._read_line()
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            line = self._read_line(timeout=remaining)
             tokens = line.split()
             if not tokens:
                 continue
@@ -471,15 +496,20 @@ class SimpleEngine:
         process = self._process
         if process.poll() is None:
             try:
-                process.stdin.write("quit\n")
-                process.stdin.flush()
+                if process.stdin is not None:
+                    process.stdin.write("quit\n")
+                    process.stdin.flush()
+                    process.stdin.close()
             except Exception:
                 pass
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
-                process.wait()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
         for stream in (process.stdin, process.stdout, process.stderr):
             try:
                 if stream is not None:

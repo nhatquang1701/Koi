@@ -8,6 +8,8 @@ harness compared the client against python-chess and the vendored Stockfish.
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -22,9 +24,11 @@ from koi_chess import engine  # noqa: E402
 FAKE_ENGINE_SOURCE = '''\
 import os
 import sys
+import time
 
 log_path = sys.argv[1] if len(sys.argv) > 1 else None
 scenario = os.environ.get("FAKE_SCENARIO", "cp")
+ready_count = 0
 
 
 def log(line):
@@ -44,9 +48,16 @@ for line in sys.stdin:
         print("option name UCI_ShowWDL type check default false", flush=True)
         print("uciok", flush=True)
     elif line == "isready":
+        ready_count += 1
+        if scenario == "chatter_ready" and ready_count > 1:
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                print("info string busy chatter", flush=True)
+                time.sleep(0.02)
         print("readyok", flush=True)
     elif line.startswith("setoption"):
-        pass
+        if scenario == "slow_multipv" and "MultiPV" in line:
+            time.sleep(0.05)
     elif line == "go perft 1" and scenario == "perft":
         print("info string e2e4: 1", flush=True)
         print("info string d2d4: 1", flush=True)
@@ -54,6 +65,10 @@ for line in sys.stdin:
     elif line.startswith("go"):
         if scenario == "terminate":
             sys.exit(0)
+        elif scenario == "stall_go":
+            print("info depth 1 score cp 10", flush=True)
+            time.sleep(2.0)
+            print("bestmove e2e4", flush=True)
         elif scenario == "mate":
             print("info depth 5 seldepth 7 score mate 2 pv g1d4 h8g8", flush=True)
             print("bestmove g1d4", flush=True)
@@ -67,6 +82,8 @@ for line in sys.stdin:
             print("info depth 3 seldepth 5 score cp 42 nodes 1234 pv e2e4 e7e5 g1f3", flush=True)
             print("bestmove e2e4 ponder e7e5", flush=True)
     elif line == "quit":
+        if scenario == "ignore_quit":
+            continue
         break
 '''
 
@@ -232,6 +249,58 @@ class EngineSessionTests(FakeEngineMixin):
         session.quit()
         with self.assertRaises(engine.EngineError):
             session.analyse(chess.Board(), engine.Limit(depth=1))
+
+    def test_configure_chatter_respects_cumulative_timeout(self):
+        session = self.spawn("chatter_ready")
+        started = time.monotonic()
+        with self.assertRaises(engine.EngineError):
+            session.configure({"Hash": 32}, timeout=0.15)
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 1.5)
+
+    def test_analyse_and_play_timeout_on_stalled_search(self):
+        session = self.spawn("stall_go")
+        with self.assertRaises(engine.EngineError):
+            session.analyse(chess.Board(), engine.Limit(depth=2), timeout=0.15)
+        with self.assertRaises(engine.EngineError):
+            session.play(chess.Board(), engine.Limit(depth=2), timeout=0.15)
+
+    def test_configure_and_analyse_multipv_are_serialized(self):
+        session = self.spawn("slow_multipv")
+        errors = []
+
+        def run_analyse():
+            try:
+                session.analyse(chess.Board(), engine.Limit(depth=2), multipv=3)
+            except Exception as exc:  # pragma: no cover - surfaced in assertion
+                errors.append(exc)
+
+        def run_configure():
+            try:
+                time.sleep(0.01)
+                session.configure({"Hash": 32})
+            except Exception as exc:  # pragma: no cover - surfaced in assertion
+                errors.append(exc)
+
+        t1 = threading.Thread(target=run_analyse)
+        t2 = threading.Thread(target=run_configure)
+        t1.start()
+        t2.start()
+        t1.join(timeout=5.0)
+        t2.join(timeout=5.0)
+        self.assertFalse(errors, f"unexpected worker errors: {errors}")
+
+        commands = self.commands()
+        multipv_index = commands.index("setoption name MultiPV value 3")
+        self.assertEqual(commands[multipv_index + 1], "isready")
+        self.assertTrue(commands[multipv_index + 2].startswith("position fen "))
+        self.assertEqual(commands[multipv_index + 3], "go depth 2")
+
+    def test_quit_closes_stdin_when_quit_command_is_ignored(self):
+        session = self.spawn("ignore_quit")
+        started = time.monotonic()
+        session.quit()
+        self.assertLess(time.monotonic() - started, 2.0)
 
 
 if __name__ == "__main__":

@@ -179,7 +179,7 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           apt_retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "apt retry $i"; sleep 20; done; return 1; }
           apt_retry apt-get -o Acquire::Retries=5 update
-          apt_retry apt-get install -y --no-install-recommends ca-certificates gnupg wget software-properties-common python3-pip git
+          apt_retry apt-get -o Acquire::Retries=5 install -y --no-install-recommends ca-certificates gnupg wget software-properties-common python3-pip git
           git config --global --add safe.directory /work
           add-apt-repository -y ppa:ubuntu-toolchain-r/test
           wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb

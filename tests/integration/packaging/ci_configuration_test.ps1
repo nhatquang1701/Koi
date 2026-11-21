@@ -284,6 +284,26 @@ if ($releaseContent -notmatch '(?i)actions/attest-build-provenance@v2') {
 if ($releaseContent -notmatch '(?i)softprops/action-gh-release@v2') {
     throw 'Release workflow must publish artifacts via softprops/action-gh-release.'
 }
+foreach ($workflowPair in @(
+    @{ Name = 'linux.yml'; Content = $linuxContent },
+    @{ Name = 'release.yml'; Content = $releaseContent },
+    @{ Name = 'release-candidate-games.yml'; Content = $candidateContent }
+)) {
+    foreach ($line in ($workflowPair.Content -split "`r?`n")) {
+        if ($line -match '(?i)\bapt-get\s+(?:update|install)\b' -and
+            $line -notmatch '(?i)-o\s+Acquire::Retries=5') {
+            throw "Workflow $($workflowPair.Name) runs apt-get without '-o Acquire::Retries=5': $($line.Trim())"
+        }
+    }
+}
+$releaseVerifyScript = Join-Path $repositoryRoot 'tools/build/release_verify.ps1'
+if (-not (Test-Path -LiteralPath $releaseVerifyScript -PathType Leaf)) {
+    throw "Release verification script is missing: $releaseVerifyScript"
+}
+$releaseVerifyContent = Get-Content -LiteralPath $releaseVerifyScript -Raw
+if ($releaseVerifyContent -notmatch '(?s)''--optional'',\s*''--nnue'',\s*\$NnuePath') {
+    throw 'tools/build/release_verify.ps1 must pass --nnue $NnuePath to optional koi-bench.'
+}
 
 # The Windows no-retry flake gate must run repeated serial CTest selections
 # independently so timing failures remain visible instead of being retried away.
@@ -302,4 +322,5 @@ Require-WindowsFlakePattern '(?i)koi_engine_time_safety_process|koi_engine_proce
 Require-WindowsFlakePattern '(?i)--timeout\s+900' 'bounded CTest tests'
 Require-WindowsFlakePattern '(?i)windows-flake-test-diagnostics' 'a diagnostics artifact upload'
 Require-WindowsFlakePattern '(?i)ctest-flake-.*\.log' 'per-attempt log upload'
+Require-WindowsFlakePattern '(?i)type\s+"build\\ci-flake\\ctest-flake-%ATTEMPT%\.log"' 'Windows-backslash log display in cmd'
 Deny-WindowsFlakePattern '(?i)--repeat' 'CTest retry behavior'

@@ -30,7 +30,7 @@ if (-not $resolvedOutputDirectory.StartsWith($artifactPrefix, [System.StringComp
     throw "Hash soak output must remain under the repository artifacts directory: $resolvedOutputDirectory"
 }
 
-$runDirectory = Join-Path $resolvedOutputDirectory ((Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff'))
+$runDirectory = Join-Path $resolvedOutputDirectory (((Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')) + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
 
 function Invoke-HashProbe {
@@ -55,85 +55,114 @@ function Invoke-HashProbe {
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $processInfo
-    if (-not $process.Start()) {
-        throw "Unable to start engine for Hash=$HashMegabytes cycle=$Cycle"
-    }
-
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-    $writer = $process.StandardInput
-    function Get-MemorySample {
-        param([System.Diagnostics.Process]$ObservedProcess)
-
-        try {
-            $ObservedProcess.Refresh()
-            return [pscustomobject]@{
-                working_set = $ObservedProcess.WorkingSet64
-                commit = $ObservedProcess.PrivateMemorySize64
-            }
-        } catch [System.InvalidOperationException] {
-            # The process may exit between Refresh and property access. The
-            # caller retains the peak counters collected before exit.
-            return [pscustomobject]@{ working_set = 0; commit = 0 }
-        }
-    }
-
-    @(
-        'uci'
-        "setoption name DebugFile value $debugPath"
-        'setoption name Debug value true'
-        "setoption name Hash value $HashMegabytes"
-        'isready'
-        'position startpos'
-        'go depth 1'
-        'stop'
-        'ucinewgame'
-        'position startpos'
-        'go depth 1'
-        'stop'
-    ) | ForEach-Object { $writer.WriteLine($_) }
-    $writer.Flush()
-
-    [Int64]$peakWorkingSet = 0
-    [Int64]$peakCommitBytes = 0
-    for ($sampleIndex = 0; $sampleIndex -lt 4; ++$sampleIndex) {
-        $sample = Get-MemorySample -ObservedProcess $process
-        $peakWorkingSet = [Math]::Max($peakWorkingSet, $sample.working_set)
-        $peakCommitBytes = [Math]::Max($peakCommitBytes, $sample.commit)
-        Start-Sleep -Milliseconds 50
-    }
-
-    $writer.WriteLine('quit')
-    $writer.Close()
-    $shutdownDeadline = [DateTime]::UtcNow.AddSeconds(30)
-    while (-not $process.WaitForExit(100)) {
-        if ([DateTime]::UtcNow -ge $shutdownDeadline) {
-            try { $process.Kill($true) } catch {
-                try { $process.Kill() } catch {}
-            }
-            $null = $process.WaitForExit(2000)
-            throw "Engine hung shutting down for Hash=$HashMegabytes cycle=$Cycle"
-        }
-        $sample = Get-MemorySample -ObservedProcess $process
-        $peakWorkingSet = [Math]::Max($peakWorkingSet, $sample.working_set)
-        $peakCommitBytes = [Math]::Max($peakCommitBytes, $sample.commit)
-    }
-    $sample = Get-MemorySample -ObservedProcess $process
-    $peakWorkingSet = [Math]::Max($peakWorkingSet, $sample.working_set)
-    $peakCommitBytes = [Math]::Max($peakCommitBytes, $sample.commit)
+    $writer = $null
     try {
-        $peakWorkingSet = [Math]::Max($peakWorkingSet, $process.PeakWorkingSet64)
-        $peakCommitBytes = [Math]::Max($peakCommitBytes, $process.PeakPagedMemorySize64)
-    } catch [System.InvalidOperationException] {
-        # The process handle may no longer expose peak counters. A zero value
-        # is still rejected by the integration test as incomplete telemetry.
-    }
-    $process.WaitForExit()
+        if (-not $process.Start()) {
+            throw "Unable to start engine for Hash=$HashMegabytes cycle=$Cycle"
+        }
 
-    $stdout = $stdoutTask.GetAwaiter().GetResult()
-    $stderr = $stderrTask.GetAwaiter().GetResult()
-    Set-Content -LiteralPath $stdoutPath -Value $stdout -Encoding utf8
-    Set-Content -LiteralPath $stderrPath -Value $stderr -Encoding utf8
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $writer = $process.StandardInput
+        function Get-MemorySample {
+            param([System.Diagnostics.Process]$ObservedProcess)
+
+            try {
+                $ObservedProcess.Refresh()
+                return [pscustomobject]@{
+                    working_set = $ObservedProcess.WorkingSet64
+                    commit = $ObservedProcess.PrivateMemorySize64
+                }
+            } catch [System.InvalidOperationException] {
+                # The process may exit between Refresh and property access. The
+                # caller retains the peak counters collected before exit.
+                return [pscustomobject]@{ working_set = 0; commit = 0 }
+            }
+        }
+
+        @(
+            'uci'
+            "setoption name DebugFile value $debugPath"
+            'setoption name Debug value true'
+            "setoption name Hash value $HashMegabytes"
+            'isready'
+            'position startpos'
+            'go depth 1'
+            'stop'
+            'ucinewgame'
+            'position startpos'
+            'go depth 1'
+            'stop'
+        ) | ForEach-Object { $writer.WriteLine($_) }
+        $writer.Flush()
+
+        [Int64]$peakWorkingSet = 0
+        [Int64]$peakCommitBytes = 0
+        for ($sampleIndex = 0; $sampleIndex -lt 4; ++$sampleIndex) {
+            $sample = Get-MemorySample -ObservedProcess $process
+            $peakWorkingSet = [Math]::Max($peakWorkingSet, $sample.working_set)
+            $peakCommitBytes = [Math]::Max($peakCommitBytes, $sample.commit)
+            Start-Sleep -Milliseconds 50
+        }
+
+        $writer.WriteLine('quit')
+        $writer.Close()
+        $writer = $null
+        $shutdownDeadline = [DateTime]::UtcNow.AddSeconds(30)
+        while (-not $process.WaitForExit(100)) {
+            if ([DateTime]::UtcNow -ge $shutdownDeadline) {
+                if ($env:OS -eq 'Windows_NT') {
+                    & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+                }
+                if (-not $process.HasExited) {
+                    try { $process.Kill($true) } catch {
+                        try { $process.Kill() } catch {}
+                    }
+                }
+                $null = $process.WaitForExit(2000)
+                throw "Engine hung shutting down for Hash=$HashMegabytes cycle=$Cycle"
+            }
+            $sample = Get-MemorySample -ObservedProcess $process
+            $peakWorkingSet = [Math]::Max($peakWorkingSet, $sample.working_set)
+            $peakCommitBytes = [Math]::Max($peakCommitBytes, $sample.commit)
+        }
+        $sample = Get-MemorySample -ObservedProcess $process
+        $peakWorkingSet = [Math]::Max($peakWorkingSet, $sample.working_set)
+        $peakCommitBytes = [Math]::Max($peakCommitBytes, $sample.commit)
+        try {
+            $peakWorkingSet = [Math]::Max($peakWorkingSet, $process.PeakWorkingSet64)
+            $peakCommitBytes = [Math]::Max($peakCommitBytes, $process.PeakPagedMemorySize64)
+        } catch [System.InvalidOperationException] {
+            # The process handle may no longer expose peak counters. A zero value
+            # is still rejected by the integration test as incomplete telemetry.
+        }
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
+
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        Set-Content -LiteralPath $stdoutPath -Value $stdout -Encoding utf8
+        Set-Content -LiteralPath $stderrPath -Value $stderr -Encoding utf8
+    } finally {
+        if ($null -ne $writer) {
+            try { $writer.Dispose() } catch {}
+        }
+        if ($null -ne $process) {
+            try {
+                if (-not $process.HasExited) {
+                    if ($env:OS -eq 'Windows_NT') {
+                        & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+                    }
+                    try { $process.Kill($true) } catch {
+                        try { $process.Kill() } catch {}
+                    }
+                    $null = $process.WaitForExit(2000)
+                }
+            } catch {
+            }
+            $process.Dispose()
+        }
+    }
 
     $resizeEvent = $null
     if (Test-Path -LiteralPath $debugPath -PathType Leaf) {
@@ -163,7 +192,7 @@ function Invoke-HashProbe {
         hash_status = $resizeStatus
         hash_reason = $resizeReason
         cycle = $Cycle
-        exit_code = $process.ExitCode
+        exit_code = $exitCode
         duration_ms = [int]((Get-Date) - $start).TotalMilliseconds
         peak_working_set_bytes = $peakWorkingSet
         peak_commit_bytes = $peakCommitBytes

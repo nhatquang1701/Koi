@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "../../support/material_evaluator.hpp"
+#include "koi/detail/root_fallback.hpp"
 #include "koi/detail/search_context.hpp"
 #include "koi/detail/search_ordering.hpp"
 #include "koi/detail/search_policy.hpp"
@@ -1853,10 +1854,19 @@ void test_short_search_preserves_completed_forcing_check_choice() {
 
     require(result.best_move.has_value() && root.is_legal(*result.best_move),
             "the forcing-choice fixture must retain a legal root move");
+    require(result.stats.short_fallback_invocations <= 1,
+            std::string("completed depths 1 and 2 must reuse the cached fallback instead of rescanning (calls=") +
+                std::to_string(result.stats.short_fallback_invocations) + ")");
     require(result.best_move == preferred_check && result.best_move != replacement_check,
             std::string("a completed forcing check must not be replaced by a weaker check (best=") +
                 result.best_move->uci() + ", depth=" +
                 std::to_string(result.completed_depth) + ")");
+
+    koi::MoveMetadataList moves;
+    root.legal_moves_with_metadata(moves, true, true, koi::CheckFlagMode::quiet_moves_only);
+    require(!koi::detail::short_fallback_should_replace_completed_root(
+                root, moves, preferred_check, *replacement_check),
+            "short_fallback_should_replace_completed_root must never replace a completed non-hanging check with another quiet check");
 }
 
 void test_short_search_prefers_safe_forcing_exchange_over_quiet_push() {

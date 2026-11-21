@@ -577,6 +577,26 @@ function Start-UciEngine([string]$Path, [string]$Label, [string]$BootEvalFile = 
     }
 }
 
+function Stop-ProcessTree($Process) {
+    if ($null -eq $Process) {
+        return
+    }
+    try {
+        if (-not $Process.HasExited) {
+            if ($env:OS -eq 'Windows_NT') {
+                & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
+            }
+            if (-not $Process.HasExited) {
+                try { $Process.Kill($true) } catch {
+                    try { $Process.Kill() } catch {}
+                }
+            }
+            [void]$Process.WaitForExit(2000)
+        }
+    } catch {
+    }
+}
+
 function Get-EngineStderrDetail($Engine) {
     $stderr = ''
     try {
@@ -584,8 +604,7 @@ function Get-EngineStderrDetail($Engine) {
             [void]$Engine.Process.WaitForExit(1000)
         }
         if (-not $Engine.Process.HasExited) {
-            $Engine.Process.Kill()
-            [void]$Engine.Process.WaitForExit(2000)
+            Stop-ProcessTree $Engine.Process
         }
         $stderr = $Engine.StderrTask.GetAwaiter().GetResult()
     } catch {
@@ -622,43 +641,45 @@ function Stop-UciEngine($Engine, [bool]$KillImmediately = $false) {
     }
 
     $status = 'clean shutdown'
-    if (-not $Engine.Process.HasExited) {
-        if ($KillImmediately) {
-            $status = 'timeout'
-            try {
-                $Engine.Process.Kill()
-                $Engine.Process.WaitForExit()
-            } catch {
-            }
-        } else {
-            try {
-                Send-UciLine $Engine 'quit'
-            } catch {
-                $status = 'process exit'
-            }
-            try {
-                $Engine.Process.StandardInput.Close()
-            } catch {
-            }
-            if (-not $Engine.Process.WaitForExit($TimeoutMilliseconds)) {
+    $exitCode = $null
+    $stderr = ''
+    try {
+        if (-not $Engine.Process.HasExited) {
+            if ($KillImmediately) {
                 $status = 'timeout'
+                Stop-ProcessTree $Engine.Process
+            } else {
                 try {
-                    $Engine.Process.Kill()
-                    $Engine.Process.WaitForExit()
+                    Send-UciLine $Engine 'quit'
                 } catch {
+                    $status = 'process exit'
+                }
+                try {
+                    $Engine.Process.StandardInput.Close()
+                } catch {
+                }
+                if (-not $Engine.Process.WaitForExit($TimeoutMilliseconds)) {
+                    $status = 'timeout'
+                    Stop-ProcessTree $Engine.Process
                 }
             }
         }
-    }
 
-    $exitCode = $Engine.Process.ExitCode
-    if ($status -eq 'clean shutdown' -and $exitCode -ne 0) {
-        $status = 'process exit'
-    }
-    $stderr = ''
-    try {
-        $stderr = $Engine.StderrTask.GetAwaiter().GetResult()
-    } catch {
+        if ($Engine.Process.HasExited) {
+            $exitCode = $Engine.Process.ExitCode
+        }
+        if ($status -eq 'clean shutdown' -and $exitCode -ne 0) {
+            $status = 'process exit'
+        }
+        try {
+            $stderr = $Engine.StderrTask.GetAwaiter().GetResult()
+        } catch {
+        }
+    } finally {
+        try {
+            $Engine.Process.Dispose()
+        } catch {
+        }
     }
     return [pscustomobject]@{ status = $status; exit_code = $exitCode; stderr = $stderr }
 }
@@ -1484,7 +1505,7 @@ $koiEvaluatorAttestation = Get-KoiEvaluatorAttestation $koiEngine $koiStop
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $resolvedOutputDirectory = (Resolve-Path -LiteralPath $OutputDirectory).Path
-$stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
+$stamp = ((Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')) + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
 $basePath = Join-Path $resolvedOutputDirectory "koi-uci-match-$stamp"
 
 $engineSummary = @(

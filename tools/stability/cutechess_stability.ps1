@@ -141,7 +141,9 @@ function Stop-CutechessProcess($Process) {
         if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
             & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
         } else {
-            $Process.Kill()
+            try { $Process.Kill($true) } catch {
+                $Process.Kill()
+            }
         }
     } catch {
         try {

@@ -94,30 +94,56 @@ function Invoke-BenchRun([string]$Label, [string]$Executable, [string]$ReportPat
     $startInfo.FileName = $Executable
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
-    $startInfo.Arguments = ($arguments | ForEach-Object {
-        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
-    }) -join ' '
+    foreach ($argument in $arguments) {
+        $startInfo.ArgumentList.Add([string]$argument)
+    }
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
-    if (-not $process.Start()) {
-        throw "Unable to start $Label"
-    }
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-    if (-not $process.WaitForExit(1800000)) {
-        $process.Kill()
+    try {
+        if (-not $process.Start()) {
+            throw "Unable to start $Label"
+        }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(1800000)) {
+            if ($env:OS -eq 'Windows_NT') {
+                & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+            }
+            if (-not $process.HasExited) {
+                try { $process.Kill($true) } catch {
+                    try { $process.Kill() } catch {}
+                }
+            }
+            $null = $process.WaitForExit(2000)
+            throw "$Label did not exit within 1800000 ms"
+        }
         $process.WaitForExit()
-        throw "$Label did not exit within 1800000 ms"
-    }
-    $stdout = $stdoutTask.GetAwaiter().GetResult()
-    $stderr = $stderrTask.GetAwaiter().GetResult()
-    [System.IO.File]::WriteAllText($StdoutPath, $stdout)
-    [System.IO.File]::WriteAllText($StderrPath, $stderr)
-    if ($process.ExitCode -ne 0) {
-        throw "$Label exited with $($process.ExitCode): $stderr"
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        [System.IO.File]::WriteAllText($StdoutPath, $stdout)
+        [System.IO.File]::WriteAllText($StderrPath, $stderr)
+        if ($process.ExitCode -ne 0) {
+            throw "$Label exited with $($process.ExitCode): $stderr"
+        }
+    } finally {
+        if ($null -ne $process) {
+            try {
+                if (-not $process.HasExited) {
+                    if ($env:OS -eq 'Windows_NT') {
+                        & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+                    }
+                    try { $process.Kill($true) } catch {
+                        try { $process.Kill() } catch {}
+                    }
+                    $null = $process.WaitForExit(2000)
+                }
+            } catch {
+            }
+            $process.Dispose()
+        }
     }
     if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) {
         throw "$Label did not write its speed report: $ReportPath"
