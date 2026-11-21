@@ -52,4 +52,4 @@ Koi requires no external configuration files:
 
 - **[Engine Specification](ENGINE_SPEC.md)** — Authoritative technical reference covering position representation, draw rules, search pruning formulas, time allocation math, and UCI protocol contracts.
 - **[Documentation Map](README.md)** — Concise directory of all maintained documentation.
-- **[Latest Release Notes (v1.1.6)](releases/v1.1.6.md)** — Highlights, search and evaluation upgrades, strength progression, and archive provenance.
+- **[Latest Release Notes (v1.2.0)](releases/v1.2.0.md)** — Highlights, search and evaluation upgrades, strength progression, SF19 Elo measurement, and archive provenance.

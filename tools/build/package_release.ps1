@@ -28,7 +28,7 @@ $isMacOSHost = -not $isWindowsHost -and
     [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)
 $binarySuffix = if ($isWindowsHost) { '.exe' } else { '' }
 $platformTag = if ($isWindowsHost) { '' } elseif ($isMacOSHost) { '-macos-arm64' } else { '-linux-x86_64' }
-$packageName = "koi-engine-v1.1.6$platformTag"
+$packageName = "koi-engine-v1.2.0$platformTag"
 $packageDirectory = Join-Path $outputRoot $packageName
 $archivePath = if ($isWindowsHost) {
     Join-Path $outputRoot "$packageName.zip"
@@ -243,7 +243,7 @@ Set-Content -LiteralPath "$archivePath.sha256" -Value "$archiveHash  $([System.I
 
 $manifest = [ordered]@{
     schema = 'koi-engine-package-v1'
-    version = '1.1.6'
+    version = '1.2.0'
     platform = if ($isWindowsHost) { 'windows-x86_64' } elseif ($isMacOSHost) { 'macos-arm64' } else { 'linux-x86_64' }
     build_configuration = 'Release'
     archive = [ordered]@{

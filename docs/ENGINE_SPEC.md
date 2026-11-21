@@ -1,7 +1,7 @@
 # Koi engine specification
 
 This page is the engineering specification for the Koi engine in this repository.
-It describes the code as it stands on branch `koi-engine` at the v1.1.6
+It describes the code as it stands on branch `koi-engine` at the v1.2.0
 release, and it names the
 implementation files and constants that define each behaviour. It is a
 specification of observed behaviour, not a roadmap: where a feature is absent,
@@ -31,7 +31,7 @@ The HCE is selectable for development and measurement with `EvalMode=hce` or the
 | Rules variant | Standard chess only; no Chess960 or other variants | `src/koi/position.cpp` |
 | Language | C++26 (`CMAKE_CXX_STANDARD 26`) | `CMakeLists.txt` |
 | License | GPL-3.0 | `LICENSE` |
-| Current build version pin | `1.1.6` | `project(koi_engine VERSION 1.1.6 ...)`, `CMakeLists.txt:3` |
+| Current build version pin | `1.2.0` | `project(koi_engine VERSION 1.2.0 ...)`, `CMakeLists.txt:3` |
 | Compiled build identity | `KOI_ENGINE_BUILD_VERSION="${PROJECT_VERSION}"` | `CMakeLists.txt:412-414` |
 | UCI identity/version | `id name Koi <version>` (CMake project pin), `id author`, and `info string build <commit>`; there is no separate `uci` version field | `src/koi/uci_controller.cpp` |
 
@@ -41,13 +41,13 @@ the core library and is consumed by `koi-bench` for its JSON
 instead comes from the external package manifest written by
 `tools/build/package_release.ps1` (`<package>.package.json` beside the
 archive): schema `koi-engine-package-v1`, hard-coded
-`version = '1.1.6'`, archive hash, per-file SHA-256 hashes, and a `provenance`
+`version = '1.2.0'`, archive hash, per-file SHA-256 hashes, and a `provenance`
 object with `source_commit`, `source_dirty`, `source_ref`, and `created_utc`. A
 package archive also gets a `.sha256` sidecar.
 
-The v1.1.6 release is cut at this commit: the version pins, the packaging
-script, and the documentation read `1.1.6`, so the compiled build identity is
-1.1.6 from here on.
+The v1.2.0 release is cut at this commit: the version pins, the packaging
+script, and the documentation read `1.2.0`, so the compiled build identity is
+1.2.0 from here on.
 
 ### 1.2 Supported operating systems and CPUs
 
@@ -955,7 +955,7 @@ Determinism rules: `Threads=1` is the deterministic configuration; threaded test
 assert legality, coverage, completed depth, ranked MultiPV lines, and coherent
 bestmove/PV rather than byte equality. Timing-sensitive cases use the retry
 mechanism (`KOI_TEST_RETRIES`); known-failure and intermittent registries are
-empty for the 1.1.6 gate.
+empty for the 1.2.0 gate.
 
 ### 9.3 Benchmark and verification tools
 
@@ -1006,7 +1006,7 @@ measurement commands, never CTest thresholds.
    dirty flag computed with `core.autocrlf=false`).
 
 No tablebase data is packaged. Version strings in the packaging script and
-manifest are `1.1.6` on this tree. Release titles use a readable product
+manifest are `1.2.0` on this tree. Release titles use a readable product
 name and version while the tag is the version alone.
 
 ## 10. Known limitations, experimental items, and deferred work

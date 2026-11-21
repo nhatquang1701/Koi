@@ -44,9 +44,9 @@
 
 Prebuilt archives, `.sha256` checksum sidecars, `.package.json` manifests, and GitHub SLSA build-provenance attestations are published on [GitHub Releases](https://github.com/nhatquang1701/Koi/releases):
 
-- **Windows x64:** `koi-engine-v1.1.6.zip`
-- **Linux x86-64:** `koi-engine-v1.1.6-linux-x86_64.tar.gz`
-- **macOS arm64 (Apple Silicon):** `koi-engine-v1.1.6-macos-arm64.tar.gz`
+- **Windows x64:** `koi-engine-v1.2.0.zip`
+- **Linux x86-64:** `koi-engine-v1.2.0-linux-x86_64.tar.gz`
+- **macOS arm64 (Apple Silicon):** `koi-engine-v1.2.0-macos-arm64.tar.gz`
 
 Each release archive is kept minimal and self-contained, shipping only the engine binaries (`koi-engine` plus `koi-engine-avx2` and `koi-engine-avx512` on x86-64), the gated network (`koi.nnue`), the Stockfish-verified CC0 opening book (`book.bin`), and `LICENSE`. Checksums, `.package.json` provenance manifests, and SLSA attestations live alongside the archive outside the zip/tarball.
 
