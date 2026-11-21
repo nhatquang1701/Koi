@@ -2187,6 +2187,144 @@ void test_nnue_auto_discovery_prefers_bundled_layout() {
             "an empty search directory must not discover anything");
 }
 
+koi::NnueNetwork make_v4_network_with_hidden(const std::uint32_t hidden_units,
+                                             const std::uint32_t head_count,
+                                             const std::int16_t weight_bound,
+                                             const std::int32_t bias_bound) {
+    koi::NnueNetwork network = koi::test::synthetic_network_v4();
+    network.manifest.layer_sizes = {
+        network.manifest.layer_sizes[0],
+        hidden_units,
+        network.manifest.layer_sizes[2],
+        head_count,
+    };
+    const std::size_t input_count = network.manifest.layer_sizes[0];
+    const std::size_t output_buckets = network.manifest.layer_sizes[2];
+    const std::size_t pair_count = static_cast<std::size_t>(hidden_units) / 2U;
+    const std::size_t effective_heads = head_count == 2U ? 2U : 1U;
+    network.feature_weights.resize(input_count * hidden_units);
+    network.hidden_bias.resize(hidden_units);
+    network.bottleneck_weights.resize(output_buckets * pair_count * effective_heads);
+    network.bottleneck_bias.assign(output_buckets, 17);
+    network.output_shift = 10;
+
+    for (std::size_t index = 0; index < network.feature_weights.size(); ++index) {
+        const int span = 2 * static_cast<int>(weight_bound) + 1;
+        const int centered = static_cast<int>((index * 37U) % static_cast<std::size_t>(span)) -
+            static_cast<int>(weight_bound);
+        network.feature_weights[index] = static_cast<std::int16_t>(centered);
+    }
+    for (std::size_t index = 0; index < network.hidden_bias.size(); ++index) {
+        const std::int64_t span = 2LL * static_cast<std::int64_t>(bias_bound) + 1LL;
+        const std::int64_t centered =
+            static_cast<std::int64_t>((index * 97U) % static_cast<std::size_t>(span)) -
+            static_cast<std::int64_t>(bias_bound);
+        network.hidden_bias[index] = static_cast<std::int32_t>(centered);
+    }
+    for (std::size_t index = 0; index < network.bottleneck_weights.size(); ++index) {
+        network.bottleneck_weights[index] =
+            static_cast<std::int8_t>(static_cast<int>(index * 29U % 255U) - 127);
+    }
+    return network;
+}
+
+void test_v4_non_multiple_hidden_int16_safe_and_extreme_bias_finny_parity() {
+    // 1. int16_safe == true with non-16-multiple even hidden size (34, pair_count 17),
+    //    both single-head and dual-head layouts.
+    for (const std::uint32_t heads : {0U, 2U}) {
+        koi::NnueNetwork net = make_v4_network_with_hidden(34U, heads, 120, 400);
+        const auto encoded = koi::NnueLoader::serialize(net);
+        require(encoded.has_value(), "v4 hidden=34 int16-safe network must serialize");
+        const auto decoded = koi::NnueLoader::load(*encoded);
+        require(decoded.has_value() &&
+                    decoded->manifest.layer_sizes ==
+                        koi::NnueLayerSizes{net.manifest.layer_sizes[0], 34U,
+                                            net.manifest.layer_sizes[2], heads},
+                "v4 hidden=34 int16-safe network must round-trip cleanly");
+
+        const auto weights = std::make_shared<const koi::NnueNetwork>(std::move(*decoded));
+        koi::NnueWorker scalar_worker(weights);
+        koi::NnueWorker avx2_worker(weights);
+        const std::vector<koi::GameState> states{
+            koi::GameState::startpos(),
+            require_state("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"),
+            require_state("rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3"),
+        };
+        for (const koi::GameState& state : states) {
+            const koi::EvaluationFeatures features = koi::EvaluationFeatureExtractor::extract(state);
+            const koi::Color mover = state.side_to_move();
+            const int expected = heads == 2U
+                ? reference_v4_dual_score(*weights, features, mover)
+                : reference_v4_score(*weights,
+                                     koi::EvaluationFeatureExtractor::encode_sparse_v4(features),
+                                     reference_v4_bucket(features));
+            const int scalar = scalar_worker.evaluate(features, mover, koi::NnueInferencePath::scalar);
+            const int avx2 =
+                avx2_worker.evaluate(features, mover, koi::NnueInferencePath::avx2_compatible);
+            require(scalar == expected && avx2 == expected &&
+                        avx2_worker.accumulator().values == scalar_worker.accumulator().values &&
+                        avx2_worker.accumulator().bottleneck_values ==
+                            scalar_worker.accumulator().bottleneck_values,
+                    "hidden=34 int16-safe scalar and SIMD paths must match independent reference");
+        }
+
+        // Exercise king-bucket Finny hits/updates, castling, EP, promotion, and null moves.
+        walk_incremental_game("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 24,
+                              0x34A1192U, weights);
+        walk_incremental_game("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", 16, 0x34F1BB0U, weights);
+        play_scripted_incremental("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+                                  {"e1g1", "e8c8", "f1e1", "c8b8"}, weights);
+        play_scripted_incremental("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", {"e1c1", "e8g8"},
+                                  weights);
+        play_scripted_incremental("rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+                                  {"e5f6"}, weights);
+        play_scripted_incremental("n3k3/1P6/8/8/8/8/8/4K3 w - - 0 1",
+                                  {"b7a8q", "e8d7", "e1d2", "d7c7", "d2e1"}, weights);
+    }
+
+    // 2. Extreme hidden biases (INT32_MIN / INT32_MAX) and large int16 weights forcing
+    //    int32 fallback (int16_safe == false) with hidden_units=34 and Finny bucket crossings.
+    koi::NnueNetwork extreme = make_v4_network_with_hidden(34U, 0U, 32767, 100);
+    for (std::size_t index = 0; index < extreme.hidden_bias.size(); ++index) {
+        if (index % 3U == 0U) {
+            extreme.hidden_bias[index] = std::numeric_limits<std::int32_t>::min();
+        } else if (index % 3U == 1U) {
+            extreme.hidden_bias[index] = std::numeric_limits<std::int32_t>::max() - 50;
+        } else {
+            extreme.hidden_bias[index] = 0;
+        }
+    }
+    const auto encoded_extreme = koi::NnueLoader::serialize(extreme);
+    require(encoded_extreme.has_value(), "v4 extreme-bias hidden=34 network must serialize");
+    const auto decoded_extreme = koi::NnueLoader::load(*encoded_extreme);
+    require(decoded_extreme.has_value(), "v4 extreme-bias hidden=34 network must load");
+    const auto extreme_weights = std::make_shared<const koi::NnueNetwork>(std::move(*decoded_extreme));
+
+    koi::NnueWorker ext_scalar(extreme_weights);
+    koi::NnueWorker ext_avx2(extreme_weights);
+    const koi::GameState castle_state = require_state("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+    const koi::EvaluationFeatures castle_features =
+        koi::EvaluationFeatureExtractor::extract(castle_state);
+    const int ext_expected = reference_v4_score(
+        *extreme_weights, koi::EvaluationFeatureExtractor::encode_sparse_v4(castle_features),
+        reference_v4_bucket(castle_features));
+    const int ext_s = ext_scalar.evaluate(castle_features, koi::Color::white,
+                                          koi::NnueInferencePath::scalar);
+    const int ext_a = ext_avx2.evaluate(castle_features, koi::Color::white,
+                                        koi::NnueInferencePath::avx2_compatible);
+    require(ext_s == ext_expected && ext_a == ext_expected &&
+                ext_avx2.accumulator().values == ext_scalar.accumulator().values,
+            "extreme INT32_MIN/MAX hidden_bias with hidden=34 must clamp cleanly without overflow");
+
+    play_scripted_incremental("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+                              {"e1d2", "e8d7", "d2e1", "d7e8", "e1e2", "e8e7"},
+                              extreme_weights);
+    play_scripted_incremental("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", {"e1g1", "e8c8"},
+                              extreme_weights);
+    walk_incremental_game("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 16,
+                          0xE374E3EULL, extreme_weights);
+}
+
 } // namespace
 
 // Test-only seam: serialize a deterministic v4 fixture network and print the
@@ -2532,6 +2670,8 @@ int main(int argc, char** argv) {
         {"NNUE v4 dual perspective", test_v4_dual_round_trip_and_incremental_parity},
         {"external NNUE container", test_external_v2_container},
         {"NNUE auto discovery", test_nnue_auto_discovery_prefers_bundled_layout},
+        {"NNUE v4 hidden=34 int16-safe and extreme bias Finny parity",
+         test_v4_non_multiple_hidden_int16_safe_and_extreme_bias_finny_parity},
     };
     return koi::test::run_tests(tests, argc, argv);
 }
