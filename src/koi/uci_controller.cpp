@@ -9,6 +9,7 @@
 #include <cctype>
 #include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
@@ -245,8 +246,8 @@ bool parse_xboard_seconds(std::string_view value, std::chrono::milliseconds& dur
     char* end = nullptr;
     const std::string buffer(value);
     const double seconds = std::strtod(buffer.c_str(), &end);
-    if (end == buffer.c_str() || *end != '\0' || seconds < 0.0 ||
-        seconds > 86'400'000.0) {
+    if (end == buffer.c_str() || *end != '\0' || !std::isfinite(seconds) ||
+        seconds < 0.0 || seconds > 86'400'000.0) {
         return false;
     }
     duration = std::chrono::milliseconds{static_cast<std::int64_t>(seconds * 1000.0 + 0.5)};
@@ -310,6 +311,27 @@ std::string xboard_terminal_result_line(const GameState& state) {
         return "1/2-1/2 {Draw}";
     }
     return "1/2-1/2 {Draw}";
+}
+
+// Emits the terminal/no-move reply matching the active wire protocol.
+// Caller must hold output_mutex_.
+void write_no_move_reply(std::ostream& output, const UciController::ProtocolMode protocol,
+                         const GameState& root) {
+    switch (protocol) {
+    case UciController::ProtocolMode::xboard:
+        output << xboard_terminal_result_line(root) << '\n' << std::flush;
+        return;
+    case UciController::ProtocolMode::usi:
+        output << "bestmove resign\n" << std::flush;
+        return;
+    case UciController::ProtocolMode::ucci:
+        output << "nobestmove\n" << std::flush;
+        return;
+    case UciController::ProtocolMode::uci:
+    case UciController::ProtocolMode::ucicyclone:
+        output << "bestmove 0000\n" << std::flush;
+        return;
+    }
 }
 
 // Translates USI/UCCI/UCI_Cyclone `go` limit extensions cleanly onto Koi's
@@ -1018,8 +1040,10 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
         return true;
     }
     if (name == "playother") {
+        stop_and_suppress_active_search();
         apply_pending_xboard_move();
         xboard_force_ = false;
+        xboard_analyze_ = false;
         return true;
     }
     if (name == "post") {
@@ -1121,8 +1145,11 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
             std::chrono::milliseconds inc{};
             if (parse_uint64(mps_tok, mps) && parse_xboard_level_time(base_tok, base) &&
                 parse_xboard_seconds(inc_tok, inc)) {
-                xboard_moves_to_go_ = mps > 0 ? std::optional<int>(static_cast<int>(mps))
-                                              : std::nullopt;
+                constexpr std::uint64_t kMaxMovesToGo =
+                    static_cast<std::uint64_t>(std::numeric_limits<int>::max());
+                xboard_moves_to_go_ = mps > 0
+                    ? std::optional<int>(static_cast<int>(std::min(mps, kMaxMovesToGo)))
+                    : std::nullopt;
                 xboard_base_time_ = base;
                 xboard_increment_ = inc;
                 xboard_white_time_ = base;
@@ -1156,7 +1183,11 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
         std::string cs_tok;
         std::int64_t cs = 0;
         if ((command >> cs_tok) && parse_int64_token(cs_tok, cs)) {
-            const auto ms = std::chrono::milliseconds{std::max<std::int64_t>(1, cs * 10)};
+            constexpr std::int64_t kMaximumCentiseconds =
+                std::numeric_limits<std::int64_t>::max() / 10;
+            const std::int64_t clamped_cs =
+                std::clamp<std::int64_t>(cs, 0, kMaximumCentiseconds);
+            const auto ms = std::chrono::milliseconds{std::max<std::int64_t>(1, clamped_cs * 10)};
             const bool engine_is_white = (position_.side_to_move() == Color::white);
             const bool target_white = (name == "time") ? engine_is_white : !engine_is_white;
             if (target_white) {
@@ -1272,7 +1303,7 @@ int UciController::run() {
             current_protocol = protocol_mode_;
         }
         if (name == "uci") {
-            if (current_protocol == ProtocolMode::xboard) {
+            if (current_protocol != ProtocolMode::uci) {
                 stop_and_suppress_active_search();
             }
             {
@@ -1284,7 +1315,7 @@ int UciController::run() {
             }
             write_handshake(ProtocolMode::uci);
         } else if (name == "usi") {
-            if (current_protocol == ProtocolMode::xboard) {
+            if (current_protocol != ProtocolMode::usi) {
                 stop_and_suppress_active_search();
             }
             {
@@ -1296,7 +1327,8 @@ int UciController::run() {
             }
             write_handshake(ProtocolMode::usi);
         } else if (name == "ucci") {
-            if (current_protocol == ProtocolMode::xboard) {
+            if (current_protocol != ProtocolMode::ucci &&
+                current_protocol != ProtocolMode::ucicyclone) {
                 stop_and_suppress_active_search();
             }
             ProtocolMode next_mode = ProtocolMode::ucci;
@@ -2359,9 +2391,14 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
             if (generation != generation_) {
                 return;
             }
-            output_ << "info string no common legal move for the search root; answering 0000\n"
-                    << std::flush;
-            output_ << "bestmove 0000\n" << std::flush;
+            if (is_ponder_search) {
+                clear_ponder_state();
+            }
+            if (search_protocol != ProtocolMode::xboard) {
+                output_ << "info string no common legal move for the search root; answering 0000\n"
+                        << std::flush;
+            }
+            write_no_move_reply(output_, search_protocol, search_root);
             return;
         }
         if (!completion_once->try_claim()) {
@@ -2394,7 +2431,7 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
             // but it must not be indistinguishable from a real result at the
             // protocol boundary.
             std::lock_guard lock(output_mutex_);
-            if (generation == generation_) {
+            if (generation == generation_ && search_protocol != ProtocolMode::xboard) {
                 output_ << "info string search failed ("
                         << search_failure_reason_name(result.failure_reason)
                         << "); using a safe fallback move\n"
@@ -2443,10 +2480,13 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         debug_event("search failed to start: " + std::string(error.what()));
         {
             std::lock_guard lock(output_mutex_);
-            output_ << "info string search could not start: " << error.what() << '\n'
-                    << "info string search failed (setup_failed); using a safe fallback "
-                       "move\n"
-                    << std::flush;
+            clear_ponder_state();
+            if (search_protocol != ProtocolMode::xboard) {
+                output_ << "info string search could not start: " << error.what() << '\n'
+                        << "info string search failed (setup_failed); using a safe fallback "
+                           "move\n"
+                        << std::flush;
+            }
         }
         write_search_completion(generation, start_failure_fallback, search_protocol, is_ponder_search,
                                 xboard_analyze_snapshot, search_root);
@@ -2918,22 +2958,15 @@ void UciController::write_search_completion(const std::uint64_t generation,
     }
 
     if (!result.best_move.has_value()) {
-        if (protocol == ProtocolMode::usi) {
-            output_ << "bestmove resign\n" << std::flush;
-            return;
-        }
-        if (protocol == ProtocolMode::ucci) {
-            output_ << "nobestmove\n" << std::flush;
-            return;
-        }
+        write_no_move_reply(output_, protocol, search_root);
+        return;
     }
 
-    output_ << "bestmove "
-            << (result.best_move.has_value() ? result.best_move->uci() : "0000");
+    output_ << "bestmove " << result.best_move->uci();
     // The ponder move is part of the answer whenever the engine knows it; the
     // `Ponder` option only tells the engine whether the GUI will actually
     // ponder, so gating the move on it needlessly starved GUIs of the hint.
-    if (result.best_move.has_value() && result.ponder_move.has_value()) {
+    if (result.ponder_move.has_value()) {
         output_ << " ponder " << result.ponder_move->uci();
     }
     output_ << '\n' << std::flush;
@@ -3009,13 +3042,11 @@ void UciController::write_book_completion(const std::uint64_t generation, const 
         if (generation != generation_) {
             return;
         }
-        if (protocol == ProtocolMode::xboard) {
-            output_ << xboard_terminal_result_line(root) << '\n' << std::flush;
-            return;
+        if (protocol != ProtocolMode::xboard) {
+            output_ << "info string no common legal move for the book root; answering 0000\n"
+                    << std::flush;
         }
-        output_ << "info string no common legal move for the book root; answering 0000\n"
-                << std::flush;
-        output_ << "bestmove 0000\n" << std::flush;
+        write_no_move_reply(output_, protocol, root);
         return;
     }
     if (!completion_once->try_claim()) {
@@ -3032,11 +3063,7 @@ void UciController::write_book_completion(const std::uint64_t generation, const 
         if (generation != generation_) {
             return;
         }
-        if (protocol == ProtocolMode::xboard) {
-            output_ << xboard_terminal_result_line(root) << '\n' << std::flush;
-            return;
-        }
-        output_ << "bestmove 0000\n" << std::flush;
+        write_no_move_reply(output_, protocol, root);
         return;
     }
     debug_json_event(

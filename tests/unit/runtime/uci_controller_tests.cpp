@@ -2605,6 +2605,215 @@ void test_xboard_cecp_protocol_gameplay_and_controls() {
             "switching back from XBoard via uci must emit uciok");
 }
 
+class ThrowingTestEvaluator final : public koi::Evaluator {
+public:
+    [[nodiscard]] bool supports_concurrent_evaluation() const noexcept override { return true; }
+
+    [[nodiscard]] int evaluate(const koi::GameState&, koi::Color) const override {
+        throw std::runtime_error("injected evaluation failure");
+    }
+};
+
+void test_xboard_cecp_numeric_bounds_and_playother() {
+    const ControllerResult numeric = run_controller(
+        "xboard\n"
+        "protover 2\n"
+        "option OwnBook=false\n"
+        "st nan\n"
+        "st -nan\n"
+        "st inf\n"
+        "st -inf\n"
+        "st 0\n"
+        "level 40 5 nan\n"
+        "level 40 5 inf\n"
+        "level 4294967297 5 0\n"
+        "time 9223372036854775807\n"
+        "otim -9223372036854775808\n"
+        "sd 1\n"
+        "go\n"
+        "ping 11\n"
+        "quit\n");
+    const std::vector<std::string> numeric_lines = output_lines(numeric.output);
+    const std::vector<std::string> numeric_moves = lines_starting_with(numeric_lines, "move ");
+    require(numeric.exit_code == 0 && numeric.diagnostics.empty(),
+            "hostile XBoard numeric parameters must stay UB-free and protocol clean");
+    require(numeric.output.find("pong 11") != std::string::npos,
+            "XBoard session must keep answering ping after out-of-range numeric tokens");
+    require(lines_starting_with(numeric_lines, "info string ").empty(),
+            "XBoard mode must not leak UCI info string lines");
+    require(numeric_moves.size() == 1 && numeric_moves[0].size() > 5 &&
+                is_legal_move(Position{}, numeric_moves[0].substr(5)),
+            "XBoard go must still emit one legal move after clamped/rejected clocks");
+
+    GatedInputBuffer gated(
+        "xboard\n"
+        "protover 2\n"
+        "option OwnBook=false\n"
+        "force\n"
+        "usermove e2e4\n"
+        "analyze\n",
+        "playother\n"
+        "ping 42\n"
+        "sd 1\n"
+        "usermove e7e5\n"
+        "ping 43\n"
+        "quit\n");
+    auto evaluator = std::make_shared<PonderGateEvaluator>(gated);
+    std::istream input_stream(&gated);
+    std::ostringstream output;
+    std::ostringstream diagnostics;
+    int exit_code = -1;
+    std::thread controller_thread([&] {
+        UciController controller(input_stream, output, diagnostics,
+                                 koi::SearchService{evaluator});
+        exit_code = controller.run();
+    });
+    require(evaluator->wait_for_started(std::chrono::seconds(5)),
+            "XBoard analyze must start before playother arrives");
+    evaluator->release();
+    controller_thread.join();
+
+    Position after_e4_e5;
+    require(after_e4_e5.make_move(*koi::Move::parse_uci("e2e4")) &&
+                after_e4_e5.make_move(*koi::Move::parse_uci("e7e5")),
+            "e2e4 e7e5 fixture moves must be legal");
+    const std::vector<std::string> playother_lines = output_lines(output.str());
+    const std::vector<std::string> playother_moves =
+        lines_starting_with(playother_lines, "move ");
+    require(exit_code == 0 && diagnostics.str().empty(),
+            "XBoard playother during active analysis must exit cleanly");
+    require(output.str().find("pong 42") != std::string::npos &&
+                output.str().find("pong 43") != std::string::npos,
+            "playother must stop active analyze so subsequent ping/play proceed");
+    require(lines_starting_with(playother_lines, "info string ").empty(),
+            "XBoard playother session must not emit UCI info string lines");
+    require(playother_moves.size() == 1 && playother_moves[0].size() > 5 &&
+                is_legal_move(after_e4_e5, playother_moves[0].substr(5)),
+            "after playother clears analyze mode, opponent move must produce one legal CECP move");
+}
+
+void test_cross_protocol_switch_stops_active_search_and_preserves_cyclone() {
+    auto verify_switch_suppresses = [](std::string_view prefix, std::string_view suffix,
+                                       std::string_view expected_ack) {
+        GatedInputBuffer gated{std::string(prefix), std::string(suffix)};
+        auto evaluator = std::make_shared<PonderGateEvaluator>(gated);
+        std::istream input_stream(&gated);
+        std::ostringstream output;
+        std::ostringstream diagnostics;
+        int exit_code = -1;
+        std::thread controller_thread([&] {
+            UciController controller(input_stream, output, diagnostics,
+                                     koi::SearchService{evaluator});
+            exit_code = controller.run();
+        });
+        require(evaluator->wait_for_started(std::chrono::seconds(5)),
+                "source protocol search must begin before switching protocol");
+        evaluator->release();
+        controller_thread.join();
+
+        const std::vector<std::string> lines = output_lines(output.str());
+        require(exit_code == 0 && diagnostics.str().empty(),
+                "protocol switch during active search must shut down cleanly");
+        require(output.str().find(expected_ack) != std::string::npos &&
+                    lines_starting_with(lines, "readyok").size() >= 1,
+                "protocol switch must acknowledge the target protocol and stay responsive");
+        require(lines_starting_with(lines, "bestmove ").empty() &&
+                    lines_starting_with(lines, "nobestmove").empty(),
+                "switching protocols mid-search must suppress stale move replies");
+    };
+
+    verify_switch_suppresses(
+        "usi\nisready\nsetoption name OwnBook value false\nposition startpos\ngo infinite\n",
+        "uci\nisready\nquit\n", "uciok");
+    verify_switch_suppresses(
+        "uci\nsetoption name OwnBook value false\nposition startpos\ngo infinite\n",
+        "ucci\nsetoption OwnBook false\nisready\nquit\n", "ucciok");
+
+    const ControllerResult cyclone = run_controller(
+        "setoption name Protocol value ucicyclone\n"
+        "ucci\n"
+        "isready\n"
+        "position fen 7k/6Q1/6K1/8/8/8/8/8 b - - 0 1\n"
+        "go depth 1\n"
+        "stop\n"
+        "quit\n");
+    const std::vector<std::string> cyclone_lines = output_lines(cyclone.output);
+    require(cyclone.exit_code == 0 && cyclone.diagnostics.empty(),
+            "ucicyclone ucci flow must stay clean");
+    require(cyclone.output.find("ucicyclone") != std::string::npos &&
+                cyclone.output.find("ucciok") != std::string::npos &&
+                lines_starting_with(cyclone_lines, "bestmove ").size() == 1 &&
+                cyclone.output.find("bestmove 0000") != std::string::npos &&
+                lines_starting_with(cyclone_lines, "nobestmove").empty(),
+            "ucci command under ucicyclone preset must preserve ucicyclone bestmove 0000 semantics");
+}
+
+void test_xboard_terminal_and_failure_replies_stay_protocol_clean() {
+    auto evaluator = std::make_shared<ThrowingTestEvaluator>();
+
+    {
+        std::istringstream input(
+            "xboard\n"
+            "protover 2\n"
+            "option OwnBook=false\n"
+            "sd 1\n"
+            "go\n"
+            "ping 9\n"
+            "quit\n");
+        std::ostringstream output;
+        std::ostringstream diagnostics;
+        UciController controller(input, output, diagnostics, koi::SearchService{evaluator});
+        require(controller.run() == 0 && diagnostics.str().empty(),
+                "XBoard failing search must return cleanly without crashing");
+        const std::vector<std::string> lines = output_lines(output.str());
+        const std::vector<std::string> moves = lines_starting_with(lines, "move ");
+        require(lines_starting_with(lines, "info string ").empty() &&
+                    lines_starting_with(lines, "bestmove ").empty(),
+                "XBoard mode must suppress UCI info string and bestmove lines on search failure");
+        require(moves.size() == 1 && moves[0].size() > 5 &&
+                    is_legal_move(Position{}, moves[0].substr(5)),
+                "XBoard mode must still emit one legal CECP fallback move when evaluation throws");
+        require(output.str().find("pong 9") != std::string::npos,
+                "XBoard controller must remain responsive after an evaluation failure");
+    }
+
+    const ControllerResult stalemate = run_controller(
+        "xboard\n"
+        "protover 2\n"
+        "setboard 7k/5Q2/6K1/8/8/8/8/8 b - - 0 1\n"
+        "go\n"
+        "ping 10\n"
+        "quit\n");
+    const std::vector<std::string> stalemate_lines = output_lines(stalemate.output);
+    require(stalemate.exit_code == 0 && stalemate.diagnostics.empty() &&
+                stalemate.output.find("1/2-1/2 {Stalemate}") != std::string::npos &&
+                stalemate.output.find("pong 10") != std::string::npos &&
+                lines_starting_with(stalemate_lines, "info string ").empty() &&
+                lines_starting_with(stalemate_lines, "bestmove ").empty(),
+            "XBoard stalemate must emit CECP result without UCI tokens");
+
+    {
+        std::istringstream input(
+            "uci\n"
+            "setoption name OwnBook value false\n"
+            "position startpos\n"
+            "go ponder depth 2\n"
+            "ponderhit\n"
+            "ponderhit\n"
+            "stop\n"
+            "quit\n");
+        std::ostringstream output;
+        std::ostringstream diagnostics;
+        UciController controller(input, output, diagnostics, koi::SearchService{evaluator});
+        require(controller.run() == 0 && diagnostics.str().empty(),
+                "failing ponder search followed by duplicate ponderhit must exit cleanly");
+        const std::vector<std::string> lines = output_lines(output.str());
+        const std::vector<std::string> bestmoves = lines_starting_with(lines, "bestmove ");
+        require(bestmoves.size() == 1 && is_legal_move(Position{}, first_bestmove_move(bestmoves[0])),
+                "failing ponder search must answer exactly one legal bestmove");
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2685,6 +2894,11 @@ int main(int argc, char** argv) {
         {"Protocol presets and handshakes", test_protocol_option_and_handshake_modes},
         {"USI and UCCI compatibility commands", test_usi_and_ucci_commands_in_standard_chess},
         {"XBoard CECP v2 protocol commands", test_xboard_cecp_protocol_gameplay_and_controls},
+        {"XBoard numeric bounds and playother", test_xboard_cecp_numeric_bounds_and_playother},
+        {"cross-protocol switch lifecycle",
+         test_cross_protocol_switch_stops_active_search_and_preserves_cyclone},
+        {"XBoard terminal and failure replies",
+         test_xboard_terminal_and_failure_replies_stay_protocol_clean},
     };
 
     return koi::test::run_tests(tests, argc, argv);
