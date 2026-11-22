@@ -1447,11 +1447,16 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             if (ply == 0) {
                 frame.material_signature_valid = false;
             }
-            init_correction_keys(state, ensure_pawn_key(), correction_keys, &frame);
+            const Move two_ply_ago_move = ply >= 2 ?
+                stack.frame(static_cast<std::size_t>(ply - 1)).previous_move :
+                Move::no_move();
+            init_correction_keys(state, ensure_pawn_key(), correction_keys, &frame,
+                                 two_ply_ago_move);
             correction_keys_valid = true;
             static_eval = raw_eval + ordering.correction_value(
                 correction_keys.pawn, correction_keys.material, correction_keys.king,
-                correction_keys.minor, correction_keys.major);
+                correction_keys.minor, correction_keys.major,
+                correction_keys.continuation, correction_keys.has_continuation);
             static_eval_valid = true;
         }
         frame.static_eval = static_eval;
@@ -2655,7 +2660,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             if (bonus != 0) {
                 ordering.update_correction(correction_keys.pawn, correction_keys.material,
                                            correction_keys.king, correction_keys.minor,
-                                           correction_keys.major, bonus);
+                                           correction_keys.major, bonus,
+                                           correction_keys.continuation,
+                                           correction_keys.has_continuation);
                 ++stats.correction_history_updates;
             }
         }

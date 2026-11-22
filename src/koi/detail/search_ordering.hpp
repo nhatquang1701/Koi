@@ -85,8 +85,10 @@ public:
     [[nodiscard]] KOI_ORD_CORR_INLINE int correction_value(
         std::uint64_t pawn_key, std::uint64_t material_key,
         std::uint64_t king_key, std::uint64_t minor_key,
-        std::uint64_t major_key) const noexcept {
-        return tables_.correction_value(pawn_key, material_key, king_key, minor_key, major_key);
+        std::uint64_t major_key, std::uint64_t continuation_key = 0,
+        bool has_continuation = false) const noexcept {
+        return tables_.correction_value(pawn_key, material_key, king_key, minor_key,
+                                        major_key, continuation_key, has_continuation);
     }
 
 #undef KOI_ORD_CORR_INLINE
@@ -94,7 +96,9 @@ public:
                            std::uint64_t king_key, int bonus) noexcept;
     void update_correction(std::uint64_t pawn_key, std::uint64_t material_key,
                            std::uint64_t king_key, std::uint64_t minor_key,
-                           std::uint64_t major_key, int bonus) noexcept;
+                           std::uint64_t major_key, int bonus,
+                           std::uint64_t continuation_key = 0,
+                           bool has_continuation = false) noexcept;
 
 private:
     friend class SearchMovePicker;

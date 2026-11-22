@@ -546,6 +546,8 @@ struct SearchContext {
         std::uint64_t king = 0;
         std::uint64_t minor = 0;
         std::uint64_t major = 0;
+        std::uint64_t continuation = 0;
+        bool has_continuation = false;
     };
 
 #if defined(__clang__) || defined(__GNUC__)
@@ -558,7 +560,8 @@ struct SearchContext {
 
     KOI_CTX_ALWAYS_INLINE static void init_correction_keys(
         const GameState& state, std::uint64_t pawn_key,
-        CorrectionKeys& keys, SearchFrame* frame = nullptr) noexcept {
+        CorrectionKeys& keys, SearchFrame* frame = nullptr,
+        Move two_ply_ago_move = Move::no_move()) noexcept {
         // Static evaluations and residuals are side-to-move-relative, so every
         // correction key must isolate White-to-move and Black-to-move entries.
         const std::uint64_t stm_salt = state.side_to_move() == Color::black ?
@@ -611,6 +614,18 @@ struct SearchContext {
             (bitboards[1][kRookIdx] * 0x8EBC6AF09C88C6E3ULL) ^
             (bitboards[0][kQueenIdx] * 0x589965CC75374CC3ULL) ^
             (bitboards[1][kQueenIdx] * 0x1D8E4E27C47D124FULL) ^ keys.king;
+        if (frame != nullptr && !frame->previous_move.is_no_move() &&
+            !two_ply_ago_move.is_no_move()) {
+            const std::uint64_t m1_idx = static_cast<std::uint64_t>(
+                table_move_index(frame->previous_move));
+            const std::uint64_t m2_idx = static_cast<std::uint64_t>(
+                table_move_index(two_ply_ago_move));
+            keys.continuation = ((m2_idx << 12U) | m1_idx) ^ stm_salt;
+            keys.has_continuation = true;
+        } else {
+            keys.continuation = 0;
+            keys.has_continuation = false;
+        }
     }
 
     [[nodiscard]] static CorrectionKeys correction_keys_for(const GameState& state) noexcept {

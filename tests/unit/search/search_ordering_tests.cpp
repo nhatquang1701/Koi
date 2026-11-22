@@ -709,6 +709,46 @@ void test_extended_correction_history_weights_and_bounds() {
             "clear must reset minor and major correction tables too");
 }
 
+void test_continuation_correction_history_tracks_and_resets() {
+    koi::detail::SearchMoveOrdering ordering;
+    constexpr std::uint64_t pawn_key = 0x0123456789ABCDEFULL;
+    constexpr std::uint64_t material_key = 0xFEDCBA9876543210ULL;
+    constexpr std::uint64_t king_key = 0x1111222233334444ULL;
+    constexpr std::uint64_t minor_key = 0x5555666677778888ULL;
+    constexpr std::uint64_t major_key = 0x9999AAAABBBBCCCCULL;
+    constexpr std::uint64_t cont_key = 0x13579BDF2468ACE0ULL;
+
+    require(ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key,
+                                      cont_key, true) == 0,
+            "continuation correction history must start neutral");
+
+    ordering.update_correction(pawn_key, material_key, king_key, minor_key, major_key, 40,
+                               cont_key, true);
+    require(ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key,
+                                      cont_key, true) == 45,
+            "shared structural+continuation update must include +1/8 continuation residual");
+    require(ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key,
+                                      cont_key ^ 1ULL, true) == 40,
+            "an unseen continuation pair must preserve the exact structural correction");
+    require(ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key,
+                                      0ULL, false) == 40,
+            "disabling continuation context must preserve the 8-unit structural average");
+
+    for (int index = 0; index < 128; ++index) {
+        ordering.update_correction(pawn_key, material_key, king_key, minor_key, major_key, 48,
+                                   cont_key, true);
+    }
+    const int ceiling = ordering.correction_value(
+        pawn_key, material_key, king_key, minor_key, major_key, cont_key, true);
+    require(ceiling > 0 && ceiling <= 192,
+            "continuation correction must saturate within +192");
+
+    ordering.clear();
+    require(ordering.correction_value(pawn_key, material_key, king_key, minor_key, major_key,
+                                      cont_key, true) == 0,
+            "clear must reset continuation correction entries");
+}
+
 void test_quiet_history_gravity_keeps_the_lmr_scale() {
     // Regression for a 299,998-clamp bug: the main history table shared the
     // counter-move priority clamp instead of the fixed-point 16,384 scale used
@@ -762,6 +802,8 @@ int main(int argc, char** argv) {
         {"deferred SEE ordering", test_ordering_resolves_deferred_see_for_search_moves},
         {"correction history saturation", test_correction_history_saturates_and_resets},
         {"extended correction history weights", test_extended_correction_history_weights_and_bounds},
+        {"continuation correction history tracks and resets",
+         test_continuation_correction_history_tracks_and_resets},
         {"quiet history gravity scale", test_quiet_history_gravity_keeps_the_lmr_scale},
     };
 

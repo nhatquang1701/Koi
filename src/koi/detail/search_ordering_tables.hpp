@@ -231,9 +231,11 @@ public:
     [[nodiscard]] KOI_TABLES_CORR_INLINE int correction_value(
         std::uint64_t pawn_key, std::uint64_t material_key,
         std::uint64_t king_key, std::uint64_t minor_key,
-        std::uint64_t major_key) const noexcept {
-        // Weighted average over 8 units (2*pawn + 2*minor + 2*major + material + king)
-        // matches the depth-8 residual bonus step size with unit gain and zero overshoot.
+        std::uint64_t major_key, std::uint64_t continuation_key = 0,
+        bool has_continuation = false) const noexcept {
+        // Keep the proven 8-unit structural average exact whenever the
+        // continuation pair is neutral or unavailable, and layer a gentle 1/8
+        // continuation residual on top within [-192, +192].
         const std::int32_t pawn =
             pawn_correction_[correction_slot(pawn_key, kPawnCorrectionHistorySize)];
         const std::int32_t material =
@@ -244,8 +246,12 @@ public:
             minor_correction_[correction_slot(minor_key, kMinorCorrectionHistorySize)];
         const std::int32_t major =
             major_correction_[correction_slot(major_key, kMajorCorrectionHistorySize)];
+        const std::int32_t continuation = has_continuation ?
+            static_cast<std::int32_t>(continuation_correction_[correction_slot(
+                continuation_key, kContinuationCorrectionHistorySize)]) :
+            0;
         const std::int32_t total =
-            (2 * pawn + 2 * minor + 2 * major + material + king) / 8;
+            (2 * pawn + 2 * minor + 2 * major + material + king + continuation) / 8;
         return static_cast<int>(std::clamp<std::int32_t>(
             total, -kCorrectionTotalLimit, kCorrectionTotalLimit));
     }
@@ -255,7 +261,9 @@ public:
                            std::uint64_t king_key, int bonus) noexcept;
     void update_correction(std::uint64_t pawn_key, std::uint64_t material_key,
                            std::uint64_t king_key, std::uint64_t minor_key,
-                           std::uint64_t major_key, int bonus) noexcept;
+                           std::uint64_t major_key, int bonus,
+                           std::uint64_t continuation_key = 0,
+                           bool has_continuation = false) noexcept;
 
     void record_quiet_cutoff(Color side, Move move, int ply, int depth,
                              std::optional<Move> previous_move = std::nullopt) noexcept;
@@ -304,6 +312,7 @@ private:
     static constexpr std::size_t kKingCorrectionHistorySize = 8 * 1024;
     static constexpr std::size_t kMinorCorrectionHistorySize = 16 * 1024;
     static constexpr std::size_t kMajorCorrectionHistorySize = 16 * 1024;
+    static constexpr std::size_t kContinuationCorrectionHistorySize = 16 * 1024;
     // Each correction entry saturates at the entry limit; the combined static
     // evaluation shift is clamped to the total limit so correction remains a
     // bounded residual adjustment rather than replacing the evaluator.
@@ -348,6 +357,7 @@ private:
     std::unique_ptr<std::int16_t[]> king_correction_;
     std::unique_ptr<std::int16_t[]> minor_correction_;
     std::unique_ptr<std::int16_t[]> major_correction_;
+    std::unique_ptr<std::int16_t[]> continuation_correction_;
 };
 
 } // namespace koi::detail

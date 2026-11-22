@@ -62,7 +62,9 @@ SearchOrderingTables::SearchOrderingTables()
       material_correction_(std::make_unique<std::int16_t[]>(kMaterialCorrectionHistorySize)),
       king_correction_(std::make_unique<std::int16_t[]>(kKingCorrectionHistorySize)),
       minor_correction_(std::make_unique<std::int16_t[]>(kMinorCorrectionHistorySize)),
-      major_correction_(std::make_unique<std::int16_t[]>(kMajorCorrectionHistorySize)) {
+      major_correction_(std::make_unique<std::int16_t[]>(kMajorCorrectionHistorySize)),
+      continuation_correction_(
+          std::make_unique<std::int16_t[]>(kContinuationCorrectionHistorySize)) {
     // `clear()` intentionally retains its historical zeroed-reset contract
     // for diagnostics.  A newly created worker, however, should begin with
     // the calibrated Stockfish-style priors rather than indeterminate heap
@@ -82,6 +84,7 @@ SearchOrderingTables::SearchOrderingTables()
     std::fill_n(king_correction_.get(), kKingCorrectionHistorySize, 0);
     std::fill_n(minor_correction_.get(), kMinorCorrectionHistorySize, 0);
     std::fill_n(major_correction_.get(), kMajorCorrectionHistorySize, 0);
+    std::fill_n(continuation_correction_.get(), kContinuationCorrectionHistorySize, 0);
 }
 
 SearchOrderingTables::~SearchOrderingTables() = default;
@@ -172,6 +175,9 @@ void SearchOrderingTables::clear() noexcept {
     }
     if (major_correction_ != nullptr) {
         std::fill_n(major_correction_.get(), kMajorCorrectionHistorySize, 0);
+    }
+    if (continuation_correction_ != nullptr) {
+        std::fill_n(continuation_correction_.get(), kContinuationCorrectionHistorySize, 0);
     }
 }
 
@@ -394,7 +400,9 @@ void SearchOrderingTables::update_correction(const std::uint64_t pawn_key,
                                              const std::uint64_t king_key,
                                              const std::uint64_t minor_key,
                                              const std::uint64_t major_key,
-                                             const int bonus) noexcept {
+                                             const int bonus,
+                                             const std::uint64_t continuation_key,
+                                             const bool has_continuation) noexcept {
     if (bonus == 0) {
         return;
     }
@@ -403,6 +411,12 @@ void SearchOrderingTables::update_correction(const std::uint64_t pawn_key,
                    bonus, kCorrectionEntryLimit);
     update_history(major_correction_[correction_slot(major_key, kMajorCorrectionHistorySize)],
                    bonus, kCorrectionEntryLimit);
+    if (has_continuation) {
+        update_history(
+            continuation_correction_[correction_slot(
+                continuation_key, kContinuationCorrectionHistorySize)],
+            bonus, kCorrectionEntryLimit);
+    }
 }
 
 void SearchOrderingTables::record_quiet_cutoff(

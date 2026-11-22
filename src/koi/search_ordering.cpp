@@ -255,8 +255,11 @@ void SearchMoveOrdering::update_correction(const std::uint64_t pawn_key,
                                            const std::uint64_t king_key,
                                            const std::uint64_t minor_key,
                                            const std::uint64_t major_key,
-                                           const int bonus) noexcept {
-    tables_.update_correction(pawn_key, material_key, king_key, minor_key, major_key, bonus);
+                                           const int bonus,
+                                           const std::uint64_t continuation_key,
+                                           const bool has_continuation) noexcept {
+    tables_.update_correction(pawn_key, material_key, king_key, minor_key,
+                              major_key, bonus, continuation_key, has_continuation);
 }
 
 bool SearchMoveOrdering::is_killer(const Move move, const int ply) const noexcept {
