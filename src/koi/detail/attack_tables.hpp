@@ -4,9 +4,10 @@
 
 // Precomputed attack targets for the native board.  The native position keeps
 // mailbox squares and bitboards in sync, so every attack query can be answered
-// with table lookups instead of scanning the board.  Sliding attacks are built
-// from per-direction ray tables with the classical "nearest blocker" trick,
-// which keeps the tables small (no magic numbers) while still being O(1).
+// with table lookups instead of scanning the board.  Sliding attacks use Fancy
+// Magic Bitboards (and PEXT lookups on x86-64 AVX2/AVX-512 variants when
+// KOI_PEXT_ATTACKS is enabled), keeping slider probes O(1) while retaining
+// ray/blocker tables for pin and alignment masks.
 
 namespace koi::detail {
 

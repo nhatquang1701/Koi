@@ -374,13 +374,7 @@ the executables; when it was discovered at boot the UCI handshake advertises `Ev
 `<autodiscovery>` (informational; echoing it back keeps the boot evaluator).
 Point the `KOI_NNUE_PATH` environment variable at a specific file to override the
 scan, or set `KOI_NNUE_AUTODETECT=0` to disable discovery; NNUE is the default
-production evaluator, and the UCI `EvalFile` option still swaps the network at runtime. A missing or rejected file is a boot error under default NNUE selection (the legacy automatic fallback was removed, though a clean classical rewrite later restored explicit `KOI_EVALUATOR=hce` / `EvalMode=hce` opt-in) and writes one explanatory line to stderr. Trained networks are local artifacts and are not committed. On the local single-thread probe the version 4 `halfka-king-bucket-v1`
-network runs at about 76k nodes/s. Those fallback-era comparisons are historical:
-the promoted h128 network replaced the original classical evaluator (removed on
-2026-10-28 and later rewritten as an explicit opt-in HCE for development/measurement).
-The version 5 architecture ships with loader, inference, incremental, dataset, and
-trainer support only: no version 5 network has been trained or strength-validated, so
-every probe number above still describes version 4 networks.
+production evaluator, and the UCI `EvalFile` option still swaps the network at runtime. A missing or rejected file is a boot error under default NNUE selection (the legacy automatic fallback was removed, though a clean classical rewrite later restored explicit `KOI_EVALUATOR=hce` / `EvalMode=hce` opt-in) and writes one explanatory line to stderr. Trained networks are local artifacts and are not committed (public standalone/early-access nets are tagged under `nnue/<name>` with GitHub Pre-releases). Threat-pair v5 networks were trained and rejected against the HalfKA-only layout, and modern v4 networks remain the promoted production architecture.
 
 ### Training a network
 
@@ -1048,9 +1042,8 @@ Linux archive is
 are published alongside them. Each user-facing archive is intentionally minimal
 and contains only the platform engine executables (`koi-engine` plus AVX2/AVX-512
 siblings on Windows/Linux), the bundled `koi.nnue`, the bundled Stockfish-verified
-CC0 opening book (`book.bin`), and `LICENSE`. `.sha256` checksums and external
-`<package>.package.json` provenance manifests live outside the archive alongside
-the download assets.
+CC0 opening book (`book.bin`), and `LICENSE`. Standalone `koi.nnue` and external
+`<package>.package.json` provenance manifests are attached alongside the archives in GitHub releases (GitHub also surfaces built-in SHA-256 digests per asset).
 
 Koi has no required configuration file. En Croissant or another UCI GUI sends
 the options at session start; the portable release defaults are `RandomSeed=0`,
@@ -1076,12 +1069,7 @@ Release archives contain strictly the engine binaries, `koi.nnue`, `book.bin`,
 and `LICENSE`.
 Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`) and
 the test suite are not included; build them from source when you need them.
-Retain these repository licenses with the package:
-
-- `third_party/chess-library/LICENSE` for the vendored chess-library code.
-- `third_party/fathom/LICENSE` for the optional Syzygy adapter code.
-
-The release archive should also retain the README and the exact build identity.
+The repository retains third-party license texts under `third_party/` (`chess-library` and `fathom`), while generated release archives keep the flat layout above.
 Do not include generated benchmark profiles, match JSON/PGN, debug logs, or
 tablebase data in the repository release commit; write those artifacts under the
 repository-local artifacts directory such as `artifacts\verification` or

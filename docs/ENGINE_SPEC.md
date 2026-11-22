@@ -43,7 +43,7 @@ instead comes from the external package manifest written by
 archive): schema `koi-engine-package-v1`, hard-coded
 `version = '1.2.0'`, archive hash, per-file SHA-256 hashes, and a `provenance`
 object with `source_commit`, `source_dirty`, `source_ref`, and `created_utc`. A
-package archive also gets a `.sha256` sidecar.
+package archive also gets a local `.sha256` sidecar for CI verification, while public GitHub Releases publish the platform archives, external `.package.json` manifests, and standalone `koi.nnue` (relying on GitHub's built-in asset SHA-256 digests).
 
 The v1.2.0 release is cut at this commit: the version pins, the packaging
 script, and the documentation read `1.2.0`, so the compiled build identity is
@@ -293,8 +293,9 @@ It **does not** include the halfmove clock, fullmove number, repetition history,
 or future repetition potential. `repetition_history_fingerprint()` is a separate
 search-only key over reversible ancestor keys. `pawn_key()` covers only the two
 pawn bitboards, and `polyglot_key()` is the compatibility-mirror key used by the
-opening book. Search also mixes `fullmove_number` into its evaluation-cache key
-for search-key completeness (`SearchContext::evaluate`).
+opening book. `SearchContext::evaluate` keys its 16K direct-mapped static-evaluation
+cache by `position_key()` XORed with a side-to-move salt (`kSideToMoveCacheSalt`;
+`fullmove_number` is not mixed).
 
 ## 4. Evaluation
 
@@ -488,7 +489,7 @@ can challenge alpha.
 | --- | --- |
 | Entry | 24 bytes exactly (`static_assert`): 64-bit key, int score, move, int16 eval (`-32768` = none), int8 depth, uint8 generation, uint8 generation age, bound, occupied, PV flag |
 | Cluster | 4 entries (96 bytes) |
-| Locks | 64 striped `std::shared_mutex` locks; a hazard-pointer lease keeps storage alive across a concurrent resize; a session-scoped pin provides lock-free exclusive access for the serial driver |
+| Locks | Lockless XOR-verified 24-byte `AtomicSlot` entries (`key_tag = key ^ word1 ^ word2`); a hazard-pointer lease protects storage across non-blocking `try_set_size_mb` resizes with deferred reclamation; a session-scoped pin skips per-probe leases for the serial driver |
 | Probe | Returns the entry normalized to the current ply for mate scores |
 | Store | Prefers empty slots, then replacement priority based on generation age, depth, bound, and deterministic key tie-break; does not overwrite a deeper entry or an equal-depth exact entry with a non-exact one |
 | Generations | `new_generation()` advances once per search; `generation_age` is also the logical `Clear Hash` epoch, so clearing invalidates entries without sweeping memory |
@@ -504,11 +505,11 @@ unless another file is named.
 
 | Method | Behaviour and parameters |
 | --- | --- |
-| Iterative deepening | Depth 1..64; aspiration as above; `previous_iteration_elapsed * 2` fit check |
+| Iterative deepening | Depth 1..64; aspiration as above; serial/LazySMP passes `milliseconds{1}` fit check, MultiPV `RootWorkerPool` passes `previous_iteration_elapsed * 2` |
 | PVS | Full-window first move, null-window scouts for the rest, full re-search on fail-high |
-| Null-move pruning | Eligible when depth ≥ 3, not checked, `beta` finite, `beta - alpha <= 1`, non-pawn endgame, both sides have non-pawn material, phase ≥ 8, halfmove clock < 90, more than 8 pieces, and static eval above `beta + 96 - 13*depth - 47*improving`; `R = 7 + depth/3 + max(0, eval-beta)/256`; fail-high is verified before cutoff |
-| Null-move verification | At `depth >= 16` and `R >= 3`, a no-null/no-TT confirmation search must reproduce the fail-high; below that the reduced probe itself must reach beta without a selective cutoff |
-| Reverse futility | Depth 2..18, non-PV, not checked, static eval ≥ beta; margin `80 + 60*depth - 32*improving + 24*opponent_worsening` |
+| Null-move pruning | Eligible when depth ≥ 4, not checked, `beta` finite, `beta - alpha <= 1`, not repetition-sensitive, moving side has non-pawn material, and static eval ≥ `beta`; `R = min(depth - 1, 3 + depth/3 + min((eval - beta)/200, 3))` (retaining ≥ 1 regular reply ply) |
+| Null-move verification | At `depth >= 16` and `R >= 3`, a no-null confirmation search must reproduce the fail-high; below that depth the reduced null probe's cutoff applies directly (see `SearchPolicy::dynamic_null_move`) |
+| Reverse futility | Depth 1..18, non-PV, not checked, static eval ≥ beta; margin `80 + 60*depth - 32*improving + 24*opponent_worsening` |
 | Razoring | Depth 1 only, static eval + `120 * depth^2 <= alpha`; a qsearch upper bound is used and may return a selective score |
 | ProbCut | Depth ≥ 3, non-PV cut node, static eval ≥ `beta - 160 - 16*depth`; margin `241 - 64*improving`; reduced depth `max(0, depth - (improving ? 5 : 3))`; qsearch then reduced regular confirmation; TT ProbCut additionally needs depth ≥ 4, a lower TT bound at `depth - 4`, and score ≥ `beta + 428` |
 | Internal iterative reduction (IIR) | Depth ≥ 6, non-PV, not checked, no TT move, quiet and not repetition-sensitive: depth is reduced by 1 |
@@ -523,13 +524,13 @@ unless another file is named.
 | Child futility | Non-PV, not checked, not tactical, move number > 0, quiet, reduced depth < 12, `static_eval + 96 + 71*lmr_depth + (54 if eval > alpha) <= alpha` |
 | Capture futility | Non-PV, not checked, non-repetition, capture, not TT, `lmr_depth < 8`, `static_eval + 234 + 247*lmr_depth + captured_value + 134*capture_history/1024 <= alpha` |
 | SEE pruning | Capture with `alpha >= 0` and `see_score < -(177*depth + 34*capture_history/1024)`; qsearch removes captures below SEE `-74` and applies delta pruning (`best + captured_value + 100 < alpha`) |
-| Killer moves | Two killers per ply (`kMaximumPly = 64`); ordered after TT and good captures |
+| Killer moves | Two killers per ply (`kMaximumKillerPly = 128`); ordered after TT and good captures |
 | Counter moves | Counter-move table with confidence; a proven counter move requires confidence ≥ 49 (`7*7`) |
 | Continuation history | 6 plies (`kSearchContinuationPlies = 6`) of parent move context, 16K entries per continuation |
-| Quiet history | Side-to-move and pawn-key indexed, 64×64 move table, clamped to ±`kMaximumHistoryScore` (300,000 - 2); initial bias -586 |
+| Quiet history | Side-to-move and pawn-key indexed, 64×64 move table, clamped to ±`kMaximumHistoryScore` (16,384); initial bias -586 |
 | Capture history | 7×7×64×64 entries, initial -742, clamped to ±16,384 |
 | Low-ply history | Plies 0..4 (`kLowPlyHistoryPlies = 5`) for quiet ordering |
-| Correction history | Bounded correction by pawn structure, material signature (FNV-1a over piece counts), and side-to-move king square; entry limit 128, total limit 192; applied only to static eval, never to TT scores |
+| Correction history | Bounded correction across pawn structure (16,384), material signature (8,192), side-to-move king square (8,192), minor pieces (16,384), and major pieces (16,384); entry limit 192, total limit 192; applied only to static eval, never to TT scores |
 | Root move ordering | TT move, staged good captures/promotions, history-ranked quiets (checks, killers, proven counters), deferred losing captures, bad quiets; deterministic UCI-coordinate tie-break; previous completed best move is retained as a hint even after TT displacement |
 | Root safety heuristics | Bounded confirmation/verification passes for shallow depth-1/depth-2/depth-3/depth-5 roots, emergency king-escape and short-clock fallbacks; these can replace a completed move only through the documented candidate sets and margins |
 | Mate-distance pruning | `alpha = max(alpha, -100000 + ply)`, `beta = min(beta, 100000 - ply - 1)` after the extension decision |
@@ -592,11 +593,12 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    still apply.
 2. **Node limit**: stored as the exact requested `nodes` value and checked on
    every node reservation.
-3. **`movetime`**: the request is used directly and only the safety margin
-   `max(1, min(50, duration/20))` is subtracted (no `Move Overhead` subtraction;
-   full-budget rule accepted 2026-10-29). The result is capped at the original
-   request. `Slow Mover` does not extend a `movetime`. Soft and hard budgets are
-   both this value.
+3. **`movetime`**: the request is used directly with only the safety margin
+   subtracted (`max(1, min(50, duration/20))`, plus up to 50 ms extra teardown
+   margin `min(50, (duration - 500) / 10)` when `duration > 500` ms; no
+   `Move Overhead` subtraction; full-budget rule accepted 2026-10-29). The result
+   is capped at the original request. `Slow Mover` does not extend a `movetime`.
+   Soft and hard budgets are both this value.
 4. **Clock search**:
    - `remaining` is the side-to-move clock, clamped to ≥ 0.
    - Dynamic overhead (if enabled) is `clamp(remaining / 50, 10, 100)` ms;
@@ -644,8 +646,15 @@ the search but cannot push it past the cap.
   a score ≥ 35 marks a hard position. Missing/non-exact/shallow TT entries, old
   generations, no TT move, check, many forcing moves, and ≥ 30 legal moves add
   points; a fresh exact deep TT hit subtracts 25.
-- `observe_iteration` treats a best-move change, PV change, ≥ 75 cp score swing,
-  or aspiration re-search as hard evidence. Stable means no change and |Δ| ≤ 25.
+- `observe_iteration` treats a best-move change, `|Δ| ≥ 75` cp score swing, or
+  aspiration re-search as hard evidence (PV growth alone is ignored so
+  `stable_observations_` can advance). `hard_position_` latches only at
+  `depth >= 4` on `best_move_changed`, `score_drop_cp_ >= 50`, or
+  `aspiration_researched && score_drop_cp_ >= 25`. Stable means no change and
+  `|Δ| <= 25`.
+- Continuous pacing (`effective_soft_budget`) scales the soft budget using
+  `best_move_effort_permille_`, `best_move_stability_`, `score_drop_cp_`,
+  `score_gain_cp_`, and `last_aspiration_researched_`.
 - A hard position may exceed the soft budget only while the remaining usable
   clock is at least `2 × soft budget + overhead` (`hard_extension_affordable`).
   Near the end the soft budget wins.
@@ -1001,12 +1010,17 @@ measurement commands, never CTest thresholds.
    network; the external manifest records `nnue_gate.report_sha256`/`decision`,
    `nnue_metadata_sha256`, and `book_sha256`. A rejected gate report makes
    packaging fail, and a network without a report is allowed only for
-   tests/local inspection, never for a release.
-4. Creates `.zip` on Windows or `.tar.gz` elsewhere plus an external
-   `.sha256` sidecar and `<package>.package.json` manifest
+   tests/local inspection, never for a release. `release.yml` also uploads
+   standalone `koi.nnue` alongside the archives on official releases.
+4. Creates `.zip` on Windows or `.tar.gz` elsewhere plus a local `.sha256`
+   sidecar for build/CI verification and `<package>.package.json` manifest
    (`koi-engine-package-v1` with archive hash, per-file size/SHA-256,
    NNUE inclusion flags, and provenance: `GITHUB_SHA` or `git rev-parse HEAD`,
-   dirty flag computed with `core.autocrlf=false`).
+   dirty flag computed with `core.autocrlf=false`). Public GitHub Releases
+   published by `release.yml` omit standalone `.sha256` and `SHA256SUMS.txt`
+   files and rely on GitHub's built-in asset SHA-256 digests; early-access
+   `nnue/<name>` tags pair a signed orphan tag with a GitHub Pre-release
+   attaching `<name>.nnue` and `<name>.metadata.json`.
 
 No tablebase data is packaged. Version strings in the packaging script and
 manifest are `1.2.0` on this tree. Release titles use a readable product

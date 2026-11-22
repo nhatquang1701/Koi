@@ -268,15 +268,19 @@ jobs:
           pattern: release-*-assets
           path: artifacts/release
           merge-multiple: true
-      - name: Verify checksums and build combined SHA256SUMS
+      - uses: actions/download-artifact@v5
+        with:
+          name: release-nnue-network
+          path: artifacts/release
+      - name: Verify package checksums
         working-directory: artifacts/release
         run: |
           set -euo pipefail
           for sidecar in *.sha256; do
             sha256sum -c "$sidecar"
           done
-          sha256sum *.zip *.tar.gz *.package.json > SHA256SUMS.txt
-          ls -lh
+          test -s koi.nnue
+          ls -lh *.zip *.tar.gz *.package.json koi.nnue
       - name: Attest SLSA build provenance for release archives
         uses: actions/attest-build-provenance@v2
         with:
@@ -293,8 +297,6 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/release/*.zip
-            artifacts/release/*.zip.sha256
             artifacts/release/*.tar.gz
-            artifacts/release/*.tar.gz.sha256
             artifacts/release/*.package.json
-            artifacts/release/SHA256SUMS.txt
+            artifacts/release/koi.nnue

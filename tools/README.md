@@ -523,10 +523,10 @@ invalid if two games share a move sequence; pass `-OpeningFile` to override.
 Its promotion verdict is an SPRT (H0=0, H1=+10 Elo, alpha=beta=0.05) over the
 combined colour legs with a 200-effective-game target.
 
-Public standalone NNUE network releases are published as **signed orphan Git
-tags** under `nnue/<name>` (carrying only `<name>.nnue`, `<name>.sha256`,
-`<name>.metadata.json`, and `README.md`), rather than committing binaries to
-engine branches or creating GitHub Releases (which are reserved for engine
-semver tags `X.Y.Z` / `vX.Y.Z`). Engine release workflows can consume a public
-tag directly by passing its raw tag URL via `nnue_url` / `KOI_NNUE_URL` alongside
-`nnue_sha256` / `KOI_NNUE_SHA256`.
+Early-access or standalone public NNUE network releases are published as
+**signed orphan Git tags** under `nnue/<name>` paired with a GitHub Pre-release
+that attaches `<name>.nnue` and `<name>.metadata.json` directly under `Assets`
+(while official engine semver releases `X.Y.Z` / `vX.Y.Z` keep the `Latest`
+badge and also attach standalone `koi.nnue` alongside their archives). Engine
+release workflows can consume a public tag directly via `nnue_url` /
+`KOI_NNUE_URL` alongside `nnue_sha256` / `KOI_NNUE_SHA256`.

@@ -73,7 +73,7 @@ struct HceTuning {
     static const HceTuning tuning{
         tuning_percent("KOI_HCE_PASSED_SCALE", 100),
         tuning_percent("KOI_HCE_MOBILITY_SCALE", 100),
-        tuning_percent("KOI_HCE_KING_SAFETY_SCALE", 100),
+        tuning_percent("KOI_HCE_KING_SAFETY_SCALE", 75),
         tuning_percent("KOI_HCE_PAWN_SCALE", 100),
         tuning_percent("KOI_HCE_TEMPO_SCALE", 100),
         tuning_percent("KOI_HCE_EVAL_SCALE", 100),
