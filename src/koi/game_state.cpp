@@ -2012,6 +2012,10 @@ const std::array<std::array<std::uint64_t, 7>, 2>& GameState::piece_bitboards() 
     return impl_->native_position.piece_bitboards();
 }
 
+std::uint64_t GameState::occupied_squares() const noexcept {
+    return impl_->native_position.occupied_squares();
+}
+
 std::size_t GameState::piece_count() const noexcept {
     return impl_->native_position.piece_count();
 }

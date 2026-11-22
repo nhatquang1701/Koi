@@ -241,11 +241,33 @@ private:
                                         std::int16_t* target_values,
                                         std::span<const std::uint16_t> removed,
                                         std::span<const std::uint16_t> added);
-    template <typename SumT>
+    template <typename SumT, std::size_t FixedHidden = 0>
     void materialize_slot_perspective_v4_impl(const GameState&, std::size_t index,
                                               std::size_t slot);
     void materialize_slot_perspective_v4(const GameState&, std::size_t index,
                                          std::size_t slot);
+    // Both perspectives share a single pending-move traversal when aligned.
+    void materialize_slot_both_v4_s16(const GameState&, std::size_t slot);
+
+    // Vectors over int16_t are allocated with +64 elements of headroom so slot 0
+    // (and every multiple of 128 hidden units) starts on a 128-byte cache-line boundary.
+    [[nodiscard]] static const std::int16_t* aligned_s16_ptr(
+        const std::vector<std::int16_t>& storage) noexcept {
+        if (storage.empty()) {
+            return nullptr;
+        }
+        const std::uintptr_t addr = reinterpret_cast<std::uintptr_t>(storage.data());
+        return std::assume_aligned<64>(
+            storage.data() +
+            (((128U - static_cast<std::size_t>(addr & 127U)) & 127U) >> 1U));
+    }
+
+    [[nodiscard]] static std::int16_t* aligned_s16_ptr(
+        std::vector<std::int16_t>& storage) noexcept {
+        auto* const ptr = const_cast<std::int16_t*>(
+            aligned_s16_ptr(static_cast<const std::vector<std::int16_t>&>(storage)));
+        return ptr != nullptr ? std::assume_aligned<64>(ptr) : nullptr;
+    }
     void apply_move_deltas(
         const GameState&, const MoveMetadata&, std::size_t slot,
         const std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values);

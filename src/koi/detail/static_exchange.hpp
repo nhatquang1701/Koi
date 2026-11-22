@@ -93,18 +93,14 @@ inline ExchangeContext exchange_context_from(const Position& position) noexcept 
 inline ExchangeContext exchange_context_from(const GameState& state) noexcept {
     ExchangeContext context;
     context.piece_bitboards = state.piece_bitboards();
-    std::uint64_t occupied = 0;
+    context.occupied = state.occupied_squares();
     for (std::size_t color_index = 0; color_index < 2; ++color_index) {
-        for (std::size_t type = 1; type <= 6; ++type) {
-            occupied |= context.piece_bitboards[color_index][type];
-        }
         const std::uint64_t king =
             context.piece_bitboards[color_index][static_cast<std::size_t>(PieceType::king)];
         if (king != 0) {
             context.king_squares[color_index] = static_cast<int>(std::countr_zero(king));
         }
     }
-    context.occupied = occupied;
     context.side_to_move = state.side_to_move();
     return context;
 }

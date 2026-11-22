@@ -268,14 +268,11 @@ void build_quiet_forcing_after_view(const GameState& after, const Color mover,
     const auto& enemy_bitboards = bitboards[enemy_index];
     out = QuietForcingAfterView{};
 
-    std::uint64_t own_pieces = 0;
     std::uint64_t enemy_pieces = 0;
     for (const PieceType type : kAttackOrder) {
-        const std::size_t type_index = static_cast<std::size_t>(type);
-        own_pieces |= mover_bitboards[type_index];
-        enemy_pieces |= enemy_bitboards[type_index];
+        enemy_pieces |= enemy_bitboards[static_cast<std::size_t>(type)];
     }
-    out.occupied = own_pieces | enemy_pieces;
+    out.occupied = after.occupied_squares();
     out.enemy_pieces = enemy_pieces;
     out.enemy_pawns = enemy_bitboards[static_cast<std::size_t>(PieceType::pawn)];
 
