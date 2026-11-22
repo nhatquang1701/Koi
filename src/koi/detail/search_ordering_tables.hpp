@@ -330,6 +330,8 @@ private:
     void update_parent_histories(Color side, Move move, PieceType piece, int parent_ply,
                                  const SearchHistoryContext& context, int bonus,
                                  bool continuation_only) noexcept;
+    void record_scaled_multi_ply_continuation(
+        Move move, const SearchHistoryContext& context, int base_bonus) noexcept;
 
     std::array<std::array<Move, 2>, kMaximumKillerPly> killers_{};
     std::array<std::array<std::int16_t, kMoveTableSize>, 2> history_{};

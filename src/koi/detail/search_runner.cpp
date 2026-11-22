@@ -90,6 +90,737 @@ struct RootScheduleRecord {
     bool previous_exact = false;
 };
 
+[[nodiscard]] const MoveMetadata* find_legal_move(
+    const MoveMetadataList& legal_moves, const Move move) noexcept {
+    const auto it = std::find_if(
+        legal_moves.begin(), legal_moves.end(),
+        [move](const MoveMetadata& metadata) { return metadata.move == move; });
+    return it != legal_moves.end() ? &*it : nullptr;
+}
+
+[[nodiscard]] bool is_forcing_move(const MoveMetadata& metadata) noexcept {
+    return metadata.is_capture() || metadata.gives_check ||
+        metadata.move.promotion() != Promotion::none;
+}
+
+[[nodiscard]] bool is_quiet_non_checking_move(const MoveMetadata& metadata) noexcept {
+    return !metadata.is_capture() && !metadata.gives_check &&
+        metadata.move.promotion() == Promotion::none;
+}
+
+struct SerialRootConfirmationState {
+    const SearchLimits& limits;
+    GameState& root;
+    const MoveMetadataList& legal_moves;
+    const std::vector<SearchContext::RootMoveScore>& root_score_snapshot;
+    int depth = 0;
+    SearchContext& context;
+    SearchResult& result;
+    int& score;
+    PrincipalVariation& pv;
+    bool& bounded_fallback_result;
+    bool& root_authoritative;
+};
+
+// Re-evaluates a candidate move at the nominal iteration depth so deeper
+// tactical confirmations still report score and PV for the requested horizon.
+[[nodiscard]] std::optional<SearchContext::RootVerification> nominal_root_verification(
+    SerialRootConfirmationState& state, const Move move, const int nominal_depth,
+    const bool allow_estimated_line = false) {
+    const MoveMetadata* const metadata = find_legal_move(state.legal_moves, move);
+    if (metadata == nullptr) {
+        return std::nullopt;
+    }
+    ++state.context.stats.root_selective_candidates;
+    const SearchContext::RootVerification verification =
+        state.context.selectively_research_root_move(state.root, *metadata, nominal_depth);
+    if (state.context.aborted ||
+        (!verification.authoritative &&
+         !(allow_estimated_line && verification.line_complete))) {
+        return std::nullopt;
+    }
+    return verification;
+}
+
+void apply_confirmed_root_choice(
+    SerialRootConfirmationState& state, const Move chosen_move, const int chosen_score,
+    const PrincipalVariation& chosen_pv, const bool count_change_only_when_diff,
+    const bool clear_bounded_fallback, const bool fallback_single_move_pv,
+    const int previous_reference_score) {
+    if (!count_change_only_when_diff || chosen_move != state.result.best_move ||
+        chosen_score != previous_reference_score) {
+        ++state.context.stats.root_selective_researches;
+    }
+    state.score = chosen_score;
+    state.result.score_cp = chosen_score;
+    state.result.mate = mate_from_score(chosen_score);
+    state.result.best_move = chosen_move;
+    state.pv = chosen_pv;
+    state.result.pv = (!fallback_single_move_pv || chosen_pv.length > 0) ?
+        chosen_pv.to_vector() : std::vector<Move>{chosen_move};
+    if (clear_bounded_fallback) {
+        state.bounded_fallback_result = false;
+    }
+}
+
+// Compares the incumbent and a narrow band of exact mixed forcing/quiet or
+// same-target capture lines at depth 2 with full windows.
+void confirm_shallow_mixed_forcing_root(SerialRootConfirmationState& state) {
+    if (!state.limits.depth.has_value() ||
+        *state.limits.depth != kRootShallowConfirmationDepth ||
+        state.depth != kRootShallowConfirmationDepth ||
+        state.limits.search_moves_specified || state.context.aborted ||
+        state.root_score_snapshot.empty() || !state.result.best_move.has_value() ||
+        mate_from_score(state.score).has_value()) {
+        return;
+    }
+    const MoveMetadata* const incumbent_metadata =
+        find_legal_move(state.legal_moves, *state.result.best_move);
+    if (incumbent_metadata == nullptr) {
+        return;
+    }
+    const bool incumbent_forcing = is_forcing_move(*incumbent_metadata);
+    const auto is_same_target_capture =
+        [incumbent_metadata](const MoveMetadata& metadata) noexcept {
+        return incumbent_metadata->is_capture() && metadata.is_capture() &&
+            metadata.move.to() == incumbent_metadata->move.to();
+    };
+    const bool has_mixed_forcing_alternative = std::any_of(
+        state.root_score_snapshot.begin(), state.root_score_snapshot.end(),
+        [&state, incumbent_forcing, &is_same_target_capture](
+            const SearchContext::RootMoveScore& root_score) {
+            if (root_score.move == *state.result.best_move) {
+                return false;
+            }
+            const MoveMetadata* const metadata =
+                find_legal_move(state.legal_moves, root_score.move);
+            if (metadata == nullptr) {
+                return false;
+            }
+            const bool forcing = is_forcing_move(*metadata);
+            return (root_score.exact && forcing != incumbent_forcing) ||
+                is_same_target_capture(*metadata);
+        });
+    if (!has_mixed_forcing_alternative) {
+        return;
+    }
+
+    struct ShallowRootCandidate {
+        MoveMetadata metadata{};
+        int score = -kInfinity;
+        bool forcing = false;
+    };
+    std::vector<ShallowRootCandidate> alternatives;
+    alternatives.reserve(state.root_score_snapshot.size());
+    for (const SearchContext::RootMoveScore& root_score : state.root_score_snapshot) {
+        if (root_score.move == *state.result.best_move) {
+            continue;
+        }
+        const MoveMetadata* const metadata = find_legal_move(state.legal_moves, root_score.move);
+        if (metadata == nullptr) {
+            continue;
+        }
+        const bool same_target_capture = is_same_target_capture(*metadata);
+        if (!root_score.exact && !same_target_capture) {
+            // A scout bound may nominate a defensive recapture cluster, but no
+            // other inexact root line enters the authoritative confirmation set.
+            continue;
+        }
+        const bool forcing = is_forcing_move(*metadata);
+        const int score_margin = forcing ? kRootShallowForcingMargin :
+            kRootShallowConfirmationMargin;
+        if (root_score.score < state.score - score_margin) {
+            continue;
+        }
+        alternatives.push_back(ShallowRootCandidate{*metadata, root_score.score, forcing});
+    }
+    std::stable_sort(
+        alternatives.begin(), alternatives.end(),
+        [](const ShallowRootCandidate& left, const ShallowRootCandidate& right) {
+            if (left.forcing != right.forcing) {
+                return left.forcing;
+            }
+            if (left.score != right.score) {
+                return left.score > right.score;
+            }
+            return detail::move_tie_break_key(left.metadata.move) <
+                detail::move_tie_break_key(right.metadata.move);
+        });
+
+    std::array<ShallowRootCandidate, kMaximumRootShallowConfirmationCandidates> candidates{};
+    std::size_t candidate_count = 0;
+    candidates[candidate_count++] =
+        ShallowRootCandidate{*incumbent_metadata, state.score, incumbent_forcing};
+    for (const ShallowRootCandidate& candidate : alternatives) {
+        if (candidate_count == candidates.size()) {
+            break;
+        }
+        candidates[candidate_count++] = candidate;
+    }
+
+    int confirmed_score = -kInfinity;
+    std::optional<Move> confirmed_move;
+    PrincipalVariation confirmed_pv;
+    for (std::size_t index = 0; index < candidate_count; ++index) {
+        ++state.context.stats.root_selective_candidates;
+        const SearchContext::RootVerification verification =
+            state.context.selectively_research_root_move(
+                state.root, candidates[index].metadata, kRootShallowConfirmationDepth);
+        if (state.context.aborted) {
+            break;
+        }
+        if (!verification.authoritative) {
+            continue;
+        }
+        if (!confirmed_move.has_value() || verification.score > confirmed_score) {
+            confirmed_score = verification.score;
+            confirmed_move = candidates[index].metadata.move;
+            confirmed_pv = verification.pv;
+        }
+    }
+    if (!state.context.aborted && confirmed_move.has_value()) {
+        apply_confirmed_root_choice(
+            state, *confirmed_move, confirmed_score, confirmed_pv,
+            true, true, true, state.score);
+    }
+}
+
+void confirm_depth_one_capture_vs_quiet(
+    SerialRootConfirmationState& state, const MoveMetadata& best_metadata,
+    const bool short_timed_root_research, const int shallow_root_margin) {
+    struct QuietCandidate {
+        int score = -kInfinity;
+        MoveMetadata metadata{};
+    };
+    std::array<MoveMetadata, 3> candidates{};
+    std::size_t candidate_count = 0;
+    std::array<QuietCandidate, 2> quiet_candidates{};
+    std::size_t quiet_count = 0;
+    for (std::size_t index = 0; index < state.context.root_move_score_count; ++index) {
+        const SearchContext::RootMoveScore& root_score =
+            state.context.root_move_scores[index];
+        // Nominates candidates for a deeper full-window comparison only;
+        // scout scores never become authoritative directly.
+        if (!short_timed_root_research && root_score.score < state.score - shallow_root_margin) {
+            continue;
+        }
+        const MoveMetadata* const metadata = find_legal_move(state.legal_moves, root_score.move);
+        if (metadata == nullptr || metadata->move == *state.result.best_move ||
+            !is_quiet_non_checking_move(*metadata)) {
+            continue;
+        }
+        QuietCandidate quiet{root_score.score, *metadata};
+        if (quiet_count < quiet_candidates.size()) {
+            quiet_candidates[quiet_count++] = quiet;
+        } else if (root_score.score > quiet_candidates.back().score) {
+            quiet_candidates.back() = quiet;
+        } else {
+            continue;
+        }
+        for (std::size_t quiet_index = quiet_count; quiet_index > 1; --quiet_index) {
+            if (quiet_candidates[quiet_index - 2].score >=
+                quiet_candidates[quiet_index - 1].score) {
+                break;
+            }
+            std::swap(quiet_candidates[quiet_index - 2], quiet_candidates[quiet_index - 1]);
+        }
+    }
+
+    candidates[candidate_count++] = best_metadata;
+    for (std::size_t quiet_index = 0;
+         quiet_index < quiet_count && candidate_count < candidates.size();
+         ++quiet_index) {
+        candidates[candidate_count++] = quiet_candidates[quiet_index].metadata;
+    }
+    if (quiet_count == 0) {
+        return;
+    }
+
+    int extended_score = -kInfinity;
+    std::optional<Move> extended_move;
+    PrincipalVariation extended_pv;
+    for (std::size_t index = 0; index < candidate_count; ++index) {
+        ++state.context.stats.root_selective_candidates;
+        const SearchContext::RootVerification verification =
+            state.context.selectively_research_root_move(
+                state.root, candidates[index], state.depth + 1);
+        if (state.context.aborted) {
+            break;
+        }
+        if (!verification.authoritative) {
+            continue;
+        }
+        if (!extended_move.has_value() || verification.score > extended_score) {
+            extended_score = verification.score;
+            extended_move = candidates[index].move;
+            extended_pv = verification.pv;
+        }
+    }
+    // Refresh the selected candidate at nominal depth so shallow capture
+    // horizon inflation and quiet escape scores are compared fairly.
+    if (!extended_move.has_value() || state.context.aborted) {
+        return;
+    }
+    const auto nominal = nominal_root_verification(state, *extended_move, state.depth);
+    if (!nominal.has_value() || state.context.aborted) {
+        return;
+    }
+    apply_confirmed_root_choice(
+        state, *extended_move, nominal->score, nominal->pv,
+        true, true, false, state.score);
+}
+
+void confirm_depth_one_quiet_vs_forcing(
+    SerialRootConfirmationState& state, const MoveMetadata& best_metadata,
+    const int shallow_root_margin) {
+    const PositionFeatures root_features = state.root.position_features();
+    const auto is_root_forcing_candidate = [&state, &root_features](const MoveMetadata& metadata) {
+        if (is_forcing_move(metadata)) {
+            return true;
+        }
+        if (!quiet_move_has_direct_forcing_target(root_features, metadata) ||
+            !state.root.make_search_move(metadata)) {
+            return false;
+        }
+        const bool forcing = quiet_move_is_forcing(
+            root_features, state.root.position_features(), metadata);
+        (void)state.root.unmake_move();
+        return forcing;
+    };
+
+    std::array<MoveMetadata, 4> candidates{};
+    std::size_t candidate_count = 0;
+    bool has_quiet_forcing_candidate = false;
+    candidates[candidate_count++] = best_metadata;
+    const auto append_candidates = [&](const bool quiet_only) {
+        for (std::size_t index = 0;
+             index < state.context.root_move_score_count &&
+             candidate_count < candidates.size();
+             ++index) {
+            const SearchContext::RootMoveScore& root_score =
+                state.context.root_move_scores[index];
+            if (root_score.move == *state.result.best_move ||
+                root_score.score < state.score - shallow_root_margin) {
+                continue;
+            }
+            const MoveMetadata* const metadata =
+                find_legal_move(state.legal_moves, root_score.move);
+            if (metadata == nullptr) {
+                continue;
+            }
+            const bool conventional_forcing = is_forcing_move(*metadata);
+            if (quiet_only) {
+                if (conventional_forcing || !is_root_forcing_candidate(*metadata)) {
+                    continue;
+                }
+                has_quiet_forcing_candidate = true;
+            } else if (!conventional_forcing) {
+                continue;
+            }
+            candidates[candidate_count++] = *metadata;
+        }
+    };
+    // Keep checks, captures, and promotions ahead of quiet-forcing checks.
+    append_candidates(false);
+    append_candidates(true);
+    if (candidate_count <= 1) {
+        return;
+    }
+
+    int extended_score = -kInfinity;
+    std::optional<Move> extended_move;
+    bool extended_forcing = false;
+    bool estimated_candidate_used = false;
+    PrincipalVariation extended_pv;
+    const int confirmation_depth =
+        has_quiet_forcing_candidate && state.limits.depth.has_value() ?
+            state.depth + 2 : state.depth + 1;
+    for (std::size_t index = 0; index < candidate_count; ++index) {
+        ++state.context.stats.root_selective_candidates;
+        const SearchContext::RootVerification verification =
+            state.context.selectively_research_root_move(
+                state.root, candidates[index], confirmation_depth);
+        if (state.context.aborted) {
+            break;
+        }
+        const bool usable_tactical_probe =
+            verification.authoritative ||
+            (state.limits.depth.has_value() && state.depth == 1 &&
+             verification.line_complete);
+        if (!usable_tactical_probe) {
+            continue;
+        }
+        estimated_candidate_used = estimated_candidate_used || !verification.authoritative;
+        const bool candidate_forcing = is_forcing_move(candidates[index]);
+        if (!extended_move.has_value() || verification.score > extended_score ||
+            (verification.score == extended_score && candidate_forcing && !extended_forcing)) {
+            extended_score = verification.score;
+            extended_move = candidates[index].move;
+            extended_forcing = candidate_forcing;
+            extended_pv = verification.pv;
+        }
+    }
+    if (!extended_move.has_value() || state.context.aborted) {
+        return;
+    }
+    const auto nominal = nominal_root_verification(
+        state, *extended_move, state.depth,
+        state.limits.depth.has_value() && state.depth == 1);
+    if (!nominal.has_value() || state.context.aborted) {
+        return;
+    }
+    state.root_authoritative = state.root_authoritative &&
+        !estimated_candidate_used && nominal->authoritative;
+    apply_confirmed_root_choice(
+        state, *extended_move, nominal->score, nominal->pv,
+        true, false, false, state.score);
+}
+
+// Guards depth-1 fixed-depth and short timed iterations against poisoned
+// captures and missed nearby forcing alternatives.
+void confirm_depth_one_root(SerialRootConfirmationState& state) {
+    const bool shallow_root_research =
+        (state.limits.depth.has_value() ||
+         (state.limits.movetime.has_value() &&
+          *state.limits.movetime <= kShortTimedSerialThreshold)) &&
+        !state.limits.search_moves_specified;
+    const bool short_timed_root_research =
+        state.limits.movetime.has_value() &&
+        *state.limits.movetime >= kShortTimedFallbackMinimum &&
+        *state.limits.movetime <= kShortTimedSerialThreshold;
+    const int shallow_root_margin =
+        short_timed_root_research ? 50 : kRootSelectiveMargin;
+    if (!shallow_root_research || state.depth != 1 || state.context.aborted ||
+        !state.result.best_move.has_value() || mate_from_score(state.score).has_value()) {
+        return;
+    }
+    const MoveMetadata* const best_metadata =
+        find_legal_move(state.legal_moves, *state.result.best_move);
+    if (best_metadata == nullptr) {
+        return;
+    }
+    if (best_metadata->is_capture()) {
+        confirm_depth_one_capture_vs_quiet(
+            state, *best_metadata, short_timed_root_research, shallow_root_margin);
+    } else if (is_quiet_non_checking_move(*best_metadata)) {
+        confirm_depth_one_quiet_vs_forcing(state, *best_metadata, shallow_root_margin);
+    }
+}
+
+// Re-searches near-tied quiet forcing moves one ply deeper at the diagnostic
+// selective depth (depth 3) for explicit depth-limited runs.
+void confirm_shallow_quiet_forcing_root(SerialRootConfirmationState& state) {
+    if (!state.limits.depth.has_value() || state.limits.search_moves_specified ||
+        state.depth != kRootSelectiveDepth || state.context.aborted ||
+        !state.result.best_move.has_value() || mate_from_score(state.score).has_value()) {
+        return;
+    }
+    const MoveMetadata* const best_metadata =
+        find_legal_move(state.legal_moves, *state.result.best_move);
+    if (best_metadata == nullptr || !is_quiet_non_checking_move(*best_metadata)) {
+        return;
+    }
+
+    std::array<MoveMetadata, 3> candidates{};
+    std::size_t candidate_count = 0;
+    std::vector<MoveMetadata> forcing_candidates;
+    std::vector<MoveMetadata> quiet_candidates;
+    const PositionFeatures root_features = state.root.position_features();
+    const auto is_forcing_quiet = [&state, &root_features](const MoveMetadata& metadata) {
+        if (!state.root.make_search_move(metadata)) {
+            return false;
+        }
+        const bool forcing = quiet_move_is_forcing(
+            root_features, state.root.position_features(), metadata);
+        (void)state.root.unmake_move();
+        return forcing;
+    };
+    for (std::size_t index = 0; index < state.context.root_move_score_count; ++index) {
+        const SearchContext::RootMoveScore& root_score =
+            state.context.root_move_scores[index];
+        if (root_score.move == *state.result.best_move ||
+            root_score.score < state.score - kRootSelectiveMargin) {
+            continue;
+        }
+        const MoveMetadata* const metadata = find_legal_move(state.legal_moves, root_score.move);
+        if (metadata != nullptr && is_quiet_non_checking_move(*metadata)) {
+            (is_forcing_quiet(*metadata) ? forcing_candidates : quiet_candidates)
+                .push_back(*metadata);
+        }
+    }
+    const auto append_candidates = [&candidates, &candidate_count](
+        const std::vector<MoveMetadata>& source) {
+        for (const MoveMetadata& metadata : source) {
+            if (candidate_count == candidates.size()) {
+                break;
+            }
+            candidates[candidate_count++] = metadata;
+        }
+    };
+    append_candidates(forcing_candidates);
+    append_candidates(quiet_candidates);
+
+    const int shallow_score = state.score;
+    for (std::size_t index = 0; index < candidate_count; ++index) {
+        const MoveMetadata& candidate = candidates[index];
+        ++state.context.stats.root_selective_candidates;
+        const SearchContext::RootVerification verification =
+            state.context.selectively_research_root_move(
+                state.root, candidate, state.depth + 1);
+        if (state.context.aborted) {
+            break;
+        }
+        if (!verification.authoritative ||
+            verification.score <= shallow_score + kRootSelectiveImprovement) {
+            continue;
+        }
+        const auto nominal = nominal_root_verification(state, candidate.move, state.depth);
+        if (!nominal.has_value()) {
+            continue;
+        }
+        apply_confirmed_root_choice(
+            state, candidate.move, nominal->score, nominal->pv,
+            false, true, false, shallow_score);
+        break;
+    }
+}
+
+// Resolves near-tied quiet checks at a common full-window depth 4 horizon
+// before refreshing the winning line at nominal depth 3.
+void confirm_shallow_quiet_check_root(SerialRootConfirmationState& state) {
+    if (!state.limits.depth.has_value() || state.limits.search_moves_specified ||
+        state.depth != kRootSelectiveDepth || state.context.aborted ||
+        !state.result.best_move.has_value() || state.root_score_snapshot.empty() ||
+        mate_from_score(state.score).has_value()) {
+        return;
+    }
+    const MoveMetadata* const best_metadata =
+        find_legal_move(state.legal_moves, *state.result.best_move);
+    if (best_metadata == nullptr || best_metadata->is_capture() ||
+        !best_metadata->gives_check || best_metadata->move.promotion() != Promotion::none) {
+        return;
+    }
+
+    std::vector<std::pair<int, MoveMetadata>> alternatives;
+    for (const SearchContext::RootMoveScore& root_score : state.root_score_snapshot) {
+        if (root_score.move == *state.result.best_move ||
+            root_score.score < state.score - kRootSelectiveMargin) {
+            continue;
+        }
+        const MoveMetadata* const metadata = find_legal_move(state.legal_moves, root_score.move);
+        if (metadata == nullptr || metadata->is_capture() ||
+            !metadata->gives_check || metadata->move.promotion() != Promotion::none) {
+            continue;
+        }
+        alternatives.emplace_back(root_score.score, *metadata);
+    }
+    std::stable_sort(
+        alternatives.begin(), alternatives.end(),
+        [](const auto& left, const auto& right) {
+            if (left.first != right.first) {
+                return left.first > right.first;
+            }
+            return detail::move_tie_break_key(left.second.move) <
+                detail::move_tie_break_key(right.second.move);
+        });
+    if (alternatives.size() > kMaximumRootCheckConfirmationCandidates) {
+        alternatives.resize(kMaximumRootCheckConfirmationCandidates);
+    }
+    if (alternatives.empty()) {
+        return;
+    }
+
+    int confirmed_score = -kInfinity;
+    std::optional<Move> confirmed_move;
+    PrincipalVariation confirmed_pv;
+    ++state.context.stats.root_selective_candidates;
+    const SearchContext::RootVerification incumbent_verification =
+        state.context.selectively_research_root_move(
+            state.root, *best_metadata, state.depth + 1);
+    if (!state.context.aborted && incumbent_verification.authoritative) {
+        confirmed_score = incumbent_verification.score;
+        confirmed_move = best_metadata->move;
+        confirmed_pv = incumbent_verification.pv;
+    }
+    for (const auto& [unused_shallow_score, candidate] : alternatives) {
+        (void)unused_shallow_score;
+        if (state.context.aborted) {
+            break;
+        }
+        ++state.context.stats.root_selective_candidates;
+        const SearchContext::RootVerification verification =
+            state.context.selectively_research_root_move(
+                state.root, candidate, state.depth + 1);
+        if (state.context.aborted) {
+            break;
+        }
+        if (!verification.authoritative) {
+            continue;
+        }
+        if (!confirmed_move.has_value() || verification.score > confirmed_score) {
+            confirmed_score = verification.score;
+            confirmed_move = candidate.move;
+            confirmed_pv = verification.pv;
+        }
+    }
+    if (state.context.aborted || !confirmed_move.has_value()) {
+        return;
+    }
+    const auto nominal = nominal_root_verification(state, *confirmed_move, state.depth);
+    if (state.context.aborted || !nominal.has_value()) {
+        return;
+    }
+    apply_confirmed_root_choice(
+        state, *confirmed_move, nominal->score, nominal->pv,
+        true, true, true, state.score);
+}
+
+// Confirms quiet king escapes that shed king-zone pressure against a shallow
+// depth-3 non-forcing incumbent before publishing the fixed-depth result.
+void confirm_shallow_king_safety_root(SerialRootConfirmationState& state) {
+    if (!state.limits.depth.has_value() ||
+        *state.limits.depth != kRootSelectiveDepth ||
+        state.depth != kRootSelectiveDepth ||
+        state.limits.search_moves_specified || state.context.aborted ||
+        !state.result.best_move.has_value() || state.root_score_snapshot.empty() ||
+        state.root.in_check() || mate_from_score(state.score).has_value()) {
+        return;
+    }
+    const MoveMetadata* const best_metadata =
+        find_legal_move(state.legal_moves, *state.result.best_move);
+    const PositionFeatures root_features = state.root.position_features();
+    const std::size_t own_side = state.root.side_to_move() == Color::white ? 0U : 1U;
+    if (best_metadata == nullptr || !is_quiet_non_checking_move(*best_metadata) ||
+        root_features.game_phase < 8 || root_features.fullmove_number <= 10 ||
+        root_features.king_zone_attacks[own_side] == 0) {
+        return;
+    }
+
+    std::vector<std::pair<int, MoveMetadata>> defensive_candidates;
+    for (const SearchContext::RootMoveScore& root_score : state.root_score_snapshot) {
+        if (root_score.move == *state.result.best_move) {
+            continue;
+        }
+        const MoveMetadata* const metadata = find_legal_move(state.legal_moves, root_score.move);
+        if (metadata == nullptr || metadata->moving_piece != PieceType::king ||
+            !is_quiet_non_checking_move(*metadata)) {
+            continue;
+        }
+        if (!state.root.make_search_move(*metadata)) {
+            continue;
+        }
+        const PositionFeatures after_features = state.root.position_features();
+        (void)state.root.unmake_move();
+        if (after_features.king_zone_attacks[own_side] <
+            root_features.king_zone_attacks[own_side]) {
+            defensive_candidates.emplace_back(root_score.score, *metadata);
+        }
+    }
+    std::stable_sort(
+        defensive_candidates.begin(), defensive_candidates.end(),
+        [](const auto& left, const auto& right) { return left.first > right.first; });
+    if (defensive_candidates.size() > kMaximumRootKingSafetyCandidates) {
+        defensive_candidates.resize(kMaximumRootKingSafetyCandidates);
+    }
+    if (defensive_candidates.empty()) {
+        return;
+    }
+
+    ++state.context.stats.king_safety_extensions;
+    ++state.context.stats.root_selective_candidates;
+    const SearchContext::RootVerification best_verification =
+        state.context.selectively_research_root_move(
+            state.root, *best_metadata, kRootKingSafetySelectiveDepth);
+    if (state.context.aborted ||
+        (!best_verification.authoritative && !best_verification.line_complete)) {
+        return;
+    }
+
+    int selected_score = best_verification.score;
+    Move selected_move = best_metadata->move;
+    PrincipalVariation selected_pv = best_verification.pv;
+    bool selected_from_estimate = false;
+    if (best_verification.authoritative) {
+        for (const auto& [unused_shallow_score, candidate] : defensive_candidates) {
+            (void)unused_shallow_score;
+            if (state.context.aborted) {
+                break;
+            }
+            ++state.context.stats.root_selective_candidates;
+            const SearchContext::RootVerification verification =
+                state.context.selectively_research_root_move(
+                    state.root, candidate, kRootKingSafetySelectiveDepth);
+            if (state.context.aborted) {
+                break;
+            }
+            if (!verification.authoritative) {
+                continue;
+            }
+            if (verification.score > selected_score ||
+                verification.score >= best_verification.score - kRootKingSafetyTieMargin) {
+                selected_score = verification.score;
+                selected_move = candidate.move;
+                selected_pv = verification.pv;
+            }
+        }
+    } else {
+        // Without a proven incumbent score, let any completed non-losing
+        // king escape compete rather than letting an estimate veto it.
+        bool found_escape_estimate = false;
+        int escape_estimate_score = -kInfinity;
+        for (const auto& [unused_shallow_score, candidate] : defensive_candidates) {
+            (void)unused_shallow_score;
+            if (state.context.aborted) {
+                break;
+            }
+            ++state.context.stats.root_selective_candidates;
+            const SearchContext::RootVerification verification =
+                state.context.selectively_research_root_move(
+                    state.root, candidate, kRootKingSafetySelectiveDepth);
+            if (state.context.aborted || !verification.line_complete ||
+                verification.proves_losing_mate()) {
+                continue;
+            }
+            if (!found_escape_estimate || verification.score > escape_estimate_score) {
+                found_escape_estimate = true;
+                escape_estimate_score = verification.score;
+                selected_score = verification.score;
+                selected_move = candidate.move;
+                selected_pv = verification.pv;
+            }
+        }
+        selected_from_estimate = found_escape_estimate;
+    }
+    if (state.context.aborted ||
+        (!best_verification.authoritative && !selected_from_estimate)) {
+        return;
+    }
+    const auto nominal = nominal_root_verification(
+        state, selected_move, state.depth, selected_from_estimate);
+    if (!nominal.has_value()) {
+        return;
+    }
+    const bool nominal_score_usable = nominal->authoritative ||
+        (selected_from_estimate && nominal->line_complete);
+    if (selected_from_estimate || !nominal->authoritative) {
+        state.root_authoritative = false;
+    }
+    if (!nominal_score_usable || state.context.aborted) {
+        return;
+    }
+    apply_confirmed_root_choice(
+        state, selected_move, nominal->score, nominal->pv,
+        true, true, true, state.result.score_cp);
+}
+
+void run_shallow_root_confirmations(SerialRootConfirmationState& state) {
+    confirm_shallow_mixed_forcing_root(state);
+    confirm_depth_one_root(state);
+    confirm_shallow_quiet_forcing_root(state);
+    confirm_shallow_quiet_check_root(state);
+    confirm_shallow_king_safety_root(state);
+}
+
 } // namespace
 
 SearchRunner::SearchRunner(std::shared_ptr<SearchSession> session,
@@ -841,857 +1572,22 @@ void SearchRunner::run_impl() {
                         context.root_move_scores.begin(),
                         context.root_move_scores.begin() + context.root_move_score_count);
                 }
-                // Some bounded root safety passes compare candidates at a
-                // deeper horizon to expose a shallow tactical trap.  The
-                // selected move still belongs to the requested iteration,
-                // so refresh its line at the nominal depth before
-                // publishing the score/PV.  This keeps fixed-depth UCI
-                // results and timing observations tied to one horizon.
-                const auto nominal_root_verification =
-                    [&context, &root, &legal_moves](const Move move, const int nominal_depth,
-                                                   const bool allow_estimated_line = false)
-                    -> std::optional<SearchContext::RootVerification> {
-                    const auto metadata = std::find_if(
-                        legal_moves.begin(), legal_moves.end(),
-                        [move](const MoveMetadata& candidate) {
-                            return candidate.move == move;
-                        });
-                    if (metadata == legal_moves.end()) {
-                        return std::nullopt;
-                    }
-                    ++context.stats.root_selective_candidates;
-                    const SearchContext::RootVerification verification =
-                        context.selectively_research_root_move(root, *metadata, nominal_depth);
-                    if (context.aborted ||
-                        (!verification.authoritative &&
-                         !(allow_estimated_line && verification.line_complete))) {
-                        return std::nullopt;
-                    }
-                    return verification;
-                };
+                SerialRootConfirmationState confirmation_state{
+                    limits,
+                    root,
+                    legal_moves,
+                    root_score_snapshot,
+                    depth,
+                    context,
+                    result,
+                    score,
+                    pv,
+                    bounded_fallback_result,
+                    root_authoritative};
+                run_shallow_root_confirmations(confirmation_state);
 
-                if (limits.depth.has_value() &&
-                    *limits.depth == kRootShallowConfirmationDepth &&
-                    depth == kRootShallowConfirmationDepth &&
-                    !limits.search_moves_specified && !context.aborted &&
-                    !root_score_snapshot.empty() && result.best_move.has_value() &&
-                    !mate_from_score(score).has_value()) {
-                    struct ShallowRootCandidate {
-                        MoveMetadata metadata{};
-                        int score = -kInfinity;
-                        bool forcing = false;
-                    };
 
-                    const auto metadata_for = [&legal_moves](const Move move) {
-                        return std::find_if(
-                            legal_moves.begin(), legal_moves.end(),
-                            [move](const MoveMetadata& metadata) {
-                                return metadata.move == move;
-                            });
-                    };
-                    const auto incumbent_metadata = metadata_for(*result.best_move);
-                    const bool incumbent_forcing = incumbent_metadata != legal_moves.end() &&
-                        (incumbent_metadata->is_capture() || incumbent_metadata->gives_check ||
-                         incumbent_metadata->move.promotion() != Promotion::none);
-                    const auto is_same_target_capture =
-                        [&incumbent_metadata, &legal_moves](
-                            const auto metadata) {
-                        return incumbent_metadata != legal_moves.end() &&
-                            metadata != legal_moves.end() &&
-                            incumbent_metadata->is_capture() && metadata->is_capture() &&
-                            metadata->move.to() == incumbent_metadata->move.to();
-                    };
-                    const bool has_mixed_forcing_alternative = incumbent_metadata != legal_moves.end() &&
-                        std::any_of(
-                            root_score_snapshot.begin(), root_score_snapshot.end(),
-                            [&metadata_for, &legal_moves, &incumbent_forcing,
-                             &is_same_target_capture, &result](
-                                const SearchContext::RootMoveScore& root_score) {
-                                if (root_score.move == *result.best_move) {
-                                    return false;
-                                }
-                                const auto metadata = metadata_for(root_score.move);
-                                if (metadata == legal_moves.end()) {
-                                    return false;
-                                }
-                                const bool forcing = metadata->is_capture() || metadata->gives_check ||
-                                    metadata->move.promotion() != Promotion::none;
-                                return (root_score.exact && forcing != incumbent_forcing) ||
-                                    is_same_target_capture(metadata);
-                            });
-                    if (incumbent_metadata != legal_moves.end() &&
-                        has_mixed_forcing_alternative) {
-                        std::vector<ShallowRootCandidate> alternatives;
-                        alternatives.reserve(root_score_snapshot.size());
-                        for (const SearchContext::RootMoveScore& root_score :
-                             root_score_snapshot) {
-                            if (root_score.move == *result.best_move) {
-                                continue;
-                            }
-                            const auto metadata = metadata_for(root_score.move);
-                            if (metadata == legal_moves.end()) {
-                                continue;
-                            }
-                            const bool same_target_capture =
-                                is_same_target_capture(metadata);
-                            if (!root_score.exact && !same_target_capture) {
-                                // A scout bound may nominate a defensive
-                                // recapture cluster, but no other
-                                // inexact root line may enter the
-                                // authoritative confirmation set.
-                                continue;
-                            }
-                            const bool forcing = metadata->is_capture() || metadata->gives_check ||
-                                metadata->move.promotion() != Promotion::none;
-                            const int score_margin = forcing ? kRootShallowForcingMargin :
-                                kRootShallowConfirmationMargin;
-                            if (root_score.score < score - score_margin) {
-                                continue;
-                            }
-                            alternatives.push_back(
-                                ShallowRootCandidate{*metadata, root_score.score, forcing});
-                        }
-                        std::stable_sort(
-                            alternatives.begin(), alternatives.end(),
-                            [](const ShallowRootCandidate& left,
-                               const ShallowRootCandidate& right) {
-                                if (left.forcing != right.forcing) {
-                                    return left.forcing;
-                                }
-                                if (left.score != right.score) {
-                                    return left.score > right.score;
-                                }
-                                return detail::move_tie_break_key(left.metadata.move) <
-                                    detail::move_tie_break_key(right.metadata.move);
-                            });
 
-                        std::array<ShallowRootCandidate,
-                                   kMaximumRootShallowConfirmationCandidates> candidates{};
-                        std::size_t candidate_count = 0;
-                        candidates[candidate_count++] =
-                            ShallowRootCandidate{*incumbent_metadata, score,
-                                                  incumbent_metadata->is_capture() ||
-                                                      incumbent_metadata->gives_check ||
-                                                      incumbent_metadata->move.promotion() !=
-                                                          Promotion::none};
-                        for (const ShallowRootCandidate& candidate : alternatives) {
-                            if (candidate_count == candidates.size()) {
-                                break;
-                            }
-                            candidates[candidate_count++] = candidate;
-                        }
-
-                        int confirmed_score = -kInfinity;
-                        std::optional<Move> confirmed_move;
-                        PrincipalVariation confirmed_pv;
-                        for (std::size_t index = 0; index < candidate_count; ++index) {
-                            ++context.stats.root_selective_candidates;
-                            const SearchContext::RootVerification verification =
-                                context.selectively_research_root_move(
-                                    root, candidates[index].metadata,
-                                    kRootShallowConfirmationDepth);
-                            if (context.aborted) {
-                                break;
-                            }
-                            if (!verification.authoritative) {
-                                continue;
-                            }
-                            if (!confirmed_move.has_value() ||
-                                verification.score > confirmed_score) {
-                                confirmed_score = verification.score;
-                                confirmed_move = candidates[index].metadata.move;
-                                confirmed_pv = verification.pv;
-                            }
-                        }
-                        if (!context.aborted && confirmed_move.has_value()) {
-                            if (confirmed_move != result.best_move ||
-                                confirmed_score != score) {
-                                ++context.stats.root_selective_researches;
-                            }
-                            score = confirmed_score;
-                            result.score_cp = confirmed_score;
-                            result.mate = mate_from_score(confirmed_score);
-                            result.best_move = confirmed_move;
-                            pv = confirmed_pv;
-                            result.pv = confirmed_pv.length > 0 ? confirmed_pv.to_vector() :
-                                std::vector<Move>{*confirmed_move};
-                            bounded_fallback_result = false;
-                        }
-                    }
-                }
-
-                // A forcing capture can look marginally best at the first
-                // full-width iteration while a quiet escape survives one
-                // more ply.  Re-search a small capture-versus-quiet band
-                // only for explicit depth-one diagnostics; timed searches
-                // and deeper iterations retain their normal budget.
-                const bool shallow_root_research =
-                    (limits.depth.has_value() ||
-                     (limits.movetime.has_value() &&
-                      *limits.movetime <= kShortTimedSerialThreshold)) &&
-                    !limits.search_moves_specified;
-                const bool short_timed_root_research =
-                    limits.movetime.has_value() &&
-                    *limits.movetime >= kShortTimedFallbackMinimum &&
-                    *limits.movetime <= kShortTimedSerialThreshold;
-                const int shallow_root_margin = short_timed_root_research ? 50 : kRootSelectiveMargin;
-                if (shallow_root_research &&
-                    depth == 1 && !context.aborted && result.best_move.has_value() &&
-                    !mate_from_score(score).has_value()) {
-                    const auto best_metadata = std::find_if(
-                        legal_moves.begin(), legal_moves.end(),
-                        [&result](const MoveMetadata& metadata) {
-                            return metadata.move == *result.best_move;
-                        });
-                    if (best_metadata != legal_moves.end() && best_metadata->is_capture()) {
-                        std::array<MoveMetadata, 3> candidates{};
-                        std::size_t candidate_count = 0;
-                        struct QuietCandidate {
-                            int score = -kInfinity;
-                            MoveMetadata metadata{};
-                        };
-                        std::array<QuietCandidate, 2> quiet_candidates{};
-                        std::size_t quiet_count = 0;
-                        for (std::size_t index = 0; index < context.root_move_score_count; ++index) {
-                            const SearchContext::RootMoveScore& root_score =
-                                context.root_move_scores[index];
-                            // This band only nominates a candidate for a
-                            // deeper full-window comparison. A scout
-                            // score is useful discovery evidence here; it
-                            // never becomes authoritative by itself.
-                            if (!short_timed_root_research &&
-                                root_score.score < score - shallow_root_margin) {
-                                continue;
-                            }
-                            const auto metadata = std::find_if(
-                                legal_moves.begin(), legal_moves.end(),
-                                [&root_score](const MoveMetadata& move_metadata) {
-                                    return move_metadata.move == root_score.move;
-                                });
-                            if (metadata == legal_moves.end() || metadata->move == *result.best_move ||
-                                metadata->is_capture() || metadata->gives_check ||
-                                metadata->move.promotion() != Promotion::none) {
-                                continue;
-                            }
-                            QuietCandidate quiet{root_score.score, *metadata};
-                            if (quiet_count < quiet_candidates.size()) {
-                                quiet_candidates[quiet_count++] = quiet;
-                            } else if (root_score.score > quiet_candidates.back().score) {
-                                quiet_candidates.back() = quiet;
-                            } else {
-                                continue;
-                            }
-                            for (std::size_t quiet_index = quiet_count; quiet_index > 1; --quiet_index) {
-                                if (quiet_candidates[quiet_index - 2].score >=
-                                    quiet_candidates[quiet_index - 1].score) {
-                                    break;
-                                }
-                                std::swap(quiet_candidates[quiet_index - 2],
-                                          quiet_candidates[quiet_index - 1]);
-                            }
-                        }
-
-                        candidates[candidate_count++] = *best_metadata;
-                        for (std::size_t quiet_index = 0;
-                             quiet_index < quiet_count && candidate_count < candidates.size();
-                             ++quiet_index) {
-                            candidates[candidate_count++] = quiet_candidates[quiet_index].metadata;
-                        }
-                        const bool has_quiet_candidate = quiet_count != 0;
-                        if (has_quiet_candidate) {
-                            int extended_score = -kInfinity;
-                            std::optional<Move> extended_move;
-                            PrincipalVariation extended_pv;
-                            for (std::size_t index = 0; index < candidate_count; ++index) {
-                                ++context.stats.root_selective_candidates;
-                                const SearchContext::RootVerification verification =
-                                    context.selectively_research_root_move(root, candidates[index],
-                                                                           depth + 1);
-                                if (context.aborted) {
-                                    break;
-                                }
-                                if (!verification.authoritative) {
-                                    continue;
-                                }
-                                if (!extended_move.has_value() || verification.score > extended_score) {
-                                    extended_score = verification.score;
-                                    extended_move = candidates[index].move;
-                                    extended_pv = verification.pv;
-                                }
-                            }
-                            // Compare the candidates at the same deeper horizon.  A
-                            // shallow capture can carry a horizon bonus, so comparing a
-                            // deeper quiet score against the old shallow score would keep
-                            // poisoned captures.  A later candidate may hit the hard
-                            // deadline; in that case the best completed candidate remains
-                            // authoritative.
-                            bool nominal_score_authoritative = false;
-                            if (extended_move.has_value() && !context.aborted) {
-                                if (const auto nominal = nominal_root_verification(
-                                        *extended_move, depth); nominal.has_value()) {
-                                    extended_score = nominal->score;
-                                    extended_pv = nominal->pv;
-                                    nominal_score_authoritative = true;
-                                }
-                            }
-                            if (extended_move.has_value() && nominal_score_authoritative &&
-                                !context.aborted) {
-                                if (extended_move != result.best_move || extended_score != score) {
-                                    ++context.stats.root_selective_researches;
-                                }
-                                score = extended_score;
-                                result.score_cp = score;
-                                result.mate = mate_from_score(score);
-                                 result.best_move = extended_move;
-                                 pv = extended_pv;
-                                 result.pv = extended_pv.to_vector();
-                                 bounded_fallback_result = false;
-                             }
-                        }
-                    } else if (best_metadata != legal_moves.end() &&
-                               !best_metadata->is_capture() && !best_metadata->gives_check &&
-                               best_metadata->move.promotion() == Promotion::none) {
-                        // The inverse horizon trap is a quiet move that is only a few
-                        // centipawns ahead of a check, capture, or promotion.  At an
-                        // incomplete depth-one root the quiet score is not authoritative;
-                        // compare the quiet move and a small forcing band at depth two.
-                        // A quiet move can itself be forcing (for example, a fork or
-                        // direct attack) even though it has no check flag. Include those
-                        // moves in the same confirmation band so root ordering does not
-                        // discard the tactical signal already used by the recursive search.
-                        const PositionFeatures root_features = root.position_features();
-                        const auto is_root_forcing_candidate = [&root, &root_features](
-                            const MoveMetadata& metadata) {
-                            if (metadata.is_capture() || metadata.gives_check ||
-                                metadata.move.promotion() != Promotion::none) {
-                                return true;
-                            }
-                            if (!quiet_move_has_direct_forcing_target(root_features, metadata) ||
-                                !root.make_search_move(metadata)) {
-                                return false;
-                            }
-                            const bool forcing = quiet_move_is_forcing(
-                                root_features, root.position_features(), metadata);
-                            (void)root.unmake_move();
-                            return forcing;
-                        };
-                        std::array<MoveMetadata, 4> candidates{};
-                        std::size_t candidate_count = 0;
-                        bool has_quiet_forcing_candidate = false;
-                        candidates[candidate_count++] = *best_metadata;
-                        const auto append_candidates = [&] (const bool quiet_only) {
-                            for (std::size_t index = 0;
-                                 index < context.root_move_score_count &&
-                                 candidate_count < candidates.size(); ++index) {
-                                const SearchContext::RootMoveScore& root_score =
-                                    context.root_move_scores[index];
-                                // Scout scores may nominate a candidate;
-                                // the bounded re-search below supplies the
-                                // only score used for replacement.
-                                if (root_score.move == *result.best_move ||
-                                    root_score.score < score - shallow_root_margin) {
-                                    continue;
-                                }
-                                const auto metadata = std::find_if(
-                                    legal_moves.begin(), legal_moves.end(),
-                                    [&root_score](const MoveMetadata& move_metadata) {
-                                        return move_metadata.move == root_score.move;
-                                    });
-                                if (metadata == legal_moves.end()) {
-                                    continue;
-                                }
-                                const bool conventional_forcing = metadata->is_capture() ||
-                                    metadata->gives_check ||
-                                    metadata->move.promotion() != Promotion::none;
-                                if (quiet_only) {
-                                    if (conventional_forcing ||
-                                        !is_root_forcing_candidate(*metadata)) {
-                                        continue;
-                                    }
-                                    has_quiet_forcing_candidate = true;
-                                } else if (!conventional_forcing) {
-                                    continue;
-                                }
-                                candidates[candidate_count++] = *metadata;
-                            }
-                        };
-                        // Keep checks/captures/promotions ahead of the more
-                        // expensive quiet-forcing confirmation candidates.
-                        append_candidates(false);
-                        append_candidates(true);
-
-                        if (candidate_count > 1) {
-                            int extended_score = -kInfinity;
-                            std::optional<Move> extended_move;
-                            bool extended_forcing = false;
-                            bool estimated_candidate_used = false;
-                            PrincipalVariation extended_pv;
-                            const int confirmation_depth =
-                                has_quiet_forcing_candidate && limits.depth.has_value() ?
-                                    depth + 2 : depth + 1;
-                            for (std::size_t index = 0; index < candidate_count; ++index) {
-                                ++context.stats.root_selective_candidates;
-                                const SearchContext::RootVerification verification =
-                                    context.selectively_research_root_move(root, candidates[index],
-                                                                           confirmation_depth);
-                                if (context.aborted) {
-                                    break;
-                                }
-                                // Fixed-depth-one move selection may use a
-                                // complete deeper line as a tactical estimate.
-                                // Its score never proves a bound or enters TT.
-                                const bool usable_tactical_probe =
-                                    verification.authoritative ||
-                                    (limits.depth.has_value() && depth == 1 &&
-                                     verification.line_complete);
-                                if (!usable_tactical_probe) {
-                                    continue;
-                                }
-                                estimated_candidate_used = estimated_candidate_used ||
-                                    !verification.authoritative;
-                                const bool candidate_forcing = candidates[index].is_capture() ||
-                                    candidates[index].gives_check ||
-                                    candidates[index].move.promotion() != Promotion::none;
-                                if (!extended_move.has_value() || verification.score > extended_score ||
-                                    (verification.score == extended_score && candidate_forcing &&
-                                     !extended_forcing)) {
-                                    extended_score = verification.score;
-                                    extended_move = candidates[index].move;
-                                    extended_forcing = candidate_forcing;
-                                    extended_pv = verification.pv;
-                                }
-                            }
-                            bool nominal_line_complete = false;
-                            if (extended_move.has_value() && !context.aborted) {
-                                if (const auto nominal = nominal_root_verification(
-                                        *extended_move, depth,
-                                        limits.depth.has_value() && depth == 1);
-                                    nominal.has_value()) {
-                                    extended_score = nominal->score;
-                                    extended_pv = nominal->pv;
-                                    nominal_line_complete = true;
-                                    root_authoritative = root_authoritative &&
-                                        !estimated_candidate_used && nominal->authoritative;
-                                }
-                            }
-                            if (extended_move.has_value() && nominal_line_complete &&
-                                !context.aborted) {
-                                if (extended_move != result.best_move || extended_score != score) {
-                                    ++context.stats.root_selective_researches;
-                                }
-                                score = extended_score;
-                                result.score_cp = score;
-                                result.mate = mate_from_score(score);
-                                result.best_move = extended_move;
-                                pv = extended_pv;
-                                result.pv = extended_pv.to_vector();
-                            }
-                        }
-                    }
-                }
-
-                // A shallow fixed-depth iteration can leave two quiet root moves
-                // inside the same narrow score band even though one move's first
-                // forcing consequence is one ply deeper. Re-search only the first
-                // ordered alternative in that band, and only at the diagnostic
-                // depth where this horizon is meaningful. Timed searches and
-                // deeper fixed-depth searches retain the normal PVS path.
-                if (limits.depth.has_value() && !limits.search_moves_specified &&
-                    depth == kRootSelectiveDepth &&
-                    !context.aborted && result.best_move.has_value() &&
-                    !mate_from_score(score).has_value()) {
-                    const auto best_metadata = std::find_if(
-                        legal_moves.begin(), legal_moves.end(),
-                        [&result](const MoveMetadata& metadata) {
-                            return metadata.move == *result.best_move;
-                        });
-                    if (best_metadata != legal_moves.end() &&
-                        !best_metadata->is_capture() && !best_metadata->gives_check &&
-                        best_metadata->move.promotion() == Promotion::none) {
-                        std::array<MoveMetadata, 3> candidates{};
-                        std::size_t candidate_count = 0;
-                        std::vector<MoveMetadata> forcing_candidates;
-                        std::vector<MoveMetadata> quiet_candidates;
-                        const PositionFeatures root_features = root.position_features();
-                        const auto is_forcing_quiet = [&root, &root_features](
-                            const MoveMetadata& metadata) {
-                            if (!root.make_search_move(metadata)) {
-                                return false;
-                            }
-                            const bool forcing = quiet_move_is_forcing(
-                                root_features, root.position_features(), metadata);
-                            (void)root.unmake_move();
-                            return forcing;
-                        };
-                        for (std::size_t index = 0; index < context.root_move_score_count; ++index) {
-                            const SearchContext::RootMoveScore& root_score =
-                                context.root_move_scores[index];
-                            // A scout bound is discovery-only. Every
-                            // candidate selected from this band is
-                            // re-searched before it can change the root.
-                            if (root_score.move == *result.best_move ||
-                                root_score.score < score - kRootSelectiveMargin) {
-                                continue;
-                            }
-                            const auto metadata = std::find_if(
-                                legal_moves.begin(), legal_moves.end(),
-                                [&root_score](const MoveMetadata& move_metadata) {
-                                    return move_metadata.move == root_score.move;
-                                });
-                            if (metadata != legal_moves.end() && !metadata->is_capture() &&
-                                !metadata->gives_check &&
-                                metadata->move.promotion() == Promotion::none) {
-                                (is_forcing_quiet(*metadata) ? forcing_candidates :
-                                    quiet_candidates).push_back(*metadata);
-                            }
-                        }
-
-                        const auto append_candidates = [&candidates, &candidate_count](
-                            const std::vector<MoveMetadata>& source) {
-                            for (const MoveMetadata& metadata : source) {
-                                if (candidate_count == candidates.size()) {
-                                    break;
-                                }
-                                candidates[candidate_count++] = metadata;
-                            }
-                        };
-                        append_candidates(forcing_candidates);
-                        append_candidates(quiet_candidates);
-
-                        const int shallow_score = score;
-                        for (std::size_t index = 0; index < candidate_count; ++index) {
-                            const MoveMetadata& candidate = candidates[index];
-                            ++context.stats.root_selective_candidates;
-                            const SearchContext::RootVerification verification =
-                                context.selectively_research_root_move(root, candidate,
-                                                                       depth + 1);
-                            if (context.aborted) {
-                                break;
-                            }
-                            if (!verification.authoritative) {
-                                continue;
-                            }
-                            if (verification.score > shallow_score + kRootSelectiveImprovement) {
-                                const auto nominal = nominal_root_verification(
-                                    candidate.move, depth);
-                                if (!nominal.has_value()) {
-                                    continue;
-                                }
-                                ++context.stats.root_selective_researches;
-                                score = nominal->score;
-                                result.score_cp = score;
-                                result.mate = mate_from_score(score);
-                                result.best_move = candidate.move;
-                                pv = nominal->pv;
-                                result.pv = pv.to_vector();
-                                bounded_fallback_result = false;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                // A shallow root can also leave two quiet checking moves
-                // with nearly identical scores.  The incumbent may be an
-                // exact first-move result while the alternative is only a
-                // PVS upper bound, so ordinary root ranking is not a
-                // comparable check-versus-check decision.  Re-search the
-                // incumbent and at most two near-tied quiet checks at one
-                // common full-window horizon; this is restricted to the
-                // explicit depth-three diagnostic path and does not alter
-                // timed or deeper searches.
-                if (limits.depth.has_value() && !limits.search_moves_specified &&
-                    depth == kRootSelectiveDepth &&
-                    !context.aborted && result.best_move.has_value() &&
-                    !root_score_snapshot.empty() &&
-                    !mate_from_score(score).has_value()) {
-                    const auto best_metadata = std::find_if(
-                        legal_moves.begin(), legal_moves.end(),
-                        [&result](const MoveMetadata& metadata) {
-                            return metadata.move == *result.best_move;
-                        });
-                    if (best_metadata != legal_moves.end() &&
-                        !best_metadata->is_capture() && best_metadata->gives_check &&
-                        best_metadata->move.promotion() == Promotion::none) {
-                        std::vector<std::pair<int, MoveMetadata>> alternatives;
-                        for (const SearchContext::RootMoveScore& root_score :
-                             root_score_snapshot) {
-                            if (root_score.move == *result.best_move ||
-                                root_score.score < score - kRootSelectiveMargin) {
-                                continue;
-                            }
-                            const auto metadata = std::find_if(
-                                legal_moves.begin(), legal_moves.end(),
-                                [&root_score](const MoveMetadata& move_metadata) {
-                                    return move_metadata.move == root_score.move;
-                                });
-                            if (metadata == legal_moves.end() || metadata->is_capture() ||
-                                !metadata->gives_check ||
-                                metadata->move.promotion() != Promotion::none) {
-                                continue;
-                            }
-                            alternatives.emplace_back(root_score.score, *metadata);
-                        }
-                        std::stable_sort(
-                            alternatives.begin(), alternatives.end(),
-                            [](const auto& left, const auto& right) {
-                                if (left.first != right.first) {
-                                    return left.first > right.first;
-                                }
-                                return detail::move_tie_break_key(left.second.move) <
-                                    detail::move_tie_break_key(right.second.move);
-                            });
-                        if (alternatives.size() > kMaximumRootCheckConfirmationCandidates) {
-                            alternatives.resize(kMaximumRootCheckConfirmationCandidates);
-                        }
-
-                        if (!alternatives.empty()) {
-                            int confirmed_score = -kInfinity;
-                            std::optional<Move> confirmed_move;
-                            PrincipalVariation confirmed_pv;
-                            ++context.stats.root_selective_candidates;
-                                const SearchContext::RootVerification incumbent_verification =
-                                    context.selectively_research_root_move(
-                                        root, *best_metadata, depth + 1);
-                            if (!context.aborted && incumbent_verification.authoritative) {
-                                confirmed_score = incumbent_verification.score;
-                                confirmed_move = best_metadata->move;
-                                confirmed_pv = incumbent_verification.pv;
-                            }
-                            for (const auto& [unused_shallow_score, candidate] : alternatives) {
-                                (void)unused_shallow_score;
-                                if (context.aborted) {
-                                    break;
-                                }
-                                ++context.stats.root_selective_candidates;
-                                const SearchContext::RootVerification verification =
-                                    context.selectively_research_root_move(
-                                        root, candidate, depth + 1);
-                                if (context.aborted) {
-                                    break;
-                                }
-                                if (!verification.authoritative) {
-                                    continue;
-                                }
-                                if (!confirmed_move.has_value() ||
-                                    verification.score > confirmed_score) {
-                                    confirmed_score = verification.score;
-                                    confirmed_move = candidate.move;
-                                    confirmed_pv = verification.pv;
-                                }
-                            }
-                            if (!context.aborted && confirmed_move.has_value()) {
-                                // The deeper confirmation chooses the move,
-                                // but the public result still represents
-                                // the requested fixed depth.  Refresh the
-                                // selected line at that nominal depth so a
-                                // deeper horizon score is never published
-                                // as the depth-three evaluation.
-                                const auto confirmed_metadata = std::find_if(
-                                    legal_moves.begin(), legal_moves.end(),
-                                    [&confirmed_move](const MoveMetadata& metadata) {
-                                        return metadata.move == *confirmed_move;
-                                    });
-                                bool nominal_score_authoritative = false;
-                                if (confirmed_metadata != legal_moves.end()) {
-                                    ++context.stats.root_selective_candidates;
-                                    const SearchContext::RootVerification nominal_verification =
-                                        context.selectively_research_root_move(
-                                            root, *confirmed_metadata, depth);
-                                    if (!context.aborted && nominal_verification.authoritative) {
-                                        confirmed_score = nominal_verification.score;
-                                        confirmed_pv = nominal_verification.pv;
-                                        nominal_score_authoritative = true;
-                                    }
-                                }
-                                if (!nominal_score_authoritative) {
-                                    confirmed_move.reset();
-                                }
-                            }
-                            if (!context.aborted && confirmed_move.has_value()) {
-                                if (confirmed_move != result.best_move ||
-                                    confirmed_score != score) {
-                                    ++context.stats.root_selective_researches;
-                                }
-                                score = confirmed_score;
-                                result.score_cp = score;
-                                result.mate = mate_from_score(score);
-                                result.best_move = confirmed_move;
-                                pv = confirmed_pv;
-                                result.pv = confirmed_pv.length > 0 ? confirmed_pv.to_vector() :
-                                    std::vector<Move>{*confirmed_move};
-                                bounded_fallback_result = false;
-                            }
-                        }
-                    }
-                }
-
-                // A quiet king move that removes active king-zone pressure
-                // deserves a bounded confirmation when a shallow fixed-depth
-                // root prefers a non-forcing move.  Compare the current root
-                // move and at most two ordered king escapes at depth five;
-                // this is intentionally limited to an explicit depth-three
-                // diagnostic search so normal clock searches retain their
-                // ordinary iterative-deepening budget.
-                if (limits.depth.has_value() && *limits.depth == kRootSelectiveDepth &&
-                    depth == kRootSelectiveDepth && !limits.search_moves_specified &&
-                    !context.aborted && result.best_move.has_value() &&
-                    !root_score_snapshot.empty() && !root.in_check() &&
-                    !mate_from_score(score).has_value()) {
-                    const auto best_metadata = std::find_if(
-                        legal_moves.begin(), legal_moves.end(),
-                        [&result](const MoveMetadata& metadata) {
-                            return metadata.move == *result.best_move;
-                        });
-                    const PositionFeatures root_features = root.position_features();
-                    const std::size_t own_side = root.side_to_move() == Color::white ? 0U : 1U;
-                    if (best_metadata != legal_moves.end() &&
-                        !best_metadata->is_capture() && !best_metadata->gives_check &&
-                        best_metadata->move.promotion() == Promotion::none &&
-                        root_features.game_phase >= 8 && root_features.fullmove_number > 10 &&
-                        root_features.king_zone_attacks[own_side] != 0) {
-                        std::vector<std::pair<int, MoveMetadata>> defensive_candidates;
-                        for (const SearchContext::RootMoveScore& root_score : root_score_snapshot) {
-                            // Use the shallow value only to prioritize a
-                            // bounded candidate list; depth-five
-                            // confirmation remains authoritative.
-                            if (root_score.move == *result.best_move) {
-                                continue;
-                            }
-                            const auto metadata = std::find_if(
-                                legal_moves.begin(), legal_moves.end(),
-                                [&root_score](const MoveMetadata& move_metadata) {
-                                    return move_metadata.move == root_score.move;
-                                });
-                            if (metadata == legal_moves.end() ||
-                                metadata->moving_piece != PieceType::king ||
-                                metadata->is_capture() || metadata->gives_check ||
-                                metadata->move.promotion() != Promotion::none) {
-                                continue;
-                            }
-                            if (!root.make_search_move(*metadata)) {
-                                continue;
-                            }
-                            const PositionFeatures after_features = root.position_features();
-                            (void)root.unmake_move();
-                            if (after_features.king_zone_attacks[own_side] >=
-                                root_features.king_zone_attacks[own_side]) {
-                                continue;
-                            }
-                            defensive_candidates.emplace_back(root_score.score, *metadata);
-                        }
-                        std::stable_sort(
-                            defensive_candidates.begin(), defensive_candidates.end(),
-                            [](const auto& left, const auto& right) {
-                                return left.first > right.first;
-                            });
-                        if (defensive_candidates.size() > kMaximumRootKingSafetyCandidates) {
-                            defensive_candidates.resize(kMaximumRootKingSafetyCandidates);
-                        }
-
-                        if (!defensive_candidates.empty()) {
-                            ++context.stats.king_safety_extensions;
-                            ++context.stats.root_selective_candidates;
-                            const SearchContext::RootVerification best_verification =
-                                context.selectively_research_root_move(
-                                    root, *best_metadata, kRootKingSafetySelectiveDepth);
-                            if (!context.aborted &&
-                                (best_verification.authoritative ||
-                                 best_verification.line_complete)) {
-                                int selected_score = best_verification.score;
-                                Move selected_move = best_metadata->move;
-                                PrincipalVariation selected_pv = best_verification.pv;
-                                bool selected_from_estimate = false;
-                                if (best_verification.authoritative) {
-                                    for (const auto& [unused_shallow_score, candidate] :
-                                         defensive_candidates) {
-                                        (void)unused_shallow_score;
-                                        if (context.aborted) {
-                                            break;
-                                        }
-                                        ++context.stats.root_selective_candidates;
-                                        const SearchContext::RootVerification verification =
-                                            context.selectively_research_root_move(
-                                                root, candidate, kRootKingSafetySelectiveDepth);
-                                        if (context.aborted) {
-                                            break;
-                                        }
-                                        if (!verification.authoritative) {
-                                            continue;
-                                        }
-                                        if (verification.score > selected_score ||
-                                            verification.score >= best_verification.score -
-                                                kRootKingSafetyTieMargin) {
-                                            selected_score = verification.score;
-                                            selected_move = candidate.move;
-                                            selected_pv = verification.pv;
-                                        }
-                                    }
-                                } else {
-                                    // With no proven incumbent score, do not
-                                    // let its estimate veto every safe escape.
-                                    // Choose only from completed lines and
-                                    // exclude an escape already proven lost.
-                                    bool found_escape_estimate = false;
-                                    int escape_estimate_score = -kInfinity;
-                                    for (const auto& [unused_shallow_score, candidate] :
-                                         defensive_candidates) {
-                                        (void)unused_shallow_score;
-                                        if (context.aborted) {
-                                            break;
-                                        }
-                                        ++context.stats.root_selective_candidates;
-                                        const SearchContext::RootVerification verification =
-                                            context.selectively_research_root_move(
-                                                root, candidate, kRootKingSafetySelectiveDepth);
-                                        if (context.aborted || !verification.line_complete ||
-                                            verification.proves_losing_mate()) {
-                                            continue;
-                                        }
-                                        if (!found_escape_estimate ||
-                                            verification.score > escape_estimate_score) {
-                                            found_escape_estimate = true;
-                                            escape_estimate_score = verification.score;
-                                            selected_score = verification.score;
-                                            selected_move = candidate.move;
-                                            selected_pv = verification.pv;
-                                        }
-                                    }
-                                    selected_from_estimate = found_escape_estimate;
-                                }
-                                bool nominal_score_usable = false;
-                                if (!context.aborted &&
-                                    (best_verification.authoritative || selected_from_estimate)) {
-                                    if (const auto nominal = nominal_root_verification(
-                                            selected_move, depth, selected_from_estimate);
-                                        nominal.has_value()) {
-                                        selected_score = nominal->score;
-                                        selected_pv = nominal->pv;
-                                        nominal_score_usable = nominal->authoritative ||
-                                            (selected_from_estimate && nominal->line_complete);
-                                        if (selected_from_estimate || !nominal->authoritative) {
-                                            root_authoritative = false;
-                                        }
-                                    }
-                                }
-                                if (nominal_score_usable && !context.aborted) {
-                                    if (selected_move != result.best_move ||
-                                        selected_score != result.score_cp) {
-                                        ++context.stats.root_selective_researches;
-                                    }
-                                    result.score_cp = selected_score;
-                                    result.mate = mate_from_score(selected_score);
-                                     result.best_move = selected_move;
-                                     pv = selected_pv;
-                                     result.pv = pv.length > 0 ? pv.to_vector() :
-                                         std::vector<Move>{selected_move};
-                                     score = selected_score;
-                                     bounded_fallback_result = false;
-                                 }
-                            }
-                        }
-                    }
-                }
 
                 const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - started);
