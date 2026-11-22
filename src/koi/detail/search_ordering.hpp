@@ -198,6 +198,8 @@ private:
 #undef KOI_PICKER_NOINLINE
     void advance_stage() noexcept;
     [[nodiscard]] const MoveMetadata* emit_tt();
+    [[nodiscard]] int resolved_capture_priority(std::size_t source_index,
+                                                std::uint64_t candidate) const;
 
     // Compact bitset whose words are deliberately not zeroed by construction.
     // std::bitset's default constructor always clears its storage, which

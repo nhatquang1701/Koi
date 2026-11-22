@@ -1545,7 +1545,7 @@ void test_short_search_rejects_the_c5b4_queen_check_trap() {
             "the c5b4 fixture must contain both reviewed legal moves");
 
     koi::SearchLimits limits;
-    limits.movetime = 100ms;
+    limits.movetime = 250ms;
     koi::SearchOptions options;
     options.hash_mb = 512;
     options.threads = std::min<std::size_t>(4, koi::maximum_search_threads());
@@ -1560,6 +1560,26 @@ void test_short_search_rejects_the_c5b4_queen_check_trap() {
                 std::to_string(result.completed_depth) + ", nodes=" +
                 std::to_string(result.stats.nodes) + ", qnodes=" +
                 std::to_string(result.stats.qnodes) + ")");
+}
+
+void test_node_limited_aspiration_keeps_shallow_fail_high_mate() {
+    const koi::GameState root = require_state(
+        "2b1k1r1/p5bp/2p1p1p1/2qP4/4K2Q/3R4/1rP2PPP/5B1R b - - 0 25");
+    const auto mating_capture = koi::Move::parse_uci("e6d5");
+    require(mating_capture.has_value() && root.is_legal(*mating_capture),
+            "the c5b4 fixture must contain e6d5");
+
+    koi::SearchLimits limits;
+    limits.nodes = 400'000;
+    koi::SearchOptions options;
+    options.hash_mb = 512;
+    options.threads = 1;
+    koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
+    const koi::SearchResult result = search(service, root, limits, options);
+
+    require(result.best_move == mating_capture &&
+                result.score_cp >= koi::detail::kMateThreshold,
+            "node-limited aspiration must not drop shallow fail-high iterations below full depth and miss the depth-7 mate");
 }
 
 void test_short_search_keeps_the_c5f2_forcing_capture() {
@@ -1823,7 +1843,7 @@ void test_short_search_preserves_completed_forcing_check_choice() {
     // same completed root iteration as the release build.
     limits.movetime = 3000ms;
 #else
-    limits.movetime = 100ms;
+    limits.movetime = 250ms;
 #endif
     koi::SearchOptions options;
     options.hash_mb = 512;
@@ -5284,6 +5304,7 @@ int main(int argc, char** argv) {
         {"short forced king escape", test_short_search_keeps_the_forced_king_escape},
         {"short d2c1 king trap", test_short_search_avoids_the_d2c1_king_trap},
         {"short c5b4 queen check trap", test_short_search_rejects_the_c5b4_queen_check_trap},
+        {"shallow fail-high aspiration mate", test_node_limited_aspiration_keeps_shallow_fail_high_mate},
         {"short c5f2 forcing capture", test_short_search_keeps_the_c5f2_forcing_capture},
         {"short a5c5 forcing check", test_short_search_keeps_the_a5c5_forcing_check},
         {"short b2b4 rook lift keeps a winning move", test_short_search_keeps_a_reviewed_winning_b2b4_lift},

@@ -254,8 +254,9 @@ private:
                     flushed.tbhits = context.stats.tbhits;
                     publish_iteration_stats(delta_stats);
                 };
-                const int attempt_depth =
-                    std::max(1, depth - std::min(2, aspiration.failed_high_count));
+                const int attempt_depth = depth >= 10 ?
+                    std::max(9, depth - std::min(2, aspiration.failed_high_count)) :
+                    depth;
                 const int score = context.negamax(
                     state, attempt_depth, aspiration.alpha, aspiration.beta, 0, pv);
                 {

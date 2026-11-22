@@ -530,7 +530,7 @@ unless another file is named.
 | Quiet history | Side-to-move and pawn-key indexed, 64×64 move table, clamped to ±`kMaximumHistoryScore` (16,384); initial bias -586 |
 | Capture history | 7×7×64×64 entries, initial -742, clamped to ±16,384 |
 | Low-ply history | Plies 0..4 (`kLowPlyHistoryPlies = 5`) for quiet ordering |
-| Correction history | Bounded correction across pawn structure (16,384), material signature (8,192), side-to-move king square (8,192), minor pieces (16,384), and major pieces (16,384); entry limit 192, total limit 192; applied only to static eval, never to TT scores |
+| Correction history | Bounded correction across pawn structure (16,384), material signature (8,192), side-to-move king square (8,192), minor pieces (16,384), major pieces (16,384), and 2-ply `(ply-2, ply-1)` move pairs (16,384, +1/8 layer on the 8-unit structural average); entry limit 192, total limit 192; applied only to static eval, never to TT scores |
 | Root move ordering | TT move, staged good captures/promotions, history-ranked quiets (checks, killers, proven counters), deferred losing captures, bad quiets; deterministic UCI-coordinate tie-break; previous completed best move is retained as a hint even after TT displacement |
 | Root safety heuristics | Bounded confirmation/verification passes for shallow depth-1/depth-2/depth-3/depth-5 roots, emergency king-escape and short-clock fallbacks; these can replace a completed move only through the documented candidate sets and margins |
 | Mate-distance pruning | `alpha = max(alpha, -100000 + ply)`, `beta = min(beta, 100000 - ply - 1)` after the extension decision |

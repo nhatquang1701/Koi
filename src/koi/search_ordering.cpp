@@ -867,6 +867,23 @@ const MoveMetadata* SearchMovePicker::emit_tt() {
     return nullptr;
 }
 
+int SearchMovePicker::resolved_capture_priority(
+    const std::size_t source_index, const std::uint64_t candidate) const {
+    if (!moves_[source_index].see_computed) {
+        // Deferring SEE during staging leaves `see == 0` and no bad-capture
+        // penalty; apply only that delta on emission so the score matches
+        // eager materialization bit for bit.
+        const int see = std::clamp(
+            static_cast<int>(emitted_metadata_.see_score),
+            -piece_value(PieceType::queen), piece_value(PieceType::queen));
+        const int bad_capture_penalty =
+            see < 0 && !emitted_metadata_.gives_check ? kBadCapturePenalty : 0;
+        return candidate_priority(candidate) + see * kSeeOrderingWeight -
+            bad_capture_penalty;
+    }
+    return ordering_.priority(state_, emitted_metadata_, std::nullopt, *history_context_);
+}
+
 const MoveMetadata* SearchMovePicker::next() {
     for (;;) {
         if (stage_ == Stage::done) {
@@ -933,21 +950,8 @@ const MoveMetadata* SearchMovePicker::next() {
                 const Candidate candidate = staged_[candidate_slot];
                 const std::size_t source_index = candidate_source_index(candidate);
                 emitted_metadata_ = materialize(source_index);
-                if (!moves_[source_index].see_computed) {
-                    // Same SEE delta as the good-capture stage: the staged
-                    // priority ranked this capture with see == 0 and no
-                    // bad-capture penalty.
-                    const int see = std::clamp(
-                        static_cast<int>(emitted_metadata_.see_score),
-                        -piece_value(PieceType::queen), piece_value(PieceType::queen));
-                    const int bad_capture_penalty =
-                        see < 0 && !emitted_metadata_.gives_check ? kBadCapturePenalty : 0;
-                    emitted_metadata_.ordering_score =
-                        candidate_priority(candidate) + see * kSeeOrderingWeight - bad_capture_penalty;
-                } else {
-                    emitted_metadata_.ordering_score = ordering_.priority(
-                        state_, emitted_metadata_, std::nullopt, *history_context_);
-                }
+                emitted_metadata_.ordering_score =
+                    resolved_capture_priority(source_index, candidate);
                 return &emitted_metadata_;
             }
             advance_stage();
@@ -987,22 +991,9 @@ const MoveMetadata* SearchMovePicker::next() {
                 }
                 continue;
             }
-            const bool materialization_can_alter_priority =
-                emitted_metadata_.is_capture();
-            if (materialization_can_alter_priority &&
-                !moves_[source_index].see_computed) {
-                const int see = std::clamp(
-                    static_cast<int>(emitted_metadata_.see_score),
-                    -piece_value(PieceType::queen), piece_value(PieceType::queen));
-                const int bad_capture_penalty =
-                    see < 0 && !emitted_metadata_.gives_check ? kBadCapturePenalty : 0;
-                emitted_metadata_.ordering_score =
-                    priority + see * kSeeOrderingWeight - bad_capture_penalty;
-            } else {
-                emitted_metadata_.ordering_score = materialization_can_alter_priority
-                    ? ordering_.priority(state_, emitted_metadata_, std::nullopt, *history_context_)
-                    : priority;
-            }
+            emitted_metadata_.ordering_score = emitted_metadata_.is_capture()
+                ? resolved_capture_priority(source_index, candidate)
+                : priority;
             return &emitted_metadata_;
         }
         advance_stage();

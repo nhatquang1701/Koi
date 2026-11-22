@@ -1068,13 +1068,17 @@ void SearchRunner::run_impl() {
         } cached_overdue_fallback;
         const auto resolve_overdue_fallback =
             [&](const MoveMetadataList& candidate_moves,
-                SearchStats* stats) -> std::optional<ShortFallbackChoice> {
+                SearchStats* stats,
+                const bool permit_overdue_shallow = true,
+                const bool reject_hanging_major_checks = true)
+                -> std::optional<ShortFallbackChoice> {
             if (cached_overdue_fallback.valid) {
                 return cached_overdue_fallback.choice;
             }
             auto fallback = short_search_fallback_move(
                 root, candidate_moves, *evaluator, evaluator_mutex_ptr, stats,
-                allow_deep_checked_fallback, &fallback_control, true, true);
+                allow_deep_checked_fallback, &fallback_control,
+                permit_overdue_shallow, reject_hanging_major_checks);
             if (!fallback_control.interrupted()) {
                 cached_overdue_fallback.valid = true;
                 cached_overdue_fallback.choice = fallback;
@@ -1246,9 +1250,8 @@ void SearchRunner::run_impl() {
                 ultra_short_nonchecked_fallback || ultra_short_nonchecked_forcing_root;
             if (short_tactical_fallback && !defer_nonchecking_short_fallback &&
                 !ultra_short_checked_fallback && !defer_expensive_short_fallback) {
-                if (const auto fallback = short_search_fallback_move(
-                        root, legal_moves, *evaluator, evaluator_mutex_ptr,
-                        &context.stats, allow_deep_checked_fallback, &fallback_control);
+                if (const auto fallback = resolve_overdue_fallback(
+                        legal_moves, &context.stats, false, true);
                     fallback.has_value()) {
                     result.best_move = fallback->move;
                     result.pv = {fallback->move};
@@ -1329,12 +1332,13 @@ void SearchRunner::run_impl() {
                                            result.best_move, 0);
                 }
 
-                const bool adjust_fail_high_depth = !limits.depth.has_value();
+                const bool adjust_fail_high_depth =
+                    !limits.depth.has_value() && depth >= 10;
                 bool root_authoritative = false;
                 int score = 0;
                 for (;;) {
                     const int attempt_depth = adjust_fail_high_depth ?
-                        std::max(1, depth - std::min(2, aspiration.failed_high_count)) :
+                        std::max(9, depth - std::min(2, aspiration.failed_high_count)) :
                         depth;
                     score = context.negamax(
                         root, attempt_depth, aspiration.alpha, aspiration.beta, 0, pv,
@@ -1586,9 +1590,6 @@ void SearchRunner::run_impl() {
                     root_authoritative};
                 run_shallow_root_confirmations(confirmation_state);
 
-
-
-
                 const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - started);
                 // Helpers run in parallel with the main thread, so the `info`
@@ -1740,9 +1741,8 @@ void SearchRunner::run_impl() {
                 ultra_short_nonchecked_fallback || ultra_short_nonchecked_forcing_root;
             if (short_tactical_fallback && !defer_nonchecking_short_fallback &&
                 !defer_expensive_short_fallback) {
-                if (const auto fallback = short_search_fallback_move(
-                        root, parallel_moves, *evaluator, evaluator_mutex_ptr,
-                        &root_context.stats, allow_deep_checked_fallback, &fallback_control);
+                if (const auto fallback = resolve_overdue_fallback(
+                        parallel_moves, &root_context.stats, false, true);
                     fallback.has_value()) {
                     result.best_move = fallback->move;
                     result.pv = {fallback->move};
@@ -1831,7 +1831,8 @@ void SearchRunner::run_impl() {
                 // interrupted first iteration must answer with the best-ordered
                 // move, never with the generation-order head, while already
                 // completed iterations keep their published move untouched.
-                if (result.completed_depth == 0 && !parallel_moves.empty()) {
+                if (result.completed_depth == 0 && !used_short_fallback &&
+                    !parallel_moves.empty()) {
                     result.best_move = parallel_moves.front().move;
                     result.pv = {*result.best_move};
                 }
