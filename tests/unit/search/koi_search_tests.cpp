@@ -3170,6 +3170,74 @@ void test_claimable_draw_root_retains_a_legal_best_move() {
             "a claimable draw root must preserve a legal best move instead of clearing it");
 }
 
+void test_interior_claimable_draw_returns_draw_score() {
+    koi::GameState pos_c2 = require_state("7k/8/8/8/8/8/5K2/R7 w - - 0 1");
+    for (const std::string_view uci : {"a1b1", "h8g8", "b1a1", "g8h8", "a1b1", "h8g8"}) {
+        const auto move = koi::Move::parse_uci(uci);
+        require(move.has_value() && pos_c2.make_move(*move),
+                "the interior-claimable fixture must build through legal moves");
+    }
+    require(!pos_c2.is_draw_by_rule() && pos_c2.repetition_count() == 2,
+            "Pos_C2 must be a twofold non-claimable root");
+
+    const auto walk_draw_move = koi::Move::parse_uci("b1a1");
+    const auto avoid_draw_move = koi::Move::parse_uci("b1b7");
+    const auto force_draw_reply = koi::Move::parse_uci("g8h8");
+    const auto lose_reply = koi::Move::parse_uci("g8f8");
+    require(walk_draw_move.has_value() && avoid_draw_move.has_value() &&
+                force_draw_reply.has_value() && lose_reply.has_value(),
+            "interior-claimable fixture moves must parse");
+
+    koi::GameState pos_d2 = pos_c2;
+    require(pos_d2.make_move(*walk_draw_move), "walk-into-draw move must apply");
+    koi::GameState pos_a3 = pos_d2;
+    require(pos_a3.make_move(*force_draw_reply) &&
+                pos_a3.draw_status() == koi::DrawStatus::claimable_threefold,
+            "Pos_A3 must be a claimable threefold repetition");
+
+    // 1. Direct interior negamax and qsearch must return draw_value (0) even
+    // when the parent window alpha is far above zero.
+    {
+        koi::test::MaterialEvaluator evaluator;
+        koi::SearchLimits limits;
+        limits.depth = 2;
+        koi::TimeManager time_manager(limits, pos_a3.side_to_move());
+        koi::TranspositionTable table(1);
+        std::atomic_bool stop_requested = false;
+        koi::detail::SearchContext context(evaluator, table, time_manager, stop_requested);
+        context.begin_iteration(nullptr);
+        koi::detail::PrincipalVariation pv;
+        const int negamax_score = context.negamax(pos_a3, 1, 200, 600, 1, pv);
+        const int qsearch_score = context.quiescence(pos_a3, 200, 600, 1);
+        require(negamax_score == 0 && qsearch_score == 0,
+                "interior ply > 0 claimable threefold draw must score draw_value instead of bypassing via alpha > 0");
+    }
+
+    // 2. A winning side (+500) must avoid playing b1a1 into 1...g8h8 draw.
+    {
+        koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
+        koi::SearchLimits limits;
+        limits.depth = 3;
+        limits.search_moves_specified = true;
+        limits.search_moves = {*walk_draw_move, *avoid_draw_move};
+        const koi::SearchResult result = search(service, pos_c2, limits);
+        require(result.best_move == avoid_draw_move && result.score_cp == 500,
+                "a winning side must avoid allowing a 1-move claimable threefold draw");
+    }
+
+    // 3. A losing side (-500) must recognize g8h8 claims the 0-cp draw.
+    {
+        koi::SearchService service(std::make_shared<koi::test::MaterialEvaluator>());
+        koi::SearchLimits limits;
+        limits.depth = 2;
+        limits.search_moves_specified = true;
+        limits.search_moves = {*lose_reply, *force_draw_reply};
+        const koi::SearchResult result = search(service, pos_d2, limits);
+        require(result.best_move == force_draw_reply && result.score_cp == 0,
+                "a losing side must recognize a claimable threefold draw scores zero");
+    }
+}
+
 void test_fixed_depth_search_is_deterministic_and_legal() {
     auto evaluator = std::make_shared<koi::test::MaterialEvaluator>();
     koi::SearchService service(evaluator);
@@ -5348,6 +5416,7 @@ int main(int argc, char** argv) {
         {"evaluator cross-handle safety", test_non_concurrent_evaluators_are_serialized_across_simultaneous_handles},
         {"terminal search", test_terminal_roots_return_mate_or_stalemate_scores},
         {"claimable draw root fallback", test_claimable_draw_root_retains_a_legal_best_move},
+        {"interior claimable draw score", test_interior_claimable_draw_returns_draw_score},
         {"deterministic legal search", test_fixed_depth_search_is_deterministic_and_legal},
         {"search result identity", test_search_result_carries_root_identity_and_completion_state},
         {"search result legal PV", test_search_result_carries_a_legal_pv_for_completion_validation},

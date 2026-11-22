@@ -250,7 +250,7 @@ automatic results:
 | Status | Condition | Search/terminal treatment |
 | --- | --- | --- |
 | `none` | No draw rule applies | Normal play |
-| `claimable_threefold` | Same position occurred at least 3 times in the reversible history, and the position is not checkmate | The side to move may claim; the engine still returns a legal move. Search treats a claim as an available option, not an automatic terminal. |
+| `claimable_threefold` | Same position occurred at least 3 times in the reversible history, and the position is not checkmate | The side to move may claim; the engine still returns a legal move. At root (`ply == 0`) search treats a claim as an available option; at interior nodes (`ply > 0`) reaching a claimable draw returns `draw_value` once checkmate is excluded. |
 | `claimable_fifty_move` | Halfmove clock ≥ 100, not checkmate, and not under a suppressed null-move history | Claimable, same as above |
 | `automatic_fivefold` | Same position occurred at least 5 times, not checkmate | Automatic terminal draw |
 | `automatic_seventy_five_move` | Halfmove clock ≥ 150, not checkmate | Automatic terminal draw |
@@ -272,11 +272,12 @@ Details (`src/koi/position.cpp`):
   bishops) and exactly one documented 14-piece locked pawn wall, with a legal
   en-passant capture as an exception.
 - Claimable draws are never promoted to terminal by `is_terminal()`; automatic
-  draws and dead positions are. This is a rules-helper distinction, not a search
-  gap: `SearchContext` explicitly detects a claimable draw at a node, seeds the
-  node score with the draw/contempt value, and may only improve on it with a
-  legal move (`claimable_draw` in `src/koi/detail/search_context.cpp`). Claimable
-  draws therefore do not burn a full search past the claim.
+  draws and dead positions are. At the root (`ply == 0`), `SearchContext` seeds
+  the node score with `draw_value` and may improve on it with a legal move; at
+  interior nodes (`ply > 0`), reaching a claimable draw returns `draw_value`
+  immediately once checkmate is ruled out (`claimable_draw` in
+  `src/koi/detail/search_context.cpp`), preventing search from walking into or
+  missing opponent-claimed threefold and fifty-move draws.
 - Checkmate is evaluated with legal generation and takes precedence over draw
   clocks.
 

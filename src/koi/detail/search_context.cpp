@@ -546,7 +546,8 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
                 return terminal_score(state, 0, ply);
             }
             const DrawStatus draw_status = state.draw_status();
-            if (is_forced_draw_status(draw_status)) {
+            if (is_forced_draw_status(draw_status) ||
+                (ply > 0 && is_claimable_draw_status(draw_status))) {
                 return draw_value(state);
             }
             // There are legal moves, but the fixed stack boundary prevents
@@ -612,7 +613,8 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
                 return terminal_score(state, 0, ply);
             }
             const DrawStatus draw_status = state.draw_status();
-            if (is_forced_draw_status(draw_status)) {
+            if (is_forced_draw_status(draw_status) ||
+                (ply > 0 && is_claimable_draw_status(draw_status))) {
                 return draw_value(state);
             }
             // A checked qsearch node with legal evasions has no stand-pat
@@ -636,10 +638,11 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // can be returned without generating the tactical frontier. Checked
         // positions still need legal evasions first so checkmate keeps
         // precedence over automatic draw rules.
-        if (!checked && is_forced_draw_status(draw_status)) {
+        const bool claimable_draw = is_claimable_draw_status(draw_status);
+        if (!checked &&
+            (is_forced_draw_status(draw_status) || (ply > 0 && claimable_draw))) {
             return draw_value(state);
         }
-        const bool claimable_draw = is_claimable_draw_status(draw_status);
 
         // A depth-valid TT entry can short-circuit the tactical frontier.
         // Check terminal/rule state before accepting it, and keep checked,
@@ -742,7 +745,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             }
             return score;
         }
-        if (is_forced_draw_status(draw_status)) {
+        if (is_forced_draw_status(draw_status) || (ply > 0 && claimable_draw)) {
             return draw_value(state);
         }
 
@@ -1236,21 +1239,26 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 has_legal_moves_verified = state.has_legal_move();
                 return has_legal_moves_verified;
             };
-            if (!checked && is_forced_draw_status(draw_status)) {
+            if (!checked &&
+                (is_forced_draw_status(draw_status) || claimable_draw)) {
                 // Without check, even a zero-move stalemate returns draw_value,
-                // so a forced draw needs neither has_legal_move() nor movegen.
+                // so a forced or claimable draw at ply > 0 needs neither
+                // has_legal_move() nor movegen.
                 return draw_value(state);
             }
             if ((checked || is_forced_draw_status(draw_status) || claimable_draw) &&
                 !ensure_has_legal_move()) {
                 return terminal_score(state, 0, ply);
             }
-            if (is_forced_draw_status(draw_status)) {
+            if (is_forced_draw_status(draw_status) || claimable_draw) {
                 return draw_value(state);
             }
         }
         if (claimable_draw) {
-            // A claim is an available floor, not a forced terminal result.
+            if (ply > 0) {
+                return draw_value(state);
+            }
+            // At root (ply == 0), a claim is an available floor, not a forced terminal result.
             // Raise the lower edge before node-type selection so a null
             // window with beta <= 0 can use the claim as a valid cutoff.
             alpha = std::max(alpha, draw_value(state));
