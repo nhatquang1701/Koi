@@ -373,7 +373,8 @@ Feature geometry (`src/koi/evaluation_features.hpp`):
 Inference:
 
 - First layer is an int16 weight matrix over sparse binary inputs, accumulated
-  into int32 sums. Clipped ReLU clamps to `[0, 127]`.
+  into int32 sums (or `int16` incremental accumulator sums in v4 when safe
+  range holds). Clipped ReLU clamps to `[0, 127]`.
 - v4 forms pair products from the two halves of the hidden activation and a
   linear head selected by piece-count bucket.
   `output_bucket_for_pieces()` is `min(7, (32 - min(32, pieces)) / 4)`.
@@ -405,11 +406,12 @@ SIMD paths (`src/koi/nnue.cpp`):
 | Path | Availability | Scope |
 | --- | --- | --- |
 | AVX2 | x86-64 builds compiled with AVX2 **and** runtime `cpu_supports_avx2()` | Sparse/dense accumulator, v4 pair products and bucket dot product, v5 cross pair products and L1 stage |
-| NEON | arm64 builds with `__ARM_NEON` | v4 CReLU clamp/pack only; arithmetic is identical to scalar |
+| NEON | arm64 builds with `__ARM_NEON` | v4 fused `int16` accumulator deltas, CReLU clamp/pack, and hidden-layer inference; scalar fallback for non-v4 formats |
 | Scalar | Always compiled | Reference path and fallback; every vector path must agree exactly |
 
-The AVX2 code is only compiled on x86-64; macOS arm64 uses the scalar network
-path with the NEON clamp. An AVX2 result that would overflow is rejected and
+The AVX2 code is only compiled on x86-64; arm64 builds use NEON kernels for v4
+incremental accumulator deltas, CReLU clamp/pack, and hidden-layer inference,
+falling back to the scalar path for non-v4 formats. An AVX2 result that would overflow is rejected and
 recomputed scalar in the bucket-dot path so the vector path stays bit-identical.
 
 The experimental GPU NNUE path was completely removed on 2026-11-02: no `GpuNnue`
@@ -613,8 +615,11 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      hard-safety ceiling, so an online bot's network round trip is paid for
      instead of flagging. `movetime` searches never learn or use it, and
      `ucinewgame` resets it.
-   - Horizon: `movestogo` when supplied, otherwise **25** with a positive
-     increment and **50** for sudden death.
+   - Horizon: `movestogo` when supplied, otherwise phase-adjusted from base
+     defaults of **25** with a positive increment (`22` when `phase >= 14` and
+     `fullmove` in `8..32`; `28` when `phase <= 6`) and **50** for sudden
+     death (`44` when `phase >= 14` and `fullmove` in `8..32`; `42` when
+     `phase <= 6` and `fullmove >= 35`).
    - Reserve: `min(750 ms, max(50 ms, 3% of remaining, 2 × overhead))`, then
      `min(reserve, remaining)`.
    - Usable: `remaining - reserve`.
@@ -688,7 +693,7 @@ the search but cannot push it past the cap.
 `uci` writes `id name Koi <version>` (the CMake `project()` version pin),
 `id author Koi team`, an `info string build <commit>` line carrying the
 checkout commit recorded at configure time, then every advertised option in the
-fixed `kUciOptions` order, then `uciok`
+fixed `kUciOptions` order (`src/koi/detail/uci_option_table.hpp`), then `uciok`
 (`src/koi/uci_controller.cpp`). `Debug` and `DebugFile` are settable but
 intentionally not advertised, so 27 of the 29 entries are visible. There is no
 `Speed` option: time allocation always uses the neutral 100 % factor.

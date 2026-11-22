@@ -199,9 +199,9 @@ struct ExchangeLegalityState {
                 (enemy_pieces[static_cast<std::size_t>(PieceType::rook)] | enemy_queens) &
                 alive_enemy_mask;
             diag_candidates =
-                enemy_bq != 0 ? (bishop_attacks(own_king_sq, 0) & enemy_bq) : 0;
+                enemy_bq != 0 ? (bishop_pseudo_attacks(own_king_sq) & enemy_bq) : 0;
             orth_candidates =
-                enemy_rq != 0 ? (rook_attacks(own_king_sq, 0) & enemy_rq) : 0;
+                enemy_rq != 0 ? (rook_pseudo_attacks(own_king_sq) & enemy_rq) : 0;
             slider_candidates = diag_candidates | orth_candidates;
             if (slider_candidates != 0) {
                 const std::uint64_t base_occ = occupied | target_bit;

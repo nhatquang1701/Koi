@@ -17,8 +17,9 @@
 
 #include "koi/cpu_features.hpp"
 
-// The AVX2 kernel exists only on x86-64; on arm64 (and any other target) the
-// scalar path is compiled in and used for every inference request.
+// The AVX2 kernel exists only on x86-64; on arm64 (Apple Silicon, ARM Linux)
+// NEON kernels handle v4 incremental deltas and hidden-layer inference, with
+// scalar fallback on other targets or non-v4 formats.
 #if (defined(_M_AVX2) || defined(__AVX2__)) && \
     (defined(_M_X64) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__))
 #include <immintrin.h>
@@ -27,8 +28,9 @@
 #define KOI_NNUE_COMPILED_AVX2 0
 #endif
 
-// NEON CReLU clamp for arm64 (Apple Silicon, ARM Linux).  The arithmetic is
-// identical to the scalar loop; only the packing is vectorised.
+// NEON kernels for arm64 (Apple Silicon, ARM Linux): v4 fused int16 accumulator
+// deltas, CReLU clamp/pack, and hidden-layer inference (scalar fallback
+// otherwise).
 #if (defined(__ARM_NEON) || defined(__ARM_NEON__)) && (defined(__aarch64__) || defined(__arm__))
 #include <arm_neon.h>
 #define KOI_NNUE_COMPILED_NEON 1
