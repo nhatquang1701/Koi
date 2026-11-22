@@ -1333,12 +1333,12 @@ void SearchRunner::run_impl() {
                 }
 
                 const bool adjust_fail_high_depth =
-                    !limits.depth.has_value() && depth >= 10;
+                    !limits.depth.has_value() && depth >= 8;
                 bool root_authoritative = false;
                 int score = 0;
                 for (;;) {
                     const int attempt_depth = adjust_fail_high_depth ?
-                        std::max(9, depth - std::min(2, aspiration.failed_high_count)) :
+                        std::max(7, depth - std::min(2, aspiration.failed_high_count)) :
                         depth;
                     score = context.negamax(
                         root, attempt_depth, aspiration.alpha, aspiration.beta, 0, pv,
