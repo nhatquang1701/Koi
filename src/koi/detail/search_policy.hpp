@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 #include "koi/detail/search_constants.hpp"
 
@@ -50,6 +51,15 @@ enum class QuiescenceCapturePrune {
     none,
     static_exchange,
     delta,
+};
+
+struct AspirationState {
+    int alpha = -kInfinity;
+    int beta = kInfinity;
+    int delta = kAspirationBaseDelta;
+    int failed_high_count = 0;
+    int retries = 0;
+    bool active = false;
 };
 
 // SearchPolicy centralizes scalar pruning, reduction, and extension gates.
@@ -301,6 +311,69 @@ public:
         }
         return best + captured_piece_value + 100 < alpha ?
             QuiescenceCapturePrune::delta : QuiescenceCapturePrune::none;
+    }
+
+    [[nodiscard]] static constexpr std::int64_t next_aspiration_mean_squared_score(
+        const bool has_previous_score, const std::int64_t current_mean_squared,
+        const int score_cp) noexcept {
+        const std::int64_t squared =
+            static_cast<std::int64_t>(score_cp) * static_cast<std::int64_t>(score_cp);
+        return has_previous_score ? (current_mean_squared + squared) / 2 : squared;
+    }
+
+    [[nodiscard]] static constexpr AspirationState begin_aspiration(
+        const int depth, const bool has_previous_score, const int previous_score,
+        const std::int64_t mean_squared_score, const int extra_delta = 0) noexcept {
+        if (depth < kAspirationMinimumDepth || !has_previous_score) {
+            return {};
+        }
+        const int abs_score = previous_score < 0 ? -previous_score : previous_score;
+        if (abs_score >= kMateThreshold - 1'000) {
+            return {};
+        }
+        const std::int64_t clamped_sq = mean_squared_score > 0 ? mean_squared_score : 0;
+        const int variance_bonus = static_cast<int>(
+            std::min<std::int64_t>(kAspirationMaximumDynamicExtra, clamped_sq / 2500));
+        const int delta = kAspirationBaseDelta + variance_bonus + std::max(0, extra_delta);
+        return AspirationState{
+            std::max(-kInfinity, previous_score - delta),
+            std::min(kInfinity, previous_score + delta),
+            delta,
+            0,
+            0,
+            true,
+        };
+    }
+
+    [[nodiscard]] static constexpr bool step_aspiration(
+        AspirationState& state, const bool failed_low, const bool failed_high,
+        const int score, const bool has_scalar_score) noexcept {
+        if (!state.active || (!failed_low && !failed_high)) {
+            return false;
+        }
+        if (state.alpha <= -kInfinity && state.beta >= kInfinity) {
+            return false;
+        }
+        ++state.retries;
+        if (state.retries > 5 || state.delta >= kAspirationMaxDeltaBeforeFullWindow) {
+            state.alpha = -kInfinity;
+            state.beta = kInfinity;
+            state.failed_high_count = 0;
+            return true;
+        }
+        if (failed_low) {
+            state.beta = (state.alpha + state.beta) / 2;
+            const int anchor = has_scalar_score ? std::min(state.alpha, score) : state.alpha;
+            state.alpha = std::max(-kInfinity, anchor - state.delta);
+            state.failed_high_count = 0;
+        }
+        if (failed_high) {
+            const int anchor = has_scalar_score ? std::max(state.beta, score) : state.beta;
+            state.beta = std::min(kInfinity, anchor + state.delta);
+            ++state.failed_high_count;
+        }
+        state.delta = std::min(kInfinity / 4, state.delta + state.delta / 3 + 4);
+        return true;
     }
 };
 

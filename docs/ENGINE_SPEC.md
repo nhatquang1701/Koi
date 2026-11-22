@@ -459,11 +459,14 @@ The serial loop:
 1. Starts at depth 1 and increments to `min(64, limits.depth)`; infinite and
    ponder searches are unbounded. A ponder search with a depth limit ignores
    that limit for the ponder phase and deepens until stop/ponderhit.
-2. Seeds an aspiration window around the previous proven score:
-   `window = 50 + min(32, 2 * depth)`. It widens a failed side up to three times
-   (`window * 2 + 16`, capped at `kInfinity / 4`), then falls back to a full
-   `[-inf, +inf]` search. A selective root iteration does not seed the next
-   window (`previous_score` is reset).
+2. From depth `kAspirationMinimumDepth = 4` onward, seeds a dynamic aspiration
+   window around the previous completed non-fallback search score:
+   `delta = kAspirationBaseDelta (15) + min(64, mean_squared_score / 2500)`.
+   On a fail-low (`score <= alpha`), it shrinks `beta = (alpha + beta) / 2`
+   and widens `alpha` downward; on a fail-high (`score >= beta`), it widens
+   `beta` upward (and reduces search depth by `min(2, failed_high_count)` on
+   non-fixed-depth searches) while growing `delta += delta / 3 + 4`, falling
+   back to `[-inf, +inf]` after 5 retries or `delta >= 500`.
 3. Calls `SearchContext::negamax` with the root move list, full check-extension
    budget, no excluded move, and the root-authority output flag.
 4. Publishes only a complete root result: every root move has a recorded score
@@ -561,7 +564,7 @@ unless another file is named.
 | `kNegativeContinuationHistoryBase` | 4,136 | same |
 | `kNullMoveVerificationMinimumDepth` | 16 | same |
 | `kTablebaseInteriorWinScore` / `LossScore` | ±90,000 | same |
-| `kAspirationWindow` | 50 (+ min(32, 2·depth)) | same / `detail/search_runner.cpp` |
+| `kAspirationWindow` / `kAspirationBaseDelta` | 50 (MultiPV) / 15 (+ min(64, mean_sq / 2500) from depth 4) | same / `detail/search_runner.cpp` |
 | `kRootSelectiveDepth` / `Margin` / `Improvement` | 3 / 20 / 15 | `detail/search_runner.cpp` |
 | `kRootShallowConfirmationDepth` / `Margin` / `ForcingMargin` | 2 / 32 / 200 | `detail/search_runner.cpp` |
 | `kRootKingSafetySelectiveDepth` / `TieMargin` | 5 / 50 | `detail/search_runner.cpp` |

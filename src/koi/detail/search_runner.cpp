@@ -548,6 +548,7 @@ void SearchRunner::run_impl() {
                 maximum_depth = kMaximumSearchDepth;
             }
             std::optional<int> previous_score;
+            std::int64_t aspiration_mean_squared_score = 0;
             std::chrono::milliseconds previous_iteration_elapsed{1};
             std::chrono::milliseconds previous_report_elapsed{0};
             std::uint64_t previous_report_main_visited = 0;
@@ -585,59 +586,46 @@ void SearchRunner::run_impl() {
                 const std::vector<Move> previous_pv = result.pv;
                 const bool had_completed_iteration = result.completed_depth > 0;
                 context.root_move_hint = had_completed_iteration ? result.best_move : std::nullopt;
-                int alpha = -kInfinity;
-                int beta = kInfinity;
                 bool aspiration_researched = false;
-                int aspiration_window = kAspirationWindow + std::min(32, depth * 2);
-                if (previous_score.has_value()) {
-                    alpha = std::max(-kInfinity, *previous_score - aspiration_window);
-                    beta = std::min(kInfinity, *previous_score + aspiration_window);
-                    if (result.best_move.has_value()) {
-                        // Retain the previous principal move explicitly
-                        // even when the TT entry was displaced by a
-                        // shallow verification or a hash resize.
-                        context.ordering.order(root, legal_moves,
-                                               result.best_move, 0);
-                    }
+                AspirationState aspiration = SearchPolicy::begin_aspiration(
+                    depth, previous_score.has_value(),
+                    previous_score.value_or(0), aspiration_mean_squared_score);
+                if (result.best_move.has_value()) {
+                    // Retain the previous principal move explicitly even
+                    // when the TT entry was displaced by a shallow
+                    // verification or a hash resize.
+                    context.ordering.order(root, legal_moves,
+                                           result.best_move, 0);
                 }
 
+                const bool adjust_fail_high_depth = !limits.depth.has_value();
                 bool root_authoritative = false;
-                int score = context.negamax(
-                    root, depth, alpha, beta, 0, pv, std::nullopt, true,
-                    kMaximumCheckExtensionsPerPath, Move::no_move(), nullptr,
-                    nullptr, &root_authoritative);
-                if (!context.aborted && previous_score.has_value()) {
-                    // Widen the failed side progressively. This preserves
-                    // the useful narrow window when the iteration is
-                    // stable, while avoiding repeated full-width searches
-                    // after a tactical score jump.
-                    for (int retry = 0; retry < 3 &&
-                         (score <= alpha || score >= beta) && !context.aborted; ++retry) {
-                        ++context.stats.aspiration_researches;
-                        aspiration_researched = true;
-                        aspiration_window = std::min(kInfinity / 4,
-                                                    aspiration_window * 2 + 16);
-                        if (score <= alpha) {
-                            alpha = std::max(-kInfinity, alpha - aspiration_window);
-                        }
-                        if (score >= beta) {
-                            beta = std::min(kInfinity, beta + aspiration_window);
-                        }
-                        pv = {};
-                        score = context.negamax(
-                            root, depth, alpha, beta, 0, pv, std::nullopt, true,
-                            kMaximumCheckExtensionsPerPath, Move::no_move(), nullptr,
-                            nullptr, &root_authoritative);
+                int score = 0;
+                for (;;) {
+                    const int attempt_depth = adjust_fail_high_depth ?
+                        std::max(1, depth - std::min(2, aspiration.failed_high_count)) :
+                        depth;
+                    score = context.negamax(
+                        root, attempt_depth, aspiration.alpha, aspiration.beta, 0, pv,
+                        std::nullopt, true, kMaximumCheckExtensionsPerPath,
+                        Move::no_move(), nullptr, nullptr, &root_authoritative);
+                    if (context.aborted) {
+                        break;
                     }
-                    if (!context.aborted && (score <= alpha || score >= beta)) {
-                        ++context.stats.aspiration_researches;
-                        aspiration_researched = true;
-                        pv = {};
-                        score = context.negamax(
-                            root, depth, -kInfinity, kInfinity, 0, pv, std::nullopt, true,
-                            kMaximumCheckExtensionsPerPath, Move::no_move(), nullptr,
-                            nullptr, &root_authoritative);
+                    const bool failed_low = aspiration.active &&
+                        score <= aspiration.alpha && aspiration.alpha > -kInfinity;
+                    const bool failed_high = aspiration.active &&
+                        score >= aspiration.beta && aspiration.beta < kInfinity;
+                    if (!SearchPolicy::step_aspiration(
+                            aspiration, failed_low, failed_high, score, true)) {
+                        break;
                     }
+                    aspiration_researched = true;
+                    ++context.stats.aspiration_researches;
+                    if (failed_high && pv.length > 0) {
+                        context.root_move_hint = pv.moves[0];
+                    }
+                    pv = {};
                 }
                 const bool helper_failed = lazy_pool != nullptr && lazy_pool->failed();
                 if (context.aborted || helper_failed) {
@@ -1765,17 +1753,20 @@ void SearchRunner::run_impl() {
                     iteration_main_visited,
                     best_move_iteration_nodes});
                 result.timing = time_manager.diagnostics();
-                // Keep a bounded safety score visible in the result, but
-                // anchor the next aspiration window to the full-width
-                // search score when that correction is still active.
-                if (root_authoritative) {
+                // Keep aspiration centered on the completed search evaluation
+                // across selective depths as well as authoritative ones; reset
+                // only when forced-draw, mate, or static fallback overrides it.
+                if (!bounded_fallback_result && !root_is_forced_draw &&
+                    std::abs(iteration_observation_score) < (kMateThreshold - 1'000)) {
+                    aspiration_mean_squared_score =
+                        SearchPolicy::next_aspiration_mean_squared_score(
+                            previous_score.has_value(),
+                            aspiration_mean_squared_score,
+                            iteration_observation_score);
                     previous_score = iteration_observation_score;
                 } else {
-                    // A complete selective iteration is useful to the UCI
-                    // caller, but its score is not a safe aspiration
-                    // center. Force the next iteration to establish a
-                    // fresh full-window baseline.
                     previous_score.reset();
+                    aspiration_mean_squared_score = 0;
                 }
                 previous_iteration_elapsed = elapsed - previous_report_elapsed;
                 previous_report_elapsed = elapsed;
@@ -1882,6 +1873,7 @@ void SearchRunner::run_impl() {
                 maximum_depth = kMaximumSearchDepth;
             }
             std::optional<int> previous_score;
+            std::int64_t aspiration_mean_squared_score = 0;
             std::chrono::milliseconds previous_iteration_elapsed{1};
             std::chrono::milliseconds previous_report_elapsed{0};
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
@@ -2012,16 +2004,12 @@ void SearchRunner::run_impl() {
                 SearchStats iteration_stats;
                 bool aborted = false;
                 bool aspiration_researched = false;
-                int window_alpha = -kInfinity;
-                int window_beta = kInfinity;
-                int aspiration_window = kAspirationWindow + std::min(32, depth * 2);
-                const bool use_aspiration = previous_score.has_value() && !multi_pv;
-                if (use_aspiration) {
-                    window_alpha = std::max(-kInfinity,
-                                            *previous_score - aspiration_window);
-                    window_beta = std::min(kInfinity,
-                                           *previous_score + aspiration_window);
-                }
+                AspirationState aspiration = !multi_pv ?
+                    SearchPolicy::begin_aspiration(
+                        depth, previous_score.has_value(),
+                        previous_score.value_or(0), aspiration_mean_squared_score) :
+                    AspirationState{};
+                const bool use_aspiration = aspiration.active;
                 // Keep the two-worker fixed-depth path for non-checked
                 // roots on shared root PVS so it benefits from the live
                 // alpha bound.  At four workers,
@@ -2038,7 +2026,6 @@ void SearchRunner::run_impl() {
                 // stable root ranking is applied.
                 const bool use_root_pvs = !multi_pv && !root.in_check() &&
                     (!limits.depth.has_value() || worker_count < 4);
-                int aspiration_retry_count = 0;
                 for (;;) {
                     SearchStats attempt_stats;
                     bool attempt_aborted = false;
@@ -2062,7 +2049,7 @@ void SearchRunner::run_impl() {
                     }
                     pool.run(root, parallel_moves, depth, root_check_extension,
                              stable_root_indices, lines, use_root_pvs, root_static_eval,
-                             window_alpha, window_beta, attempt_stats, attempt_aborted,
+                             aspiration.alpha, aspiration.beta, attempt_stats, attempt_aborted,
                              window_failed_low, window_failed_high,
                              move_previous_scores, move_has_previous,
                              options.multi_pv > 1);
@@ -2071,31 +2058,13 @@ void SearchRunner::run_impl() {
                         aborted = true;
                         break;
                     }
-                    if (!use_aspiration || (!window_failed_low && !window_failed_high)) {
+                    if (!use_aspiration ||
+                        !SearchPolicy::step_aspiration(
+                            aspiration, window_failed_low, window_failed_high, 0, false)) {
                         break;
                     }
-
                     aspiration_researched = true;
                     ++iteration_stats.aspiration_researches;
-                    ++aspiration_retry_count;
-                    if (aspiration_retry_count > 3) {
-                        // A pathological score swing gets one final
-                        // full-window search so no inexact aspiration line
-                        // can become the completed root result.
-                        window_alpha = -kInfinity;
-                        window_beta = kInfinity;
-                        continue;
-                    }
-                    aspiration_window = std::min(
-                        kInfinity / 4, aspiration_window * 2 + 16);
-                    if (window_failed_low) {
-                        window_alpha = std::max(-kInfinity,
-                                                window_alpha - aspiration_window);
-                    }
-                    if (window_failed_high) {
-                        window_beta = std::min(kInfinity,
-                                               window_beta + aspiration_window);
-                    }
                 }
                 if (aborted) {
                     if (result.completed_depth == 0 && !used_short_fallback &&
@@ -2713,13 +2682,17 @@ void SearchRunner::run_impl() {
                     aspiration_researched,
                     visited});
                 result.timing = time_manager.diagnostics();
-                if (authoritative_root_iteration) {
+                if (!bounded_fallback_result && !root_is_forced_draw &&
+                    std::abs(iteration_observation_score) < (kMateThreshold - 1'000)) {
+                    aspiration_mean_squared_score =
+                        SearchPolicy::next_aspiration_mean_squared_score(
+                            previous_score.has_value(),
+                            aspiration_mean_squared_score,
+                            iteration_observation_score);
                     previous_score = iteration_observation_score;
                 } else {
-                    // A complete selective root pass is a valid published
-                    // iteration, but its score is not a safe aspiration
-                    // center. Force a fresh full-window baseline next.
                     previous_score.reset();
+                    aspiration_mean_squared_score = 0;
                 }
                 previous_iteration_elapsed = iteration_elapsed;
                 previous_report_elapsed = elapsed;

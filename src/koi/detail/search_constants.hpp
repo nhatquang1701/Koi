@@ -10,8 +10,13 @@ inline constexpr int kInfinity = 1'000'000;
 inline constexpr int kMateScore = 100'000;
 inline constexpr int kMateThreshold = 99'000;
 inline constexpr int kMaximumSearchDepth = 64;
-// Initial aspiration half-window in centipawns.
+// Initial aspiration half-window in centipawns (retained for MultiPV per-move
+// windows), and dynamic single-PV aspiration parameters.
 inline constexpr int kAspirationWindow = 50;
+inline constexpr int kAspirationMinimumDepth = 4;
+inline constexpr int kAspirationBaseDelta = 15;
+inline constexpr int kAspirationMaximumDynamicExtra = 64;
+inline constexpr int kAspirationMaxDeltaBeforeFullWindow = 500;
 // Shared option bounds: the UCI catalog and the service-level option
 // normalizer must clamp to exactly the same values.
 inline constexpr std::size_t kMinimumMultiPv = 1;

@@ -209,6 +209,35 @@ void test_ordering_tables_own_mutation_and_reset() {
             "clearing ordering tables must remove adaptive state");
 }
 
+void test_dynamic_aspiration_policy_scales_and_widens_cleanly() {
+    require(!koi::detail::SearchPolicy::begin_aspiration(3, true, 25, 625).active,
+            "shallow iterations below depth 4 must use the full search window");
+    require(!koi::detail::SearchPolicy::begin_aspiration(8, true, koi::detail::kMateScore - 10, 0).active,
+            "mate-band evaluations must keep full search windows");
+
+    const std::int64_t quiet_sq =
+        koi::detail::SearchPolicy::next_aspiration_mean_squared_score(false, 0, 20);
+    auto low_state = koi::detail::SearchPolicy::begin_aspiration(6, true, 20, quiet_sq);
+    require(low_state.active &&
+                low_state.alpha == 20 - koi::detail::kAspirationBaseDelta &&
+                low_state.beta == 20 + koi::detail::kAspirationBaseDelta,
+            "balanced evaluations must open with a tight initial aspiration window");
+
+    const int orig_alpha = low_state.alpha;
+    const int orig_beta = low_state.beta;
+    require(koi::detail::SearchPolicy::step_aspiration(low_state, true, false, orig_alpha - 5, true),
+            "a fail-low must schedule an aspiration retry");
+    require(low_state.beta == (orig_alpha + orig_beta) / 2 &&
+                low_state.alpha < orig_alpha - 5 && low_state.failed_high_count == 0,
+            "fail-low recovery must halve beta toward alpha and widen downward from the score");
+
+    auto high_state = koi::detail::SearchPolicy::begin_aspiration(8, true, 50, 0);
+    const int prev_beta = high_state.beta;
+    require(koi::detail::SearchPolicy::step_aspiration(high_state, false, true, prev_beta + 10, true) &&
+                high_state.beta > prev_beta + 10 && high_state.failed_high_count == 1,
+            "fail-high recovery must widen beta upward and record fail-high depth count");
+}
+
 void test_selective_root_mate_estimate_is_not_a_proven_loss() {
     koi::detail::SearchContext::RootVerification verification;
     verification.score = -99'998;
@@ -237,6 +266,7 @@ int main(int argc, char** argv) {
         {"quiescence capture policy", test_quiescence_capture_policy_classifies_see_and_delta_prunes},
         {"ordering table ownership", test_ordering_tables_own_mutation_and_reset},
         {"root verification mate provenance", test_selective_root_mate_estimate_is_not_a_proven_loss},
+        {"dynamic aspiration policy", test_dynamic_aspiration_policy_scales_and_widens_cleanly},
     };
 
     return koi::test::run_tests(tests, argc, argv);

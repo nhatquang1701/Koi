@@ -192,6 +192,7 @@ private:
         const std::uint64_t root_tt_key = detail::search_transposition_key(state);
 
         std::optional<int> previous_score;
+        std::int64_t mean_squared_score = 0;
         std::optional<Move> previous_best_move;
         int last_completed_depth = 0;
         int depth = 1;
@@ -224,21 +225,19 @@ private:
                 context.root_move_hint = previous_best_move;
             }
 
-            int alpha = -kInfinity;
-            int beta = kInfinity;
-            int delta = kAspirationWindow + std::min(32, depth * 2) +
-                static_cast<int>((helper_index % 3) * 5);
-            if (depth >= 4 && previous_score.has_value() &&
-                std::abs(*previous_score) < (kMateThreshold - 1'000)) {
-                const int asymmetry = (helper_index & 1U) != 0U ? 3 : -2;
-                alpha = std::max(-kInfinity, *previous_score - delta - std::max(0, -asymmetry));
-                beta = std::min(kInfinity, *previous_score + delta + std::max(0, asymmetry));
+            AspirationState aspiration = SearchPolicy::begin_aspiration(
+                depth, previous_score.has_value(), previous_score.value_or(0),
+                mean_squared_score, static_cast<int>((helper_index % 3) * 3));
+            if (aspiration.active) {
+                const int asymmetry = (helper_index & 1U) != 0U ? 2 : -2;
+                aspiration.alpha = std::max(-kInfinity, aspiration.alpha - std::max(0, -asymmetry));
+                aspiration.beta = std::min(kInfinity, aspiration.beta + std::max(0, asymmetry));
             }
 
             int final_score = 0;
             PrincipalVariation best_pv;
             bool iteration_completed = false;
-            for (int attempt = 0; attempt < 4; ++attempt) {
+            for (;;) {
                 PrincipalVariation pv;
                 context.begin_iteration(&helper_abort_);
                 SearchStats flushed{};
@@ -255,7 +254,10 @@ private:
                     flushed.tbhits = context.stats.tbhits;
                     publish_iteration_stats(delta_stats);
                 };
-                const int score = context.negamax(state, depth, alpha, beta, 0, pv);
+                const int attempt_depth =
+                    std::max(1, depth - std::min(2, aspiration.failed_high_count));
+                const int score = context.negamax(
+                    state, attempt_depth, aspiration.alpha, aspiration.beta, 0, pv);
                 {
                     SearchStats rem_stats{};
                     rem_stats.nodes = context.stats.nodes - flushed.nodes;
@@ -277,24 +279,26 @@ private:
                     best_pv = pv;
                 }
                 final_score = score;
-                if (score <= alpha && alpha > -kInfinity) {
-                    alpha = attempt >= 2 ? -kInfinity : std::max(-kInfinity, alpha - delta);
-                    delta *= 2;
-                    continue;
+                const bool failed_low = aspiration.active &&
+                    score <= aspiration.alpha && aspiration.alpha > -kInfinity;
+                const bool failed_high = aspiration.active &&
+                    score >= aspiration.beta && aspiration.beta < kInfinity;
+                if (!SearchPolicy::step_aspiration(
+                        aspiration, failed_low, failed_high, score, true)) {
+                    iteration_completed = true;
+                    break;
                 }
-                if (score >= beta && beta < kInfinity) {
-                    beta = attempt >= 2 ? kInfinity : std::min(kInfinity, beta + delta);
-                    delta *= 2;
-                    continue;
+                if (failed_high && pv.length > 0) {
+                    context.root_move_hint = pv.moves[0];
                 }
-                iteration_completed = true;
-                break;
             }
             if (stopping_.load(std::memory_order_relaxed) ||
                 stop_requested_.load(std::memory_order_relaxed) ||
                 !iteration_completed) {
                 break;
             }
+            mean_squared_score = SearchPolicy::next_aspiration_mean_squared_score(
+                previous_score.has_value(), mean_squared_score, final_score);
             previous_score = final_score;
             last_completed_depth = depth;
             if (best_pv.length > 0) {
