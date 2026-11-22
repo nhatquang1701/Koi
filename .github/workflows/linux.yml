@@ -492,6 +492,9 @@ jobs:
               -R "^(koi_search_tests_[1-4]of4|transposition_table_tests|uci_controller_tests|search_service_tests|time_manager_tests)$" \
               --output-on-failure > "/tmp/koi-flake-${attempt}.log" 2>&1
             attempt_status=$?
+            if [ "${attempt_status}" -ne 0 ]; then
+              grep -n -E "(FAIL |require failed|Errors while running)" "/tmp/koi-flake-${attempt}.log" || true
+            fi
             tail -n 40 "/tmp/koi-flake-${attempt}.log"
             echo "::endgroup::"
             echo "flake attempt ${attempt} exit=${attempt_status}"
