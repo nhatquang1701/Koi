@@ -2600,29 +2600,20 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
         slot_valid_[static_cast<std::size_t>(slot_cursor_)] != 0 &&
         slot_keys_[static_cast<std::size_t>(slot_cursor_)] == key) {
         const std::size_t slot = static_cast<std::size_t>(slot_cursor_);
-        if (dual_v4_ && slot_computed_[mover_index][slot] == 0 &&
-            slot_computed_[opponent_index][slot] == 0) {
-            materialize_slot_both_v4_s16(state, slot);
-        } else {
-            if (slot_computed_[mover_index][slot] == 0) {
-                materialize_slot_perspective_v4_impl<std::int16_t>(state, mover_index, slot);
-            }
-            if (dual_v4_ && slot_computed_[opponent_index][slot] == 0) {
-                materialize_slot_perspective_v4_impl<std::int16_t>(state, opponent_index, slot);
-            }
+        if (slot_computed_[mover_index][slot] == 0) {
+            materialize_slot_perspective_v4_impl<std::int16_t>(state, mover_index, slot);
+        }
+        if (dual_v4_ && slot_computed_[opponent_index][slot] == 0) {
+            materialize_slot_perspective_v4_impl<std::int16_t>(state, opponent_index, slot);
         }
         mover_sums_16 = std::span<const std::int16_t>(
-            aligned_s16_ptr(slot_values_16_[mover_index]) + slot * hidden_units_,
-            hidden_units_);
+            slot_values_16_[mover_index].data() + slot * hidden_units_, hidden_units_);
         opponent_sums_16 = std::span<const std::int16_t>(
-            aligned_s16_ptr(slot_values_16_[opponent_index]) + slot * hidden_units_,
-            hidden_units_);
+            slot_values_16_[opponent_index].data() + slot * hidden_units_, hidden_units_);
         pieces = slot_pieces_[slot];
     } else if (scratch_valid_ && scratch_key_ == key) {
-        mover_sums_16 = std::span<const std::int16_t>(
-            aligned_s16_ptr(scratch_values_16_[mover_index]), hidden_units_);
-        opponent_sums_16 = std::span<const std::int16_t>(
-            aligned_s16_ptr(scratch_values_16_[opponent_index]), hidden_units_);
+        mover_sums_16 = std::span<const std::int16_t>(scratch_values_16_[mover_index]);
+        opponent_sums_16 = std::span<const std::int16_t>(scratch_values_16_[opponent_index]);
         pieces = scratch_pieces_;
     } else {
         for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
@@ -2636,17 +2627,15 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
             const std::size_t bucket_idx =
                 EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, real);
             refresh_finny_bucket_v4_impl<std::int16_t>(
-                state, real, bucket_idx, aligned_s16_ptr(scratch_values_16_[index]));
+                state, real, bucket_idx, scratch_values_16_[index].data());
             scratch_buckets_[index] = static_cast<std::uint8_t>(bucket_idx);
         }
         scratch_pieces_ = static_cast<std::uint8_t>(state.piece_count());
         scratch_key_ = key;
         scratch_valid_ = true;
         ++incremental_fallback_count_;
-        mover_sums_16 = std::span<const std::int16_t>(
-            aligned_s16_ptr(scratch_values_16_[mover_index]), hidden_units_);
-        opponent_sums_16 = std::span<const std::int16_t>(
-            aligned_s16_ptr(scratch_values_16_[opponent_index]), hidden_units_);
+        mover_sums_16 = std::span<const std::int16_t>(scratch_values_16_[mover_index]);
+        opponent_sums_16 = std::span<const std::int16_t>(scratch_values_16_[opponent_index]);
         pieces = scratch_pieces_;
     }
     const std::size_t bucket = output_bucket_for_pieces(pieces);
@@ -2719,10 +2708,9 @@ void NnueWorker::ensure_incremental_storage() {
     const std::size_t slot_entries = kIncrementalSlotCount * hidden_units_;
     for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
         if (int16_safe_) {
-            slot_values_16_[index].assign(slot_entries + 64U, 0);
-            scratch_values_16_[index].assign(hidden_units_ + 64U, 0);
-            finny_values_16_[index].assign(
-                kNnueKingBucketCount * hidden_units_ + 64U, 0);
+            slot_values_16_[index].assign(slot_entries, 0);
+            scratch_values_16_[index].assign(hidden_units_, 0);
+            finny_values_16_[index].assign(kNnueKingBucketCount * hidden_units_, 0);
             finny_valid_[index].fill(0);
         } else {
             slot_values_[index].assign(slot_entries, 0);
@@ -2831,7 +2819,7 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
     const auto& current_bbs = state.piece_bitboards();
     SumT* cached_sums = nullptr;
     if constexpr (std::is_same_v<SumT, std::int16_t>) {
-        cached_sums = aligned_s16_ptr(finny_values_16_[index]) + bucket * hidden_units_;
+        cached_sums = finny_values_16_[index].data() + bucket * hidden_units_;
     } else {
         cached_sums = finny_values_[index].data() + bucket * hidden_units_;
     }
@@ -2938,18 +2926,11 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
     if ((removed_count == 1U && added_count == 1U) ||
         (removed_count == 2U && added_count == 1U) ||
         (removed_count == 2U && added_count == 2U)) {
-        if (target_sums != cached_sums) {
-            apply_fused_perspective_deltas(
-                cached_sums, target_sums,
-                std::span<const std::uint16_t>(removed.data(), removed_count),
-                std::span<const std::uint16_t>(added.data(), added_count));
-            std::copy_n(target_sums, hidden_units_, cached_sums);
-        } else {
-            apply_fused_perspective_deltas(
-                cached_sums, cached_sums,
-                std::span<const std::uint16_t>(removed.data(), removed_count),
-                std::span<const std::uint16_t>(added.data(), added_count));
-        }
+        apply_fused_perspective_deltas(
+            cached_sums, cached_sums,
+            std::span<const std::uint16_t>(removed.data(), removed_count),
+            std::span<const std::uint16_t>(added.data(), added_count));
+        std::copy_n(cached_sums, hidden_units_, target_sums);
         return;
     }
 
@@ -3218,66 +3199,21 @@ namespace {
 
 #if defined(__clang__) || defined(__GNUC__)
 #define KOI_DELTA_ALWAYS_INLINE __attribute__((always_inline)) inline
-#define KOI_DELTA_RESTRICT __restrict__
 #elif defined(_MSC_VER)
 #define KOI_DELTA_ALWAYS_INLINE __forceinline
-#define KOI_DELTA_RESTRICT __restrict
 #else
 #define KOI_DELTA_ALWAYS_INLINE inline
-#define KOI_DELTA_RESTRICT
 #endif
 
-KOI_DELTA_ALWAYS_INLINE void prefetch_feature_row(
-    const std::int16_t* const row,
-    const bool prefetch_second_half) noexcept {
-#if defined(__clang__) || defined(__GNUC__)
-    __builtin_prefetch(row, 0, 3);
-    if (prefetch_second_half) {
-        __builtin_prefetch(row + 64U, 0, 3);
-    }
-#elif KOI_NNUE_COMPILED_AVX2 && defined(_MSC_VER)
-    _mm_prefetch(reinterpret_cast<const char*>(row), _MM_HINT_T0);
-    if (prefetch_second_half) {
-        _mm_prefetch(reinterpret_cast<const char*>(row + 64U), _MM_HINT_T0);
-    }
-#elif defined(_M_ARM64) && defined(_MSC_VER)
-    __prefetch(row);
-    if (prefetch_second_half) {
-        __prefetch(row + 64U);
-    }
-#else
-    (void)row;
-    (void)prefetch_second_half;
-#endif
-}
-
-template <std::size_t FixedHidden = 0>
 KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub1_add1(
-    const std::int16_t* const KOI_DELTA_RESTRICT base,
-    const std::size_t runtime_count,
-    const std::int16_t* const KOI_DELTA_RESTRICT parent_values_in,
-    std::int16_t* const KOI_DELTA_RESTRICT target_values_in,
+    const std::int16_t* const base,
+    const std::size_t count,
+    const std::int16_t* const parent_values,
+    std::int16_t* const target_values,
     const std::uint16_t sub0,
     const std::uint16_t add0) noexcept {
-    const std::size_t count = FixedHidden != 0U ? FixedHidden : runtime_count;
-    const std::int16_t* const KOI_DELTA_RESTRICT parent_values = [&]() noexcept {
-        if constexpr (FixedHidden == 128U) {
-            return std::assume_aligned<64>(parent_values_in);
-        } else {
-            return parent_values_in;
-        }
-    }();
-    std::int16_t* const KOI_DELTA_RESTRICT target_values = [&]() noexcept {
-        if constexpr (FixedHidden == 128U) {
-            return std::assume_aligned<64>(target_values_in);
-        } else {
-            return target_values_in;
-        }
-    }();
-    const std::int16_t* const KOI_DELTA_RESTRICT w_sub0 =
-        base + static_cast<std::size_t>(sub0) * count;
-    const std::int16_t* const KOI_DELTA_RESTRICT w_add0 =
-        base + static_cast<std::size_t>(add0) * count;
+    const std::int16_t* const w_sub0 = base + static_cast<std::size_t>(sub0) * count;
+    const std::int16_t* const w_add0 = base + static_cast<std::size_t>(add0) * count;
     std::size_t hidden = 0;
 #if KOI_NNUE_COMPILED_NEON
     for (; hidden + 16U <= count; hidden += 16U) {
@@ -3290,81 +3226,43 @@ KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub1_add1(
         vst1q_s16(target_values + hidden, vaddq_s16(vsubq_s16(p0, s0_0), a0_0));
         vst1q_s16(target_values + hidden + 8U, vaddq_s16(vsubq_s16(p1, s0_1), a0_1));
     }
-    if constexpr (FixedHidden == 0U || (FixedHidden & 15U) != 0U) {
-        for (; hidden + 8U <= count; hidden += 8U) {
-            vst1q_s16(target_values + hidden,
-                      vaddq_s16(vsubq_s16(vld1q_s16(parent_values + hidden),
-                                          vld1q_s16(w_sub0 + hidden)),
-                                vld1q_s16(w_add0 + hidden)));
-        }
-        for (; hidden < count; ++hidden) {
-            target_values[hidden] = static_cast<std::int16_t>(
-                parent_values[hidden] - w_sub0[hidden] + w_add0[hidden]);
-        }
+    for (; hidden + 8U <= count; hidden += 8U) {
+        vst1q_s16(target_values + hidden,
+                  vaddq_s16(vsubq_s16(vld1q_s16(parent_values + hidden),
+                                      vld1q_s16(w_sub0 + hidden)),
+                            vld1q_s16(w_add0 + hidden)));
     }
 #elif KOI_NNUE_COMPILED_AVX2
     if (avx2_available()) {
         for (; hidden + 16U <= count; hidden += 16U) {
-            const __m256i p = FixedHidden == 128U ?
-                _mm256_load_si256(reinterpret_cast<const __m256i*>(parent_values + hidden)) :
-                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(parent_values + hidden));
+            const __m256i p = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(parent_values + hidden));
             const __m256i s0 = _mm256_loadu_si256(
                 reinterpret_cast<const __m256i*>(w_sub0 + hidden));
             const __m256i a0 = _mm256_loadu_si256(
                 reinterpret_cast<const __m256i*>(w_add0 + hidden));
-            const __m256i res = _mm256_add_epi16(_mm256_sub_epi16(p, s0), a0);
-            if constexpr (FixedHidden == 128U) {
-                _mm256_store_si256(reinterpret_cast<__m256i*>(target_values + hidden), res);
-            } else {
-                _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_values + hidden), res);
-            }
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_values + hidden),
+                                _mm256_add_epi16(_mm256_sub_epi16(p, s0), a0));
         }
-        if constexpr (FixedHidden != 0U && (FixedHidden & 15U) == 0U) {
-            return;
-        }
-    }
-    for (; hidden < count; ++hidden) {
-        target_values[hidden] = static_cast<std::int16_t>(
-            parent_values[hidden] - w_sub0[hidden] + w_add0[hidden]);
-    }
-#else
-    for (; hidden < count; ++hidden) {
-        target_values[hidden] = static_cast<std::int16_t>(
-            parent_values[hidden] - w_sub0[hidden] + w_add0[hidden]);
     }
 #endif
+    for (; hidden < count; ++hidden) {
+        target_values[hidden] = static_cast<std::int16_t>(
+            parent_values[hidden] - w_sub0[hidden] + w_add0[hidden]);
+    }
 }
 
-template <std::size_t FixedHidden = 0>
 KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub2_add1(
-    const std::int16_t* const KOI_DELTA_RESTRICT base,
-    const std::size_t runtime_count,
-    const std::int16_t* const KOI_DELTA_RESTRICT parent_values_in,
-    std::int16_t* const KOI_DELTA_RESTRICT target_values_in,
+    const std::int16_t* const base,
+    const std::size_t count,
+    const std::int16_t* const parent_values,
+    std::int16_t* const target_values,
     const std::uint16_t sub0,
     const std::uint16_t sub1,
     const std::uint16_t add0) noexcept {
-    const std::size_t count = FixedHidden != 0U ? FixedHidden : runtime_count;
-    const std::int16_t* const KOI_DELTA_RESTRICT parent_values = [&]() noexcept {
-        if constexpr (FixedHidden == 128U) {
-            return std::assume_aligned<64>(parent_values_in);
-        } else {
-            return parent_values_in;
-        }
-    }();
-    std::int16_t* const KOI_DELTA_RESTRICT target_values = [&]() noexcept {
-        if constexpr (FixedHidden == 128U) {
-            return std::assume_aligned<64>(target_values_in);
-        } else {
-            return target_values_in;
-        }
-    }();
-    const std::int16_t* const KOI_DELTA_RESTRICT w_sub0 =
-        base + static_cast<std::size_t>(sub0) * count;
-    const std::int16_t* const KOI_DELTA_RESTRICT w_sub1 =
-        base + static_cast<std::size_t>(sub1) * count;
-    const std::int16_t* const KOI_DELTA_RESTRICT w_add0 =
-        base + static_cast<std::size_t>(add0) * count;
+    const std::int16_t* const w_sub0 = base + static_cast<std::size_t>(sub0) * count;
+    const std::int16_t* const w_sub1 = base + static_cast<std::size_t>(sub1) * count;
+    const std::int16_t* const w_add0 = base + static_cast<std::size_t>(add0) * count;
     std::size_t hidden = 0;
 #if KOI_NNUE_COMPILED_NEON
     for (; hidden + 16U <= count; hidden += 16U) {
@@ -3381,88 +3279,49 @@ KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub2_add1(
         vst1q_s16(target_values + hidden + 8U,
                   vaddq_s16(vsubq_s16(vsubq_s16(p1, s0_1), s1_1), a0_1));
     }
-    if constexpr (FixedHidden == 0U || (FixedHidden & 15U) != 0U) {
-        for (; hidden + 8U <= count; hidden += 8U) {
-            vst1q_s16(target_values + hidden,
-                      vaddq_s16(vsubq_s16(vsubq_s16(vld1q_s16(parent_values + hidden),
-                                                    vld1q_s16(w_sub0 + hidden)),
-                                          vld1q_s16(w_sub1 + hidden)),
-                                vld1q_s16(w_add0 + hidden)));
-        }
-        for (; hidden < count; ++hidden) {
-            target_values[hidden] = static_cast<std::int16_t>(
-                parent_values[hidden] - w_sub0[hidden] - w_sub1[hidden] + w_add0[hidden]);
-        }
+    for (; hidden + 8U <= count; hidden += 8U) {
+        vst1q_s16(target_values + hidden,
+                  vaddq_s16(vsubq_s16(vsubq_s16(vld1q_s16(parent_values + hidden),
+                                                vld1q_s16(w_sub0 + hidden)),
+                                      vld1q_s16(w_sub1 + hidden)),
+                            vld1q_s16(w_add0 + hidden)));
     }
 #elif KOI_NNUE_COMPILED_AVX2
     if (avx2_available()) {
         for (; hidden + 16U <= count; hidden += 16U) {
-            const __m256i p = FixedHidden == 128U ?
-                _mm256_load_si256(reinterpret_cast<const __m256i*>(parent_values + hidden)) :
-                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(parent_values + hidden));
+            const __m256i p = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(parent_values + hidden));
             const __m256i s0 = _mm256_loadu_si256(
                 reinterpret_cast<const __m256i*>(w_sub0 + hidden));
             const __m256i s1 = _mm256_loadu_si256(
                 reinterpret_cast<const __m256i*>(w_sub1 + hidden));
             const __m256i a0 = _mm256_loadu_si256(
                 reinterpret_cast<const __m256i*>(w_add0 + hidden));
-            const __m256i res =
-                _mm256_add_epi16(_mm256_sub_epi16(_mm256_sub_epi16(p, s0), s1), a0);
-            if constexpr (FixedHidden == 128U) {
-                _mm256_store_si256(reinterpret_cast<__m256i*>(target_values + hidden), res);
-            } else {
-                _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_values + hidden), res);
-            }
+            _mm256_storeu_si256(
+                reinterpret_cast<__m256i*>(target_values + hidden),
+                _mm256_add_epi16(_mm256_sub_epi16(_mm256_sub_epi16(p, s0), s1), a0));
         }
-        if constexpr (FixedHidden != 0U && (FixedHidden & 15U) == 0U) {
-            return;
-        }
-    }
-    for (; hidden < count; ++hidden) {
-        target_values[hidden] = static_cast<std::int16_t>(
-            parent_values[hidden] - w_sub0[hidden] - w_sub1[hidden] + w_add0[hidden]);
-    }
-#else
-    for (; hidden < count; ++hidden) {
-        target_values[hidden] = static_cast<std::int16_t>(
-            parent_values[hidden] - w_sub0[hidden] - w_sub1[hidden] + w_add0[hidden]);
     }
 #endif
+    for (; hidden < count; ++hidden) {
+        target_values[hidden] = static_cast<std::int16_t>(
+            parent_values[hidden] - w_sub0[hidden] - w_sub1[hidden] + w_add0[hidden]);
+    }
 }
 
-template <std::size_t FixedHidden = 0>
 KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub2_add2(
-    const std::int16_t* const KOI_DELTA_RESTRICT base,
-    const std::size_t runtime_count,
-    const std::int16_t* const KOI_DELTA_RESTRICT parent_values_in,
-    std::int16_t* const KOI_DELTA_RESTRICT target_values_in,
+    const std::int16_t* const base,
+    const std::size_t count,
+    const std::int16_t* const parent_values,
+    std::int16_t* const target_values,
     const std::uint16_t sub0,
     const std::uint16_t sub1,
     const std::uint16_t add0,
     const std::uint16_t add1) noexcept {
-    const std::size_t count = FixedHidden != 0U ? FixedHidden : runtime_count;
-    const std::int16_t* const KOI_DELTA_RESTRICT parent_values = [&]() noexcept {
-        if constexpr (FixedHidden == 128U) {
-            return std::assume_aligned<64>(parent_values_in);
-        } else {
-            return parent_values_in;
-        }
-    }();
-    std::int16_t* const KOI_DELTA_RESTRICT target_values = [&]() noexcept {
-        if constexpr (FixedHidden == 128U) {
-            return std::assume_aligned<64>(target_values_in);
-        } else {
-            return target_values_in;
-        }
-    }();
-    const std::int16_t* const KOI_DELTA_RESTRICT w_sub0 =
-        base + static_cast<std::size_t>(sub0) * count;
-    const std::int16_t* const KOI_DELTA_RESTRICT w_sub1 =
-        base + static_cast<std::size_t>(sub1) * count;
-    const std::int16_t* const KOI_DELTA_RESTRICT w_add0 =
-        base + static_cast<std::size_t>(add0) * count;
-    const std::int16_t* const KOI_DELTA_RESTRICT w_add1 =
-        base + static_cast<std::size_t>(add1) * count;
+    const std::int16_t* const w_sub0 = base + static_cast<std::size_t>(sub0) * count;
+    const std::int16_t* const w_sub1 = base + static_cast<std::size_t>(sub1) * count;
+    const std::int16_t* const w_add0 = base + static_cast<std::size_t>(add0) * count;
+    const std::int16_t* const w_add1 = base + static_cast<std::size_t>(add1) * count;
     std::size_t hidden = 0;
 #if KOI_NNUE_COMPILED_NEON
     for (; hidden + 16U <= count; hidden += 16U) {
@@ -3477,26 +3336,18 @@ KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub2_add2(
         vst1q_s16(target_values + hidden, vaddq_s16(p0, d0));
         vst1q_s16(target_values + hidden + 8U, vaddq_s16(p1, d1));
     }
-    if constexpr (FixedHidden == 0U || (FixedHidden & 15U) != 0U) {
-        for (; hidden + 8U <= count; hidden += 8U) {
-            const int16x8_t d = vaddq_s16(
-                vsubq_s16(vld1q_s16(w_add0 + hidden), vld1q_s16(w_sub0 + hidden)),
-                vsubq_s16(vld1q_s16(w_add1 + hidden), vld1q_s16(w_sub1 + hidden)));
-            vst1q_s16(target_values + hidden,
-                      vaddq_s16(vld1q_s16(parent_values + hidden), d));
-        }
-        for (; hidden < count; ++hidden) {
-            target_values[hidden] = static_cast<std::int16_t>(
-                parent_values[hidden] - w_sub0[hidden] + w_add0[hidden] -
-                w_sub1[hidden] + w_add1[hidden]);
-        }
+    for (; hidden + 8U <= count; hidden += 8U) {
+        const int16x8_t d = vaddq_s16(
+            vsubq_s16(vld1q_s16(w_add0 + hidden), vld1q_s16(w_sub0 + hidden)),
+            vsubq_s16(vld1q_s16(w_add1 + hidden), vld1q_s16(w_sub1 + hidden)));
+        vst1q_s16(target_values + hidden,
+                  vaddq_s16(vld1q_s16(parent_values + hidden), d));
     }
 #elif KOI_NNUE_COMPILED_AVX2
     if (avx2_available()) {
         for (; hidden + 16U <= count; hidden += 16U) {
-            const __m256i p = FixedHidden == 128U ?
-                _mm256_load_si256(reinterpret_cast<const __m256i*>(parent_values + hidden)) :
-                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(parent_values + hidden));
+            const __m256i p = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(parent_values + hidden));
             const __m256i s0 = _mm256_loadu_si256(
                 reinterpret_cast<const __m256i*>(w_sub0 + hidden));
             const __m256i s1 = _mm256_loadu_si256(
@@ -3507,32 +3358,18 @@ KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub2_add2(
                 reinterpret_cast<const __m256i*>(w_add1 + hidden));
             const __m256i d = _mm256_add_epi16(
                 _mm256_sub_epi16(a0, s0), _mm256_sub_epi16(a1, s1));
-            const __m256i res = _mm256_add_epi16(p, d);
-            if constexpr (FixedHidden == 128U) {
-                _mm256_store_si256(reinterpret_cast<__m256i*>(target_values + hidden), res);
-            } else {
-                _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_values + hidden), res);
-            }
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_values + hidden),
+                                _mm256_add_epi16(p, d));
         }
-        if constexpr (FixedHidden != 0U && (FixedHidden & 15U) == 0U) {
-            return;
-        }
-    }
-    for (; hidden < count; ++hidden) {
-        target_values[hidden] = static_cast<std::int16_t>(
-            parent_values[hidden] - w_sub0[hidden] + w_add0[hidden] -
-            w_sub1[hidden] + w_add1[hidden]);
-    }
-#else
-    for (; hidden < count; ++hidden) {
-        target_values[hidden] = static_cast<std::int16_t>(
-            parent_values[hidden] - w_sub0[hidden] + w_add0[hidden] -
-            w_sub1[hidden] + w_add1[hidden]);
     }
 #endif
+    for (; hidden < count; ++hidden) {
+        target_values[hidden] = static_cast<std::int16_t>(
+            parent_values[hidden] - w_sub0[hidden] + w_add0[hidden] -
+            w_sub1[hidden] + w_add1[hidden]);
+    }
 }
 
-#undef KOI_DELTA_RESTRICT
 #undef KOI_DELTA_ALWAYS_INLINE
 
 } // namespace
@@ -3544,50 +3381,18 @@ void NnueWorker::apply_fused_perspective_deltas(
     const std::span<const std::uint16_t> added) {
     const std::int16_t* const base = weights_->feature_weights.data();
     const std::size_t count = hidden_units_;
-    if (parent_values == target_values) {
-        for (const std::uint16_t feat : removed) {
-            apply_delta_16(target_values, base + static_cast<std::size_t>(feat) * count,
-                           count, -1);
-        }
-        for (const std::uint16_t feat : added) {
-            apply_delta_16(target_values, base + static_cast<std::size_t>(feat) * count,
-                           count, 1);
-        }
-        return;
-    }
-    const bool aligned_128 = count == 128U &&
-        ((reinterpret_cast<std::uintptr_t>(parent_values) |
-          reinterpret_cast<std::uintptr_t>(target_values)) & 63U) == 0U;
     if (removed.size() == 1U && added.size() == 1U) {
-        if (aligned_128) {
-            apply_fused_s16_sub1_add1<128U>(
-                base, count, parent_values, target_values, removed[0], added[0]);
-        } else {
-            apply_fused_s16_sub1_add1(
-                base, count, parent_values, target_values, removed[0], added[0]);
-        }
+        apply_fused_s16_sub1_add1(base, count, parent_values, target_values, removed[0], added[0]);
         return;
     }
     if (removed.size() == 2U && added.size() == 1U) {
-        if (aligned_128) {
-            apply_fused_s16_sub2_add1<128U>(
-                base, count, parent_values, target_values, removed[0], removed[1], added[0]);
-        } else {
-            apply_fused_s16_sub2_add1(
-                base, count, parent_values, target_values, removed[0], removed[1], added[0]);
-        }
+        apply_fused_s16_sub2_add1(
+            base, count, parent_values, target_values, removed[0], removed[1], added[0]);
         return;
     }
     if (removed.size() == 2U && added.size() == 2U) {
-        if (aligned_128) {
-            apply_fused_s16_sub2_add2<128U>(
-                base, count, parent_values, target_values, removed[0], removed[1], added[0],
-                added[1]);
-        } else {
-            apply_fused_s16_sub2_add2(
-                base, count, parent_values, target_values, removed[0], removed[1], added[0],
-                added[1]);
-        }
+        apply_fused_s16_sub2_add2(
+            base, count, parent_values, target_values, removed[0], removed[1], added[0], added[1]);
     }
 }
 
@@ -3808,9 +3613,8 @@ bool NnueWorker::prepare_lazy_parent_slot_v4(const int ply, const std::size_t ch
             slot_computed_[0][from_slot] == 0 || slot_computed_[1][from_slot] == 0) {
             for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
                 if (int16_safe_) {
-                    std::copy_n(aligned_s16_ptr(scratch_values_16_[index]), hidden_units_,
-                                aligned_s16_ptr(slot_values_16_[index]) +
-                                    from_slot * hidden_units_);
+                    std::copy_n(scratch_values_16_[index].data(), hidden_units_,
+                                slot_values_16_[index].data() + from_slot * hidden_units_);
                 } else {
                     std::copy_n(scratch_values_[index].data(), hidden_units_,
                                 slot_values_[index].data() + from_slot * hidden_units_);
@@ -3835,22 +3639,16 @@ bool NnueWorker::prepare_lazy_parent_slot_v4(const int ply, const std::size_t ch
     return false;
 }
 
-template <typename SumT, std::size_t FixedHidden>
+template <typename SumT>
 void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                                                       const std::size_t index,
                                                       const std::size_t slot) {
-    if constexpr (std::is_same_v<SumT, std::int16_t> && FixedHidden == 0U) {
-        if (hidden_units_ == 128U) {
-            materialize_slot_perspective_v4_impl<std::int16_t, 128U>(state, index, slot);
-            return;
-        }
-    }
     if (slot_computed_[index][slot] != 0) {
         return;
     }
     auto* values_base = [&]() noexcept -> SumT* {
         if constexpr (std::is_same_v<SumT, std::int16_t>) {
-            return aligned_s16_ptr(slot_values_16_[index]);
+            return slot_values_16_[index].data();
         } else {
             return slot_values_[index].data();
         }
@@ -3869,18 +3667,13 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
     }
     const Color real = index == 0U ? Color::white : Color::black;
     const std::int16_t* const weight_base = weights_->feature_weights.data();
-    const std::size_t count = FixedHidden != 0U ? FixedHidden : hidden_units_;
+    const std::size_t count = hidden_units_;
     for (std::size_t cur = s + 1U; cur <= slot; ++cur) {
         const PendingMoveV4& pm = slot_pending_move_[cur];
         const SumT* const parent_ptr = values_base + (cur - 1U) * count;
         SumT* const target_ptr = values_base + cur * count;
         if (pm.is_null) {
-            if constexpr (std::is_same_v<SumT, std::int16_t> && FixedHidden == 128U) {
-                std::copy_n(std::assume_aligned<64>(parent_ptr), count,
-                            std::assume_aligned<64>(target_ptr));
-            } else {
-                std::copy_n(parent_ptr, count, target_ptr);
-            }
+            std::copy_n(parent_ptr, count, target_ptr);
         } else {
             const std::size_t bucket = slot_buckets_[index][cur];
             const Square from = pm.move.from();
@@ -3905,7 +3698,7 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                         EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
                             bucket, real, Piece{pm.captured_piece, opposite(pm.mover)},
                             captured);
-                    apply_fused_s16_sub2_add1<FixedHidden>(
+                    apply_fused_s16_sub2_add1(
                         weight_base, count, parent_ptr, target_ptr, sub0, sub1, add0);
                 } else if (pm.kind == MoveKind::castling) [[unlikely]] {
                     const bool king_side = pm.mover == Color::white ? to.index() == 6U :
@@ -3922,10 +3715,10 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                         EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
                             bucket, real, Piece{PieceType::rook, pm.mover},
                             Square::from_index(rook_to));
-                    apply_fused_s16_sub2_add2<FixedHidden>(
+                    apply_fused_s16_sub2_add2(
                         weight_base, count, parent_ptr, target_ptr, sub0, sub1, add0, add1);
                 } else {
-                    apply_fused_s16_sub1_add1<FixedHidden>(
+                    apply_fused_s16_sub1_add1(
                         weight_base, count, parent_ptr, target_ptr, sub0, add0);
                 }
             } else {
@@ -3968,154 +3761,6 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
             }
         }
         slot_computed_[index][cur] = 1;
-    }
-}
-
-void NnueWorker::materialize_slot_both_v4_s16(const GameState& state,
-                                              const std::size_t slot) {
-    if (slot == 0U) {
-        materialize_slot_perspective_v4_impl<std::int16_t>(state, 0U, slot);
-        materialize_slot_perspective_v4_impl<std::int16_t>(state, 1U, slot);
-        return;
-    }
-    std::size_t s = slot;
-    while (slot_computed_[0][s] == 0 || slot_computed_[1][s] == 0) {
-        if (s == 0U ||
-            slot_buckets_[0][s] != slot_buckets_[0][s - 1U] ||
-            slot_buckets_[1][s] != slot_buckets_[1][s - 1U]) {
-            materialize_slot_perspective_v4_impl<std::int16_t>(state, 0U, slot);
-            materialize_slot_perspective_v4_impl<std::int16_t>(state, 1U, slot);
-            return;
-        }
-        --s;
-    }
-    auto run_chain = [&]<std::size_t FixedHidden>() {
-        const std::size_t count = FixedHidden != 0U ? FixedHidden : hidden_units_;
-        const std::int16_t* const weight_base = weights_->feature_weights.data();
-        std::int16_t* const white_base = aligned_s16_ptr(slot_values_16_[0]);
-        std::int16_t* const black_base = aligned_s16_ptr(slot_values_16_[1]);
-        const bool prefetch_second = FixedHidden == 128U || count >= 128U;
-        for (std::size_t cur = s + 1U; cur <= slot; ++cur) {
-            const PendingMoveV4& pm = slot_pending_move_[cur];
-            const std::size_t prev_off = (cur - 1U) * count;
-            const std::size_t cur_off = cur * count;
-            const std::int16_t* const w_parent = white_base + prev_off;
-            std::int16_t* const w_target = white_base + cur_off;
-            const std::int16_t* const b_parent = black_base + prev_off;
-            std::int16_t* const b_target = black_base + cur_off;
-            if (pm.is_null) {
-                if constexpr (FixedHidden == 128U) {
-                    std::copy_n(std::assume_aligned<64>(w_parent), count,
-                                std::assume_aligned<64>(w_target));
-                    std::copy_n(std::assume_aligned<64>(b_parent), count,
-                                std::assume_aligned<64>(b_target));
-                } else {
-                    std::copy_n(w_parent, count, w_target);
-                    std::copy_n(b_parent, count, b_target);
-                }
-            } else {
-                const std::size_t w_bucket = slot_buckets_[0][cur];
-                const std::size_t b_bucket = slot_buckets_[1][cur];
-                const Square from = pm.move.from();
-                const Square to = pm.move.to();
-                const Piece moved_piece{pm.moving_piece, pm.mover};
-                const PieceType placed_pt = pm.kind == MoveKind::promotion ?
-                    promotion_piece_type(pm.move.promotion()) : pm.moving_piece;
-                const Piece placed_piece{placed_pt, pm.mover};
-
-                const std::uint16_t w_sub0 =
-                    EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                        w_bucket, Color::white, moved_piece, from);
-                const std::uint16_t w_add0 =
-                    EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                        w_bucket, Color::white, placed_piece, to);
-                const std::uint16_t b_sub0 =
-                    EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                        b_bucket, Color::black, moved_piece, from);
-                const std::uint16_t b_add0 =
-                    EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                        b_bucket, Color::black, placed_piece, to);
-
-                prefetch_feature_row(weight_base + static_cast<std::size_t>(w_sub0) * count,
-                                     prefetch_second);
-                prefetch_feature_row(weight_base + static_cast<std::size_t>(w_add0) * count,
-                                     prefetch_second);
-                prefetch_feature_row(weight_base + static_cast<std::size_t>(b_sub0) * count,
-                                     prefetch_second);
-                prefetch_feature_row(weight_base + static_cast<std::size_t>(b_add0) * count,
-                                     prefetch_second);
-
-                if (pm.captured_piece != PieceType::none) {
-                    Square captured = to;
-                    if (pm.kind == MoveKind::en_passant) [[unlikely]] {
-                        captured = pm.mover == Color::white ?
-                            Square::from_index(static_cast<std::uint8_t>(to.index() - 8U)) :
-                            Square::from_index(static_cast<std::uint8_t>(to.index() + 8U));
-                    }
-                    const Piece cap_piece{pm.captured_piece, opposite(pm.mover)};
-                    const std::uint16_t w_sub1 =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            w_bucket, Color::white, cap_piece, captured);
-                    const std::uint16_t b_sub1 =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            b_bucket, Color::black, cap_piece, captured);
-                    prefetch_feature_row(weight_base + static_cast<std::size_t>(w_sub1) * count,
-                                         prefetch_second);
-                    prefetch_feature_row(weight_base + static_cast<std::size_t>(b_sub1) * count,
-                                         prefetch_second);
-                    apply_fused_s16_sub2_add1<FixedHidden>(
-                        weight_base, count, w_parent, w_target, w_sub0, w_sub1, w_add0);
-                    apply_fused_s16_sub2_add1<FixedHidden>(
-                        weight_base, count, b_parent, b_target, b_sub0, b_sub1, b_add0);
-                } else if (pm.kind == MoveKind::castling) [[unlikely]] {
-                    const bool king_side = pm.mover == Color::white ? to.index() == 6U :
-                                                                      to.index() == 62U;
-                    const std::uint8_t rook_from = pm.mover == Color::white ?
-                        (king_side ? 7U : 0U) : (king_side ? 63U : 56U);
-                    const std::uint8_t rook_to = pm.mover == Color::white ?
-                        (king_side ? 5U : 3U) : (king_side ? 61U : 59U);
-                    const Piece rook_piece{PieceType::rook, pm.mover};
-                    const Square rf_sq = Square::from_index(rook_from);
-                    const Square rt_sq = Square::from_index(rook_to);
-                    const std::uint16_t w_sub1 =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            w_bucket, Color::white, rook_piece, rf_sq);
-                    const std::uint16_t w_add1 =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            w_bucket, Color::white, rook_piece, rt_sq);
-                    const std::uint16_t b_sub1 =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            b_bucket, Color::black, rook_piece, rf_sq);
-                    const std::uint16_t b_add1 =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            b_bucket, Color::black, rook_piece, rt_sq);
-                    prefetch_feature_row(weight_base + static_cast<std::size_t>(w_sub1) * count,
-                                         prefetch_second);
-                    prefetch_feature_row(weight_base + static_cast<std::size_t>(w_add1) * count,
-                                         prefetch_second);
-                    prefetch_feature_row(weight_base + static_cast<std::size_t>(b_sub1) * count,
-                                         prefetch_second);
-                    prefetch_feature_row(weight_base + static_cast<std::size_t>(b_add1) * count,
-                                         prefetch_second);
-                    apply_fused_s16_sub2_add2<FixedHidden>(
-                        weight_base, count, w_parent, w_target, w_sub0, w_sub1, w_add0, w_add1);
-                    apply_fused_s16_sub2_add2<FixedHidden>(
-                        weight_base, count, b_parent, b_target, b_sub0, b_sub1, b_add0, b_add1);
-                } else {
-                    apply_fused_s16_sub1_add1<FixedHidden>(
-                        weight_base, count, w_parent, w_target, w_sub0, w_add0);
-                    apply_fused_s16_sub1_add1<FixedHidden>(
-                        weight_base, count, b_parent, b_target, b_sub0, b_add0);
-                }
-            }
-            slot_computed_[0][cur] = 1;
-            slot_computed_[1][cur] = 1;
-        }
-    };
-    if (hidden_units_ == 128U) {
-        run_chain.template operator()<128U>();
-    } else {
-        run_chain.template operator()<0U>();
     }
 }
 
