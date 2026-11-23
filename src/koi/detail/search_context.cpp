@@ -1863,7 +1863,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
              tt_entry->bound == TranspositionBound::exact);
         const bool singular_candidate = !claimable_draw && !excluded_search && !checked &&
             !pawn_endgame && ply > 0 &&
-            depth >= 6 + (frame.tt_pv ? 1 : 0) && !repetition_sensitive &&
+            depth >= 8 && !repetition_sensitive &&
             tt_move.has_value() && singular_tt_bound &&
             tt_entry->depth >= depth - 3 &&
             std::abs(tt_entry->score) < kMateThreshold;
@@ -1985,7 +1985,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 singular_probe_done = true;
                 ++stats.singular_searches;
                 const int singular_margin =
-                    (59 + 66 * (frame.tt_pv && !pv_node)) * depth / 63;
+                    (192 + 64 * (frame.tt_pv && !pv_node)) * depth / 64;
                 const int singular_beta = tt_entry->score - singular_margin;
                 const int singular_depth = std::max(1, (depth - 1) / 2);
                 bool excluded_repetition_sensitive = false;
@@ -2000,23 +2000,11 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 }
                 path_repetition_sensitive = path_repetition_sensitive ||
                     excluded_repetition_sensitive;
-                if (!excluded_selective_bound && excluded_score < singular_beta && singular_extensions_remaining > 0) {
-                    // Use two calibrated margins, following Stockfish 19's
-                    // one/two/three-ply singular-extension ladder. A PV
-                    // node and a quiet TT move receive slightly more room;
-                    // captures already carry independent SEE protection and
-                    // should not be extended merely because they are noisy.
-                    const int double_margin = std::max(
-                        16, 64 + (pv_node ? 32 : 0) - (metadata.is_capture() ? 0 : 16));
-                    const int triple_margin = std::max(
-                        double_margin + 16,
-                        144 + (pv_node ? 48 : 0) - (metadata.is_capture() ? 0 : 24));
-                    singular_extension = 1 +
-                        (excluded_score < singular_beta - double_margin ? 1 : 0) +
-                        (excluded_score < singular_beta - triple_margin ? 1 : 0);
+                if (excluded_score < singular_beta && singular_extensions_remaining > 0) {
+                    singular_extension = 1;
                     ++stats.singular_extensions;
                     --child_singular_extensions_remaining;
-                } else if (!excluded_selective_bound && !pv_node && depth >= 8 &&
+                } else if (!pv_node && depth >= 8 &&
                            excluded_score >= beta &&
                            excluded_score < kMateThreshold) {
                     path_selective_bound = true;
@@ -2027,11 +2015,6 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     path_lower_bound = false;
                     ++stats.multi_cut_prunes;
                     return excluded_score;
-                } else if (!excluded_selective_bound && depth >= 8 &&
-                           (tt_entry->score >= beta || cut_node)) {
-                    // If the alternative moves are not singular, the TT move
-                    // is still useful but need not receive full depth.
-                    singular_extension = -3;
                 }
             }
             const int capture_history_score = capture_history;
