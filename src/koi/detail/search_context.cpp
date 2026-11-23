@@ -1670,16 +1670,24 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             return (661 * beta + 363 * static_eval) / 1024;
         }
 
-        // Internal iterative reduction is useful only when the node has no
-        // move hint to establish a trustworthy search order. Keep the
-        // reduction off PV nodes and tactical/repetition-sensitive positions:
-        // those nodes are precisely where a missing TT move is least
-        // informative and where a one-ply horizon change can hide a forcing
-        // continuation. This is the conservative counterpart of Stockfish
-        // 19's no-TT IIR gate.
+        // Internal iterative reduction trims one ply when move ordering lacks a
+        // fresh non-PV hint: missing TT moves reduce from depth 4 in dense,
+        // non-TT-PV, non-pawn-endgame positions (keeping the depth-6 threshold
+        // on `tt_pv`, pawn endgames, and <= 8-piece sparse positions), and
+        // non-TT-PV, non-pawn-endgame, > 8-piece cut nodes also reduce from
+        // depth 4 when the TT entry is at least 4 plies stale (`<= depth - 4`).
+        // PV nodes, checked nodes, claimable draws, excluded searches, and
+        // repetition-sensitive branches stay unreduced so a one-ply shift
+        // cannot obscure a forcing continuation.
         if (!claimable_draw && !excluded_search && ply > 0 && !pv_node && !checked &&
             !repetition_sensitive &&
-            !tt_move.has_value() && depth >= kInternalIterativeReductionMinimumDepth) {
+            ((!tt_move.has_value() &&
+              depth >= ((frame.tt_pv || pawn_endgame ||
+                         state.piece_count() <= kNullMoveSparsePieceLimit)
+                        ? kInternalIterativeReductionMinimumDepth : 4)) ||
+             (cut_node && !frame.tt_pv && !pawn_endgame &&
+              state.piece_count() > kNullMoveSparsePieceLimit && depth >= 4 &&
+              tt_entry.has_value() && tt_entry->depth <= depth - 4))) {
             path_selective_bound = true;
             --depth;
         }
