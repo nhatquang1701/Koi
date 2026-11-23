@@ -336,36 +336,28 @@ KOI_CTX_NOINLINE bool SearchContext::run_probcut(
         }
         probcut_pv.clear();
         bool probcut_repetition_sensitive = false;
-        bool probcut_qsearch_selective_bound = false;
         int probcut_score = -quiescence(
             state, -probcut_beta, -probcut_beta + 1, ply + 1, 0,
-            candidate.move, &probcut_repetition_sensitive,
-            &probcut_qsearch_selective_bound);
+            candidate.move, &probcut_repetition_sensitive, nullptr);
         path_repetition_sensitive = path_repetition_sensitive ||
             probcut_repetition_sensitive;
         if (!aborted && probcut_score >= probcut_beta && probcut_depth > 0) {
             probcut_pv.clear();
             bool probcut_search_repetition_sensitive = false;
-            bool probcut_search_selective_bound = false;
             probcut_score = -negamax(
                 state, probcut_depth, -probcut_beta, -probcut_beta + 1,
                 ply + 1, probcut_pv, candidate.move, false,
                 child_check_extensions_remaining, Move::no_move(),
-                &probcut_search_repetition_sensitive,
-                &probcut_search_selective_bound);
+                &probcut_search_repetition_sensitive, nullptr);
             path_repetition_sensitive = path_repetition_sensitive ||
                 probcut_search_repetition_sensitive;
-            if (probcut_search_selective_bound) {
-                probcut_score = -kInfinity;
-            }
         }
         unmake_observed(state, ply + 1);
         if (aborted) {
             cutoff_score = 0;
             return true;
         }
-        if (probcut_score >= probcut_beta &&
-            (probcut_depth > 0 || !probcut_qsearch_selective_bound)) {
+        if (probcut_score >= probcut_beta) {
             path_selective_bound = true;
             path_lower_bound = false;
             ++stats.probcut_cutoffs;
