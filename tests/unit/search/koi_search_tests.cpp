@@ -2883,11 +2883,55 @@ void test_interim_publication_reports_the_in_flight_principal_variation() {
     std::vector<koi::SearchInfo> infos;
     std::array<int, 80> depth_counts{};
     std::atomic_bool saw_repeat{false};
+    std::atomic_bool saw_in_flight_ready{false};
+    int last_checked_depth = -1;
+    const auto scan_in_flight = [&infos](const std::optional<int> exclusive_upper_depth,
+                                          const bool check_invariants) {
+        std::map<int, std::vector<const koi::SearchInfo*>> by_depth;
+        for (const koi::SearchInfo& info : infos) {
+            if (!exclusive_upper_depth.has_value() || info.depth < *exclusive_upper_depth) {
+                by_depth[info.depth].push_back(&info);
+            }
+        }
+        bool saw_in_flight = false;
+        const std::vector<const koi::SearchInfo*>* previous = nullptr;
+        for (const auto& entry : by_depth) {
+            const std::vector<const koi::SearchInfo*>& lines = entry.second;
+            if (previous != nullptr) {
+                const koi::SearchInfo& completed_prior = *previous->back();
+                for (std::size_t index = 0; index + 1 < lines.size(); ++index) {
+                    const koi::SearchInfo& interim = *lines[index];
+                    if (check_invariants) {
+                        require(interim.score_cp == completed_prior.score_cp &&
+                                    interim.mate == completed_prior.mate &&
+                                    interim.bound == completed_prior.bound,
+                                "an interim line must republish the last completed score and "
+                                "bound");
+                    }
+                    if (interim.pv != completed_prior.pv) {
+                        saw_in_flight = true;
+                        if (!check_invariants) {
+                            return true;
+                        }
+                        require(!interim.currmove.is_no_move(),
+                                "an in-flight interim line must report the current root move");
+                        require(interim.currmove == interim.pv.front(),
+                                "currmove must match the live in-flight principal variation");
+                        require(interim.currmovenumber >= 1,
+                                "currmovenumber must be one-based");
+                    }
+                }
+            }
+            previous = &lines;
+        }
+        return saw_in_flight;
+    };
     CompletedSearch completed;
     koi::SearchHandle handle = service.start(
         koi::GameState::startpos(), limits,
         {.on_info =
-             [&info_mutex, &infos, &depth_counts, &saw_repeat](const koi::SearchInfo& info) {
+             [&info_mutex, &infos, &depth_counts, &saw_repeat, &saw_in_flight_ready,
+              &last_checked_depth, &scan_in_flight](const koi::SearchInfo& info) {
                  std::lock_guard lock(info_mutex);
                  if (info.depth >= 2 && info.depth < 80 && depth_counts[info.depth - 1] >= 3) {
                      saw_repeat.store(true, std::memory_order_relaxed);
@@ -2895,13 +2939,22 @@ void test_interim_publication_reports_the_in_flight_principal_variation() {
                  if (info.depth >= 0 && info.depth < 80) {
                      ++depth_counts[info.depth];
                  }
+                 const bool depth_changed = info.depth != last_checked_depth;
                  infos.push_back(info);
+                 if (depth_changed) {
+                     last_checked_depth = info.depth;
+                     if (saw_repeat.load(std::memory_order_relaxed) &&
+                         !saw_in_flight_ready.load(std::memory_order_relaxed) &&
+                         scan_in_flight(info.depth, false)) {
+                         saw_in_flight_ready.store(true, std::memory_order_relaxed);
+                     }
+                 }
              },
          .on_complete = completed.sink().on_complete},
         options);
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
-    while (std::chrono::steady_clock::now() < deadline && !saw_repeat.load()) {
+    while (std::chrono::steady_clock::now() < deadline && !saw_in_flight_ready.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
     handle.stop();
@@ -2912,35 +2965,7 @@ void test_interim_publication_reports_the_in_flight_principal_variation() {
     require(saw_repeat.load(),
             "the interim in-flight test needs an interim repeat before the in-flight line can be "
             "checked");
-    std::map<int, std::vector<const koi::SearchInfo*>> by_depth;
-    for (const koi::SearchInfo& info : infos) {
-        by_depth[info.depth].push_back(&info);
-    }
-    bool saw_in_flight = false;
-    const std::vector<const koi::SearchInfo*>* previous = nullptr;
-    for (const auto& entry : by_depth) {
-        const std::vector<const koi::SearchInfo*>& lines = entry.second;
-        if (previous != nullptr) {
-            const koi::SearchInfo& completed_prior = *previous->back();
-            for (std::size_t index = 0; index + 1 < lines.size(); ++index) {
-                const koi::SearchInfo& interim = *lines[index];
-                require(interim.score_cp == completed_prior.score_cp &&
-                            interim.mate == completed_prior.mate &&
-                            interim.bound == completed_prior.bound,
-                        "an interim line must republish the last completed score and bound");
-                if (interim.pv != completed_prior.pv) {
-                    saw_in_flight = true;
-                    require(!interim.currmove.is_no_move(),
-                            "an in-flight interim line must report the current root move");
-                    require(interim.currmove == interim.pv.front(),
-                            "currmove must match the live in-flight principal variation");
-                    require(interim.currmovenumber >= 1,
-                            "currmovenumber must be one-based");
-                }
-            }
-        }
-        previous = &lines;
-    }
+    const bool saw_in_flight = scan_in_flight(std::nullopt, true);
     require(saw_in_flight,
             "an interim line must report the in-flight principal variation instead of the last "
             "completed one");
