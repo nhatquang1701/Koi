@@ -561,16 +561,13 @@ bool null_move_is_safe(const GameState& state, const int phase) noexcept {
     // `null_move_allowed`; that flag already contains
     // `!repetition_sensitive` (search_context.cpp), so the direct
     // state.is_repetition_sensitive() scan could only return false here.
-    if (phase < 8 ||
-        !state.has_non_pawn_material(state.side_to_move()) ||
+    (void)phase;
+    if (!state.has_non_pawn_material(state.side_to_move()) ||
         !state.has_non_pawn_material(opposite(state.side_to_move())) ||
         state.halfmove_clock() >= kNullMoveRuleSafetyHalfmoves) {
         return false;
     }
-    // GameState::piece_count() forwards to the native position's maintained
-    // bitboards, which are the same per-piece bitboards the tablebase snapshot
-    // is rebuilt from (kings included), so the sparse gate is unchanged.
-    return state.piece_count() > kNullMoveSparsePieceLimit;
+    return true;
 }
 
 bool deep_quiet_check_candidate(const MoveMetadata& metadata) noexcept {

@@ -268,7 +268,6 @@ KOI_CTX_NOINLINE int SearchContext::run_null_verification(
         ply + 1 < static_cast<int>(SearchStack::kCapacity);
     const SearchFrame saved_probe_child_frame = has_probe_child_frame ?
         stack.frame(static_cast<std::size_t>(ply + 1)) : SearchFrame{};
-    table_access.set_enabled(false);
     null_verification_min_ply = ply + 3 * null_depth / 4;
     int verified_score = 0;
     try {
@@ -1599,9 +1598,12 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // qsearch stand-pat); still track path_selective_bound so
                     // root provenance remains conservative.
                     bool null_cutoff_proven = true;
+                    const bool verify_null = null_move_decision.verify ||
+                        node_game_phase < 8 ||
+                        state.piece_count() <= kNullMoveSparsePieceLimit;
                     // A verification search may not start another nested
                     // verification (Stockfish's nmpMinPly guard).
-                    if (null_move_decision.verify && null_verification_min_ply == 0) {
+                    if (verify_null && null_verification_min_ply == 0) {
                         verified_score = run_null_verification(
                             state, null_depth, beta, ply, frame, lease.slot().child_pv,
                             previous_move, child_check_extensions_remaining,
@@ -1618,7 +1620,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // verification horizon; returning/storing the original
                     // null score could overstate that bound even when the
                     // verification still reaches beta.
-                    const int cutoff_score = null_move_decision.verify ?
+                    const int cutoff_score = verify_null ?
                         verified_score : null_score;
                     if (null_cutoff_proven && cutoff_score >= beta &&
                         cutoff_score < kMateThreshold) {
