@@ -71,14 +71,15 @@ Linux architecture must be `x86_64`, and the macOS compiler must be AppleClang
 | `KOI_SANITIZE` | OFF | MSVC-only AddressSanitizer build: dynamic CRT, no `/RTC`, no LTO, `/fsanitize=address` |
 | `KOI_TSAN` | OFF | Disables Release IPO for the Linux GCC ThreadSanitizer CI leg; sanitizer flags themselves come from the CI command line |
 | `KOI_PEXT_ATTACKS` | ON | AVX2/AVX-512 cores use `_pext_u64` slider tables; the baseline core keeps the ray path; OFF builds every x86-64 variant with rays |
-| `KOI_PGO` | `OFF` | MSVC-only profile-guided optimization; `generate` builds with `/GENPROFILE` + `/LTCG:PGI`, `use` rebuilds with `/USEPROFILE` + `/LTCG`; cannot be combined with `KOI_SANITIZE` or non-MSVC |
+| `KOI_PGO` | `OFF` | Release profile-guided optimization (`OFF`, `generate`, `use`) for MSVC (`/GENPROFILE`/`/USEPROFILE`), Clang/AppleClang (`-fprofile-instr-generate`/`-fprofile-instr-use`), and GCC (`-fprofile-generate`/`-fprofile-use`); cannot be combined with `KOI_SANITIZE` or `KOI_TSAN` |
+| `KOI_PGO_PROFILE_FILE` | `""` | Merged `.profdata` file required by `KOI_PGO=use` on Clang/AppleClang (or optional profile directory on GCC) |
 | `KOI_BUILD_SHADOW_DIFF` | OFF | Builds `koi_shadow_diff_tests`, the native-vs-chess-library differential oracle |
 | `KOI_TEST_TIMEOUT_SECONDS` | 600 | Default CTest timeout for tests without an explicit budget |
 | `KOI_TIMEOUT_SCALE` | `auto` | Multiplier for explicit process-test and default timeouts: 3 for Debug, otherwise 1 |
 | `KOI_PYTHON_TEST_TIMEOUT_SECONDS` | 90 | Timeout for tests labelled `python` |
 
 The Release build enables IPO/LTO when the toolchain supports it and the build is
-not a sanitizer, PGO, or TSan build (`CMakeLists.txt:204-214`). MSVC Release uses
+not a sanitizer, MSVC PGO (`KOI_PGO_MANAGES_LTO`), or TSan build (`CMakeLists.txt`). MSVC Release uses
 `/O2 /Ob3`, non-MSVC Release uses `-O2 -O3`; MSVC links a 16 MiB stack reserve so
 deep tactical recursion fits, and Linux/glibc raises the worker-thread default
 stack to 16 MiB in `main.cpp`.
@@ -1067,7 +1068,6 @@ name and version while the tag is the version alone.
   and has no CUDA path. Windows requires MSVC; Linux requires x86-64.
 - **Sanitizer coverage is partial:** ASan is MSVC-only and runs the fast subset;
   TSan exists only on Linux; macOS has no sanitizer leg.
-- **PGO is MSVC-only.** `KOI_PGO` rejects non-MSVC configurations.
 - **Version readability.** `uci` reports `id name Koi <version>` (CMake pin) and
   `info string build <commit>`; commit-level build identity also lives in
   `--version`, benchmark JSON, and package provenance.

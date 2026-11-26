@@ -155,16 +155,47 @@ python -m unittest .\tests\python\measurement\elo_oracle_test.py -v
 
 ## Profile-guided optimization
 
-`KOI_PGO` is a Release-only, MSVC-only CMake option that wires the standard
-two-pass PGO flow. `-DKOI_PGO=generate` compiles with `/GL` and links with
-`/LTCG:PGI`, so each linked binary gets a `.pgd` next to it and writes
-`<binary>!N.pgc` counter files into its working directory when it runs.
-`-DKOI_PGO=use` compiles with `/GL` and links with `/LTCG /USEPROFILE`, which
-consumes the `.pgd` and emits the optimized binary. CMake's
-`INTERPROCEDURAL_OPTIMIZATION_RELEASE` is skipped while `KOI_PGO` is set,
-because the PGO link owns the `/GL` and `/LTCG` flags. The databases are build
-artifacts (`/build/` keeps them out of the repository) and CI never sets
-`KOI_PGO`.
+`KOI_PGO` is a Release-only CMake option (`OFF` by default) that wires the
+two-pass PGO flow across MSVC, Clang/AppleClang, and GCC. The collected
+profile files are local build artifacts (`/build/` keeps them out of the
+repository) and CI never sets `KOI_PGO`.
+
+- **MSVC (`generate` / `use`):** `-DKOI_PGO=generate` compiles with `/GL` and
+  links with `/LTCG:PGI`, emitting a `.pgd` beside each binary and `.pgc`
+  counters in the working directory; `-DKOI_PGO=use` compiles with `/GL` and
+  links with `/LTCG /USEPROFILE`. CMake `INTERPROCEDURAL_OPTIMIZATION_RELEASE`
+  is skipped for MSVC PGO because `/GL` and `/LTCG` already manage LTO.
+- **Clang / AppleClang (`generate` / `use` + `KOI_PGO_PROFILE_FILE`):**
+  `-DKOI_PGO=generate` passes `-fprofile-instr-generate` alongside Release LTO,
+  writing `LLVM_PROFILE_FILE` `.profraw` traces. After merging them with
+  `llvm-profdata merge` (`xcrun llvm-profdata merge` on macOS),
+  `-DKOI_PGO=use -DKOI_PGO_PROFILE_FILE=<path/to/koi.profdata>` compiles and
+  links with `-fprofile-instr-use=...` while keeping Release LTO enabled.
+- **GCC (`generate` / `use`, optional `KOI_PGO_PROFILE_FILE` dir):** compiles
+  and links with `-fprofile-generate[=...]` / `-fprofile-use[=...]` +
+  `-fprofile-correction` alongside Release LTO.
+
+Recipe (macOS / AppleClang M4, from the repository root):
+
+```bash
+# 1. Instrumented build.
+cmake -S . -B build/pgo-gen -DCMAKE_BUILD_TYPE=Release -DKOI_PGO=generate
+cmake --build build/pgo-gen -j8 --target koi_bench koi_engine
+
+# 2. Collect held-out profile traces and merge.
+mkdir -p build/pgo-data
+export LLVM_PROFILE_FILE="$PWD/build/pgo-data/koi-%p-%m.profraw"
+export KOI_NNUE_PATH="$PWD/artifacts/networks/c13-ft-h128-wdl-f015.nnue"
+./build/pgo-gen/koi-bench --nnue "$KOI_NNUE_PATH" \
+  --fen-file tests/data/endgames/endgame-positions.txt --nodes 150000 --threads 1
+unset LLVM_PROFILE_FILE
+xcrun llvm-profdata merge -output="$PWD/build/pgo-data/koi.profdata" build/pgo-data/*.profraw
+
+# 3. Optimized build (LTO + PGO).
+cmake -S . -B build/pgo-use -DCMAKE_BUILD_TYPE=Release -DKOI_PGO=use \
+  -DKOI_PGO_PROFILE_FILE="$PWD/build/pgo-data/koi.profdata"
+cmake --build build/pgo-use -j8 --target koi_bench koi_engine
+```
 
 Recipe (Windows, VS 2022 BuildTools shell, from the repository root):
 
@@ -193,13 +224,15 @@ cmake -S <repo> -B . -DKOI_PGO=use
 cmake --build . --target koi_bench koi_engine
 ```
 
-Measured result on this machine (2026-09-25): the PGO `koi-bench` binary was
-byte-identical in behavior to the plain Release build but consistently
-**slower** (-2% to -9% on the endgames and cold-default speed gates). A control
-build of the same directory with `KOI_PGO=OFF` matched the Release binary, so
-the regression belongs to the use-mode PGO link itself. The option therefore
-stays `OFF` by default; the recipe above is kept so the experiment can be
-repeated with another compiler or training set.
+Measured results:
+- Windows MSVC (2026-09-25): the PGO `koi-bench` binary was byte-identical in
+  behavior to plain Release but slower (-2% to -9% on the endgames and
+  cold-default speed gates); the option therefore stays `OFF` by default.
+- macOS AppleClang on Apple Silicon M4 (2026-11-26, Release LTO + PGO trained on
+  held-out openings/endgames): 100% bit-identical (`d8 = 62/64`, `0/32` diffs on
+  `curated-32` and `endgame-32`), **`+5.91%` to `+6.67%`** out-of-sample mean
+  NPS (`+5.70%` over fresh same-compiler LTO control), **`+5.78%`** live match
+  NPS, and `+6.52 Elo` (`160` games @ `200 ms`, `+0.095 ply`, `0` anomalies).
 
 ## Hand-crafted evaluator (HCE)
 

@@ -136,31 +136,86 @@ option(KOI_TSAN "Disable Release IPO for a ThreadSanitizer build" OFF)
 # variant with the ray path so the CI can test the fallback configuration.
 option(KOI_PEXT_ATTACKS "Use PEXT bitboards for slider attacks in x86-64 variants" ON)
 
-# --- Profile-guided optimization (Windows/MSVC) --------------------------------
-# KOI_PGO=generate builds Release with /GENPROFILE and links with /LTCG:PGI to
-# emit a .pgd next to each binary; KOI_PGO=use rebuilds Release with /USEPROFILE
-# and links with /LTCG:PGO. The .pgd is a build artifact: the training recipe in
-# tools/README.md regenerates it and the file itself is never committed.
+# --- Profile-guided optimization (MSVC, Clang/AppleClang, GCC) ------------------
+# KOI_PGO=generate builds Release with PGO instrumentation; KOI_PGO=use rebuilds
+# Release using the collected profile data (passed via KOI_PGO_PROFILE_FILE for
+# Clang/AppleClang .profdata or optional GCC profile directory). Profile data is
+# a build artifact (/build/ keeps it out of the repository) and CI never sets
+# KOI_PGO; tools/README.md documents the per-compiler workflows.
 set(KOI_PGO "OFF" CACHE STRING "Profile-guided optimization mode (OFF, generate, use)")
 set_property(CACHE KOI_PGO PROPERTY STRINGS OFF generate use)
-if(KOI_PGO AND NOT MSVC)
-    message(FATAL_ERROR "KOI_PGO is currently wired for MSVC builds only")
+set(KOI_PGO_PROFILE_FILE "" CACHE FILEPATH
+    "Merged profile data file (.profdata for Clang/AppleClang) or profile directory (GCC) for KOI_PGO=use")
+set(KOI_PGO_MANAGES_LTO FALSE)
+if(NOT KOI_PGO STREQUAL "OFF" AND NOT KOI_PGO STREQUAL "generate" AND NOT KOI_PGO STREQUAL "use")
+    message(FATAL_ERROR "KOI_PGO must be OFF, generate, or use")
 endif()
-if(KOI_PGO AND KOI_SANITIZE)
-    message(FATAL_ERROR "KOI_PGO and KOI_SANITIZE cannot be combined")
+if(NOT KOI_PGO STREQUAL "OFF" AND (KOI_SANITIZE OR KOI_TSAN))
+    message(FATAL_ERROR "KOI_PGO cannot be combined with KOI_SANITIZE or KOI_TSAN")
 endif()
 if(KOI_PGO STREQUAL "generate")
-    add_compile_options("$<$<CONFIG:Release>:/GL>")
-    # /LTCG:PGI is the linker alias for "/LTCG /GENPROFILE"; /GENPROFILE and
-    # /USEPROFILE are link.exe options and are rejected by cl.exe (D9002).
-    add_link_options("$<$<CONFIG:Release>:/LTCG:PGI>")
+    if(MSVC)
+        add_compile_options("$<$<CONFIG:Release>:/GL>")
+        # /LTCG:PGI is the linker alias for "/LTCG /GENPROFILE"; /GENPROFILE and
+        # /USEPROFILE are link.exe options and are rejected by cl.exe (D9002).
+        add_link_options("$<$<CONFIG:Release>:/LTCG:PGI>")
+        set(KOI_PGO_MANAGES_LTO TRUE)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        add_compile_options("$<$<CONFIG:Release>:-fprofile-instr-generate>")
+        add_link_options("$<$<CONFIG:Release>:-fprofile-instr-generate>")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        if(KOI_PGO_PROFILE_FILE)
+            add_compile_options("$<$<CONFIG:Release>:-fprofile-generate=${KOI_PGO_PROFILE_FILE}>")
+            add_link_options("$<$<CONFIG:Release>:-fprofile-generate=${KOI_PGO_PROFILE_FILE}>")
+        else()
+            add_compile_options("$<$<CONFIG:Release>:-fprofile-generate>")
+            add_link_options("$<$<CONFIG:Release>:-fprofile-generate>")
+        endif()
+    else()
+        message(FATAL_ERROR "KOI_PGO is unsupported for compiler ${CMAKE_CXX_COMPILER_ID}")
+    endif()
     message(STATUS "Koi Engine PGO instrumentation enabled (Release)")
 elseif(KOI_PGO STREQUAL "use")
-    add_compile_options("$<$<CONFIG:Release>:/GL>")
-    add_link_options("$<$<CONFIG:Release>:/LTCG>" "$<$<CONFIG:Release>:/USEPROFILE>")
+    if(MSVC)
+        add_compile_options("$<$<CONFIG:Release>:/GL>")
+        add_link_options("$<$<CONFIG:Release>:/LTCG>" "$<$<CONFIG:Release>:/USEPROFILE>")
+        set(KOI_PGO_MANAGES_LTO TRUE)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        if(NOT KOI_PGO_PROFILE_FILE OR NOT EXISTS "${KOI_PGO_PROFILE_FILE}")
+            message(FATAL_ERROR
+                "KOI_PGO=use on Clang/AppleClang requires KOI_PGO_PROFILE_FILE "
+                "to point to an existing merged .profdata file")
+        endif()
+        add_compile_options(
+            "$<$<CONFIG:Release>:-fprofile-instr-use=${KOI_PGO_PROFILE_FILE}>"
+            "$<$<CONFIG:Release>:-Wno-profile-instr-out-of-date>"
+            "$<$<CONFIG:Release>:-Wno-profile-instr-unprofiled>"
+        )
+        add_link_options("$<$<CONFIG:Release>:-fprofile-instr-use=${KOI_PGO_PROFILE_FILE}>")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        if(KOI_PGO_PROFILE_FILE)
+            add_compile_options(
+                "$<$<CONFIG:Release>:-fprofile-use=${KOI_PGO_PROFILE_FILE}>"
+                "$<$<CONFIG:Release>:-fprofile-correction>"
+            )
+            add_link_options(
+                "$<$<CONFIG:Release>:-fprofile-use=${KOI_PGO_PROFILE_FILE}>"
+                "$<$<CONFIG:Release>:-fprofile-correction>"
+            )
+        else()
+            add_compile_options(
+                "$<$<CONFIG:Release>:-fprofile-use>"
+                "$<$<CONFIG:Release>:-fprofile-correction>"
+            )
+            add_link_options(
+                "$<$<CONFIG:Release>:-fprofile-use>"
+                "$<$<CONFIG:Release>:-fprofile-correction>"
+            )
+        endif()
+    else()
+        message(FATAL_ERROR "KOI_PGO is unsupported for compiler ${CMAKE_CXX_COMPILER_ID}")
+    endif()
     message(STATUS "Koi Engine PGO optimization enabled (Release)")
-elseif(NOT KOI_PGO STREQUAL "OFF")
-    message(FATAL_ERROR "KOI_PGO must be OFF, generate, or use")
 endif()
 
 if(MSVC)
@@ -236,9 +291,9 @@ endif()
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT KOI_IPO_SUPPORTED OUTPUT KOI_IPO_ERROR LANGUAGES CXX)
-if(KOI_IPO_SUPPORTED AND NOT KOI_SANITIZE AND NOT KOI_PGO AND NOT KOI_TSAN)
+if(KOI_IPO_SUPPORTED AND NOT KOI_SANITIZE AND NOT KOI_PGO_MANAGES_LTO AND NOT KOI_TSAN)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
-elseif(KOI_PGO)
+elseif(KOI_PGO_MANAGES_LTO)
     message(STATUS "Koi Engine PGO manages the Release IPO/LTO flags")
 elseif(KOI_IPO_SUPPORTED)
     message(STATUS "Koi Engine Release IPO/LTO is disabled for the sanitizer build")
