@@ -1,5 +1,7 @@
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -372,6 +374,124 @@ class UciBenchmarkReportTest(unittest.TestCase):
             summary,
             {"bytes": 4096 * 1024, "supported": True, "method": "macos_ps_rss"},
         )
+
+    def test_evaluator_flags_forward_env_only_to_koi_and_reject_invalid_inputs(self):
+        fake_engine = """
+import json
+import os
+import sys
+
+role = sys.argv[1]
+log_path = os.environ.get("BENCH_ENV_LOG")
+if log_path:
+    with open(log_path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps({
+            "role": role,
+            "KOI_EVALUATOR": os.environ.get("KOI_EVALUATOR"),
+            "KOI_NNUE_PATH": os.environ.get("KOI_NNUE_PATH"),
+        }) + "\\n")
+
+for raw in sys.stdin:
+    line = raw.strip()
+    if line == "uci":
+        print("id name Fake " + role)
+        print("id author Test")
+        print("option name Threads type spin default 1 min 1 max 8")
+        print("option name Hash type spin default 16 min 1 max 1024")
+        print("uciok", flush=True)
+    elif line == "isready":
+        print("readyok", flush=True)
+    elif line.startswith("go "):
+        print("info depth 1 nodes 1 nps 1000 time 1 pv a1a2", flush=True)
+        print("bestmove a1a2", flush=True)
+    elif line == "quit":
+        break
+""".lstrip()
+
+        with tempfile.TemporaryDirectory(prefix="koi bench env ") as temp_dir:
+            temp = Path(temp_dir)
+            script = temp / "fake_bench.py"
+            script.write_text(fake_engine, encoding="utf-8")
+            wrappers: dict[str, Path] = {}
+            for role in ("koi", "stockfish"):
+                if sys.platform == "win32":
+                    cmd = temp / f"{role}.cmd"
+                    cmd.write_text(f'@"{sys.executable}" "{script}" {role}\n', encoding="utf-8")
+                else:
+                    cmd = temp / f"{role}.sh"
+                    cmd.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" {role}\n', encoding="utf-8")
+                    cmd.chmod(0o755)
+                wrappers[role] = cmd
+
+            corpus_path = temp / "one.fen"
+            corpus_path.write_text("8/8/8/8/8/8/8/K6k w - - 0 1\n", encoding="utf-8")
+            eval_file = temp / "net.nnue"
+            eval_file.write_bytes(b"KOI-NNUE")
+            env_log = temp / "env.jsonl"
+
+            with mock.patch.dict(os.environ, {"BENCH_ENV_LOG": str(env_log)}, clear=False):
+                os.environ.pop("KOI_EVALUATOR", None)
+                os.environ.pop("KOI_NNUE_PATH", None)
+                self.assertEqual(
+                    uci_benchmark.main([
+                        "--koi", str(wrappers["koi"]),
+                        "--stockfish", str(wrappers["stockfish"]),
+                        "--fen-corpus", str(corpus_path),
+                        "--source-revision", "abc1234",
+                        "--output", str(temp / "hce.json"),
+                        "--hce",
+                    ]),
+                    0,
+                )
+            entries = [json.loads(line) for line in env_log.read_text(encoding="utf-8").splitlines()]
+            koi_entries = [e for e in entries if e["role"] == "koi"]
+            sf_entries = [e for e in entries if e["role"] == "stockfish"]
+            self.assertTrue(koi_entries and all(e["KOI_EVALUATOR"] == "hce" for e in koi_entries))
+            self.assertTrue(sf_entries and all(e["KOI_EVALUATOR"] is None for e in sf_entries))
+
+            env_log.unlink()
+            with mock.patch.dict(os.environ, {"BENCH_ENV_LOG": str(env_log)}, clear=False):
+                self.assertEqual(
+                    uci_benchmark.main([
+                        "--koi", str(wrappers["koi"]),
+                        "--stockfish", str(wrappers["stockfish"]),
+                        "--fen-corpus", str(corpus_path),
+                        "--source-revision", "abc1234",
+                        "--output", str(temp / "nnue.json"),
+                        "--koi-eval-file", str(eval_file),
+                    ]),
+                    0,
+                )
+            entries = [json.loads(line) for line in env_log.read_text(encoding="utf-8").splitlines()]
+            koi_entries = [e for e in entries if e["role"] == "koi"]
+            self.assertTrue(
+                koi_entries
+                and all(
+                    e["KOI_EVALUATOR"] == "nnue" and e["KOI_NNUE_PATH"] == str(eval_file.resolve())
+                    for e in koi_entries
+                )
+            )
+
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as missing:
+                uci_benchmark.main([
+                    "--koi", str(wrappers["koi"]),
+                    "--stockfish", str(wrappers["stockfish"]),
+                    "--fen-corpus", str(corpus_path),
+                    "--source-revision", "abc1234",
+                    "--output", str(temp / "missing.json"),
+                    "--koi-eval-file", str(temp / "missing.nnue"),
+                ])
+            self.assertEqual(missing.exception.code, 2)
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as conflict:
+                uci_benchmark.main([
+                    "--koi", str(wrappers["koi"]),
+                    "--stockfish", str(wrappers["stockfish"]),
+                    "--fen-corpus", str(corpus_path),
+                    "--source-revision", "abc1234",
+                    "--output", str(temp / "conflict.json"),
+                    "--hce", "--koi-eval-file", str(eval_file),
+                ])
+            self.assertEqual(conflict.exception.code, 2)
 
 
 if __name__ == "__main__":

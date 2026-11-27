@@ -29,6 +29,29 @@ std::string debug_optional(const std::optional<T>& value) {
     return value.has_value() ? std::to_string(*value) : "-";
 }
 
+bool parse_int64_token(const std::string_view value, std::int64_t& parsed) noexcept {
+    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
+    return error == std::errc{} && end == value.data() + value.size();
+}
+
+bool parse_milliseconds(const std::string_view value, std::chrono::milliseconds& duration) {
+    std::uint64_t parsed = 0;
+    using Rep = std::chrono::milliseconds::rep;
+    if (!parse_uint64(value, parsed) ||
+        parsed > static_cast<std::uint64_t>(std::numeric_limits<Rep>::max())) {
+        return false;
+    }
+    duration = std::chrono::milliseconds{static_cast<Rep>(parsed)};
+    return true;
+}
+
+std::string format_eval_tokens(const MoveScoreEval& eval) {
+    if (eval.mate.has_value()) {
+        return "mate " + std::to_string(*eval.mate);
+    }
+    return "cp " + std::to_string(eval.score_cp);
+}
+
 } // namespace
 
 BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& line,
@@ -151,11 +174,6 @@ std::optional<ParsedOption> parse_setoption_for_protocol(const std::vector<std::
     return ParsedOption{tokens[0], join_tokens(tokens, 1, tokens.size())};
 }
 
-bool parse_int64_token(const std::string_view value, std::int64_t& parsed) noexcept {
-    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
-    return error == std::errc{} && end == value.data() + value.size();
-}
-
 bool parse_uint64(const std::string_view value, std::uint64_t& parsed) noexcept {
     const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
     return error == std::errc{} && end == value.data() + value.size();
@@ -185,17 +203,6 @@ bool parse_random_seed(const std::string_view value, std::uint32_t& seed) {
         return false;
     }
     seed = static_cast<std::uint32_t>(parsed);
-    return true;
-}
-
-bool parse_milliseconds(const std::string_view value, std::chrono::milliseconds& duration) {
-    std::uint64_t parsed = 0;
-    using Rep = std::chrono::milliseconds::rep;
-    if (!parse_uint64(value, parsed) ||
-        parsed > static_cast<std::uint64_t>(std::numeric_limits<Rep>::max())) {
-        return false;
-    }
-    duration = std::chrono::milliseconds{static_cast<Rep>(parsed)};
     return true;
 }
 
@@ -276,13 +283,6 @@ std::string xboard_terminal_result_line(const GameState& state) {
 std::uint32_t root_ply(const GameState& state) {
     const std::uint32_t completed_fullmoves = static_cast<std::uint32_t>(state.fullmove_number() - 1);
     return completed_fullmoves * 2 + (state.side_to_move() == Color::black ? 1U : 0U);
-}
-
-std::string format_eval_tokens(const MoveScoreEval& eval) {
-    if (eval.mate.has_value()) {
-        return "mate " + std::to_string(*eval.mate);
-    }
-    return "cp " + std::to_string(eval.score_cp);
 }
 
 Wdl score_to_wdl(const SearchInfo& info) noexcept {

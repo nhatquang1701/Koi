@@ -366,10 +366,22 @@ def _search_position(process: subprocess.Popen[str], lines: queue.Queue[Any], fe
 
 def _run_one(engine_name: str, command: list[str], executable: Path, threads: int,
              positions: list[str], hash_mb: int, depth: int | None,
-             movetime_ms: int | None, timeout: float) -> dict[str, Any]:
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                               stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
-                               errors="replace", bufsize=1)
+             movetime_ms: int | None, timeout: float,
+             extra_env: dict[str, str] | None = None) -> dict[str, Any]:
+    popen_kwargs: dict[str, Any] = {
+        "stdin": subprocess.PIPE,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.DEVNULL,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "bufsize": 1,
+    }
+    if extra_env:
+        env = os.environ.copy()
+        env.update(extra_env)
+        popen_kwargs["env"] = env
+    process = subprocess.Popen(command, **popen_kwargs)
     rss = _PeakRss(process.pid)
     lines: queue.Queue[Any] = queue.Queue()
     reader = threading.Thread(target=_read_lines, args=(process, lines), daemon=True)
@@ -449,7 +461,8 @@ def run_benchmark(*, engines: list[tuple[str, list[str]]], corpus_path: Path | s
                   source_revision: str, output_path: Path | str | None = None,
                   hash_mb: int = 512, depth: int | None = None,
                   movetime_ms: int | None = None,
-                  timeout_seconds: float = 30) -> dict[str, Any]:
+                  timeout_seconds: float = 30,
+                  engine_envs: dict[str, dict[str, str]] | None = None) -> dict[str, Any]:
     """Run each engine at one and four threads using a shared depth or movetime."""
     corpus_path = Path(corpus_path).resolve()
     positions = _read_corpus(corpus_path)
@@ -486,9 +499,11 @@ def run_benchmark(*, engines: list[tuple[str, list[str]]], corpus_path: Path | s
     # 4-thread corpus before the next engine is launched.
     for name, command in engines:
         executable = _resolve_executable(command)
+        extra_env = (engine_envs or {}).get(name)
         for threads in THREAD_COUNTS:
             report["runs"].append(_run_one(name, command, executable, threads, positions,
-                                            hash_mb, depth, movetime_ms, timeout_seconds))
+                                            hash_mb, depth, movetime_ms, timeout_seconds,
+                                            extra_env=extra_env))
     if output_path is not None:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -508,13 +523,38 @@ def main(argv: list[str] | None = None) -> int:
     search_limit.add_argument("--depth", type=int, help="search to this depth (default: 12)")
     search_limit.add_argument("--movetime-ms", type=int, help="search each position for this many milliseconds")
     parser.add_argument("--timeout-seconds", type=float, default=30)
+    evaluator = parser.add_mutually_exclusive_group()
+    evaluator.add_argument(
+        "--koi-eval-file",
+        type=Path,
+        default=None,
+        help="explicit NNUE network path forwarded to Koi via KOI_NNUE_PATH",
+    )
+    evaluator.add_argument(
+        "--hce",
+        action="store_true",
+        help="run Koi with the built-in classical evaluator (KOI_EVALUATOR=hce)",
+    )
     args = parser.parse_args(argv)
+    engine_envs: dict[str, dict[str, str]] | None = None
+    if args.koi_eval_file is not None:
+        if not args.koi_eval_file.is_file():
+            parser.exit(2, f"uci_benchmark: NNUE file not found: {args.koi_eval_file}\n")
+        engine_envs = {
+            "koi": {
+                "KOI_NNUE_PATH": str(args.koi_eval_file.resolve()),
+                "KOI_EVALUATOR": "nnue",
+            }
+        }
+    elif args.hce:
+        engine_envs = {"koi": {"KOI_EVALUATOR": "hce"}}
     try:
         run_benchmark(engines=[("koi", [args.koi]), ("stockfish", [args.stockfish])],
                       corpus_path=args.fen_corpus, source_revision=args.source_revision,
                       output_path=args.output, hash_mb=args.hash_mb, depth=args.depth,
                       movetime_ms=args.movetime_ms,
-                      timeout_seconds=args.timeout_seconds)
+                      timeout_seconds=args.timeout_seconds,
+                      engine_envs=engine_envs)
     except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
         parser.exit(2, f"uci_benchmark: {exc}\n")
     return 0

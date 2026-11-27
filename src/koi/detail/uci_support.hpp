@@ -118,11 +118,9 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] std::optional<ParsedOption> parse_setoption_for_protocol(
     const std::vector<std::string>& tokens, bool allow_ucci_shorthand);
 
-[[nodiscard]] bool parse_int64_token(std::string_view value, std::int64_t& parsed) noexcept;
 [[nodiscard]] bool parse_uint64(std::string_view value, std::uint64_t& parsed) noexcept;
 [[nodiscard]] bool parse_boolean(std::string_view value, bool& parsed);
 [[nodiscard]] bool parse_random_seed(std::string_view value, std::uint32_t& seed);
-[[nodiscard]] bool parse_milliseconds(std::string_view value, std::chrono::milliseconds& duration);
 [[nodiscard]] bool parse_xboard_seconds(std::string_view value, std::chrono::milliseconds& duration);
 [[nodiscard]] bool parse_xboard_level_time(
     std::string_view value, std::chrono::milliseconds& duration);
@@ -130,7 +128,6 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] int cecp_mate_score(int mate_in_moves) noexcept;
 [[nodiscard]] std::string xboard_terminal_result_line(const GameState& state);
 [[nodiscard]] std::uint32_t root_ply(const GameState& state);
-[[nodiscard]] std::string format_eval_tokens(const MoveScoreEval& eval);
 [[nodiscard]] Wdl score_to_wdl(const SearchInfo& info) noexcept;
 
 [[nodiscard]] std::string debug_quoted(std::string_view value);

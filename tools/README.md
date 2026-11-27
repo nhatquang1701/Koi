@@ -121,7 +121,8 @@ python .\tools\measurement\uci_benchmark.py `
 ```
 
 Use `--depth 12` instead for fixed-depth measurements; when neither limit is
-supplied, depth 12 is the default. `--timeout-seconds` bounds each UCI
+supplied, depth 12 is the default. Use `--koi-eval-file <path.nnue>` or `--hce`
+to pin Koi's evaluator. `--timeout-seconds` bounds each UCI
 handshake and search. Invalid named FEN rows are rejected by the target engine
 with a position-specific diagnostic.
 

@@ -44,7 +44,7 @@ cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release && 
 cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release && ctest --preset macos-arm64-release
 ```
 
-Available presets in [CMakePresets.json](../CMakePresets.json) include `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](../Makefile) (`make`, `make profile-build` for PGO, `make EXE=koi-engine`, `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make eval`, `make compiler`, `make perft`, `make test`, `make docs`). Explicit toolchain requirements and manual CMake invocations follow below:
+Available presets in [CMakePresets.json](../CMakePresets.json) include `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](../Makefile) (`make`, `make profile-build` for PGO, `make EXE=koi-engine`, `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make compiler`, `make perft`, `make test`, `make docs`). Explicit toolchain requirements and manual CMake invocations follow below:
 
 === "Windows x64"
 
@@ -130,6 +130,7 @@ under `artifacts/verification`:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build\release_verify.ps1 `
+  -NnuePath .\artifacts\networks\koi-v9-hm10-h256-official.nnue `
   -CMakePath "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" `
   -OutputDirectory .\artifacts\verification\release-verify
 ```
@@ -148,9 +149,9 @@ From the configured build directory:
     ```powershell
     .\build\release\koi-perft.exe 4
     .\build\release\koi-perft.exe --divide 3 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
-    .\build\release\koi-bench.exe --threads 4 --speed 100 --timed
-    .\build\release\koi-bench.exe --optional --profile-json .\artifacts\verification\optional-strength.json
-    .\build\release\koi-bench.exe --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json .\artifacts\verification\steady-state.json
+    .\build\release\koi-bench.exe --nnue .\artifacts\networks\koi-v9-hm10-h256-official.nnue --threads 4 --speed 100 --timed
+    .\build\release\koi-bench.exe --nnue .\artifacts\networks\koi-v9-hm10-h256-official.nnue --optional --profile-json .\artifacts\verification\optional-strength.json
+    .\build\release\koi-bench.exe --nnue .\artifacts\networks\koi-v9-hm10-h256-official.nnue --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json .\artifacts\verification\steady-state.json
     .\build\release\koi-replay.exe startpos moves e2e4 e7e5 g1f3
     ```
 
@@ -159,9 +160,9 @@ From the configured build directory:
     ```bash
     ./build/release/koi-perft 4
     ./build/release/koi-perft --divide 3 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
-    ./build/release/koi-bench --threads 4 --speed 100 --timed
-    ./build/release/koi-bench --optional --profile-json ./artifacts/verification/optional-strength.json
-    ./build/release/koi-bench --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json ./artifacts/verification/steady-state.json
+    ./build/release/koi-bench --nnue ./artifacts/networks/koi-v9-hm10-h256-official.nnue --threads 4 --speed 100 --timed
+    ./build/release/koi-bench --nnue ./artifacts/networks/koi-v9-hm10-h256-official.nnue --optional --profile-json ./artifacts/verification/optional-strength.json
+    ./build/release/koi-bench --nnue ./artifacts/networks/koi-v9-hm10-h256-official.nnue --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json ./artifacts/verification/steady-state.json
     ./build/release/koi-replay startpos moves e2e4 e7e5 g1f3
     ```
 
@@ -169,7 +170,8 @@ From the configured build directory:
 the given non-negative depth (`--divide` prints per-move counts, elapsed time,
 and NPS; pass `--help` on `koi-perft`, `koi-replay`, or `koi-bench` for full
 usage). `koi-bench` runs the 64-position fixed-depth tactical hard gate and
-writes only its deterministic benchmark report to stdout by default.
+writes only its deterministic benchmark report to stdout by default (`--nnue <path>`
+selects the NNUE weights or `--hce` selects the built-in classical evaluator).
 `--optional` instead selects the 128-position optional strength corpus and labels
 that suite in both its text and JSON-profile output. `--threads N` and `--speed
 1..100` are recorded in every report and use the same deterministic search
@@ -198,10 +200,19 @@ The Stockfish position oracle is a measurement-only Python tool and does not add
 dependency to the C++ engine. Install the measurement dependencies and run its test
 directly from the repository root:
 
-```powershell
-python -m pip install -r .\tools\measurement\requirements.txt
-python -m unittest .\tests\python\measurement\elo_oracle_test.py -v
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    python -m pip install -r .\tools\measurement\requirements.txt
+    python -m unittest .\tests\python\measurement\elo_oracle_test.py -v
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    python3 -m pip install -r ./tools/measurement/requirements.txt
+    PYTHONPATH=. python3 ./tests/python/measurement/elo_oracle_test.py -v
+    ```
 
 See [`tools/README.md`](../tools/README.md) for the extract-only schema, the named
 book-audit and match entrypoints, and the external-results workflow.
@@ -212,30 +223,62 @@ PGN, and UCI tooling, so no third-party chess package is required.
 
 To analyze a supplied standard-SAN PGN with Stockfish as the position oracle, keep the
 JSON output under this checkout's artifacts directory and provide the exact
-executable/version and PGN provenance alongside the report:
+executable/version and PGN provenance alongside the report (use `--koi-eval-file <path.nnue>`
+or `--hce` to select Koi's evaluator):
 
-```powershell
-python .\tools\measurement\elo_oracle.py `
-  --pgn .\tests\data\games\2026-09-08-koi-vs-stockfish-19.pgn `
-  --koi .\build\release\koi-engine.exe `
-  --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
-  --output .\artifacts\verification\elo-oracle.json `
-  --movetime-ms 250 --threads 4
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    python .\tools\measurement\elo_oracle.py `
+      --pgn .\tests\data\games\2026-09-08-koi-vs-stockfish-19.pgn `
+      --koi .\build\release\koi-engine.exe `
+      --koi-eval-file .\artifacts\networks\koi-v9-hm10-h256-official.nnue `
+      --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
+      --output .\artifacts\verification\elo-oracle.json `
+      --movetime-ms 250 --threads 4
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    python3 ./tools/measurement/elo_oracle.py \
+      --pgn ./tests/data/games/2026-09-08-koi-vs-stockfish-19.pgn \
+      --koi ./build/release/koi-engine \
+      --koi-eval-file ./artifacts/networks/koi-v9-hm10-h256-official.nnue \
+      --stockfish /path/to/stockfish \
+      --output ./artifacts/verification/elo-oracle.json \
+      --movetime-ms 250 --threads 4
+    ```
 
 Use `--extract-only` to test PGN/FEN extraction without either engine. Run the licensed
 opening book as a separate audit so its `book_used`, `book_move`, and Stockfish CPL are
 kept outside the normal search metrics:
 
-```powershell
-python .\tools\measurement\elo_oracle.py `
-  --pgn .\tests\data\games\2026-09-08-koi-vs-stockfish-19.pgn `
-  --koi .\build\release\koi-engine.exe `
-  --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
-  --book C:\LicensedBooks\book.bin --book-audit `
-  --output .\artifacts\verification\book-audit.json `
-  --movetime-ms 250 --threads 4
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    python .\tools\measurement\elo_oracle.py `
+      --pgn .\tests\data\games\2026-09-08-koi-vs-stockfish-19.pgn `
+      --koi .\build\release\koi-engine.exe `
+      --koi-eval-file .\artifacts\networks\koi-v9-hm10-h256-official.nnue `
+      --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
+      --book C:\LicensedBooks\book.bin --book-audit `
+      --output .\artifacts\verification\book-audit.json `
+      --movetime-ms 250 --threads 4
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    python3 ./tools/measurement/elo_oracle.py \
+      --pgn ./tests/data/games/2026-09-08-koi-vs-stockfish-19.pgn \
+      --koi ./build/release/koi-engine \
+      --koi-eval-file ./artifacts/networks/koi-v9-hm10-h256-official.nnue \
+      --stockfish /path/to/stockfish \
+      --book /path/to/licensed/book.bin --book-audit \
+      --output ./artifacts/verification/book-audit.json \
+      --movetime-ms 250 --threads 4
+    ```
 
 The PGN, Stockfish executable/version, and licensed `book.bin` are external inputs;
 none are assumed to exist in this repository. Do not report an Elo or CPL improvement
