@@ -3193,6 +3193,53 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     require(cli_eval_ctrl->run_eval("not-a-valid-fen") == 2 &&
                 cli_eval_diag.str().find("invalid FEN") != std::string::npos,
             "run_eval with malformed FEN must return exit code 2 and diagnostic");
+
+    std::istringstream mv_undo_in(
+        "position startpos\n"
+        "undo\n"
+        "makemove\n"
+        "makemove e2e4 e7e5\n"
+        "fen\n"
+        "makemove e2e5\n"
+        "fen\n"
+        "undo 2\n"
+        "undo\n"
+        "fen\n"
+        "undo 5\n"
+        "undo\n"
+        "undo\n"
+        "quit\n");
+    std::ostringstream mv_undo_out;
+    std::ostringstream mv_undo_diag;
+    auto mv_undo_ctrl = koi::test::make_uci_controller(mv_undo_in, mv_undo_out, mv_undo_diag);
+    const int mv_undo_exit = mv_undo_ctrl->run();
+    const std::string mv_undo_raw = mv_undo_out.str();
+    require(mv_undo_exit == 0 && mv_undo_diag.str().empty(),
+            "interactive makemove/undo sequence must shut down cleanly");
+    require(mv_undo_raw.find("undo rejected: no moves to undo") != std::string::npos &&
+                mv_undo_raw.find("makemove requires at least one legal UCI move") != std::string::npos &&
+                mv_undo_raw.find("info string played 2 moves") != std::string::npos &&
+                mv_undo_raw.find("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2\n") !=
+                    std::string::npos &&
+                mv_undo_raw.find("makemove rejected illegal move 'e2e5'") != std::string::npos &&
+                mv_undo_raw.find("info string undid 2 plies") != std::string::npos &&
+                mv_undo_raw.find("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\n") !=
+                    std::string::npos &&
+                mv_undo_raw.find("undo rejected: only 0 ply available") == std::string::npos,
+            "makemove/undo output mismatch; got:\n" + mv_undo_raw);
+
+    std::istringstream undo_bounds_in("position startpos moves e2e4\nundo 2\nfen\nquit\n");
+    std::ostringstream undo_bounds_out;
+    std::ostringstream undo_bounds_diag;
+    auto undo_bounds_ctrl =
+        koi::test::make_uci_controller(undo_bounds_in, undo_bounds_out, undo_bounds_diag);
+    const int undo_bounds_exit = undo_bounds_ctrl->run();
+    const std::string undo_bounds_raw = undo_bounds_out.str();
+    require(undo_bounds_exit == 0 &&
+                undo_bounds_raw.find("undo rejected: only 1 ply available") != std::string::npos &&
+                undo_bounds_raw.find("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1\n") !=
+                    std::string::npos,
+            "undo > available plies must reject and preserve position; got:\n" + undo_bounds_raw);
 }
 
 void test_uci_support_helpers_direct() {
@@ -3371,8 +3418,8 @@ void test_uci_support_helpers_direct() {
 
     const std::string help_text = format_interactive_help();
     for (const char* cmd : {"bench", "speedtest", "options", "d", "fen", "key", "moves", "book",
-                            "tb", "eval", "nnue", "flip", "see", "perft", "wait", "compiler",
-                            "help"}) {
+                            "tb", "eval", "nnue", "flip", "makemove", "undo", "see", "perft",
+                            "wait", "compiler", "help"}) {
         require(help_text.find(cmd) != std::string::npos,
                 std::string("format_interactive_help missing command: ") + cmd);
     }

@@ -729,6 +729,10 @@ int UciController::run() {
             handle_see(command);
         } else if (name == "flip") {
             handle_flip();
+        } else if (name == "makemove") {
+            handle_makemove(command);
+        } else if (name == "undo") {
+            handle_undo(command);
         } else if (name == "perft") {
             handle_perft_command(command);
         } else if (name == "compiler") {
@@ -1533,6 +1537,64 @@ void UciController::handle_flip() {
     write_uci_info_string(position_.side_to_move() == Color::white
                               ? "flipped side to move (white)"
                               : "flipped side to move (black)");
+}
+
+void UciController::handle_makemove(std::istream& command) {
+    const std::vector<std::string> tokens = remaining_tokens(command);
+    if (tokens.empty()) {
+        write_uci_info_string("makemove requires at least one legal UCI move");
+        return;
+    }
+    GameState candidate = position_;
+    std::vector<Move> applied;
+    applied.reserve(tokens.size());
+    for (const std::string& token : tokens) {
+        const std::optional<Move> move = Move::parse_uci(token);
+        if (!move.has_value() || !candidate.is_legal(*move) || !candidate.make_move(*move)) {
+            write_uci_info_string("makemove rejected illegal move '" + token + "'");
+            return;
+        }
+        applied.push_back(*move);
+    }
+    stop_and_suppress_active_search();
+    position_ = std::move(candidate);
+    position_moves_.insert(position_moves_.end(), applied.begin(), applied.end());
+    write_uci_info_string("played " + std::to_string(applied.size()) +
+                          (applied.size() == 1 ? " move" : " moves"));
+}
+
+void UciController::handle_undo(std::istream& command) {
+    const std::vector<std::string> tokens = remaining_tokens(command);
+    if (tokens.size() > 1) {
+        write_uci_info_string("undo ignored unexpected trailing arguments");
+        return;
+    }
+    std::size_t count = 1;
+    if (tokens.size() == 1) {
+        std::uint64_t parsed = 0;
+        if (!parse_uint64(tokens[0], parsed) || parsed < 1) {
+            write_uci_info_string("undo ignored invalid count '" + tokens[0] + "'");
+            return;
+        }
+        count = static_cast<std::size_t>(parsed);
+    }
+    if (position_moves_.empty()) {
+        write_uci_info_string("undo rejected: no moves to undo");
+        return;
+    }
+    if (count > position_moves_.size()) {
+        write_uci_info_string("undo rejected: only " + std::to_string(position_moves_.size()) +
+                              " ply available");
+        return;
+    }
+    stop_and_suppress_active_search();
+    position_moves_.resize(position_moves_.size() - count);
+    position_ = position_origin_;
+    for (const Move& move : position_moves_) {
+        (void)position_.make_move(move);
+    }
+    write_uci_info_string("undid " + std::to_string(count) +
+                          (count == 1 ? " ply" : " plies"));
 }
 
 void UciController::handle_perft_command(std::istream& command) {

@@ -7,13 +7,14 @@
 #include <string>
 #include <string_view>
 
+#include "koi/detail/uci_support.hpp"
 #include "koi/game_state.hpp"
 #include "koi/perft.hpp"
 
 namespace {
 
 int print_usage(std::ostream& out, const int exit_code) {
-    out << "usage: koi-perft [--divide] <depth> [fen]\n";
+    out << "usage: koi-perft [--divide] <depth> [startpos|fen [moves <uci>...]]\n";
     return exit_code;
 }
 
@@ -60,9 +61,10 @@ int main(int argc, char* argv[]) {
 
     koi::GameState state = koi::GameState::startpos();
     if (!fen.empty()) {
-        const auto parsed = koi::GameState::from_fen(fen);
+        std::string error;
+        const auto parsed = koi::detail::parse_cli_position_spec(fen, error);
         if (!parsed.has_value()) {
-            std::cerr << "invalid FEN\n";
+            std::cerr << error << '\n';
             return 2;
         }
         state = *parsed;

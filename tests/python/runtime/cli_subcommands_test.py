@@ -449,6 +449,21 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(hce_nnue.stderr, "")
         self.assertIn("NNUE : inactive (EvalMode=hce)", hce_nnue.stdout)
 
+        makemove_undo = self._run(
+            ["--hce", "-c", "makemove e2e4 e7e5", "-c", "fen", "-c", "undo", "-c", "fen"],
+            disable_nnue=True,
+        )
+        self.assertEqual(makemove_undo.returncode, 0, makemove_undo.stderr)
+        self.assertEqual(makemove_undo.stderr, "")
+        self.assertIn(
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
+            makemove_undo.stdout,
+        )
+        self.assertIn(
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+            makemove_undo.stdout,
+        )
+
         xboard = self._run(
             ["--protocol", "xboard", "--hce", "-c", "protover 2", "-c", "sd 2", "-c", "go"],
             disable_nnue=True,
@@ -520,6 +535,10 @@ class CliSubcommandsTest(unittest.TestCase):
         bad_fen = subprocess.run([str(perft_exe), "1", "bad fen"], capture_output=True, text=True, timeout=15)
         self.assertNotEqual(bad_fen.returncode, 0)
         self.assertIn("invalid FEN", bad_fen.stderr)
+
+        perft_moves = subprocess.run([str(perft_exe), "1", "moves", "e2e4"], capture_output=True, text=True, timeout=15)
+        self.assertEqual(perft_moves.returncode, 0, perft_moves.stderr)
+        self.assertEqual(perft_moves.stdout.strip(), "nodes 20")
 
         help_replay = subprocess.run([str(replay_exe), "--help"], capture_output=True, text=True, timeout=15)
         self.assertEqual(help_replay.returncode, 0, help_replay.stderr)

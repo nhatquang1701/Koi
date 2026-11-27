@@ -30,7 +30,8 @@ from unittest_progress import format_progress_eta  # noqa: E402
 
 FRAGMENTS = [
     "uci", "isready", "ucinewgame", "stop", "ponderhit", "go", "position",
-    "setoption", "debug", "register", "d", "fen", "key", "moves", "book", "tb", "eval", "flip", "see", "compiler", "wait", "board",
+    "setoption", "debug", "register", "d", "fen", "key", "moves", "book", "tb", "eval", "nnue",
+    "flip", "makemove", "undo", "see", "options", "compiler", "wait", "board",
     "help", "quitx", "setoption name", "position startpos", "go depth",
     "setoption name Hash value",
 ]
@@ -114,6 +115,40 @@ def _is_valid_tb_line(line: str) -> bool:
     return line.startswith("Syzygy : ")
 
 
+def _is_valid_nnue_line(line: str) -> bool:
+    return line.startswith((
+        "NNUE : ",
+        "NNUE file      : ",
+        "Format version : ",
+        "Feature set    : ",
+        "Architecture   : ",
+        "Quantization   : ",
+        "Payload bytes  : ",
+        "Payload SHA256 : ",
+        "Status         : ",
+    ))
+
+
+def _is_valid_options_line(line: str) -> bool:
+    return line.startswith((
+        "Protocol        : ",
+        "Evaluator       : ",
+        "EvalFile        : ",
+        "Hash            : ",
+        "Threads         : ",
+        "MultiPV         : ",
+        "Ponder          : ",
+        "UCI_AnalyseMode : ",
+        "UCI_ShowWDL     : ",
+        "Contempt        : ",
+        "Move Overhead   : ",
+        "Slow Mover      : ",
+        "RandomSeed      : ",
+        "OwnBook         : ",
+        "SyzygyPath      : ",
+    ))
+
+
 def random_command(rng: random.Random) -> str:
     style = rng.randrange(6)
     if style == 0:
@@ -175,6 +210,8 @@ def run_case(config: dict) -> dict:
         allow_book = "book" in sent_tokens
         allow_tb = "tb" in sent_tokens
         allow_eval = "eval" in sent_tokens
+        allow_nnue = "nnue" in sent_tokens
+        allow_options = "options" in sent_tokens
         allow_see = "see" in sent_tokens
         allow_compiler = "compiler" in sent_tokens
         allow_help = "help" in sent_tokens
@@ -194,6 +231,8 @@ def run_case(config: dict) -> dict:
                 or (allow_book and _is_valid_book_line(line))
                 or (allow_tb and _is_valid_tb_line(line))
                 or (allow_eval and _is_valid_eval_line(line))
+                or (allow_nnue and _is_valid_nnue_line(line))
+                or (allow_options and _is_valid_options_line(line))
                 or (allow_see and _is_valid_see_line(line))
                 or (allow_compiler and _is_valid_compiler_line(line))
                 or (allow_help and _is_valid_help_line(line))

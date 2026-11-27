@@ -726,6 +726,8 @@ std::string format_interactive_help() {
         "  eval                                Show active evaluator, score, WDL, and phase\n"
         "  nnue                                Show active loaded NNUE metadata and SHA-256\n"
         "  flip                                Flip side to move when legal\n"
+        "  makemove <uci...>                   Play one or more legal UCI moves on the current board\n"
+        "  undo [plies]                        Step back N plies (default 1) in position history\n"
         "  see <move>                          Show static exchange evaluation for a legal move\n"
         "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"
         "  bench [depth [hash [threads]]]      Run OpenBench-compatible benchmark\n"
