@@ -25,7 +25,8 @@ OPENING_LINE = re.compile(
 )
 RESULTS = {"1-0", "0-1", "1/2-1/2"}
 UCI_MOVE = re.compile(r"^[a-h][1-8][a-h][1-8][nbrq]?$")
-EVALUATOR_MODES = {"classical", "nnue-v4", "nnue-v5"}
+NNUE_EVALUATOR_MODES = frozenset({"nnue-v4", "nnue-v5", "nnue-v6", "nnue-v8", "nnue-v9"})
+EVALUATOR_MODES = frozenset({"classical"}) | NNUE_EVALUATOR_MODES
 SHA256_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
@@ -674,7 +675,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--expected-evalfile-sha256",
-        help="require the selected NNUE EvalFile hash (required for v4/v5 evaluator modes)",
+        help="require the selected NNUE EvalFile hash (required for NNUE evaluator modes)",
     )
     parser.add_argument(
         "--expected-opening-count",
@@ -698,7 +699,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.expected_evalfile_sha256 is not None and not SHA256_HEX.fullmatch(args.expected_evalfile_sha256):
         parser.error("--expected-evalfile-sha256 must contain 64 hexadecimal characters")
-    if args.expected_evaluator_mode in {"nnue-v4", "nnue-v5"} and args.expected_evalfile_sha256 is None:
+    if args.expected_evaluator_mode in NNUE_EVALUATOR_MODES and args.expected_evalfile_sha256 is None:
         parser.error("--expected-evalfile-sha256 is required for a nonclassical evaluator mode")
     if args.expected_evalfile_sha256 is not None and args.expected_evaluator_mode is None:
         parser.error("--expected-evaluator-mode is required with --expected-evalfile-sha256")

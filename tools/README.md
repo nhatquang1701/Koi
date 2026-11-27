@@ -169,7 +169,7 @@ cmake --build build/pgo-gen -j8 --target koi_bench koi_engine
 # 2. Collect held-out profile traces and merge.
 mkdir -p build/pgo-data
 export LLVM_PROFILE_FILE="$PWD/build/pgo-data/koi-%p-%m.profraw"
-export KOI_NNUE_PATH="$PWD/artifacts/networks/c13-ft-h128-wdl-f015.nnue"
+export KOI_NNUE_PATH="$PWD/artifacts/networks/koi-v9-hm10-h256-official.nnue"
 ./build/pgo-gen/koi-bench --nnue "$KOI_NNUE_PATH" \
   --fen-file tests/data/endgames/endgame-positions.txt --nodes 150000 --threads 1
 unset LLVM_PROFILE_FILE
@@ -192,9 +192,9 @@ cmake --build build/pgo-generate --target koi_bench koi_engine
 #    instrumented binaries from the build directory and copy pgort140.dll from
 #    the MSVC bin directory beside them.
 Set-Location build/pgo-generate
-.\koi-bench.exe --threads 1 --speed 100
-.\koi-bench.exe --threads 1 --speed 100 --optional
-.\koi-bench.exe --threads 1 --speed 100 --timed `
+.\koi-bench.exe --nnue "<repo>\artifacts\networks\koi-v9-hm10-h256-official.nnue" --threads 1
+.\koi-bench.exe --nnue "<repo>\artifacts\networks\koi-v9-hm10-h256-official.nnue" --threads 1 --optional
+.\koi-bench.exe --nnue "<repo>\artifacts\networks\koi-v9-hm10-h256-official.nnue" --threads 1 --timed `
   --fen-file "<repo>\tests\data\endgames\endgame-positions.txt" --depth-sweep 2..5
 # Drive koi-engine.exe with a short UCI workload: startpos/Kiwipete/endgame
 # `go movetime 2000`, startpos `go depth 7`, startpos `go nodes 500000`.
@@ -495,7 +495,7 @@ hardware/options/time control” and must not be presented as a universal Elo
 claim.
 
 NNUE runs pass the network with `--koi-eval-file`: the container header selects
-the `nnue-v4`/`nnue-v5`/`nnue-v9` attestation mode, the match harness proves the engine
+the `nnue-v4`/`nnue-v5`/`nnue-v6`/`nnue-v8`/`nnue-v9` attestation mode, the match harness proves the engine
 enabled that exact file, and the report records the absolute path, SHA-256, byte
 size, container version, and harness attestation under
 `configuration.koi_evaluator`. A missing, malformed, or rejected network exits

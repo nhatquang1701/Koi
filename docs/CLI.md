@@ -195,7 +195,7 @@ Built from source via CMake presets (not shipped in user-facing release archives
 | `koi-perft` | Fast legal move-generator perft & `--divide` counter | `koi-perft [--divide] <depth> [startpos\|fen [moves <uci>...]]` |
 | `koi-replay` | Coordinate move replayer (`legal`, `result`, `termination`, `fen`) | `koi-replay <startpos\|fen 6-field-fen> [moves <uci>...]` |
 | `koi-eval-features` | Bulk CSV evaluator dumper for FEN corpora | `koi-eval-features (--nnue NET \| --hce) [--input FILE] [--output FILE]` |
-| `koi-nnue-fixture` | Synthetic v4/v5 `.nnue` generator for C++ & Python boundary tests | `koi-nnue-fixture --arch v4\|v5 --output <path>` |
+| `koi-nnue-fixture` | Synthetic v4/v5/v9 `.nnue` generator for C++ & Python boundary tests | `koi-nnue-fixture --arch v4\|v5\|v9 --output <path>` |
 | `tools/measurement/nnue_info.py` | Offline NNUE container inspector & SHA-256 payload verifier | `python tools/measurement/nnue_info.py <network.nnue> [--json] [--verify]` |
 
 For full measurement, SPRT matching, and packaging documentation, see [Developer Tools](../tools/README.md).

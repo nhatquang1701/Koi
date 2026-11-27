@@ -13,7 +13,7 @@
 namespace {
 
 constexpr std::string_view kUsage =
-    "usage: koi-nnue-fixture --arch v4|v5 --output <path>\n";
+    "usage: koi-nnue-fixture --arch v4|v5|v9 --output <path>\n";
 constexpr std::uint32_t kV5HiddenUnits = 1'536;
 constexpr std::uint32_t kV5L1Units = 32;
 
@@ -62,7 +62,7 @@ std::optional<Arguments> parse_arguments(int argc, char** argv) {
     }
 
     if (!arch.has_value() || !output.has_value() || output->empty() ||
-        (*arch != "v4" && *arch != "v5")) {
+        (*arch != "v4" && *arch != "v5" && *arch != "v9")) {
         return std::nullopt;
     }
     return Arguments{*arch, std::move(*output)};
@@ -86,9 +86,14 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    const koi::NnueNetwork network = arguments->arch == "v4"
-                                         ? koi::test::synthetic_network_v4()
-                                         : large_v5_fixture();
+    koi::NnueNetwork network;
+    if (arguments->arch == "v4") {
+        network = koi::test::synthetic_network_v4();
+    } else if (arguments->arch == "v5") {
+        network = large_v5_fixture();
+    } else {
+        network = koi::test::synthetic_network_v9();
+    }
     const auto encoded = koi::NnueLoader::serialize(network);
     if (!encoded.has_value()) {
         std::cerr << "unable to serialize NNUE fixture: " << encoded.error().message << '\n';

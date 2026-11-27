@@ -55,13 +55,15 @@ ctest --test-dir build/release -j 8 --output-on-failure
 - Fixed-depth node/time profile:
 
   ```bash
-  build/release/koi-bench --depth 6 --threads 1 --timed --fen-file <fens.txt>
+  build/release/koi-bench --nnue artifacts/networks/koi-v9-hm10-h256-official.nnue \
+    --depth 6 --threads 1 --timed --fen-file <fens.txt>
   ```
 
 - Depth sweep with per-depth rows plus JSON reports:
 
   ```bash
-  build/release/koi-bench --depth-sweep 1..8 --threads 1 --timed \
+  build/release/koi-bench --nnue artifacts/networks/koi-v9-hm10-h256-official.nnue \
+    --depth-sweep 1..8 --threads 1 --timed \
     --fen-file <fens.txt> --report out.json --profile-json profile.json
   ```
 

@@ -115,6 +115,8 @@ void test_architectures_generate_deterministic_loadable_distinct_containers() {
     const auto v4_second = scratch.file("v4-second.nnue");
     const auto v5 = scratch.file("v5.nnue");
     const auto v5_second = scratch.file("v5-second.nnue");
+    const auto v9 = scratch.file("v9.nnue");
+    const auto v9_second = scratch.file("v9-second.nnue");
 
     koi::test::require(run_fixture("v4", &v4_first) == 0,
                        "v4 fixture generation should succeed");
@@ -124,21 +126,31 @@ void test_architectures_generate_deterministic_loadable_distinct_containers() {
                        "v5 fixture generation should succeed");
     koi::test::require(run_fixture("v5", &v5_second) == 0,
                        "repeated v5 fixture generation should succeed");
+    koi::test::require(run_fixture("v9", &v9) == 0,
+                       "v9 fixture generation should succeed");
+    koi::test::require(run_fixture("v9", &v9_second) == 0,
+                       "repeated v9 fixture generation should succeed");
 
     const auto v4_first_bytes = read_bytes(v4_first);
     const auto v4_second_bytes = read_bytes(v4_second);
     const auto v5_bytes = read_bytes(v5);
     const auto v5_second_bytes = read_bytes(v5_second);
+    const auto v9_bytes = read_bytes(v9);
+    const auto v9_second_bytes = read_bytes(v9_second);
     koi::test::require(!v4_first_bytes.empty() && v4_first_bytes == v4_second_bytes,
                        "repeated v4 generation must produce identical bytes");
     koi::test::require(!v5_bytes.empty(), "v5 generation must produce bytes");
     koi::test::require(v5_bytes == v5_second_bytes,
                        "repeated v5 generation must produce identical bytes");
-    koi::test::require(v4_first_bytes != v5_bytes,
-                       "v4 and v5 fixture containers must have distinct identities");
+    koi::test::require(!v9_bytes.empty() && v9_bytes == v9_second_bytes,
+                       "repeated v9 generation must produce identical bytes");
+    koi::test::require(v4_first_bytes != v5_bytes && v4_first_bytes != v9_bytes &&
+                           v5_bytes != v9_bytes,
+                       "v4, v5, and v9 fixture containers must have distinct identities");
 
     const auto loaded_v4 = koi::NnueLoader::load_file(v4_first);
     const auto loaded_v5 = koi::NnueLoader::load_file(v5);
+    const auto loaded_v9 = koi::NnueLoader::load_file(v9);
     koi::test::require(loaded_v4.has_value() && loaded_v4->manifest.version == 4,
                        "generated v4 fixture must be accepted as NNUE v4");
     koi::test::require(loaded_v5.has_value() && loaded_v5->manifest.version == 5,
@@ -146,6 +158,9 @@ void test_architectures_generate_deterministic_loadable_distinct_containers() {
     koi::test::require(loaded_v5->manifest.layer_sizes[1] == 1536 &&
                            loaded_v5->manifest.layer_sizes[3] == 32,
                        "generated v5 fixture must use the large hidden 1536 and L1 32 dimensions");
+    koi::test::require(loaded_v9.has_value() && loaded_v9->manifest.version == 9 &&
+                           loaded_v9->manifest.feature_set == "halfka-hm-v2",
+                       "generated v9 fixture must be accepted as NNUE v9 (halfka-hm-v2)");
 }
 
 void test_invalid_architecture_and_missing_arguments_are_rejected() {

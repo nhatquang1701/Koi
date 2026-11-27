@@ -575,6 +575,21 @@ class CliSubcommandsTest(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, f"{tool_exe} {flag}: {proc.stderr}")
                 self.assertIn(expected_prefix, proc.stdout)
 
+        with tempfile.TemporaryDirectory() as tmpdir:
+            v9_path = pathlib.Path(tmpdir) / "fixture-v9.nnue"
+            gen = subprocess.run(
+                [str(nnue_fixture_exe), "--arch", "v9", "--output", str(v9_path)],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(gen.returncode, 0, gen.stderr)
+            inspected = self._run(["nnue", str(v9_path)], disable_nnue=True)
+            self.assertEqual(inspected.returncode, 0, inspected.stderr)
+            self.assertIn("Format version : v9", inspected.stdout)
+            self.assertIn("Feature set    : halfka-hm-v2", inspected.stdout)
+            self.assertIn("Status         : valid (checksum verified)", inspected.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

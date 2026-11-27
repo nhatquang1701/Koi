@@ -337,6 +337,33 @@ class ReleaseCandidateGamesTest(unittest.TestCase):
         self.assertIn("evaluator=nnue-v5", output.getvalue())
         self.assertIn(f"EvalFile SHA-256={expected_hash}", output.getvalue())
 
+    def test_cli_accepts_nnue_v9_and_requires_hash(self):
+        expected_hash = "e" * 64
+        self.write_evaluator_attestation(mode="nnue-v9", sha256=expected_hash)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = main([
+                "--pgn", str(self.pgn), "--report", str(self.report),
+                "--openings", str(self.openings), "--expected-games", "1",
+                "--expected-color", "white", "--expected-time-control", "1+0",
+                "--expected-threads", "1", "--expected-max-moves", "1",
+                "--expected-opening-count", "0", "--expected-evaluator-mode", "nnue-v9",
+                "--expected-evalfile-sha256", expected_hash,
+            ])
+        self.assertEqual(result, 0)
+        self.assertIn("evaluator=nnue-v9", output.getvalue())
+        self.assertIn(f"EvalFile SHA-256={expected_hash}", output.getvalue())
+
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as ctx:
+            main([
+                "--pgn", str(self.pgn), "--report", str(self.report),
+                "--openings", str(self.openings), "--expected-games", "1",
+                "--expected-color", "white", "--expected-time-control", "1+0",
+                "--expected-threads", "1", "--expected-max-moves", "1",
+                "--expected-opening-count", "0", "--expected-evaluator-mode", "nnue-v9",
+            ])
+        self.assertEqual(ctx.exception.code, 2)
+
     def test_package_expectations_accept_a_clean_matching_candidate_binding(self):
         executable_sha256 = "c" * 64
         archive_sha256 = "b" * 64
