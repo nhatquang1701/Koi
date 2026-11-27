@@ -3432,11 +3432,37 @@ void test_uci_support_helpers_direct() {
 
     const std::string help_text = format_interactive_help();
     for (const char* cmd : {"bench", "speedtest", "options", "d", "fen", "key", "moves", "book",
-                            "tb", "eval", "nnue", "flip", "makemove", "undo", "see", "perft",
-                            "wait", "compiler", "help"}) {
+                            "tb", "eval", "nnue", "flip", "makemove", "undo", "history", "see",
+                            "perft", "wait", "compiler", "help"}) {
         require(help_text.find(cmd) != std::string::npos,
                 std::string("format_interactive_help missing command: ") + cmd);
     }
+
+    const std::string history_empty = format_move_history(startpos, {});
+    require(history_empty.find("Origin  : startpos\n") != std::string::npos &&
+                history_empty.find("Plies   : 0\n") != std::string::npos &&
+                history_empty.find("Moves   : (none)\n") != std::string::npos &&
+                history_empty.find("Command : position startpos\n") != std::string::npos &&
+                history_empty.find("info string") == std::string::npos,
+            "format_move_history empty mismatch; got:\n" + history_empty);
+
+    const std::string history_moves = format_move_history(startpos, {*e2e4, *e7e5});
+    require(history_moves.find("Origin  : startpos\n") != std::string::npos &&
+                history_moves.find("Plies   : 2\n") != std::string::npos &&
+                history_moves.find("Moves   : e2e4 e7e5\n") != std::string::npos &&
+                history_moves.find("Command : position startpos moves e2e4 e7e5\n") !=
+                    std::string::npos,
+            "format_move_history moves mismatch; got:\n" + history_moves);
+
+    const std::string custom_fen = "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1";
+    const auto custom_pos = koi::GameState::from_fen(custom_fen);
+    require(custom_pos.has_value(), "custom history FEN must parse");
+    const std::string history_fen = format_move_history(*custom_pos, {*e2e4});
+    require(history_fen.find("Origin  : " + custom_fen + "\n") != std::string::npos &&
+                history_fen.find("Plies   : 1\n") != std::string::npos &&
+                history_fen.find("Command : position fen " + custom_fen + " moves e2e4\n") !=
+                    std::string::npos,
+            "format_move_history custom FEN mismatch; got:\n" + history_fen);
 
     const koi::PositionConsistencySnapshot snap = startpos.consistency_snapshot();
     const std::string pos_json = format_position_debug_json(

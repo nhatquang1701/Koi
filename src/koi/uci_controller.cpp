@@ -775,6 +775,8 @@ int UciController::run() {
             handle_makemove(command);
         } else if (name == "undo") {
             handle_undo(command);
+        } else if (name == "history") {
+            handle_history();
         } else if (name == "perft") {
             handle_perft_command(command);
         } else if (name == "compiler") {
@@ -1585,6 +1587,12 @@ void UciController::handle_undo(std::istream& command) {
     }
     write_uci_info_string("undid " + std::to_string(count) +
                           (count == 1 ? " ply" : " plies"));
+}
+
+void UciController::handle_history() {
+    const std::string text = detail::format_move_history(position_origin_, position_moves_);
+    std::lock_guard lock(output_mutex_);
+    output_ << text << std::flush;
 }
 
 void UciController::handle_perft_command(std::istream& command) {

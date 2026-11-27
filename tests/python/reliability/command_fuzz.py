@@ -31,7 +31,7 @@ from unittest_progress import format_progress_eta  # noqa: E402
 FRAGMENTS = [
     "uci", "isready", "ucinewgame", "stop", "ponderhit", "go", "position",
     "setoption", "debug", "register", "d", "fen", "key", "moves", "book", "tb", "eval", "nnue",
-    "flip", "makemove", "undo", "see", "options", "compiler", "wait", "board",
+    "flip", "makemove", "undo", "history", "see", "options", "compiler", "wait", "board",
     "help", "quitx", "setoption name", "position startpos", "go depth",
     "setoption name Hash value",
 ]
@@ -149,6 +149,10 @@ def _is_valid_options_line(line: str) -> bool:
     ))
 
 
+def _is_valid_history_line(line: str) -> bool:
+    return line.startswith(("Origin  : ", "Plies   : ", "Moves   : ", "Command : "))
+
+
 def random_command(rng: random.Random) -> str:
     style = rng.randrange(6)
     if style == 0:
@@ -212,6 +216,7 @@ def run_case(config: dict) -> dict:
         allow_eval = "eval" in sent_tokens
         allow_nnue = "nnue" in sent_tokens
         allow_options = "options" in sent_tokens
+        allow_history = "history" in sent_tokens
         allow_see = "see" in sent_tokens
         allow_compiler = "compiler" in sent_tokens
         allow_help = "help" in sent_tokens
@@ -233,6 +238,7 @@ def run_case(config: dict) -> dict:
                 or (allow_eval and _is_valid_eval_line(line))
                 or (allow_nnue and _is_valid_nnue_line(line))
                 or (allow_options and _is_valid_options_line(line))
+                or (allow_history and _is_valid_history_line(line))
                 or (allow_see and _is_valid_see_line(line))
                 or (allow_compiler and _is_valid_compiler_line(line))
                 or (allow_help and _is_valid_help_line(line))

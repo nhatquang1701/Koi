@@ -514,11 +514,27 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("NNUE : inactive (EvalMode=hce)", hce_nnue.stdout)
 
         makemove_undo = self._run(
-            ["--hce", "-c", "makemove e2e4 e7e5", "-c", "fen", "-c", "undo", "-c", "fen"],
+            [
+                "--hce",
+                "-c",
+                "makemove e2e4 e7e5",
+                "-c",
+                "history",
+                "-c",
+                "fen",
+                "-c",
+                "undo",
+                "-c",
+                "fen",
+            ],
             disable_nnue=True,
         )
         self.assertEqual(makemove_undo.returncode, 0, makemove_undo.stderr)
         self.assertEqual(makemove_undo.stderr, "")
+        self.assertIn("Origin  : startpos", makemove_undo.stdout)
+        self.assertIn("Plies   : 2", makemove_undo.stdout)
+        self.assertIn("Moves   : e2e4 e7e5", makemove_undo.stdout)
+        self.assertIn("Command : position startpos moves e2e4 e7e5", makemove_undo.stdout)
         self.assertIn(
             "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
             makemove_undo.stdout,

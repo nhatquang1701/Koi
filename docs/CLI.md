@@ -171,6 +171,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `flip` | — | Toggle side to move when legal (clears en passant; rejects positions in check) |
 | `makemove` | `<uci...>` | Play one or more legal UCI moves transactionally on the current board |
 | `undo` | `[plies]` | Step back `N` plies (default `1`) in the current position's move history |
+| `history` | — | Print the position origin (`startpos` or FEN), ply count, move history, and full `position ...` command |
 | `see` | `<uci-move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal move in centipawns |
 | `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
 | `bench` | `[depth [hash [threads]]]` | Run the 16-position deterministic benchmark inside the active session |

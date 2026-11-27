@@ -52,13 +52,16 @@ def pearson(xs: list[float], ys: list[float]) -> float:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("corpus", type=pathlib.Path)
     parser.add_argument("--sample", type=int, default=20000)
     parser.add_argument("--threshold", type=float, default=0.8)
     parser.add_argument("--seed", type=int, default=20261006)
     args = parser.parse_args()
 
+    if args.sample < 1:
+        print("validate_corpus_perspective: --sample must be at least 1", file=sys.stderr)
+        return 2
     if not args.corpus.exists():
         print(f"corpus not found: {args.corpus}", file=sys.stderr)
         return 2

@@ -4,9 +4,10 @@
 //
 // Optional, selectable evaluator: NNUE remains the production/default path.
 // This implementation is stateless and thread-safe; every evaluation derives
-// from the position's feature snapshot and the native attack tables, with no
-// hidden global state.  The score is in centipawns from the requested
-// perspective, compatible with the search's score range.
+// directly from GameState::copy_board_to and the native attack tables (without
+// using the NNUE PositionFeatures container), with no hidden global state.
+// The score is in centipawns from the requested perspective, compatible with
+// the search's score range.
 
 #include "koi/evaluator.hpp"
 

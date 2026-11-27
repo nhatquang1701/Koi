@@ -8,10 +8,14 @@ param(
     [string]$OpeningFile = '',
     [string]$FenFile = '',
     [string]$OutputDirectory = '',
+    [ValidateRange(1, 100000)]
     [int]$Games = 100,
+    [ValidateRange(1, 10000)]
     [int]$MaxMoves = 200,
     [string]$TimeControl = '1+0',
+    [ValidateRange(1, 4096)]
     [int]$Hash = 512,
+    [ValidateRange(1, 256)]
     [int]$Threads = 1,
     [bool]$OwnBook = $false,
     [string]$BookFile = 'book.bin',

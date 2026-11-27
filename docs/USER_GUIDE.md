@@ -682,6 +682,7 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
   - `flip` — toggles the side to move (when legal; rejects positions that would leave the non-moving king in check).
   - `makemove <uci...>` — plays one or more legal UCI moves transactionally onto the current board and history.
   - `undo [plies]` — steps back `N` plies (default `1`) in the current position's move history.
+  - `history` — prints the position origin (`startpos` or FEN), ply count, move history, and full `position ...` command.
   - `see <move>` — prints the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns.
   - `compiler` — prints build version, commit hash, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`).
   - `bench [depth [hash [threads]]]` — runs the deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread) and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second`.

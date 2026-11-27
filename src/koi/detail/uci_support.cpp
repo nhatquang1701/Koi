@@ -122,6 +122,18 @@ std::string debug_hex(const std::uint64_t value) {
     return stream.str();
 }
 
+std::string hex_bytes(const std::uint8_t* const data, const std::size_t count) {
+    constexpr char kHexDigits[] = "0123456789abcdef";
+    std::string hex;
+    hex.reserve(count * 2U);
+    for (std::size_t index = 0; index < count; ++index) {
+        const std::uint8_t byte = data[index];
+        hex.push_back(kHexDigits[(byte >> 4U) & 0x0fU]);
+        hex.push_back(kHexDigits[byte & 0x0fU]);
+    }
+    return hex;
+}
+
 } // namespace
 
 BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& line,
@@ -493,7 +505,7 @@ std::string format_ascii_board(const GameState& position) {
         }
         buffer << ' ' << (rank + 1) << "\n +---+---+---+---+---+---+---+---+\n";
     }
-    const std::size_t legal_count = position.legal_moves().size();
+    const std::size_t legal_count = position.legal_moves_into({});
     std::string_view state_label = "ongoing";
     if (legal_count == 0) {
         state_label = checked
@@ -650,11 +662,12 @@ std::string format_eval_summary(const GameState& position,
     SearchInfo eval_info;
     eval_info.score_cp = score_stm;
     const Wdl wdl = score_to_wdl(eval_info);
+    const NnueEvaluator* const nnue =
+        hce_active ? nullptr : dynamic_cast<const NnueEvaluator*>(evaluator);
     buffer << "Evaluator      : ";
     if (hce_active) {
         buffer << "HCE (classical tapered)";
-    } else if (const auto* nnue = dynamic_cast<const NnueEvaluator*>(evaluator);
-               nnue != nullptr && nnue->network() != nullptr) {
+    } else if (nnue != nullptr && nnue->network() != nullptr) {
         const NnueManifest& m = nnue->network()->manifest;
         const bool dual =
             (m.version == kKoiNnueHalfkaHmV9FormatVersion) ||
@@ -674,30 +687,23 @@ std::string format_eval_summary(const GameState& position,
            << (static_cast<double>(wdl.loss) / 10.0) << "% L\n"
            << "Game phase     : " << position.game_phase() << "/24 (pieces: "
            << position.piece_count() << ")\n";
-    if (!hce_active) {
-        if (const auto* nnue = dynamic_cast<const NnueEvaluator*>(evaluator);
-            nnue != nullptr && nnue->network() != nullptr) {
-            const NnueNetwork& net = *nnue->network();
-            const NnueManifest& m = net.manifest;
-            buffer << "Network SHA256 : " << std::hex << std::nouppercase << std::setfill('0');
-            for (std::size_t i = 0; i < 6; ++i) {
-                buffer << std::setw(2) << static_cast<unsigned>(m.network_sha256[i]);
-            }
-            buffer << std::dec << std::setfill(' ') << '\n';
-            if (m.layer_sizes[2] == kKoiNnueOutputBucketCount) {
-                const std::size_t missing =
-                    32U - std::min<std::size_t>(32U, position.piece_count());
-                const std::size_t bucket = std::min<std::size_t>(7U, missing / 4U);
-                buffer << "Output bucket  : " << bucket << " (of 8)\n";
-            }
-            buffer << "Quantization   : " << m.quantization;
-            if (m.version == kKoiNnueHalfkaHmV9FormatVersion) {
-                buffer << " (QA=" << static_cast<unsigned>(net.qa)
-                       << ", QB=" << static_cast<unsigned>(net.qb)
-                       << ", scale=" << net.eval_scale << ')';
-            }
-            buffer << '\n';
+    if (nnue != nullptr && nnue->network() != nullptr) {
+        const NnueNetwork& net = *nnue->network();
+        const NnueManifest& m = net.manifest;
+        buffer << "Network SHA256 : " << hex_bytes(m.network_sha256.data(), 6) << '\n';
+        if (m.layer_sizes[2] == kKoiNnueOutputBucketCount) {
+            const std::size_t missing =
+                32U - std::min<std::size_t>(32U, position.piece_count());
+            const std::size_t bucket = std::min<std::size_t>(7U, missing / 4U);
+            buffer << "Output bucket  : " << bucket << " (of 8)\n";
         }
+        buffer << "Quantization   : " << m.quantization;
+        if (m.version == kKoiNnueHalfkaHmV9FormatVersion) {
+            buffer << " (QA=" << static_cast<unsigned>(net.qa)
+                   << ", QB=" << static_cast<unsigned>(net.qb)
+                   << ", scale=" << net.eval_scale << ')';
+        }
+        buffer << '\n';
     }
     if (const auto* hce = dynamic_cast<const ClassicalEvaluator*>(evaluator); hce != nullptr) {
         const ClassicalEvalTrace tr = hce->trace(position);
@@ -757,6 +763,7 @@ std::string format_interactive_help() {
         "  flip                                Flip side to move when legal\n"
         "  makemove <uci...>                   Play one or more legal UCI moves on the current board\n"
         "  undo [plies]                        Step back N plies (default 1) in position history\n"
+        "  history                             Show position origin, move history, and UCI command\n"
         "  see <move>                          Show static exchange evaluation for a legal move\n"
         "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"
         "  bench [depth [hash [threads]]]      Run OpenBench-compatible benchmark\n"
@@ -844,16 +851,10 @@ std::string format_nnue_info(const std::string_view display_path, const NnueNetw
         }
         buffer << ')';
     }
-    constexpr char kHexDigits[] = "0123456789abcdef";
-    std::string sha_hex;
-    sha_hex.reserve(manifest.network_sha256.size() * 2U);
-    for (const std::uint8_t byte : manifest.network_sha256) {
-        sha_hex.push_back(kHexDigits[(byte >> 4U) & 0x0fU]);
-        sha_hex.push_back(kHexDigits[byte & 0x0fU]);
-    }
     buffer << '\n'
            << "Payload bytes  : " << manifest.payload_size << '\n'
-           << "Payload SHA256 : " << sha_hex << '\n'
+           << "Payload SHA256 : "
+           << hex_bytes(manifest.network_sha256.data(), manifest.network_sha256.size()) << '\n'
            << "Status         : valid (checksum verified)\n";
     return buffer.str();
 }
@@ -1538,6 +1539,31 @@ std::string format_speedtest_summary(const std::size_t threads, const std::size_
 std::string format_see_result(const std::string_view move_uci, const int gain_cp) {
     std::ostringstream out;
     out << "SEE " << move_uci << " : " << std::showpos << gain_cp << " cp\n";
+    return out.str();
+}
+
+std::string format_move_history(const GameState& origin, const std::vector<Move>& moves) {
+    const std::string origin_fen = origin.fen();
+    const bool is_startpos = (origin_fen == GameState::startpos().fen());
+    std::ostringstream out;
+    out << "Origin  : " << (is_startpos ? "startpos" : origin_fen) << '\n'
+        << "Plies   : " << moves.size() << '\n'
+        << "Moves   :";
+    if (moves.empty()) {
+        out << " (none)";
+    } else {
+        for (const Move& move : moves) {
+            out << ' ' << move.uci();
+        }
+    }
+    out << "\nCommand : position " << (is_startpos ? "startpos" : ("fen " + origin_fen));
+    if (!moves.empty()) {
+        out << " moves";
+        for (const Move& move : moves) {
+            out << ' ' << move.uci();
+        }
+    }
+    out << '\n';
     return out.str();
 }
 
