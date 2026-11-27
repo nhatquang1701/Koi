@@ -881,7 +881,7 @@ std::uint32_t derive_network_overhead_ms(const std::int64_t previous_remaining_m
 std::string format_annotate_move_line(const MoveAnnotationResult& result) {
     std::ostringstream line;
     line << std::fixed;
-    line << "info string annotate move " << result.played_move.uci()
+    line << "annotate move " << result.played_move.uci()
          << " ply " << result.ply
          << " side " << (result.side_to_move == Color::white ? "white" : "black")
          << " best " << result.best_move.uci()
@@ -912,7 +912,7 @@ std::string format_annotate_summary_line(const char* side_name,
                                          const PlayerAnnotationSummary& summary) {
     std::ostringstream line;
     line << std::fixed;
-    line << "info string annotate summary " << side_name
+    line << "annotate summary " << side_name
          << " moves " << summary.move_count
          << " accuracy " << std::setprecision(1) << summary.average_accuracy
          << " avg_cpl " << std::setprecision(1) << summary.average_cpl

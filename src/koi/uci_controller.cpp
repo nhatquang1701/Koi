@@ -1448,10 +1448,12 @@ void UciController::handle_annotate(std::istream& command) {
         }
         std::lock_guard lock(output_mutex_);
         for (const MoveAnnotationResult& entry : annotated->moves) {
-            output_ << format_annotate_move_line(entry) << '\n';
+            output_ << "info string " << format_annotate_move_line(entry) << '\n';
         }
-        output_ << format_annotate_summary_line("white", annotated->white) << '\n'
-                << format_annotate_summary_line("black", annotated->black) << '\n'
+        output_ << "info string " << format_annotate_summary_line("white", annotated->white)
+                << '\n'
+                << "info string " << format_annotate_summary_line("black", annotated->black)
+                << '\n'
                 << std::flush;
         return;
     }
@@ -1470,7 +1472,7 @@ void UciController::handle_annotate(std::istream& command) {
         output_ << "info string annotate error: " << annotated.error() << '\n' << std::flush;
         return;
     }
-    output_ << format_annotate_move_line(*annotated) << '\n' << std::flush;
+    output_ << "info string " << format_annotate_move_line(*annotated) << '\n' << std::flush;
 }
 
 void UciController::handle_display() {
