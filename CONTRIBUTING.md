@@ -53,8 +53,8 @@ On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engin
 ./build/windows-release/koi-engine.exe see e2e4
 ./build/windows-release/koi-engine.exe perft 4 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 
-# Inline UCI smoke check (or `printf "...\nwait\nquit\n" | ./build/.../koi-engine`)
-./build/linux-gcc-release/koi-engine -c "uci" -c "isready" -c "position startpos" -c "go depth 4"
+# Inline UCI smoke check with explicit hash/threads (or `printf "...\nwait\nquit\n" | ./build/.../koi-engine`)
+./build/linux-gcc-release/koi-engine --hash 64 --threads 1 -c "uci" -c "isready" -c "position startpos" -c "go depth 4"
 ```
 
 Supported zero-network CLI inspection subcommands also include `version`, `help`, `nnue [path]`, `options`, `fen [pos]`, `key [pos]`, `moves [pos]`, `flip [pos]`, `book [pos]` (optional `--book <path>`), and `tb [pos]` (optional `--syzygy <path>`), where `[pos]` accepts `startpos`, a quoted/unquoted FEN, or `[startpos|fen] [moves <uci>...]`.

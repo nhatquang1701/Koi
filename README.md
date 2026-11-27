@@ -95,10 +95,10 @@ koi-engine eval [fen]
 koi-engine options                     # print live active protocol, evaluator, book, and Syzygy options
 koi-engine perft 5 [fen]
 
-# Evaluator selection, inline batch commands, version, GUI JSON, protocol, and help
+# Evaluator selection, initial hash/threads, batch commands, version, GUI JSON, protocol, and help
 koi-engine --hce eval [fen]
 koi-engine --nnue <path> eval [fen]
-koi-engine -c "position startpos moves e2e4" -c "go depth 6"
+koi-engine --hash 64 --threads 4 -c "position startpos moves e2e4" -c "go depth 6"
 koi-engine version                       # or -v, --version
 koi-engine --engine-json
 koi-engine --protocol xboard

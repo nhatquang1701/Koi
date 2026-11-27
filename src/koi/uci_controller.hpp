@@ -84,6 +84,8 @@ public:
     // Selects the initial wire protocol (`uci`, `usi`, `ucci`, `ucicyclone`, or
     // `xboard`).  Returns false when `name` is unrecognized.
     bool set_protocol(std::string_view name);
+    void set_initial_hash_mb(std::size_t hash_mb);
+    void set_initial_threads(std::size_t threads) noexcept;
     [[nodiscard]] static bool is_valid_protocol(std::string_view name) noexcept;
 
     int run();

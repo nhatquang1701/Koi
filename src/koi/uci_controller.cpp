@@ -237,6 +237,17 @@ bool UciController::set_protocol(const std::string_view name) {
     return true;
 }
 
+void UciController::set_initial_hash_mb(const std::size_t hash_mb) {
+    const std::size_t clamped =
+        std::clamp<std::size_t>(hash_mb, 1, static_cast<std::size_t>(kMaximumHashMegabytes));
+    const HashResizeResult result = search_service_.set_hash_size_mb(clamped);
+    hash_mb_ = result.effective_mb;
+}
+
+void UciController::set_initial_threads(const std::size_t threads) noexcept {
+    threads_ = std::clamp<std::size_t>(threads, 1, maximum_search_threads());
+}
+
 void UciController::reset_new_game() {
     stop_and_suppress_active_search();
     search_service_.clear_hash();

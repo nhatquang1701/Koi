@@ -92,6 +92,8 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  help, -h, --help                         Show this help message\n"
               << "  --engine-json                            Print En Croissant / Pawn Appetit JSON profile\n"
               << "  --protocol <name>                        Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
+              << "  --hash <mb>                              Set initial transposition table size in MB (1..4096)\n"
+              << "  --threads <n>                            Set initial search thread count (1..cores)\n"
               << "  -c, --cmd <command>                      Execute UCI/protocol command(s) in batch mode and exit (repeatable)\n"
               << "  --hce                                    Use built-in classical evaluation without a network\n"
               << "  --nnue <path>                            Load NNUE weights from path (overrides KOI_EVALUATOR)\n"
@@ -566,14 +568,47 @@ std::optional<int> parse_cli_options(
             parsed_protocol = std::string_view(argv[++index]);
         } else if (arg.starts_with("--protocol=")) {
             parsed_protocol = arg.substr(std::string_view("--protocol=").size());
+        } else if (arg == "--hash" || arg.starts_with("--hash=") ||
+                   arg == "--threads" || arg.starts_with("--threads=")) {
+            const bool is_hash = arg == "--hash" || arg.starts_with("--hash=");
+            const std::string_view flag = is_hash ? "--hash" : "--threads";
+            std::string_view raw_value;
+            if (arg == flag) {
+                if (index + 1 >= argc || *argv[index + 1] == '\0') {
+                    std::cerr << "koi-engine: missing value for " << flag << ".\n";
+                    return 2;
+                }
+                raw_value = argv[++index];
+            } else {
+                raw_value = arg.substr(flag.size() + 1);
+                if (raw_value.empty()) {
+                    std::cerr << "koi-engine: missing value for " << flag << ".\n";
+                    return 2;
+                }
+            }
+            const std::size_t limit = is_hash ? kMaximumBenchHashMb : max_bench_threads;
+            std::size_t parsed = 0;
+            if (!parse_bounded_uint(raw_value, 1, limit, parsed)) {
+                std::cerr << "koi-engine: invalid " << (is_hash ? "hash" : "threads") << " '"
+                          << raw_value << "' (expected integer 1.." << limit << ").\n";
+                return 2;
+            }
+            if (is_hash) {
+                out.initial_hash_mb = parsed;
+                set_environment_value("KOI_CLI_HASH", std::to_string(parsed));
+            } else {
+                out.initial_threads = parsed;
+                set_environment_value("KOI_CLI_THREADS", std::to_string(parsed));
+            }
         } else {
             std::cerr << "koi-engine: unknown option '" << arg
                       << "' (supported: version/--version, help/--help, --engine-json, "
-                         "--protocol <name>, -c/--cmd <command>, --hce, --nnue <path>, "
-                         "--book <path>, --syzygy <path>, bench [depth [hash [threads]]], "
-                         "speedtest [threads [hash [seconds]]], compiler, nnue [path], eval [fen], "
-                         "options, perft <depth> [fen], d [fen], fen [fen], key [fen], moves [fen], flip [fen], "
-                         "book [fen], tb [fen], see <move> [fen]).\n";
+                         "--protocol <name>, --hash <mb>, --threads <n>, -c/--cmd <command>, "
+                         "--hce, --nnue <path>, --book <path>, --syzygy <path>, "
+                         "bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], "
+                         "compiler, nnue [path], eval [fen], options, perft <depth> [fen], "
+                         "d [fen], fen [fen], key [fen], moves [fen], flip [fen], book [fen], "
+                         "tb [fen], see <move> [fen]).\n";
             return 2;
         }
         if (parsed_protocol.has_value()) {
@@ -597,6 +632,24 @@ std::optional<int> parse_cli_options(
             env_protocol != nullptr && *env_protocol != '\0' &&
             is_valid_protocol(env_protocol)) {
             out.initial_protocol = env_protocol;
+        }
+    }
+    if (!out.initial_hash_mb.has_value()) {
+        if (const char* env_hash = std::getenv("KOI_CLI_HASH");
+            env_hash != nullptr && *env_hash != '\0') {
+            std::size_t parsed = 0;
+            if (parse_bounded_uint(env_hash, 1, kMaximumBenchHashMb, parsed)) {
+                out.initial_hash_mb = parsed;
+            }
+        }
+    }
+    if (!out.initial_threads.has_value()) {
+        if (const char* env_threads = std::getenv("KOI_CLI_THREADS");
+            env_threads != nullptr && *env_threads != '\0') {
+            std::size_t parsed = 0;
+            if (parse_bounded_uint(env_threads, 1, max_bench_threads, parsed)) {
+                out.initial_threads = parsed;
+            }
         }
     }
     if (out.commands.empty()) {

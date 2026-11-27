@@ -47,9 +47,10 @@ koi-engine options                     # or --options
 koi-engine --hce eval [fen]
 koi-engine --nnue <path> eval [fen]
 
-# Identity, GUI JSON profile, protocol dialect, batch execution, and help
+# Identity, GUI JSON profile, initial hash/threads, protocol dialect, batch execution, and help
 koi-engine version       # or -v, --version
 koi-engine --engine-json
+koi-engine --hash <mb> --threads <n> -c "go depth 6"
 koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>
 koi-engine -c "position startpos moves e2e4" -c "go depth 6"   # repeatable --cmd
 koi-engine help          # or -h, --help

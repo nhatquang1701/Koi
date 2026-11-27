@@ -155,6 +155,12 @@ int main(int argc, char* argv[]) {
     if (cli_options.initial_protocol.has_value()) {
         (void)controller.set_protocol(*cli_options.initial_protocol);
     }
+    if (cli_options.initial_hash_mb.has_value()) {
+        controller.set_initial_hash_mb(*cli_options.initial_hash_mb);
+    }
+    if (cli_options.initial_threads.has_value()) {
+        controller.set_initial_threads(*cli_options.initial_threads);
+    }
     if (cli_options.bench_depth.has_value()) {
         return controller.run_bench(*cli_options.bench_depth, cli_options.bench_hash_mb,
                                     cli_options.bench_threads);

@@ -76,7 +76,7 @@ koi-engine options                # Print live active protocol, evaluator, book,
 koi-engine --hce eval [fen]       # Evaluate directly with classical HCE (no network)
 koi-engine --nnue <path> bench    # Benchmark an explicit NNUE weight file
 koi-engine perft 5 [fen]          # Run timed perft divide (depth 1..10)
-koi-engine -c "uci" -c "go depth 6"  # Execute inline protocol commands in batch mode
+koi-engine --hash 64 --threads 4 -c "uci" -c "go depth 6"  # Initial Hash/Threads + batch commands
 koi-engine --version              # Print version and git build commit
 koi-engine --engine-json          # Print En Croissant / Pawn Appétit JSON profile
 ```

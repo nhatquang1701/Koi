@@ -11,6 +11,8 @@ namespace koi::cli {
 
 struct CliOptions {
     std::optional<std::string> initial_protocol;
+    std::optional<std::size_t> initial_hash_mb;
+    std::optional<std::size_t> initial_threads;
     std::vector<std::string> commands;
     std::optional<int> bench_depth;
     std::size_t bench_hash_mb = 16;

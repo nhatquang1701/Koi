@@ -504,10 +504,29 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Contempt        : 15 cp", live_options.stdout)
         self.assertIn("Evaluator       : HCE", live_options.stdout)
 
+        cli_hash_threads = self._run(
+            ["--hce", "--hash", "64", "--threads", "1", "options"],
+            disable_nnue=True,
+        )
+        self.assertEqual(cli_hash_threads.returncode, 0, cli_hash_threads.stderr)
+        self.assertEqual(cli_hash_threads.stderr, "")
+        self.assertIn("Hash            : 64 MB", cli_hash_threads.stdout)
+        self.assertIn("Threads         : 1", cli_hash_threads.stdout)
+
+        inline_batch = self._run(
+            ["--hce", "--hash=32", "--threads=1", "-c", "position startpos", "-c", "go depth 2"],
+            disable_nnue=True,
+        )
+        self.assertEqual(inline_batch.returncode, 0, inline_batch.stderr)
+        self.assertEqual(inline_batch.stderr, "")
+        self.assertIn("bestmove ", inline_batch.stdout)
+
         for bad_args, expected_err in (
             (["-c"], "missing command for --cmd"),
             (["--cmd="], "missing command for --cmd"),
             (["--hce", "-c", "uci", "bench"], "cannot be combined"),
+            (["--hash", "0"], "invalid hash"),
+            (["--threads", "0"], "invalid threads"),
         ):
             bad = self._run(bad_args, disable_nnue=True)
             self.assertEqual(bad.returncode, 2, bad.stdout)

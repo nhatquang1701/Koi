@@ -14,8 +14,10 @@
 
 namespace {
 
-constexpr std::array<const char*, 31> kCliEnvVars = {
+constexpr std::array<const char*, 33> kCliEnvVars = {
     "KOI_PROTOCOL",
+    "KOI_CLI_HASH",
+    "KOI_CLI_THREADS",
     "KOI_EVALUATOR",
     "KOI_NNUE_PATH",
     "KOI_NNUE_AUTODETECT",
@@ -286,6 +288,47 @@ void test_evaluator_and_asset_flags() {
         koi::test::require(exit_code == std::optional<int>(2) &&
                                err.str().find("missing path") != std::string::npos,
                            "missing asset path must exit 2");
+    }
+
+    env.clear_all();
+    koi::cli::CliOptions runtime_opts;
+    koi::test::require(
+        !invoke_parse({"--hash", "64", "--threads", "1", "-c", "go depth 1", "options"},
+                      runtime_opts)
+             .has_value() &&
+            runtime_opts.initial_hash_mb == std::optional<std::size_t>(64) &&
+            runtime_opts.initial_threads == std::optional<std::size_t>(1) &&
+            runtime_opts.options && runtime_opts.commands.size() == 1,
+        "--hash and --threads must parse and combine with options/-c");
+    koi::cli::CliOptions runtime_reexec;
+    koi::test::require(!invoke_parse({}, runtime_reexec).has_value() &&
+                           runtime_reexec.initial_hash_mb == std::optional<std::size_t>(64) &&
+                           runtime_reexec.initial_threads == std::optional<std::size_t>(1),
+                       "KOI_CLI_HASH and KOI_CLI_THREADS must roundtrip across empty argv");
+
+    env.clear_all();
+    koi::cli::CliOptions inline_runtime;
+    koi::test::require(!invoke_parse({"--hash=128", "--threads=1"}, inline_runtime).has_value() &&
+                           inline_runtime.initial_hash_mb == std::optional<std::size_t>(128) &&
+                           inline_runtime.initial_threads == std::optional<std::size_t>(1),
+                       "--hash= and --threads= inline forms must parse cleanly");
+
+    for (const std::vector<std::string>& bad : std::vector<std::vector<std::string>>{
+             {"--hash"},
+             {"--hash="},
+             {"--hash=0"},
+             {"--hash=99999"},
+             {"--threads"},
+             {"--threads="},
+             {"--threads=0"},
+             {"--threads=abc"},
+         }) {
+        env.clear_all();
+        ScopedStreamCapture err(std::cerr);
+        koi::cli::CliOptions invalid_runtime;
+        const auto exit_code = invoke_parse(bad, invalid_runtime);
+        koi::test::require(exit_code == std::optional<int>(2) && !err.str().empty(),
+                           "missing or out-of-range --hash/--threads must exit 2");
     }
 }
 
