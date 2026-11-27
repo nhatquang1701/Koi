@@ -76,6 +76,10 @@ def convert_labels(
     log=print,
 ) -> tuple[int, int]:
     """Write train/validation bullet text files and return their row counts."""
+    if not (0.0 <= val_fraction <= 1.0):
+        raise ConversionError(f"val_fraction must be between 0.0 and 1.0, got {val_fraction}")
+    if limit < 0:
+        raise ConversionError(f"limit must be non-negative, got {limit}")
     if not input_path.is_file():
         raise ConversionError(f"input corpus not found: {input_path}")
     output_dir.mkdir(parents=True, exist_ok=True)

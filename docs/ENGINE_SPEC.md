@@ -52,7 +52,7 @@ Linux architecture must be `x86_64`, and the macOS compiler must be AppleClang
 | --- | --- | --- |
 | `KOI_BUILD_MODULES` | ON for MSVC, Clang 18+, GCC 14+; OFF for AppleClang | Builds the optional C++26 named-module interface (`src/koi/modules/*.ixx`) and `koi_module_tests`; nothing in the engine imports the modules, so the engine itself never depends on them |
 | `KOI_STATIC_RUNTIME` | ON on Linux, OFF on Windows/macOS | Linux links `-static-libstdc++ -static-libgcc` by default; setting it ON on macOS is a fatal error; sanitizer builds should turn it off |
-| `KOI_SANITIZE` | OFF | MSVC-only AddressSanitizer build: dynamic CRT, no `/RTC`, no LTO, `/fsanitize=address` |
+| `KOI_SANITIZE` | OFF | Cross-platform AddressSanitizer build: MSVC `/fsanitize=address` (dynamic CRT, no `/RTC`, no LTO) or Clang/AppleClang/GCC `-fsanitize=address,undefined -fno-omit-frame-pointer` (dynamic runtime, no LTO; also exposed via `windows-asan`, `linux-clang-asan`, and `macos-arm64-asan` in `CMakePresets.json`) |
 | `KOI_TSAN` | OFF | Disables Release IPO for the Linux GCC ThreadSanitizer CI leg; sanitizer flags themselves come from the CI command line |
 | `KOI_PEXT_ATTACKS` | ON | AVX2/AVX-512 cores use `_pext_u64` slider tables; the baseline core keeps the ray path; OFF builds every x86-64 variant with rays |
 | `KOI_PGO` | `OFF` | Release profile-guided optimization (`OFF`, `generate`, `use`) for MSVC (`/GENPROFILE`/`/USEPROFILE`), Clang/AppleClang (`-fprofile-instr-generate`/`-fprofile-instr-use`), and GCC (`-fprofile-generate`/`-fprofile-use`); cannot be combined with `KOI_SANITIZE` or `KOI_TSAN` |
@@ -983,7 +983,7 @@ build as authoritative.
 
 | Leg | Configuration | Scope / gap |
 | --- | --- | --- |
-| Windows ASan | Debug, `KOI_SANITIZE=ON`, MSVC `/fsanitize=address`, dynamic CRT, no `/RTC`, no LTO | Fast subset (`-LE heavy`). ASan is MSVC-only; Linux ASan and macOS sanitizer builds are not wired |
+| Windows ASan | Debug, `KOI_SANITIZE=ON`, MSVC `/fsanitize=address`, dynamic CRT, no `/RTC`, no LTO | Fast subset (`-LE heavy`). Cross-platform ASan+UBSan (`KOI_SANITIZE=ON` on Clang/AppleClang/GCC via `linux-clang-asan` and `macos-arm64-asan` presets) is also available locally |
 | Linux TSan | GCC 14, `-fsanitize=thread -fno-omit-frame-pointer -g`, `KOI_TSAN=ON`, static runtime off, modules off | Concurrency suites: TT, search service, controller, time manager, search shards; deadlock detection is disabled due to TSan's fixed detector table |
 | Shadow diff | `KOI_BUILD_SHADOW_DIFF=ON` builds `koi_shadow_diff_tests` | Compares native `Position` legality, keys, rule state, and FEN against the vendored chess-library mirror; also enabled at explicit diagnostics boundaries and completion validation |
 | Windows CI | Release full suite, Debug smoke (`-LE heavy`), ASan, shadow diff, package, flake repetitions | Six independent jobs |

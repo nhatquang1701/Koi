@@ -1562,8 +1562,7 @@ public:
     }
 
     bool apply_legal(const Move& move) {
-        const auto legal = legal_moves();
-        if (std::find(legal.begin(), legal.end(), move) == legal.end()) return false;
+        if (!is_legal(move)) return false;
         record_and_apply_unchecked(move);
         refresh_king_masks(state);
         return true;
@@ -1924,7 +1923,7 @@ public:
         try {
             // Checkmate takes precedence over claimable or automatic draw
             // clocks; otherwise a no-move position is terminal as stalemate.
-            return legal_moves().empty();
+            return !has_legal_move();
         } catch (...) {
             return false;
         }

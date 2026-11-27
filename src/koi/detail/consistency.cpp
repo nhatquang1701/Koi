@@ -3,6 +3,7 @@
 #include "koi/detail/game_state_impl.hpp"
 
 #include <algorithm>
+#include <array>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,9 +12,13 @@ namespace koi::detail {
 namespace {
 
 std::vector<std::string> sorted_native_move_strings(const Position& position) {
+    std::array<Move, kMaximumLegalMoves> raw_moves{};
+    const std::size_t move_count =
+        std::min(position.legal_moves_into(raw_moves), raw_moves.size());
     std::vector<std::string> moves;
-    for (const Move& move : position.legal_moves()) {
-        moves.push_back(move.uci());
+    moves.reserve(move_count);
+    for (std::size_t index = 0; index < move_count; ++index) {
+        moves.push_back(raw_moves[index].uci());
     }
     std::sort(moves.begin(), moves.end());
     return moves;

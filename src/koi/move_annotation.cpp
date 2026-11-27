@@ -484,8 +484,7 @@ std::expected<MoveAnnotationResult, std::string> analyze_and_annotate_move(
     }
     const SearchLimits base_limits = *limits_expected;
 
-    const std::vector<Move> legal = root.legal_moves();
-    const std::size_t legal_count = legal.size();
+    const std::size_t legal_count = root.legal_moves_into({});
 
     CapturedMultiPv root_capture;
     SearchEventSink sink;

@@ -102,6 +102,25 @@
       }
     },
     {
+      "name": "linux-clang-asan",
+      "displayName": "Linux x86-64 ASan+UBSan Debug (Clang 18 + Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-clang-asan",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18",
+        "KOI_SANITIZE": "ON",
+        "KOI_STATIC_RUNTIME": "OFF",
+        "KOI_BUILD_MODULES": "OFF"
+      }
+    },
+    {
       "name": "macos-arm64-release",
       "displayName": "macOS arm64 Release (Clang + Ninja)",
       "generator": "Ninja",
@@ -132,6 +151,23 @@
         "KOI_BUILD_MODULES": "OFF",
         "KOI_STATIC_RUNTIME": "OFF"
       }
+    },
+    {
+      "name": "macos-arm64-asan",
+      "displayName": "macOS arm64 ASan+UBSan Debug (Clang + Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/macos-arm64-asan",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "KOI_SANITIZE": "ON",
+        "KOI_BUILD_MODULES": "OFF",
+        "KOI_STATIC_RUNTIME": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -141,8 +177,10 @@
     { "name": "linux-gcc-release", "configurePreset": "linux-gcc-release", "configuration": "Release" },
     { "name": "linux-clang-release", "configurePreset": "linux-clang-release", "configuration": "Release" },
     { "name": "linux-gcc-tsan", "configurePreset": "linux-gcc-tsan", "configuration": "Debug" },
+    { "name": "linux-clang-asan", "configurePreset": "linux-clang-asan", "configuration": "Debug" },
     { "name": "macos-arm64-release", "configurePreset": "macos-arm64-release", "configuration": "Release" },
-    { "name": "macos-arm64-debug", "configurePreset": "macos-arm64-debug", "configuration": "Debug" }
+    { "name": "macos-arm64-debug", "configurePreset": "macos-arm64-debug", "configuration": "Debug" },
+    { "name": "macos-arm64-asan", "configurePreset": "macos-arm64-asan", "configuration": "Debug" }
   ],
   "testPresets": [
     {
@@ -190,6 +228,16 @@
       "output": { "outputOnFailure": true }
     },
     {
+      "name": "linux-clang-asan",
+      "configurePreset": "linux-clang-asan",
+      "configuration": "Debug",
+      "filter": {
+        "include": { "label": "unit" },
+        "exclude": { "label": "heavy" }
+      },
+      "output": { "outputOnFailure": true }
+    },
+    {
       "name": "macos-arm64-release",
       "configurePreset": "macos-arm64-release",
       "configuration": "Release",
@@ -199,6 +247,16 @@
       "name": "macos-arm64-debug",
       "configurePreset": "macos-arm64-debug",
       "configuration": "Debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "macos-arm64-asan",
+      "configurePreset": "macos-arm64-asan",
+      "configuration": "Debug",
+      "filter": {
+        "include": { "label": "unit" },
+        "exclude": { "label": "heavy" }
+      },
       "output": { "outputOnFailure": true }
     }
   ]

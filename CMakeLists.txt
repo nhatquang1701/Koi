@@ -113,15 +113,14 @@ if(MSVC AND NOT DEFINED CMAKE_CXX26_STANDARD_COMPILE_OPTION)
     set(CMAKE_CXX26_STANDARD_COMPILE_OPTION "/std:c++latest")
 endif()
 
-# --- AddressSanitizer (Windows/MSVC) ------------------------------------------
-# The sanitizer build exists to catch the memory errors behind the intermittent
-# crashes (for example the transposition-table storage resizes). It is wired for
-# MSVC only: the ASan runtime ships as a DLL, so the static CRT is impossible,
-# and /RTC (a Debug default) as well as LTCG must be disabled.
-option(KOI_SANITIZE "Build with AddressSanitizer (MSVC only)" OFF)
+# --- AddressSanitizer / UBSan ----------------------------------------------------
+# The sanitizer build catches memory and undefined-behavior errors (such as
+# transposition-table resizes or UB). On MSVC it uses dynamic CRT + /fsanitize=address
+# (no /RTC, no LTO); on Clang/GCC it uses -fsanitize=address,undefined with no LTO.
+option(KOI_SANITIZE "Build with AddressSanitizer (and UndefinedBehaviorSanitizer on Clang/GCC)" OFF)
 
-if(KOI_SANITIZE AND NOT MSVC)
-    message(FATAL_ERROR "KOI_SANITIZE is currently wired for MSVC builds only")
+if(KOI_SANITIZE AND KOI_TSAN)
+    message(FATAL_ERROR "KOI_SANITIZE and KOI_TSAN cannot be combined")
 endif()
 
 # --- ThreadSanitizer (Linux/GCC) -----------------------------------------------
@@ -265,6 +264,11 @@ else()
         "$<$<CONFIG:Release>:-DNDEBUG>"
         "-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=."
     )
+    if(KOI_SANITIZE)
+        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=address,undefined)
+        message(STATUS "Koi Engine AddressSanitizer + UBSan build enabled (no LTO)")
+    endif()
     find_package(Threads REQUIRED)
     # glibc ignores the ELF stack-size header, so the engine raises the default
     # worker-thread stack at startup instead (see KOI_LINUX_STACK_BYTES in
@@ -276,7 +280,7 @@ endif()
 # portable prebuilt configuration. Sanitizer builds should pass
 # -DKOI_STATIC_RUNTIME=OFF. macOS links libc++/libSystem dynamically and has no
 # static runtime pair, so the option defaults off and stays off there.
-if(MSVC OR APPLE)
+if(MSVC OR APPLE OR KOI_SANITIZE OR KOI_TSAN)
     set(KOI_STATIC_RUNTIME_DEFAULT OFF)
 else()
     set(KOI_STATIC_RUNTIME_DEFAULT ON)
@@ -288,6 +292,11 @@ if(APPLE AND KOI_STATIC_RUNTIME)
     message(FATAL_ERROR
         "KOI_STATIC_RUNTIME is not supported on macOS: libc++ has no static "
         "runtime to link. Reconfigure with -DKOI_STATIC_RUNTIME=OFF.")
+endif()
+if(KOI_SANITIZE AND KOI_STATIC_RUNTIME AND NOT MSVC)
+    message(FATAL_ERROR
+        "KOI_STATIC_RUNTIME cannot be combined with KOI_SANITIZE on Clang/GCC. "
+        "Reconfigure with -DKOI_STATIC_RUNTIME=OFF.")
 endif()
 if(KOI_STATIC_RUNTIME AND NOT MSVC)
     add_link_options("-static-libstdc++" "-static-libgcc")

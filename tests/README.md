@@ -373,7 +373,9 @@ cancellation):
 - `debug-smoke` builds Debug and runs the fast subset (`-LE heavy`) with the
   3x scaled timeouts.
 - `sanitizer` builds Debug with `-DKOI_SANITIZE=ON` (MSVC
-  `/fsanitize=address`, dynamic CRT, no LTO) and runs the fast subset, so
+  `/fsanitize=address`, dynamic CRT, no LTO in Windows CI; `KOI_SANITIZE=ON`
+  also configures ASan+UBSan on Clang/AppleClang/GCC via `linux-clang-asan`
+  and `macos-arm64-asan` presets) and runs the fast subset, so
   memory errors and use-after-free regressions fail CI.
 - `shadow-diff` builds with `-DKOI_BUILD_SHADOW_DIFF=ON` and runs
   `koi_shadow_diff_tests`.

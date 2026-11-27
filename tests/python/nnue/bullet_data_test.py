@@ -112,6 +112,18 @@ class TextConversionTests(unittest.TestCase):
             with self.assertRaises(to_bullet.ConversionError):
                 to_bullet.convert_labels(Path(temp) / "absent.txt", Path(temp) / "out")
 
+    def test_invalid_fraction_or_limit_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            corpus = directory / "labels.txt"
+            corpus.write_text(f"{STARTPOS};10;e2e4\n", encoding="utf-8")
+            with self.assertRaises(to_bullet.ConversionError):
+                to_bullet.convert_labels(corpus, directory / "out", val_fraction=-0.1)
+            with self.assertRaises(to_bullet.ConversionError):
+                to_bullet.convert_labels(corpus, directory / "out", val_fraction=1.5)
+            with self.assertRaises(to_bullet.ConversionError):
+                to_bullet.convert_labels(corpus, directory / "out", limit=-1)
+
 
 @unittest.skipUnless(BULLET_TOOLING_AVAILABLE, "numpy and the bullet tooling are required")
 class CliTests(unittest.TestCase):

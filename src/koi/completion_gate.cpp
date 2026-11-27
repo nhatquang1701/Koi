@@ -1,6 +1,8 @@
 #include "koi/completion_gate.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 
 namespace koi {
 
@@ -45,11 +47,14 @@ bool CompletionGate::legal_pv(const GameState& root,
 std::optional<Move> CompletionGate::common_fallback(
     const GameState& root, const SearchLimits& limits,
     const PositionConsistencySnapshot& snapshot) {
-    std::vector<Move> legal = root.legal_moves();
-    std::sort(legal.begin(), legal.end(), [](const Move& left, const Move& right) {
+    std::array<Move, kMaximumLegalMoves> legal{};
+    const std::size_t move_count = std::min(root.legal_moves_into(legal), legal.size());
+    const auto legal_end = legal.begin() + static_cast<std::ptrdiff_t>(move_count);
+    std::sort(legal.begin(), legal_end, [](const Move& left, const Move& right) {
         return left.uci() < right.uci();
     });
-    for (const Move& move : legal) {
+    for (std::size_t index = 0; index < move_count; ++index) {
+        const Move& move = legal[index];
         if (!allowed_root_move(limits, move) || !contains_uci(snapshot.shadow_legal_moves, move)) {
             continue;
         }
