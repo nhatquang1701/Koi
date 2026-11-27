@@ -1313,8 +1313,7 @@ void UciController::handle_annotate(std::istream& command) {
 
     const std::vector<std::string> tokens = remaining_tokens(command);
     if (tokens.empty()) {
-        std::lock_guard lock(output_mutex_);
-        output_ << "info string annotate error: missing move or game target\n" << std::flush;
+        write_uci_info_string("annotate error: missing move or game target");
         return;
     }
 
@@ -1322,8 +1321,7 @@ void UciController::handle_annotate(std::istream& command) {
     if (tokens.size() > 1) {
         std::string limit_error;
         if (!parse_annotate_limits(tokens, 1, limits, limit_error)) {
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string annotate error: " << limit_error << '\n' << std::flush;
+            write_uci_info_string("annotate error: " + limit_error);
             return;
         }
     }
@@ -1346,45 +1344,37 @@ void UciController::handle_annotate(std::istream& command) {
 
     if (tokens[0] == "game") {
         if (position_moves_.empty()) {
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string annotate error: no moves in current position\n"
-                    << std::flush;
+            write_uci_info_string("annotate error: no moves in current position");
             return;
         }
         const auto annotated =
             annotate_game(search_service_, position_origin_, position_moves_, options);
         if (!annotated) {
-            std::lock_guard lock(output_mutex_);
-            output_ << "info string annotate error: " << annotated.error() << '\n' << std::flush;
+            write_uci_info_string("annotate error: " + annotated.error());
             return;
         }
         std::lock_guard lock(output_mutex_);
         for (const MoveAnnotationResult& entry : annotated->moves) {
-            output_ << "info string " << format_annotate_move_line(entry) << '\n';
+            write_uci_info_string_locked(format_annotate_move_line(entry));
         }
-        output_ << "info string " << format_annotate_summary_line("white", annotated->white)
-                << '\n'
-                << "info string " << format_annotate_summary_line("black", annotated->black)
-                << '\n'
-                << std::flush;
+        write_uci_info_string_locked(format_annotate_summary_line("white", annotated->white));
+        write_uci_info_string_locked(format_annotate_summary_line("black", annotated->black));
         return;
     }
 
     const std::optional<Move> played_move = Move::parse_uci(tokens[0]);
     if (!played_move.has_value()) {
-        std::lock_guard lock(output_mutex_);
-        output_ << "info string annotate error: invalid move " << tokens[0] << '\n' << std::flush;
+        write_uci_info_string("annotate error: invalid move " + tokens[0]);
         return;
     }
 
     const auto annotated =
         analyze_and_annotate_move(search_service_, position_, *played_move, options);
-    std::lock_guard lock(output_mutex_);
     if (!annotated) {
-        output_ << "info string annotate error: " << annotated.error() << '\n' << std::flush;
+        write_uci_info_string("annotate error: " + annotated.error());
         return;
     }
-    output_ << "info string " << format_annotate_move_line(*annotated) << '\n' << std::flush;
+    write_uci_info_string(format_annotate_move_line(*annotated));
 }
 
 void UciController::handle_display() {

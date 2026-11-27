@@ -93,6 +93,33 @@ for asset in json.load(sys.stdin).get("assets", []):
 '
 }
 
+asset_digest() {
+    local pattern="$1" json="$2"
+    printf '%s' "$json" | PATTERN="$pattern" python3 -c '
+import json, os, sys
+pattern = os.environ["PATTERN"]
+want_sidecar = pattern.endswith(".sha256")
+for asset in json.load(sys.stdin).get("assets", []):
+    name = asset["name"]
+    is_sidecar = name.endswith(".sha256")
+    if pattern in name and is_sidecar == want_sidecar:
+        digest = asset.get("digest") or ""
+        if digest.startswith("sha256:"):
+            digest = digest[len("sha256:"):]
+        if digest:
+            print(digest.lower())
+        break
+'
+}
+
+verify_sha256() {
+    local file="$1" expected="$2" label="$3" actual
+    expected="$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')"
+    actual="$(shasum -a 256 "$file" | awk '{print tolower($1)}')"
+    [ -n "$expected" ] && [ "$expected" = "$actual" ] ||
+        die "checksum verification failed for $label (expected $expected, got $actual)"
+}
+
 installed_version() {
     if [ -f "$VERSION_FILE" ]; then cat "$VERSION_FILE"; else echo "none"; fi
 }
@@ -240,12 +267,13 @@ install_upstream() {
 }
 
 install_engine() {
-    local json tag url sidecar tmp
+    local json tag url sidecar digest tmp
     json="$(curl -fsSL -H 'Accept: application/vnd.github+json' \
         "https://api.github.com/repos/$REPO/releases/latest")"
     tag="$(printf '%s' "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
     url="$(asset_url "macos-arm64.tar.gz" "$json")"
     sidecar="$(asset_url "macos-arm64.tar.gz.sha256" "$json")"
+    digest="$(asset_digest "macos-arm64.tar.gz" "$json")"
     [ -n "$url" ] || die "release $tag has no macOS arm64 package"
 
     if [ "$tag" = "$(installed_version)" ] && [ "${FORCE:-0}" != "1" ]; then
@@ -258,21 +286,30 @@ install_engine() {
     curl -fsSL -o "$tmp/package.tar.gz" "$url"
     if [ -n "$sidecar" ]; then
         curl -fsSL -o "$tmp/package.tar.gz.sha256" "$sidecar"
-        local expected actual
+        local expected
         expected="$(awk 'NR==1 {print $1}' "$tmp/package.tar.gz.sha256")"
-        actual="$(shasum -a 256 "$tmp/package.tar.gz" | awk '{print $1}')"
-        [ -n "$expected" ] && [ "$expected" = "$actual" ] ||
-            die "checksum verification failed for $tag (expected $expected, got $actual)"
+        verify_sha256 "$tmp/package.tar.gz" "$expected" "$tag"
+    elif [ -n "$digest" ]; then
+        verify_sha256 "$tmp/package.tar.gz" "$digest" "$tag"
     fi
 
     tar -xzf "$tmp/package.tar.gz" -C "$ENGINE_DIR"
-    chmod +x "$ENGINE_DIR"/koi-engine "$ENGINE_DIR"/koi-bench 2>/dev/null || true
+    chmod +x "$ENGINE_DIR"/koi-engine 2>/dev/null || true
 
-    local net_url
+    local net_url net_digest
     net_url="$(asset_url ".nnue" "$json")"
+    net_digest="$(asset_digest ".nnue" "$json")"
     if [ -n "$net_url" ]; then
         curl -fsSL -o "$tmp/net.nnue" "$net_url"
+        if [ -n "$net_digest" ]; then
+            verify_sha256 "$tmp/net.nnue" "$net_digest" "$tag (.nnue)"
+        fi
         mv "$tmp/net.nnue" "$NET"
+    fi
+
+    if [ -x "$ENGINE" ] && [ -f "$NET" ] && "$ENGINE" --help 2>/dev/null | grep -q 'nnue \[path\]'; then
+        "$ENGINE" nnue "$NET" >/dev/null ||
+            die "NNUE payload checksum verification failed for $NET"
     fi
 
     printf '%s' "$tag" > "$VERSION_FILE"

@@ -241,15 +241,21 @@ The PGN, Stockfish executable/version, and licensed `book.bin` are external inpu
 none are assumed to exist in this repository. Do not report an Elo or CPL improvement
 until both a comparable baseline and an after-change report have been generated.
 
-The offline Koi-native NNUE boundary is dependency-free in synthetic mode and has
-separate entry points for future training/export automation. Both wrappers use the
-same versioned implementation and emit the `piece-square-king-pawn-v2` container;
-they do not add a Python runtime dependency to the engine:
+The offline Koi-native boundary fixtures (`train_nnue.py` and `export_nnue.py`, supporting deterministic `--backend synthetic`) emit `piece-square-king-pawn-v2` containers for unit/contract tests while production networks use NNUE v9 (`halfka-hm-v2`); neither adds a Python runtime dependency to the engine:
 
-```powershell
-python .\tools\measurement\train_nnue.py --help
-python .\tools\measurement\export_nnue.py --help
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    python .\tools\measurement\train_nnue.py --help
+    python .\tools\measurement\export_nnue.py --help
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    python3 ./tools/measurement/train_nnue.py --help
+    python3 ./tools/measurement/export_nnue.py --help
+    ```
 
 `--backend synthetic` is deterministic and suitable for boundary tests. The optional
 PyTorch backend is offline-only, records corpus and network provenance, and must pass
@@ -257,12 +263,23 @@ the Koi loader and strength gates before any network is considered for runtime u
 
 For GPU-accelerated **NNUE v9** (`halfka-hm-v2`, 10 mirrored king buckets, 256×2 SCReLU) and CPU PyTorch training pipelines—corpus generation, encoding, quantization, SPRT gates, and promotion rules—see [NNUE Pipeline](NNUE_PIPELINE.md):
 
-```powershell
-# Self-play data generation and Bullet / PyTorch training workflow
-python .\tools\measurement\gen_training_data.py all --games 30000 --workers 3 --label-depth 10
-python .\tools\nnue\to_bullet.py --input .\artifacts\training\labels.txt --output .\artifacts\training\koi.data
-.\build\release\koi-bench.exe --nnue .\artifacts\training\koi-candidate.nnue
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    # Self-play data generation and Bullet / PyTorch training workflow
+    python .\tools\measurement\gen_training_data.py all --games 30000 --workers 3 --label-depth 10
+    python .\tools\nnue\to_bullet.py --input .\artifacts\training\labels.txt --output .\artifacts\training\koi.data
+    .\build\release\koi-bench.exe --nnue .\artifacts\training\koi-candidate.nnue
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    # Self-play data generation and Bullet / PyTorch training workflow
+    python3 ./tools/measurement/gen_training_data.py all --games 30000 --workers 3 --label-depth 10
+    python3 ./tools/nnue/to_bullet.py --input ./artifacts/training/labels.txt --output ./artifacts/training/koi.data
+    ./build/release/koi-bench --nnue ./artifacts/training/koi-candidate.nnue
+    ```
 
 The engine discovers a network automatically at startup: it looks for `koi.nnue` beside the executable, then `nnue/koi.nnue`, then a single `*.nnue` file in either directory (and in the working directory for development runs). Release archives bundle the promoted gated network flat as `koi.nnue` beside the executables; when discovered at boot, the UCI handshake advertises `EvalFile` default `<autodiscovery>`. Point `KOI_NNUE_PATH` at a specific file to override the scan, or set `KOI_NNUE_AUTODETECT=0` to disable discovery. A missing or rejected network at boot exits 4 with one diagnostic on stderr (unless `KOI_EVALUATOR=hce` is set), while runtime `EvalFile` swaps fail closed without dropping the previous evaluator. Standalone official networks are hosted on the [Koi NNUEs](https://github.com/nhatquang1701/Koi/releases/tag/koi-nnues) pre-release.
 
@@ -271,11 +288,21 @@ The engine discovers a network automatically at startup: it looks for `koi.nnue`
 Networks are trained with the Bullet GPU trainer (`tools/nnue/run_bullet.py`) or
 the PyTorch CPU trainer (`tools/measurement/train_nnue_koi.py`):
 
-```powershell
-python .\tools\nnue\run_bullet.py --help
-pwsh -NoProfile -File .\tools\nnue\net_match.ps1 -NnueNet .\artifacts\training\candidate.nnue `
-  -OpponentNet .\artifacts\networks\koi-v9-hm10-h256-official.nnue -Games 160
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    python .\tools\nnue\run_bullet.py --help
+    pwsh -NoProfile -File .\tools\nnue\net_match.ps1 -NnueNet .\artifacts\training\candidate.nnue `
+      -OpponentNet .\artifacts\networks\koi-v9-hm10-h256-official.nnue -Games 160
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    python3 ./tools/nnue/run_bullet.py --help
+    pwsh -NoProfile -File ./tools/nnue/net_match.ps1 -NnueNet ./artifacts/training/candidate.nnue \
+      -OpponentNet ./artifacts/networks/koi-v9-hm10-h256-official.nnue -Games 160
+    ```
 
 Validation runs the 64-position `koi-bench --nnue` gate and a colour-split
 network-vs-network match (`tools/nnue/net_match.ps1`, schema
@@ -285,15 +312,27 @@ Validation output is a local report, not an Elo
 claim or a CI threshold. Use `Threads` to configure multi-threaded CPU search.
 
 For a reproducible local match against Stockfish or another UCI engine, use the
-optional PowerShell harness:
+optional PowerShell harness (PowerShell 7 `pwsh` works on Windows, Linux, and macOS):
 
-```powershell
-.\tools\stability\uci_match.ps1 `
-  -KoiPath .\build\release\koi-engine.exe `
-  -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
-  -Depth 6 -Threads 4 -Hash 512 `
-  -OutputDirectory .\artifacts\matches\match-results
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    .\tools\stability\uci_match.ps1 `
+      -KoiPath .\build\release\koi-engine.exe `
+      -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
+      -Depth 6 -Threads 4 -Hash 512 `
+      -OutputDirectory .\artifacts\matches\match-results
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    pwsh -NoProfile -File ./tools/stability/uci_match.ps1 \
+      -KoiPath ./build/release/koi-engine \
+      -OpponentPath /path/to/stockfish \
+      -Depth 6 -Threads 4 -Hash 512 \
+      -OutputDirectory ./artifacts/matches/match-results
+    ```
 
 The harness writes a `koi-uci-match-v2` JSON report plus matching `.pgn`. It records
 both engines' UCI handshakes and options; every ply's actual root FEN, exact
@@ -320,25 +359,49 @@ alternate Koi's color between paired games in one run (the second game of each
 pair plays the opposite color). Run both
 book-disabled and licensed-book conditions at both clocks:
 
-```powershell
-# No-book 1+0 color-paired match
-.\tools\stability\uci_match.ps1 `
-  -KoiPath .\build\release\koi-engine.exe `
-  -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
-  -OpeningFile .\tests\data\openings\openings-basic.txt `
-  -TimeControl 1+0 -Games 20 -PairedColors `
-  -KoiRandomSeed 1 -KoiOwnBook false `
-  -OutputDirectory .\artifacts\matches\no-book-1p0-paired
+=== "Windows (PowerShell)"
 
-# With a licensed book at 5+3
-.\tools\stability\uci_match.ps1 `
-  -KoiPath .\build\release\koi-engine.exe `
-  -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
-  -OpeningFile .\tests\data\openings\openings-basic.txt `
-  -TimeControl 5+3 -Games 20 -PairedColors `
-  -KoiRandomSeed 1 -KoiOwnBook true -KoiBookFile C:\LicensedBooks\book.bin -KoiBookDepth 16 `
-  -OutputDirectory .\artifacts\matches\book-5p3-paired
-```
+    ```powershell
+    # No-book 1+0 color-paired match
+    .\tools\stability\uci_match.ps1 `
+      -KoiPath .\build\release\koi-engine.exe `
+      -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
+      -OpeningFile .\tests\data\openings\openings-basic.txt `
+      -TimeControl 1+0 -Games 20 -PairedColors `
+      -KoiRandomSeed 1 -KoiOwnBook false `
+      -OutputDirectory .\artifacts\matches\no-book-1p0-paired
+
+    # With a licensed book at 5+3
+    .\tools\stability\uci_match.ps1 `
+      -KoiPath .\build\release\koi-engine.exe `
+      -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
+      -OpeningFile .\tests\data\openings\openings-basic.txt `
+      -TimeControl 5+3 -Games 20 -PairedColors `
+      -KoiRandomSeed 1 -KoiOwnBook true -KoiBookFile C:\LicensedBooks\book.bin -KoiBookDepth 16 `
+      -OutputDirectory .\artifacts\matches\book-5p3-paired
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    # No-book 1+0 color-paired match
+    pwsh -NoProfile -File ./tools/stability/uci_match.ps1 \
+      -KoiPath ./build/release/koi-engine \
+      -OpponentPath /path/to/stockfish \
+      -OpeningFile ./tests/data/openings/openings-basic.txt \
+      -TimeControl 1+0 -Games 20 -PairedColors \
+      -KoiRandomSeed 1 -KoiOwnBook false \
+      -OutputDirectory ./artifacts/matches/no-book-1p0-paired
+
+    # With a licensed book at 5+3
+    pwsh -NoProfile -File ./tools/stability/uci_match.ps1 \
+      -KoiPath ./build/release/koi-engine \
+      -OpponentPath /path/to/stockfish \
+      -OpeningFile ./tests/data/openings/openings-basic.txt \
+      -TimeControl 5+3 -Games 20 -PairedColors \
+      -KoiRandomSeed 1 -KoiOwnBook true -KoiBookFile /path/to/book.bin -KoiBookDepth 16 \
+      -OutputDirectory ./artifacts/matches/book-5p3-paired
+    ```
 
 `-TimeControl` accepts only `<minutes>+<increment>` (for example `1+0` or `5+3`)
 and sends `wtime`, `btime`, `winc`, and `binc` on every `go`; elapsed time is deducted
@@ -362,13 +425,25 @@ accept, 1 on reject, and 2 when more games are needed.
 The v1.2.0 release comparison uses the fixed, color-reversed opening sample and
 exact bound described in the release evidence report; this SPRT utility is exploratory.
 
-```powershell
-.\tools\stability\sprt_compare.ps1 `
-  -CandidatePath .\build\release\koi-engine.exe `
-  -BaselinePath .\artifacts\verification\baseline\koi-engine-baseline.exe `
-  -Nodes 20000 -Games 2 -MinGames 40 -MaxGames 64 -Elo1 5 `
-  -OutputDirectory .\artifacts\matches\sprt-candidate
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    .\tools\stability\sprt_compare.ps1 `
+      -CandidatePath .\build\release\koi-engine.exe `
+      -BaselinePath .\artifacts\verification\baseline\koi-engine-baseline.exe `
+      -Nodes 20000 -Games 2 -MinGames 40 -MaxGames 64 -Elo1 5 `
+      -OutputDirectory .\artifacts\matches\sprt-candidate
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    pwsh -NoProfile -File ./tools/stability/sprt_compare.ps1 \
+      -CandidatePath ./build/release/koi-engine \
+      -BaselinePath ./artifacts/verification/baseline/koi-engine-baseline \
+      -Nodes 20000 -Games 2 -MinGames 40 -MaxGames 64 -Elo1 5 \
+      -OutputDirectory ./artifacts/matches/sprt-candidate
+    ```
 
 ## Rough local Elo measurement
 
@@ -398,20 +473,39 @@ The manifest must bracket `--prior-elo`, and `--stockfish` must match its
 Run the primary no-book dry-run from the repository root with every executable,
 manifest, corpus, and report path resolved explicitly:
 
-```powershell
-python .\tools\measurement\elo_estimate.py `
-  --koi .\build\release\koi-engine.exe `
-  --replay .\build\release\koi-replay.exe `
-  --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
-  --anchors .\artifacts\manifests\elo-anchors.json `
-  --openings .\tests\data\openings\openings-curated-32.txt `
-  --time-control 1+0 `
-  --threads 4 --hash 512 --speed 100 `
-  --min-games 128 --max-games 320 `
-  --prior-elo 1600 --mode no-book `
-  --output .\artifacts\matches\rough-elo-no-book.json `
-  --dry-run
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    python .\tools\measurement\elo_estimate.py `
+      --koi .\build\release\koi-engine.exe `
+      --replay .\build\release\koi-replay.exe `
+      --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
+      --anchors .\artifacts\manifests\elo-anchors.json `
+      --openings .\tests\data\openings\openings-curated-32.txt `
+      --time-control 1+0 `
+      --threads 4 --hash 512 --speed 100 `
+      --min-games 128 --max-games 320 `
+      --prior-elo 1600 --mode no-book `
+      --output .\artifacts\matches\rough-elo-no-book.json `
+      --dry-run
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    python3 ./tools/measurement/elo_estimate.py \
+      --koi ./build/release/koi-engine \
+      --replay ./build/release/koi-replay \
+      --stockfish /path/to/stockfish \
+      --anchors ./artifacts/manifests/elo-anchors.json \
+      --openings ./tests/data/openings/openings-curated-32.txt \
+      --time-control 1+0 \
+      --threads 4 --hash 512 --speed 100 \
+      --min-games 128 --max-games 320 \
+      --prior-elo 1600 --mode no-book \
+      --output ./artifacts/matches/rough-elo-no-book.json \
+      --dry-run
+    ```
 
 `--dry-run` validates the executable paths, anchor manifest, 32-opening corpus,
 required fixed options, and output location, writes the complete deterministic
@@ -424,22 +518,40 @@ under `artifacts/matches`.
 Book mode is a separate measurement and must not be combined with the primary
 no-book result. Use a separate output path and licensed external book:
 
-```powershell
-python .\tools\measurement\elo_estimate.py `
-  --koi .\build\release\koi-engine.exe `
-  --replay .\build\release\koi-replay.exe `
-  --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
-  --anchors .\artifacts\manifests\elo-anchors.json `
-  --openings .\tests\data\openings\openings-curated-32.txt `
-  --time-control 1+0 `
-  --threads 4 --hash 512 --speed 100 `
-  --min-games 128 --max-games 320 `
-  --prior-elo 1600 --mode book --book C:\LicensedBooks\book.bin `
-  --output .\artifacts\matches\rough-elo-book.json
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    python .\tools\measurement\elo_estimate.py `
+      --koi .\build\release\koi-engine.exe `
+      --replay .\build\release\koi-replay.exe `
+      --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
+      --anchors .\artifacts\manifests\elo-anchors.json `
+      --openings .\tests\data\openings\openings-curated-32.txt `
+      --time-control 1+0 `
+      --threads 4 --hash 512 --speed 100 `
+      --min-games 128 --max-games 320 `
+      --prior-elo 1600 --mode book --book C:\LicensedBooks\book.bin `
+      --output .\artifacts\matches\rough-elo-book.json
+    ```
+
+=== "Linux & macOS"
+
+    ```bash
+    python3 ./tools/measurement/elo_estimate.py \
+      --koi ./build/release/koi-engine \
+      --replay ./build/release/koi-replay \
+      --stockfish /path/to/stockfish \
+      --anchors ./artifacts/manifests/elo-anchors.json \
+      --openings ./tests/data/openings/openings-curated-32.txt \
+      --time-control 1+0 \
+      --threads 4 --hash 512 --speed 100 \
+      --min-games 128 --max-games 320 \
+      --prior-elo 1600 --mode book --book /path/to/book.bin \
+      --output ./artifacts/matches/rough-elo-book.json
+    ```
 
 To measure a Koi NNUE network, pass `--koi-eval-file` with the network path. The
-tool reads the container header, selects the matching `nnue-v4`/`nnue-v5`/`nnue-v9`
+tool reads the container header, selects the matching `nnue-v4`/`nnue-v5`/`nnue-v6`/`nnue-v8`/`nnue-v9`
 attestation, and requires the match harness to confirm that the engine enabled
 that exact file; the report records the absolute path, SHA-256, byte size,
 container version, and attestation under `configuration.koi_evaluator`. Missing, malformed, or rejected networks fail with a nonzero exit.

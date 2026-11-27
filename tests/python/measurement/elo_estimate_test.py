@@ -88,7 +88,7 @@ def make_match_report(paths, anchor, color, *, result="1-0", own_book=False, eva
     if eval_file is not None:
         data = eval_file.read_bytes()
         configuration.update({
-            "koi_evaluator_mode": {4: "nnue-v4", 5: "nnue-v5"}[int.from_bytes(data[8:12], "little")],
+            "koi_evaluator_mode": elo_estimate.KOI_EVALUATOR_MODES[int.from_bytes(data[8:12], "little")],
             "koi_evalfile_path": str(eval_file),
             "koi_evalfile_sha256": hashlib.sha256(data).hexdigest(),
             "koi_evaluator_attestation": {
@@ -403,6 +403,9 @@ class EloEstimateTests(unittest.TestCase):
             eval_file = make_eval_file(directory).resolve()
             evaluator = elo_estimate.load_koi_evaluator(eval_file)
             self.assertEqual((evaluator.mode, evaluator.container_version), ("nnue-v4", 4))
+            eval_file_v9 = make_eval_file(directory, version=9, name="net-v9.nnue").resolve()
+            evaluator_v9 = elo_estimate.load_koi_evaluator(eval_file_v9)
+            self.assertEqual((evaluator_v9.mode, evaluator_v9.container_version), ("nnue-v9", 9))
             self.assertEqual(evaluator.size_bytes, eval_file.stat().st_size)
             self.assertEqual(evaluator.sha256, hashlib.sha256(eval_file.read_bytes()).hexdigest())
             anchor = elo_estimate.Anchor("stockfish-1600", paths["stockfish.exe"], 1600, "test", 1600)
@@ -413,6 +416,12 @@ class EloEstimateTests(unittest.TestCase):
             )
             self.assertEqual(command[command.index("-KoiEvalFile") + 1], str(eval_file))
             self.assertEqual(command[command.index("-KoiEvaluatorMode") + 1], "nnue-v4")
+            command_v9 = elo_estimate._harness_command(
+                "powershell-test", paths["koi.exe"], paths["replay.exe"], anchor, paths["openings"],
+                directory / "out", "white", "1+0", None, classical_options, evaluator=evaluator_v9,
+            )
+            self.assertEqual(command_v9[command_v9.index("-KoiEvalFile") + 1], str(eval_file_v9))
+            self.assertEqual(command_v9[command_v9.index("-KoiEvaluatorMode") + 1], "nnue-v9")
             classical = elo_estimate._harness_command(
                 "powershell-test", paths["koi.exe"], paths["replay.exe"], anchor, paths["openings"],
                 directory / "out", "white", "1+0", None, classical_options,
@@ -490,8 +499,8 @@ class EloEstimateTests(unittest.TestCase):
             invalid.write_bytes(b"not a koi nnue container")
             with self.assertRaisesRegex(elo_estimate.EloEstimateError, "container"):
                 elo_estimate.load_koi_evaluator(invalid)
-            unsupported = make_eval_file(directory, version=6, name="v6.nnue")
-            with self.assertRaisesRegex(elo_estimate.EloEstimateError, "version 6"):
+            unsupported = make_eval_file(directory, version=7, name="v7.nnue")
+            with self.assertRaisesRegex(elo_estimate.EloEstimateError, "version 7"):
                 elo_estimate.load_koi_evaluator(unsupported)
             arguments = requested_args(paths, write_anchor_manifest(directory, paths), directory / "external-report.json", "--koi-eval-file", str(missing))
             stderr = io.StringIO()

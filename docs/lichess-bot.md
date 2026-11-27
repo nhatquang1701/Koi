@@ -42,7 +42,7 @@ chmod 600 ~/koi-bot/token
 ~/koi-bot/koi-bot.sh stop
 ```
 
-`install` downloads the latest release package (verifying the `.sha256` sidecar when present), installs
+`install` downloads the latest release package (verifying the `.sha256` sidecar on older releases or GitHub's release-asset SHA-256 `digest` metadata on newer releases, plus `koi-engine nnue` payload checksum verification), installs
 `koi-engine` plus the shipped `.nnue` under `~/koi-bot/engines`, and writes
 `~/koi-bot/config.yml` (mode 600) pointing `EvalFile` at that net with rated
 bot-vs-bot matchmaking enabled (`KOI_BOT_MATCHMAKING=true` by default,
@@ -56,24 +56,29 @@ bot-vs-bot matchmaking enabled (`KOI_BOT_MATCHMAKING=true` by default,
 | `koi-bot.sh start` | run the bot (launchd when installed, otherwise a pidfile) |
 | `koi-bot.sh stop` | stop the bot and its engine processes |
 | `koi-bot.sh restart` | stop, then start |
+| `koi-bot.sh autostart` | start when idle/lightly loaded; pause under heavy work once any active game finishes |
+| `koi-bot.sh sprt-mode [on\|off\|status]` | toggle SPRT match lock (disables autostart and stops the bot after any active game) |
 | `koi-bot.sh status` | engine version, net, service state, last log lines |
 | `koi-bot.sh reconfigure` | rewrite `config.yml` from current environment settings |
 | `koi-bot.sh logs [N]` | tail the bot log |
 | `koi-bot.sh update [--force]` | install the newest release and restart only when the tag changed |
-| `koi-bot.sh install-launchd` | start at login, restart on crash, check for a new release hourly |
+| `koi-bot.sh install-launchd` | start at login, restart on crash, check for a new release hourly, and enable idle-aware autostart |
 | `koi-bot.sh uninstall-launchd` | remove those agents |
 
 ## Staying on the newest release
 
 `update` asks GitHub for `releases/latest`, compares the tag with the installed
 `~/koi-bot/engines/VERSION`, and does nothing when they match. When a newer
-release exists it downloads the macOS arm64 package, verifies the sidecar hash
-when present, swaps the binary and net, rewrites the config, and restarts the bot.
+release exists it downloads the macOS arm64 package, verifies its SHA-256 hash
+(using the `.sha256` sidecar on legacy releases or GitHub's asset `digest` field
+on v1.2.0+), extracts the engine, verifies the bundled network with
+`koi-engine nnue`, rewrites the config, and restarts the bot.
 
-`install-launchd` registers two agents:
+`install-launchd` registers three agents:
 
 - `org.koi.lichess-bot` — runs the bot at login and restarts it after a crash;
-- `org.koi.lichess-bot-update` — runs `update` every hour.
+- `org.koi.lichess-bot-update` — runs `update` every hour;
+- `org.koi.lichess-bot-autostart` — runs `autostart` every 120 seconds so the bot yields CPU during heavy local builds/benchmarks without interrupting live games.
 
 So every minor update or patch published on the repository reaches the bot
 within the hour, with no manual step. Run `koi-bot.sh uninstall-launchd` to go
