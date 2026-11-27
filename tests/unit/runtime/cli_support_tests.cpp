@@ -293,13 +293,11 @@ void test_evaluator_and_asset_flags() {
     env.clear_all();
     koi::cli::CliOptions runtime_opts;
     koi::test::require(
-        !invoke_parse({"--hash", "64", "--threads", "1", "-c", "go depth 1", "options"},
-                      runtime_opts)
-             .has_value() &&
+        !invoke_parse({"--hash", "64", "--threads", "1", "options"}, runtime_opts).has_value() &&
             runtime_opts.initial_hash_mb == std::optional<std::size_t>(64) &&
             runtime_opts.initial_threads == std::optional<std::size_t>(1) &&
-            runtime_opts.options && runtime_opts.commands.size() == 1,
-        "--hash and --threads must parse and combine with options/-c");
+            runtime_opts.options,
+        "--hash and --threads must parse and combine with options");
     koi::cli::CliOptions runtime_reexec;
     koi::test::require(!invoke_parse({}, runtime_reexec).has_value() &&
                            runtime_reexec.initial_hash_mb == std::optional<std::size_t>(64) &&
@@ -308,10 +306,13 @@ void test_evaluator_and_asset_flags() {
 
     env.clear_all();
     koi::cli::CliOptions inline_runtime;
-    koi::test::require(!invoke_parse({"--hash=128", "--threads=1"}, inline_runtime).has_value() &&
-                           inline_runtime.initial_hash_mb == std::optional<std::size_t>(128) &&
-                           inline_runtime.initial_threads == std::optional<std::size_t>(1),
-                       "--hash= and --threads= inline forms must parse cleanly");
+    koi::test::require(
+        !invoke_parse({"--hash=128", "--threads=1", "-c", "go depth 1"}, inline_runtime)
+             .has_value() &&
+            inline_runtime.initial_hash_mb == std::optional<std::size_t>(128) &&
+            inline_runtime.initial_threads == std::optional<std::size_t>(1) &&
+            inline_runtime.commands.size() == 1,
+        "--hash= and --threads= inline forms must parse cleanly and combine with -c");
 
     for (const std::vector<std::string>& bad : std::vector<std::vector<std::string>>{
              {"--hash"},
