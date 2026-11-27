@@ -1653,10 +1653,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // material position may turn this evaluation estimate into a cutoff.
         // The result is explicitly selective, so neither this node nor a
         // parent may promote it to nominal-depth exact information.
-        const bool tt_capture = tt_move.has_value() && state.is_capture(*tt_move);
         const bool reverse_futility_allowed = !claimable_draw && !excluded_search && ply > 0 &&
             !frame.tt_pv && !repetition_sensitive &&
-            !pawn_endgame && (!tt_move.has_value() || tt_capture) &&
+            !pawn_endgame &&
             static_eval_valid;
         const ReverseFutilityDecision reverse_futility =
             SearchPolicy::reverse_futility(
