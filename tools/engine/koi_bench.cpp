@@ -334,6 +334,41 @@ std::string_view trim(std::string_view value) {
     return value;
 }
 
+void parse_epd_move_list(const koi::GameState& state, std::string_view operand,
+                         std::string_view opcode, std::string_view payload,
+                         std::array<std::string, 3>& destination,
+                         std::string* first_move) {
+    std::size_t move_count = 0;
+    std::size_t pos = 0;
+    while (pos < operand.size()) {
+        while (pos < operand.size() &&
+               std::isspace(static_cast<unsigned char>(operand[pos])) != 0) {
+            ++pos;
+        }
+        const std::size_t tok_start = pos;
+        while (pos < operand.size() &&
+               std::isspace(static_cast<unsigned char>(operand[pos])) == 0) {
+            ++pos;
+        }
+        if (tok_start == pos) {
+            break;
+        }
+        const std::string_view move_tok = operand.substr(tok_start, pos - tok_start);
+        const auto move = koi::detail::parse_move_uci_or_san(state, move_tok);
+        if (!move.has_value()) {
+            throw std::runtime_error("illegal EPD " + std::string(opcode) + " move '" +
+                                     std::string(move_tok) + "' in: " + std::string(payload));
+        }
+        if (move_count == 0 && first_move != nullptr) {
+            *first_move = move->uci();
+        }
+        if (move_count < destination.size()) {
+            destination[move_count] = move->uci();
+        }
+        ++move_count;
+    }
+}
+
 std::vector<BenchPosition> load_fen_positions(const std::string& path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
@@ -408,6 +443,9 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
                 parsed_state = *epd_state;
                 if (!ops.empty()) {
                     is_epd = true;
+                    std::uint64_t halfmove_clock = 0;
+                    std::uint64_t fullmove_number = 1;
+                    bool has_epd_clocks = false;
                     while (!ops.empty()) {
                         const std::size_t semi = ops.find(';');
                         const std::string_view op = trim(
@@ -435,69 +473,50 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
                                 epd_id = std::string(cleaned);
                             }
                         } else if (opcode == "bm" && !operand.empty()) {
-                            std::size_t move_count = 0;
-                            std::size_t pos = 0;
-                            while (pos < operand.size()) {
-                                while (pos < operand.size() &&
-                                       std::isspace(static_cast<unsigned char>(operand[pos])) != 0) {
-                                    ++pos;
-                                }
-                                const std::size_t tok_start = pos;
-                                while (pos < operand.size() &&
-                                       std::isspace(static_cast<unsigned char>(operand[pos])) == 0) {
-                                    ++pos;
-                                }
-                                if (tok_start == pos) {
-                                    break;
-                                }
-                                const std::string_view move_tok =
-                                    operand.substr(tok_start, pos - tok_start);
-                                const auto move =
-                                    koi::detail::parse_move_uci_or_san(*parsed_state, move_tok);
-                                if (!move.has_value()) {
-                                    throw std::runtime_error(
-                                        "illegal EPD bm move '" + std::string(move_tok) +
-                                        "' in: " + std::string(payload));
-                                }
-                                if (move_count == 0) {
-                                    position.expected_move = move->uci();
-                                }
-                                if (move_count < position.accepted_moves.size()) {
-                                    position.accepted_moves[move_count] = move->uci();
-                                }
-                                ++move_count;
-                            }
+                            parse_epd_move_list(*parsed_state, operand, "bm", payload,
+                                                position.accepted_moves, &position.expected_move);
                         } else if (opcode == "am" && !operand.empty()) {
-                            std::size_t move_count = 0;
-                            std::size_t pos = 0;
-                            while (pos < operand.size()) {
-                                while (pos < operand.size() &&
-                                       std::isspace(static_cast<unsigned char>(operand[pos])) != 0) {
-                                    ++pos;
-                                }
-                                const std::size_t tok_start = pos;
-                                while (pos < operand.size() &&
-                                       std::isspace(static_cast<unsigned char>(operand[pos])) == 0) {
-                                    ++pos;
-                                }
-                                if (tok_start == pos) {
-                                    break;
-                                }
-                                const std::string_view move_tok =
-                                    operand.substr(tok_start, pos - tok_start);
-                                const auto move =
-                                    koi::detail::parse_move_uci_or_san(*parsed_state, move_tok);
-                                if (!move.has_value()) {
-                                    throw std::runtime_error(
-                                        "illegal EPD am move '" + std::string(move_tok) +
-                                        "' in: " + std::string(payload));
-                                }
-                                if (move_count < position.avoid_moves.size()) {
-                                    position.avoid_moves[move_count] = move->uci();
-                                }
-                                ++move_count;
+                            parse_epd_move_list(*parsed_state, operand, "am", payload,
+                                                position.avoid_moves, nullptr);
+                        } else if (opcode == "hmvc") {
+                            std::uint64_t parsed_hmvc = 0;
+                            if (operand.empty() || !parse_uint64(operand, parsed_hmvc) ||
+                                parsed_hmvc > 65535) {
+                                throw std::runtime_error(
+                                    "invalid EPD hmvc value '" + std::string(operand) +
+                                    "' in: " + std::string(payload));
                             }
+                            halfmove_clock = parsed_hmvc;
+                            has_epd_clocks = true;
+                        } else if (opcode == "fmvn") {
+                            std::uint64_t parsed_fmvn = 0;
+                            if (operand.empty() || !parse_uint64(operand, parsed_fmvn) ||
+                                parsed_fmvn < 1 || parsed_fmvn > 65535) {
+                                throw std::runtime_error(
+                                    "invalid EPD fmvn value '" + std::string(operand) +
+                                    "' in: " + std::string(payload));
+                            }
+                            fullmove_number = parsed_fmvn;
+                            has_epd_clocks = true;
                         }
+                    }
+                    if (has_epd_clocks) {
+                        std::string fen_clocked;
+                        fen_clocked.reserve(fields[0].size() + fields[1].size() + fields[2].size() +
+                                            fields[3].size() + 16);
+                        fen_clocked.append(fields[0]).push_back(' ');
+                        fen_clocked.append(fields[1]).push_back(' ');
+                        fen_clocked.append(fields[2]).push_back(' ');
+                        fen_clocked.append(fields[3]).push_back(' ');
+                        fen_clocked += std::to_string(halfmove_clock);
+                        fen_clocked.push_back(' ');
+                        fen_clocked += std::to_string(fullmove_number);
+                        const auto clocked_state = koi::GameState::from_fen(fen_clocked);
+                        if (!clocked_state.has_value()) {
+                            throw std::runtime_error(
+                                "invalid benchmark position: " + std::string(payload));
+                        }
+                        parsed_state = *clocked_state;
                     }
                 }
             }

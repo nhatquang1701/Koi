@@ -708,6 +708,22 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(perft_san.returncode, 0, perft_san.stderr)
         self.assertEqual(perft_san.stdout.strip(), "nodes 20")
 
+        perft_suite = subprocess.run([str(perft_exe), "--suite"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(perft_suite.returncode, 0, perft_suite.stderr)
+        self.assertEqual(perft_suite.stderr, "")
+        self.assertIn("PASS startpos depth 4 nodes 197281", perft_suite.stdout)
+        self.assertIn("PASS position-6 depth 4 nodes 3894594", perft_suite.stdout)
+        self.assertIn("suite 6/6 passed | nodes 10746536 |", perft_suite.stdout)
+
+        for bad_suite_args in (["--suite", "--divide"], ["--suite", "2"]):
+            bad_suite = subprocess.run(
+                [str(perft_exe), *bad_suite_args],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertNotEqual(bad_suite.returncode, 0, bad_suite.stdout)
+
         help_replay = subprocess.run([str(replay_exe), "--help"], capture_output=True, text=True, timeout=15)
         self.assertEqual(help_replay.returncode, 0, help_replay.stderr)
         self.assertIn("usage: koi-replay", help_replay.stdout)
@@ -721,6 +737,26 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(replay_ok.returncode, 0, replay_ok.stderr)
         self.assertIn("legal 1", replay_ok.stdout)
         self.assertIn("termination ongoing", replay_ok.stdout)
+
+        replay_san_pgn = subprocess.run(
+            [str(replay_exe), "--pgn", "startpos", "moves", "e4", "e5", "Nf3", "Nc6", "Bb5"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(replay_san_pgn.returncode, 0, replay_san_pgn.stderr)
+        self.assertEqual(replay_san_pgn.stderr, "")
+        self.assertIn('[Event "Koi Session"]', replay_san_pgn.stdout)
+        self.assertIn("1. e4 e5 2. Nf3 Nc6 3. Bb5 *", replay_san_pgn.stdout)
+
+        replay_bad_pgn = subprocess.run(
+            [str(replay_exe), "--pgn", "startpos", "moves", "e4", "Qh9"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(replay_bad_pgn.returncode, 2, replay_bad_pgn.stdout)
+        self.assertIn("illegal move:", replay_bad_pgn.stderr)
 
         help_bench = subprocess.run([str(bench_exe), "--help"], capture_output=True, text=True, timeout=15)
         self.assertEqual(help_bench.returncode, 0, help_bench.stderr)
@@ -824,6 +860,48 @@ class CliSubcommandsTest(unittest.TestCase):
             )
             self.assertNotEqual(bad_am_bench.returncode, 0)
             self.assertIn("illegal EPD am move", bad_am_bench.stderr)
+
+            clocked_epd = bench_dir / "clocked.epd"
+            clocked_epd.write_text(
+                '6k1/5ppp/8/8/8/8/8/3R2K1 w - - bm Rd8#; hmvc 12; fmvn 34; id "ClockedEpd";\n',
+                encoding="utf-8",
+            )
+            clocked_json = bench_dir / "clocked.json"
+            clocked_bench = subprocess.run(
+                [
+                    str(bench_exe),
+                    "--hce",
+                    "--epd",
+                    str(clocked_epd),
+                    "--depth",
+                    "1",
+                    "--profile-json",
+                    str(clocked_json),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(clocked_bench.returncode, 0, clocked_bench.stderr)
+            clocked_profile = json.loads(clocked_json.read_text(encoding="utf-8"))
+            self.assertEqual(
+                clocked_profile["positions"][0]["fen"],
+                "6k1/5ppp/8/8/8/8/8/3R2K1 w - - 12 34",
+            )
+
+            bad_hmvc_epd = bench_dir / "bad_hmvc.epd"
+            bad_hmvc_epd.write_text(
+                '6k1/5ppp/8/8/8/8/8/3R2K1 w - - hmvc abc; id "BadHmvc";\n',
+                encoding="utf-8",
+            )
+            bad_hmvc_bench = subprocess.run(
+                [str(bench_exe), "--hce", "--epd", str(bad_hmvc_epd), "--depth", "1"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertNotEqual(bad_hmvc_bench.returncode, 0)
+            self.assertIn("invalid EPD hmvc value", bad_hmvc_bench.stderr)
 
         bad_bench_hash = subprocess.run(
             [str(bench_exe), "--hce", "--hash", "0"],
@@ -934,6 +1012,28 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(eval_hce.returncode, 0, eval_hce.stderr)
             self.assertEqual(eval_hce.stderr, "")
             self.assertTrue(eval_hce.stdout.startswith("fen,label_cp,hce_cp\n"), eval_hce.stdout)
+
+            epd_txt = pathlib.Path(tmpdir) / "positions.epd"
+            epd_txt.write_text(
+                '6k1/5ppp/8/8/8/8/8/3R2K1 w - - bm Rd8#; id "BackRank";\n'
+                "4k3/8/8/8/8/8/4P3/4K3 w - -\n",
+                encoding="utf-8",
+            )
+            eval_epd = subprocess.run(
+                [str(eval_features_exe), "--hce", f"--input={epd_txt}"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(eval_epd.returncode, 0, eval_epd.stderr)
+            self.assertEqual(eval_epd.stderr, "")
+            epd_lines = eval_epd.stdout.splitlines()
+            self.assertEqual(len(epd_lines), 3, epd_lines)
+            self.assertEqual(epd_lines[0], "fen,label_cp,hce_cp")
+            self.assertEqual(epd_lines[1].split(",")[1], "")
+            self.assertIsInstance(int(epd_lines[1].split(",")[2]), int)
+            self.assertEqual(epd_lines[2].split(",")[1], "")
+            self.assertIsInstance(int(epd_lines[2].split(",")[2]), int)
 
             for bad_eval_args in (["--nnue"], ["--input="], ["--output"]):
                 bad_eval = subprocess.run(

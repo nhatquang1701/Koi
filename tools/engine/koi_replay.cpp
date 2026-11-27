@@ -2,7 +2,9 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <vector>
 
+#include "koi/detail/uci_support.hpp"
 #include "koi/game_state.hpp"
 
 #ifndef KOI_ENGINE_BUILD_VERSION
@@ -15,7 +17,7 @@
 namespace {
 
 constexpr std::string_view kUsage =
-    "usage: koi-replay <startpos|fen six-field-fen> [moves <coordinate>...]\n";
+    "usage: koi-replay [--pgn] <startpos|fen six-field-fen> [moves <uci|san>...]\n";
 
 struct ReplayResult {
     std::string result = "*";
@@ -88,8 +90,18 @@ int main(int argument_count, char* arguments[]) {
         return 0;
     }
 
+    bool emit_pgn = false;
+    int arg_start = 1;
+    if (arg_start < argument_count && std::string_view(arguments[arg_start]) == "--pgn") {
+        emit_pgn = true;
+        ++arg_start;
+    }
+    if (arg_start >= argument_count) {
+        return usage();
+    }
+
     int move_start = argument_count;
-    for (int index = 1; index < argument_count; ++index) {
+    for (int index = arg_start; index < argument_count; ++index) {
         if (std::string_view(arguments[index]) == "moves") {
             move_start = index;
             break;
@@ -97,14 +109,14 @@ int main(int argument_count, char* arguments[]) {
     }
 
     koi::GameState state;
-    const std::string_view position = arguments[1];
+    const std::string_view position = arguments[arg_start];
     if (position == "startpos") {
-        if ((move_start == argument_count && argument_count != 2) ||
-            (move_start != argument_count && move_start != 2)) {
+        if ((move_start == argument_count && argument_count != arg_start + 1) ||
+            (move_start != argument_count && move_start != arg_start + 1)) {
             return usage();
         }
     } else {
-        const int fen_start = position == "fen" ? 2 : 1;
+        const int fen_start = position == "fen" ? arg_start + 1 : arg_start;
         if (fen_start >= move_start) {
             return usage();
         }
@@ -120,15 +132,29 @@ int main(int argument_count, char* arguments[]) {
         state = *parsed;
     }
 
+    const koi::GameState origin = state;
+    std::vector<koi::Move> played_moves;
     bool legal = true;
+    std::string illegal_token;
     if (move_start != argument_count) {
         for (int index = move_start + 1; index < argument_count; ++index) {
-            const auto move = koi::Move::parse_uci(arguments[index]);
+            const auto move = koi::detail::parse_move_uci_or_san(state, arguments[index]);
             if (!move || !state.make_move(*move)) {
                 legal = false;
+                illegal_token = arguments[index];
                 break;
             }
+            played_moves.push_back(*move);
         }
+    }
+
+    if (emit_pgn) {
+        if (!legal) {
+            std::cerr << "illegal move: " << illegal_token << '\n';
+            return 2;
+        }
+        std::cout << koi::detail::format_pgn(origin, played_moves);
+        return 0;
     }
 
     ReplayResult result = classify(state);

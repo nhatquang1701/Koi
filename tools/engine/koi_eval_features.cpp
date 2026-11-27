@@ -1,20 +1,24 @@
 // Dump NNUE or HCE evaluations for a position corpus as CSV.
 //
-// Input rows are either a bare `FEN` or the label-corpus format
-// `FEN;cp;best_move`. Select NNUE with `--nnue NET` or the clean HCE with
-// `--hce` (no network). The echoed `label_cp` is the corpus label in centipawns
-// from the side to move; the final column is the selected evaluator's static
-// evaluation for the same perspective. The FEN field never contains a comma, so the output is plain
-// CSV with the FEN first.
+// Input rows are a 6-field `FEN`, the label-corpus format `FEN;cp;best_move`,
+// a 4-field FEN, or a 4-field EPD line (`4-field-fen [ops...];`). Select NNUE
+// with `--nnue NET` or the clean HCE with `--hce` (no network). The echoed
+// `label_cp` is the corpus label in centipawns from the side to move (empty
+// for bare FEN or EPD lines); the final column is the selected evaluator's
+// static evaluation for the same perspective. The FEN field never contains a
+// comma, so the output is plain CSV with the FEN first.
 
 #include "koi/classical_evaluator.hpp"
 #include "koi/game_state.hpp"
 #include "koi/nnue.hpp"
 
+#include <array>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -32,6 +36,74 @@ std::string strip_carriage_return(std::string line) {
         line.pop_back();
     }
     return line;
+}
+
+std::string_view trim_ascii(std::string_view value) noexcept {
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0) {
+        value.remove_suffix(1);
+    }
+    return value;
+}
+
+struct ParsedEvalInput {
+    koi::GameState state;
+    std::string fen;
+    std::string label;
+};
+
+std::optional<ParsedEvalInput> parse_fen_or_epd_line(std::string_view line) {
+    const std::size_t separator = line.find(';');
+    const std::string_view raw_fen = trim_ascii(
+        separator == std::string_view::npos ? line : line.substr(0, separator));
+    std::string_view label;
+    if (separator != std::string_view::npos) {
+        const std::size_t start = separator + 1;
+        const std::size_t end = line.find(';', start);
+        label = std::string_view{line}.substr(
+            start, end == std::string_view::npos ? std::string_view::npos : end - start);
+    }
+    if (!raw_fen.empty()) {
+        if (const auto state = koi::GameState::from_fen(raw_fen); state.has_value()) {
+            return ParsedEvalInput{*state, std::string(raw_fen), std::string(label)};
+        }
+    }
+
+    std::size_t cursor = 0;
+    std::array<std::string_view, 4> fields{};
+    for (std::size_t field_index = 0; field_index < fields.size(); ++field_index) {
+        while (cursor < line.size() &&
+               std::isspace(static_cast<unsigned char>(line[cursor])) != 0) {
+            ++cursor;
+        }
+        const std::size_t start = cursor;
+        while (cursor < line.size() &&
+               std::isspace(static_cast<unsigned char>(line[cursor])) == 0) {
+            ++cursor;
+        }
+        if (start == cursor) {
+            return std::nullopt;
+        }
+        fields[field_index] = line.substr(start, cursor - start);
+    }
+    const std::string_view suffix = trim_ascii(line.substr(cursor));
+    if (!suffix.empty() && suffix.find(';') == std::string_view::npos) {
+        return std::nullopt;
+    }
+    std::string fen4;
+    fen4.reserve(fields[0].size() + fields[1].size() + fields[2].size() + fields[3].size() + 8);
+    fen4.append(fields[0]).push_back(' ');
+    fen4.append(fields[1]).push_back(' ');
+    fen4.append(fields[2]).push_back(' ');
+    fen4.append(fields[3]);
+    fen4 += " 0 1";
+    const auto epd_state = koi::GameState::from_fen(fen4);
+    if (!epd_state.has_value()) {
+        return std::nullopt;
+    }
+    return ParsedEvalInput{*epd_state, epd_state->fen(), {}};
 }
 
 bool consume_value_flag(const std::string_view argument, const std::string_view flag,
@@ -79,7 +151,7 @@ int main(int argc, char** argv) {
             use_hce = true;
         } else if (argument == "-h" || argument == "--help") {
             std::cout << "usage: koi-eval-features (--nnue NET | --hce) [--input FILE] [--output FILE]\n"
-                         "  reads FEN or FEN;cp;... rows (stdin by default) and writes\n"
+                         "  reads FEN, EPD, or FEN;cp;... rows (stdin by default) and writes\n"
                          "  CSV rows fen,label_cp,<evaluator>_cp from the side-to-move perspective\n";
             return 0;
         } else if (argument == "-v" || argument == "--version") {
@@ -146,26 +218,19 @@ int main(int argc, char** argv) {
         if (line.empty() || line.front() == '#') {
             continue;
         }
-        const std::size_t separator = line.find(';');
-        const std::string_view fen = separator == std::string::npos ?
-            std::string_view{line} : std::string_view{line}.substr(0, separator);
-        std::string_view label;
-        if (separator != std::string::npos) {
-            const std::size_t start = separator + 1;
-            const std::size_t end = line.find(';', start);
-            label = std::string_view{line}.substr(
-                start, end == std::string::npos ? std::string::npos : end - start);
-        }
-        if (fen.empty()) {
+        const auto parsed = parse_fen_or_epd_line(line);
+        if (!parsed.has_value()) {
+            const std::size_t separator = line.find(';');
+            const std::string_view raw_fen = trim_ascii(
+                separator == std::string::npos ? std::string_view{line}
+                                               : std::string_view{line}.substr(0, separator));
+            if (!raw_fen.empty()) {
+                std::cerr << "koi-eval-features: skipped unparsable FEN " << raw_fen << '\n';
+            }
             continue;
         }
-        const auto state = koi::GameState::from_fen(fen);
-        if (!state.has_value()) {
-            std::cerr << "koi-eval-features: skipped unparsable FEN " << fen << '\n';
-            continue;
-        }
-        *output << fen << ',' << label << ','
-                << evaluator.evaluate(*state, state->side_to_move()) << '\n';
+        *output << parsed->fen << ',' << parsed->label << ','
+                << evaluator.evaluate(parsed->state, parsed->state.side_to_move()) << '\n';
     }
     return 0;
 }

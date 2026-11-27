@@ -35,8 +35,7 @@ std::string pipe_command(const std::filesystem::path& replay, std::string_view a
 #endif
 }
 
-std::map<std::string, std::string> run_replay(const std::filesystem::path& replay,
-                                              std::string_view arguments) {
+std::string run_replay_raw(const std::filesystem::path& replay, std::string_view arguments) {
     const std::string command = pipe_command(replay, arguments);
     FILE* pipe = KOI_POPEN(command.c_str(), "r");
     if (pipe == nullptr) {
@@ -52,6 +51,12 @@ std::map<std::string, std::string> run_replay(const std::filesystem::path& repla
     if (exit_code != 0) {
         throw std::runtime_error("koi-replay exited unsuccessfully: " + output);
     }
+    return output;
+}
+
+std::map<std::string, std::string> run_replay(const std::filesystem::path& replay,
+                                              std::string_view arguments) {
+    const std::string output = run_replay_raw(replay, arguments);
 
     std::map<std::string, std::string> fields;
     std::size_t offset = 0;
@@ -160,6 +165,34 @@ void test_stray_move_is_rejected_without_moves_marker() {
     }
 }
 
+void test_san_moves_replay() {
+    const auto ruy = run_replay(replay_path, "startpos moves e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O");
+    require_field(ruy, "legal", "1");
+    require_field(ruy, "result", "*");
+    require_field(ruy, "termination", "ongoing");
+    require_field(ruy, "fen",
+                  "r1bqkb1r/1ppp1ppp/p1n2n2/4p3/B3P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 3 5");
+
+    const auto fools = run_replay(replay_path, "startpos moves f3 e5 g4 Qh4#");
+    require_field(fools, "legal", "1");
+    require_field(fools, "result", "0-1");
+    require_field(fools, "termination", "checkmate");
+}
+
+void test_pgn_output_and_illegal_pgn_exit() {
+    const std::string pgn = run_replay_raw(replay_path, "--pgn startpos moves e4 e5 Nf3 Nc6 Bb5");
+    koi::test::require(pgn.find("[Event \"Koi Session\"]") != std::string::npos,
+                       "PGN export must include Event tag");
+    koi::test::require(pgn.find("[Result \"*\"]") != std::string::npos,
+                       "PGN export must include Result tag");
+    koi::test::require(pgn.find("1. e4 e5 2. Nf3 Nc6 3. Bb5 *") != std::string::npos,
+                       "PGN export must format SAN movetext");
+
+    if (run_replay_exit_code(replay_path, "--pgn startpos moves e4 e5 Qh9") == 0) {
+        throw std::runtime_error("koi-replay --pgn must exit non-zero on illegal moves");
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -180,6 +213,8 @@ int main(int argc, char** argv) {
         {"rule draw classification", test_rule_draw_classification},
         {"repetition draw classification", test_repetition_draw_classification},
         {"stray move rejection", test_stray_move_is_rejected_without_moves_marker},
+        {"SAN moves replay", test_san_moves_replay},
+        {"PGN output and illegal PGN exit", test_pgn_output_and_illegal_pgn_exit},
     };
     return koi::test::run_tests(tests, argc, argv);
 }
