@@ -731,6 +731,8 @@ int UciController::run() {
             handle_compiler();
         } else if (name == "bench") {
             handle_bench(command);
+        } else if (name == "speedtest") {
+            handle_speedtest(command);
         } else if (name == "wait") {
             handle_wait();
         } else if (name == "help") {
@@ -1638,6 +1640,105 @@ int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads
 
     std::lock_guard lock(output_mutex_);
     output_ << "\n===========================\n"
+            << "Total time (ms) : " << elapsed_ms << '\n'
+            << "Nodes searched  : " << total_nodes << '\n'
+            << "Nodes/second    : " << nps << '\n'
+            << std::flush;
+    return 0;
+}
+
+void UciController::handle_speedtest(std::istream& command) {
+    std::size_t threads = kDefaultSpeedtestThreads;
+    std::size_t hash_mb = kDefaultSpeedtestHashMb;
+    int seconds = kDefaultSpeedtestSeconds;
+    const std::uint64_t max_threads = static_cast<std::uint64_t>(maximum_search_threads());
+    std::string token;
+    if (command >> token) {
+        std::uint64_t parsed = 0;
+        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > max_threads) {
+            write_uci_info_string("speedtest ignored invalid threads '" + token + "' (expected 1.." +
+                                  std::to_string(max_threads) + ")");
+            return;
+        }
+        threads = static_cast<std::size_t>(parsed);
+    }
+    if (command >> token) {
+        std::uint64_t parsed = 0;
+        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > kMaximumHashMegabytes) {
+            write_uci_info_string("speedtest ignored invalid hash '" + token + "' (expected 1.." +
+                                  std::to_string(kMaximumHashMegabytes) + ")");
+            return;
+        }
+        hash_mb = static_cast<std::size_t>(parsed);
+    }
+    if (command >> token) {
+        std::uint64_t parsed = 0;
+        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > 60) {
+            write_uci_info_string("speedtest ignored invalid seconds '" + token +
+                                  "' (expected 1..60)");
+            return;
+        }
+        seconds = static_cast<int>(parsed);
+    }
+    if (command >> token) {
+        write_uci_info_string("speedtest ignored unexpected trailing argument '" + token + "'");
+        return;
+    }
+    (void)run_speedtest(threads, hash_mb, seconds);
+}
+
+int UciController::run_speedtest(std::size_t threads, std::size_t hash_mb, int runtime_seconds) {
+    threads = std::clamp<std::size_t>(threads, 1, maximum_search_threads());
+    hash_mb = std::clamp<std::size_t>(hash_mb, 1, static_cast<std::size_t>(kMaximumHashMegabytes));
+    runtime_seconds = std::clamp(runtime_seconds, 1, 60);
+    stop_and_suppress_active_search();
+
+    const std::size_t saved_hash_mb = search_service_.hash_size_mb();
+    (void)search_service_.set_hash_size_mb(hash_mb);
+
+    const std::size_t position_count = std::min<std::size_t>(kBenchFens.size(), 4);
+    const std::chrono::milliseconds per_position_budget{
+        std::max(100, (runtime_seconds * 1000) / static_cast<int>(std::max<std::size_t>(1, position_count)))};
+
+    SearchOptions options;
+    options.threads = threads;
+    options.multi_pv = 1;
+    options.hash_mb = 0;
+    options.interim_report_interval = std::chrono::milliseconds{0};
+
+    SearchLimits limits;
+    limits.move_time = per_position_budget;
+
+    std::uint64_t total_nodes = 0;
+    const auto started = std::chrono::steady_clock::now();
+    for (std::size_t index = 0; index < position_count; ++index) {
+        const auto parsed = GameState::from_fen(kBenchFens[index]);
+        if (!parsed.has_value()) {
+            continue;
+        }
+        search_service_.clear_hash();
+        SearchResult completed_result;
+        SearchEventSink sink;
+        sink.on_complete = [&completed_result](const SearchResult& result) {
+            completed_result = result;
+        };
+        SearchHandle handle = search_service_.start(*parsed, limits, std::move(sink), options);
+        handle.wait();
+        total_nodes += completed_result.stats.nodes + completed_result.stats.qnodes;
+    }
+    const auto elapsed_ms = std::max<std::int64_t>(
+        1, std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - started)
+               .count());
+    const std::uint64_t nps = (total_nodes * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
+
+    (void)search_service_.set_hash_size_mb(saved_hash_mb);
+    search_service_.clear_hash();
+
+    std::lock_guard lock(output_mutex_);
+    output_ << "\n===========================\n"
+            << "Threads         : " << threads << '\n'
+            << "Hash (MB)       : " << hash_mb << '\n'
             << "Total time (ms) : " << elapsed_ms << '\n'
             << "Nodes searched  : " << total_nodes << '\n'
             << "Nodes/second    : " << nps << '\n'

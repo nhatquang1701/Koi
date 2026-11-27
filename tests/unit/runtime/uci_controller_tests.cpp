@@ -3015,6 +3015,20 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                 raw.find("Nodes/second    :") != std::string::npos,
             "bench command must print OpenBench-compatible node and NPS summary");
 
+    const ControllerResult bad_speed = run_controller(
+        "speedtest 0\n"
+        "speedtest 1 16 61\n"
+        "speedtest 1 16 1 extra\n"
+        "quit\n");
+    require(bad_speed.exit_code == 0 &&
+                bad_speed.output.find("info string speedtest ignored invalid threads") !=
+                    std::string::npos &&
+                bad_speed.output.find("info string speedtest ignored invalid seconds") !=
+                    std::string::npos &&
+                bad_speed.output.find("info string speedtest ignored unexpected trailing argument") !=
+                    std::string::npos,
+            "invalid speedtest arguments must emit clear diagnostics and stay alive");
+
     GatedInputBuffer perft_input("position startpos\nperft 1\n", "quit\n");
     std::istream perft_in(&perft_input);
     ReleaseOnSubstringBuffer perft_out(perft_input, "Nodes searched: 20");
@@ -3272,8 +3286,8 @@ void test_uci_support_helpers_direct() {
                 hce_summary);
 
     const std::string help_text = format_interactive_help();
-    for (const char* cmd : {"bench", "d", "fen", "key", "moves", "book", "tb", "eval", "flip",
-                            "see", "perft", "wait", "compiler", "help"}) {
+    for (const char* cmd : {"bench", "speedtest", "d", "fen", "key", "moves", "book", "tb",
+                            "eval", "flip", "see", "perft", "wait", "compiler", "help"}) {
         require(help_text.find(cmd) != std::string::npos,
                 std::string("format_interactive_help missing command: ") + cmd);
     }

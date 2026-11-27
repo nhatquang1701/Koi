@@ -250,6 +250,19 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Nodes searched  :", bench.stdout)
         self.assertIn("Nodes/second    :", bench.stdout)
 
+        speedtest = self._run(["--hce", "speedtest", "1", "8", "1"], disable_nnue=True)
+        self.assertEqual(speedtest.returncode, 0, speedtest.stderr)
+        self.assertEqual(speedtest.stderr, "")
+        self.assertIn("Threads         : 1", speedtest.stdout)
+        self.assertIn("Hash (MB)       : 8", speedtest.stdout)
+        self.assertIn("Total time (ms) :", speedtest.stdout)
+        self.assertIn("Nodes searched  :", speedtest.stdout)
+        self.assertIn("Nodes/second    :", speedtest.stdout)
+
+        bad_speedtest = self._run(["--hce", "speedtest", "0"], disable_nnue=True)
+        self.assertEqual(bad_speedtest.returncode, 2, bad_speedtest.stdout)
+        self.assertIn("invalid speedtest threads", bad_speedtest.stderr)
+
     def test_hce_and_nnue_cli_flags(self) -> None:
         hce_eval = self._run(["--hce", "eval"], disable_nnue=True)
         self.assertEqual(hce_eval.returncode, 0, hce_eval.stderr)

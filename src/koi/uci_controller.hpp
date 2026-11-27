@@ -76,6 +76,9 @@ public:
     static constexpr int kDefaultBenchDepth = 10;
     static constexpr std::size_t kDefaultBenchHashMb = 16;
     static constexpr std::size_t kDefaultBenchThreads = 1;
+    static constexpr std::size_t kDefaultSpeedtestThreads = 1;
+    static constexpr std::size_t kDefaultSpeedtestHashMb = 128;
+    static constexpr int kDefaultSpeedtestSeconds = 3;
 
     // Selects the initial wire protocol (`uci`, `usi`, `ucci`, `ucicyclone`, or
     // `xboard`).  Returns false when `name` is unrecognized.
@@ -86,6 +89,9 @@ public:
     int run_bench(int depth = kDefaultBenchDepth,
                   std::size_t hash_mb = kDefaultBenchHashMb,
                   std::size_t threads = kDefaultBenchThreads);
+    int run_speedtest(std::size_t threads = kDefaultSpeedtestThreads,
+                      std::size_t hash_mb = kDefaultSpeedtestHashMb,
+                      int runtime_seconds = kDefaultSpeedtestSeconds);
     int run_eval(std::optional<std::string_view> fen = std::nullopt);
 
 private:
@@ -114,6 +120,7 @@ private:
     void handle_perft_command(std::istream& command);
     void handle_compiler();
     void handle_bench(std::istream& command);
+    void handle_speedtest(std::istream& command);
     void handle_wait();
     void handle_help();
     void reset_new_game();

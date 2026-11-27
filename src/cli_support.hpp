@@ -15,6 +15,10 @@ struct CliOptions {
     std::optional<int> bench_depth;
     std::size_t bench_hash_mb = 16;
     std::size_t bench_threads = 1;
+    bool speedtest = false;
+    std::size_t speedtest_threads = 1;
+    std::size_t speedtest_hash_mb = 128;
+    int speedtest_seconds = 3;
     bool compiler = false;
     bool display = false;
     bool key = false;

@@ -179,6 +179,11 @@ int main(int argc, char* argv[]) {
         return controller.run_bench(*cli_options.bench_depth, cli_options.bench_hash_mb,
                                     cli_options.bench_threads);
     }
+    if (cli_options.speedtest) {
+        return controller.run_speedtest(cli_options.speedtest_threads,
+                                        cli_options.speedtest_hash_mb,
+                                        cli_options.speedtest_seconds);
+    }
     if (cli_options.eval) {
         return controller.run_eval(cli_options.eval_fen
                                        ? std::optional<std::string_view>(*cli_options.eval_fen)

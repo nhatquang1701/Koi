@@ -728,6 +728,7 @@ std::string format_interactive_help() {
         "  see <move>                          Show static exchange evaluation for a legal move\n"
         "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"
         "  bench [depth [hash [threads]]]      Run OpenBench-compatible benchmark\n"
+        "  speedtest [threads [hash [secs]]]   Run timed NPS throughput benchmark\n"
         "  compiler                            Show compiler, C++ standard, and ISA\n"
         "  help                                Show this command summary\n"
         "  quit                                Exit the engine\n";

@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr std::array<const char*, 22> kCliEnvVars = {
+constexpr std::array<const char*, 26> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_EVALUATOR",
     "KOI_NNUE_PATH",
@@ -35,6 +35,10 @@ constexpr std::array<const char*, 22> kCliEnvVars = {
     "KOI_BENCH_DEPTH",
     "KOI_BENCH_HASH",
     "KOI_BENCH_THREADS",
+    "KOI_SPEEDTEST",
+    "KOI_SPEEDTEST_THREADS",
+    "KOI_SPEEDTEST_HASH",
+    "KOI_SPEEDTEST_SECONDS",
 };
 
 void set_or_unset_env(const char* name, const std::optional<std::string>& value) noexcept {
@@ -179,7 +183,7 @@ void test_inline_cmd_parsing_and_env_roundtrip() {
                            "missing or empty --cmd error must explain why it failed");
     }
 
-    for (const std::string_view subcommand : {"bench", "eval", "compiler"}) {
+    for (const std::string_view subcommand : {"bench", "speedtest", "eval", "compiler"}) {
         env.clear_all();
         ScopedStreamCapture err(std::cerr);
         koi::cli::CliOptions conflict_options;
@@ -302,6 +306,20 @@ void test_bench_and_protocol_bounds() {
                        "KOI_BENCH_* variables must roundtrip across empty argv");
 
     env.clear_all();
+    koi::cli::CliOptions speed_opts;
+    koi::test::require(!invoke_parse({"speedtest", "1", "32", "5"}, speed_opts).has_value() &&
+                           speed_opts.speedtest && speed_opts.speedtest_threads == 1 &&
+                           speed_opts.speedtest_hash_mb == 32 && speed_opts.speedtest_seconds == 5,
+                       "speedtest threads, hash, and seconds must parse explicitly");
+
+    koi::cli::CliOptions reexec_speed;
+    koi::test::require(!invoke_parse({}, reexec_speed).has_value() && reexec_speed.speedtest &&
+                           reexec_speed.speedtest_threads == 1 &&
+                           reexec_speed.speedtest_hash_mb == 32 &&
+                           reexec_speed.speedtest_seconds == 5,
+                       "KOI_SPEEDTEST* variables must roundtrip across empty argv");
+
+    env.clear_all();
     koi::cli::CliOptions proto_opts;
     koi::test::require(!invoke_parse({"--protocol=xboard"}, proto_opts).has_value() &&
                            proto_opts.initial_protocol == "xboard",
@@ -315,6 +333,9 @@ void test_bench_and_protocol_bounds() {
              {"bench", "65"},
              {"bench", "4", "4097"},
              {"bench", "4", "16", "0"},
+             {"speedtest", "0"},
+             {"speedtest", "1", "4097"},
+             {"speedtest", "1", "16", "61"},
              {"--protocol", "invalid"},
              {"--unknown-flag"},
          }) {

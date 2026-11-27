@@ -97,6 +97,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  --book <path>                            Specify Polyglot book path for one-shot book\n"
               << "  --syzygy <path>                          Specify Syzygy directory for one-shot tb\n"
               << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n"
+              << "  speedtest, --speedtest [t [hash [secs]]]  Run timed multi-position NPS throughput benchmark (defaults: 1 128 3)\n"
               << "  compiler, --compiler                     Print compiler, C++26 standard, and dispatched ISA\n"
               << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
               << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n"
@@ -372,6 +373,44 @@ std::optional<int> parse_cli_options(
             set_environment_value("KOI_BENCH_THREADS", std::to_string(threads));
             continue;
         }
+        if (arg == "speedtest" || arg == "--speedtest") {
+            std::size_t threads = out.speedtest_threads;
+            std::size_t hash_mb = out.speedtest_hash_mb;
+            std::size_t seconds = static_cast<std::size_t>(out.speedtest_seconds);
+            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
+                const std::string_view next_arg(argv[++index]);
+                if (!parse_bounded_uint(next_arg, 1, max_bench_threads, threads)) {
+                    std::cerr << "koi-engine: invalid speedtest threads '" << next_arg
+                              << "' (expected integer 1.." << max_bench_threads << ").\n";
+                    return 2;
+                }
+            }
+            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
+                const std::string_view next_arg(argv[++index]);
+                if (!parse_bounded_uint(next_arg, 1, kMaximumBenchHashMb, hash_mb)) {
+                    std::cerr << "koi-engine: invalid speedtest hash '" << next_arg
+                              << "' (expected integer 1.." << kMaximumBenchHashMb << ").\n";
+                    return 2;
+                }
+            }
+            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
+                const std::string_view next_arg(argv[++index]);
+                if (!parse_bounded_uint(next_arg, 1, 60, seconds)) {
+                    std::cerr << "koi-engine: invalid speedtest seconds '" << next_arg
+                              << "' (expected integer 1..60).\n";
+                    return 2;
+                }
+            }
+            out.speedtest = true;
+            out.speedtest_threads = threads;
+            out.speedtest_hash_mb = hash_mb;
+            out.speedtest_seconds = static_cast<int>(seconds);
+            set_environment_value("KOI_SPEEDTEST", "1");
+            set_environment_value("KOI_SPEEDTEST_THREADS", std::to_string(threads));
+            set_environment_value("KOI_SPEEDTEST_HASH", std::to_string(hash_mb));
+            set_environment_value("KOI_SPEEDTEST_SECONDS", std::to_string(seconds));
+            continue;
+        }
         if (arg == "--hce") {
             cli_hce = true;
             set_environment_value("KOI_EVALUATOR", "hce");
@@ -483,7 +522,8 @@ std::optional<int> parse_cli_options(
             std::cerr << "koi-engine: unknown option '" << arg
                       << "' (supported: --version, --help, --engine-json, --protocol <name>, "
                          "-c/--cmd <command>, --hce, --nnue <path>, --book <path>, "
-                         "--syzygy <path>, bench [depth [hash [threads]]], compiler, eval [fen], "
+                         "--syzygy <path>, bench [depth [hash [threads]]], "
+                         "speedtest [threads [hash [seconds]]], compiler, eval [fen], "
                          "perft <depth> [fen], d [fen], key [fen], moves [fen], flip [fen], "
                          "book [fen], tb [fen], see <move> [fen]).\n";
             return 2;
@@ -645,9 +685,36 @@ std::optional<int> parse_cli_options(
             }
         }
     }
+    if (!out.speedtest) {
+        if (const char* env_speedtest = std::getenv("KOI_SPEEDTEST");
+            env_speedtest != nullptr && std::string_view(env_speedtest) == "1") {
+            out.speedtest = true;
+        }
+        if (const char* env_threads = std::getenv("KOI_SPEEDTEST_THREADS");
+            env_threads != nullptr && *env_threads != '\0') {
+            std::size_t parsed = 0;
+            if (parse_bounded_uint(env_threads, 1, max_bench_threads, parsed)) {
+                out.speedtest_threads = parsed;
+            }
+        }
+        if (const char* env_hash = std::getenv("KOI_SPEEDTEST_HASH");
+            env_hash != nullptr && *env_hash != '\0') {
+            std::size_t parsed = 0;
+            if (parse_bounded_uint(env_hash, 1, kMaximumBenchHashMb, parsed)) {
+                out.speedtest_hash_mb = parsed;
+            }
+        }
+        if (const char* env_seconds = std::getenv("KOI_SPEEDTEST_SECONDS");
+            env_seconds != nullptr && *env_seconds != '\0') {
+            std::size_t parsed = 0;
+            if (parse_bounded_uint(env_seconds, 1, 60, parsed)) {
+                out.speedtest_seconds = static_cast<int>(parsed);
+            }
+        }
+    }
     if (!out.commands.empty() &&
-        (out.bench_depth.has_value() || out.compiler || out.display || out.key || out.moves ||
-         out.flip || out.book || out.tb || out.see_move.has_value() || out.eval ||
+        (out.bench_depth.has_value() || out.speedtest || out.compiler || out.display || out.key ||
+         out.moves || out.flip || out.book || out.tb || out.see_move.has_value() || out.eval ||
          out.perft_depth.has_value())) {
         std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
         return 2;

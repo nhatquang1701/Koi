@@ -13,6 +13,9 @@ BENCH_DEPTH ?= 10
 PGO_BENCH_DEPTH ?= 10
 BENCH_HASH ?= 16
 BENCH_THREADS ?= 1
+SPEEDTEST_THREADS ?= 1
+SPEEDTEST_HASH ?= 128
+SPEEDTEST_SECONDS ?= 3
 PERFT_DEPTH ?= 5
 GENERATOR := $(if $(shell command -v ninja 2>/dev/null),-G Ninja,)
 
@@ -22,7 +25,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release profile-build bench eval compiler perft smoke test docs clean help
+.PHONY: all release profile-build bench speedtest eval compiler perft smoke test docs clean help
 
 all: release
 
@@ -63,6 +66,13 @@ bench: release
 	  KOI_NNUE_PATH="$(EVALFILE)" "$(BUILD_DIR)/koi-engine" bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
 	else \
 	  "$(BUILD_DIR)/koi-engine" bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
+	fi
+
+speedtest: release
+	@if [ -n "$(EVALFILE)" ]; then \
+	  "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" speedtest "$(SPEEDTEST_THREADS)" "$(SPEEDTEST_HASH)" "$(SPEEDTEST_SECONDS)"; \
+	else \
+	  "$(BUILD_DIR)/koi-engine" --hce speedtest "$(SPEEDTEST_THREADS)" "$(SPEEDTEST_HASH)" "$(SPEEDTEST_SECONDS)"; \
 	fi
 
 eval: release
@@ -110,6 +120,7 @@ help:
 	@echo "  make [EXE=<path>]                      Build koi-engine Release (copies binary to EXE for OpenBench)"
 	@echo "  make profile-build [EVALFILE=...]      Build PGO-optimized koi-engine Release binary"
 	@echo "  make bench [EVALFILE=...]              Build and run deterministic OpenBench benchmark"
+	@echo "  make speedtest [SPEEDTEST_THREADS=1]   Build and run timed NPS throughput benchmark"
 	@echo "  make eval [EVALFILE=...] [FEN=...]     Evaluate startpos or FEN with NNUE/HCE"
 	@echo "  make compiler                          Build and print compiler / ISA metadata"
 	@echo "  make perft [PERFT_DEPTH=5]             Build and run timed startpos perft divide"
