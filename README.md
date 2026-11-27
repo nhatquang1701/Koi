@@ -92,9 +92,10 @@ Inside an interactive session (`koi-engine`):
 | :--- | :--- |
 | `bench [depth]` | Runs the deterministic benchmark suite and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second` |
 | `d` | Displays an ASCII board of the current position, FEN, Zobrist key, and checkers |
-| `eval` | Prints the active evaluator's static evaluation (side-to-move and White perspectives) |
+| `eval` | Prints static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
+| `flip` | Flips the side to move (when legal) for static evaluation comparison |
 | `compiler` | Prints version, git commit, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`) |
-| `go perft <depth>` | Runs an interruptible perft divide from the current position |
+| `perft <depth>` / `go perft <depth>` | Runs an interruptible perft divide (`depth 1..10`) from the current position |
 
 ---
 

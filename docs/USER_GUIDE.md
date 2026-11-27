@@ -29,6 +29,23 @@ Koi keeps chess rules, search, evaluation, transposition tables, and UCI protoco
 
 ## Build prerequisites
 
+### Quick start with CMake Presets
+
+Standardized Release builds across Windows, Linux, and macOS use [CMakePresets.json](../CMakePresets.json):
+
+```bash
+# Windows x64 (from an x64 Visual Studio Developer PowerShell)
+cmake --preset windows-release && cmake --build --preset windows-release && ctest --preset windows-release
+
+# Linux x86-64 (GCC 14; or use linux-clang-release)
+cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release && ctest --preset linux-gcc-release
+
+# macOS arm64 (Apple Silicon)
+cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release && ctest --preset macos-arm64-release
+```
+
+On Linux and macOS you can also use the OpenBench-compatible [Makefile](../Makefile) (`make`, `make EXE=koi-engine`, `make bench`, `make test`). Explicit toolchain requirements and manual CMake invocations follow below.
+
 On Windows:
 
 - A C++26-capable x64 MSVC toolchain (the CMake configuration selects
@@ -243,59 +260,26 @@ python .\tools\measurement\export_nnue.py --help
 PyTorch backend is offline-only, records corpus and network provenance, and must pass
 the Koi loader and strength gates before any network is considered for runtime use.
 
-A complete Stockfish-labeled training pipeline lives next to the boundary. Positions
-come from Stockfish self-play (with tactical noise games), labels are fixed-depth
-centipawn scores (the example below asks for depth 10; the generator default is 9).
-The PyTorch trainer (`train_nnue_koi.py`) defaults to the version 5 architecture:
-group A `halfka-king-bucket-v1` (9216 inputs) plus the symmetric group B
-`threat-pairs-v1` attack relations (27648 inputs) for 36864 inputs total, both
-perspectives feeding full-width cross pair products (`p[j] = own[j] * opp[j]`) and a
-32-unit CReLU hidden layer into the eight piece-count output buckets. Pass `--arch v4` for the version 4 `halfka-king-bucket-v1` network with CReLU
-pair products, or `--arch v8` for the version 8 container, which carries the
-same 9216-input payload as the version 4 network and differs only in its version
-word. The version 8 container also accepts the 36864-input `threat-pairs-v1` form
-written by `--arch v6`, whose payload is otherwise identical; the input width
-selects the layout. The threat-input form measured weaker than the HalfKA-only
-nets in every match, so `--arch v8` trains the HalfKA-only layout. Legacy
-version 2, 3, and 4 containers still load:
+For GPU-accelerated **NNUE v9** (`halfka-hm-v2`, 10 mirrored king buckets, 256×2 SCReLU) and CPU PyTorch training pipelines—corpus generation, encoding, quantization, SPRT gates, and promotion rules—see [NNUE Pipeline](NNUE_PIPELINE.md):
 
 ```powershell
+# Self-play data generation and Bullet / PyTorch training workflow
 python .\tools\measurement\gen_training_data.py all --games 30000 --workers 3 --label-depth 10
-python .\tools\measurement\koi_dataset.py encode --input .\artifacts\training\labels.txt `
-  --output .\artifacts\training\koi-dataset.bin
-python .\tools\measurement\train_nnue_koi.py --dataset .\artifacts\training\koi-dataset.bin `
-  --epochs 20 --float-out .\artifacts\training\koi-v5.pt `
-  --net-out .\artifacts\training\koi-v5.nnue --meta-out .\artifacts\training\koi-v5.metadata.json
-.\build\release\koi-bench.exe --nnue .\artifacts\training\koi-v5.nnue
+python .\tools\nnue\to_bullet.py --input .\artifacts\training\labels.txt --output .\artifacts\training\koi.data
+.\build\release\koi-bench.exe --nnue .\artifacts\training\koi-candidate.nnue
 ```
 
-The games stage records the white-relative outcome of every self-play game, so
-`positions.txt` rows are `FEN;result` and `labels.txt` rows are
-`FEN;cp;best_move;result` (`1.0`/`0.5`/`0.0`). The trailing column is optional for
-every reader: `koi_dataset.py` and `train_nnue_koi.py` split on
-`;` and read the leading fields, so older corpora keep working and the result can be
-used as a WDL target once a trainer consumes it.
-
-The engine discovers a network automatically at startup: it looks for `koi.nnue`
-beside the executable, then `nnue/koi.nnue`, then a single `*.nnue`
-file in either directory (and in the working directory for development runs).
-Release archives bundle the promoted gated network flat as `koi.nnue` beside
-the executables; when it was discovered at boot the UCI handshake advertises `EvalFile` default
-`<autodiscovery>` (informational; echoing it back keeps the boot evaluator).
-Point the `KOI_NNUE_PATH` environment variable at a specific file to override the
-scan, or set `KOI_NNUE_AUTODETECT=0` to disable discovery; NNUE is the default
-production evaluator, and the UCI `EvalFile` option still swaps the network at runtime. A missing or rejected file is a boot error under default NNUE selection (the legacy automatic fallback was removed, though a clean classical rewrite later restored explicit `KOI_EVALUATOR=hce` / `EvalMode=hce` opt-in) and writes one explanatory line to stderr. Trained networks are local artifacts and are not committed (public standalone/early-access nets are tagged under `nnue/<name>` with GitHub Pre-releases). Threat-pair v5 networks were trained and rejected against the HalfKA-only layout, and modern v4 networks remain the promoted production architecture.
+The engine discovers a network automatically at startup: it looks for `koi.nnue` beside the executable, then `nnue/koi.nnue`, then a single `*.nnue` file in either directory (and in the working directory for development runs). Release archives bundle the promoted gated network flat as `koi.nnue` beside the executables; when discovered at boot, the UCI handshake advertises `EvalFile` default `<autodiscovery>`. Point `KOI_NNUE_PATH` at a specific file to override the scan, or set `KOI_NNUE_AUTODETECT=0` to disable discovery. A missing or rejected network at boot exits 4 with one diagnostic on stderr (unless `KOI_EVALUATOR=hce` is set), while runtime `EvalFile` swaps fail closed without dropping the previous evaluator. Standalone official networks are hosted on the [Koi NNUEs](https://github.com/nhatquang1701/Koi/releases/tag/koi-nnues) pre-release.
 
 ### Training a network
 
 Networks are trained with the Bullet GPU trainer (`tools/nnue/run_bullet.py`) or
-the PyTorch CPU trainer (`tools/measurement/train_nnue_koi.py`).
+the PyTorch CPU trainer (`tools/measurement/train_nnue_koi.py`):
 
 ```powershell
-python .\tools\measurement\train_nnue_koi.py --corpus .\artifacts\training\corpus.txt `
-  --net-out .\artifacts\training\koi-v4.nnue --arch v4 --hidden-units 1024 --epochs 10
-pwsh -NoProfile -File .\tools\nnue\net_match.ps1 -NnueNet .\artifacts\training\koi-v4-1024.nnue `
-  -OpponentNet .\artifacts\training\koi-sf-v1.nnue -Games 20
+python .\tools\nnue\run_bullet.py --help
+pwsh -NoProfile -File .\tools\nnue\net_match.ps1 -NnueNet .\artifacts\training\candidate.nnue `
+  -OpponentNet .\artifacts\networks\koi-v9-hm10-h256-official.nnue -Games 160
 ```
 
 Validation runs the 64-position `koi-bench --nnue` gate and a colour-split
@@ -342,20 +326,23 @@ pair plays the opposite color). Run both
 book-disabled and licensed-book conditions at both clocks:
 
 ```powershell
+# No-book 1+0 color-paired match
 .\tools\stability\uci_match.ps1 `
   -KoiPath .\build\release\koi-engine.exe `
   -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
   -OpeningFile .\tests\data\openings\openings-basic.txt `
-  -TimeControl 1+0 -Games 20 -KoiColor white `
+  -TimeControl 1+0 -Games 20 -PairedColors `
   -KoiRandomSeed 1 -KoiOwnBook false `
-  -OutputDirectory .\artifacts\matches\no-book-1p0-white
-.\tools\stability\uci_match.ps1 -KoiPath .\build\release\koi-engine.exe -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe -OpeningFile .\tests\data\openings\openings-basic.txt -TimeControl 1+0 -Games 20 -KoiColor black -KoiRandomSeed 1 -KoiOwnBook false -OutputDirectory .\artifacts\matches\no-book-1p0-black
-.\tools\stability\uci_match.ps1 -KoiPath .\build\release\koi-engine.exe -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe -OpeningFile .\tests\data\openings\openings-basic.txt -TimeControl 1+0 -Games 20 -KoiColor white -KoiRandomSeed 1 -KoiOwnBook true -KoiBookFile C:\LicensedBooks\book.bin -KoiBookDepth 16 -OutputDirectory .\artifacts\matches\book-1p0-white
-.\tools\stability\uci_match.ps1 -KoiPath .\build\release\koi-engine.exe -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe -OpeningFile .\tests\data\openings\openings-basic.txt -TimeControl 1+0 -Games 20 -KoiColor black -KoiRandomSeed 1 -KoiOwnBook true -KoiBookFile C:\LicensedBooks\book.bin -KoiBookDepth 16 -OutputDirectory .\artifacts\matches\book-1p0-black
-.\tools\stability\uci_match.ps1 -KoiPath .\build\release\koi-engine.exe -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe -OpeningFile .\tests\data\openings\openings-basic.txt -TimeControl 5+3 -Games 20 -KoiColor white -KoiRandomSeed 1 -KoiOwnBook false -OutputDirectory .\artifacts\matches\no-book-5p3-white
-.\tools\stability\uci_match.ps1 -KoiPath .\build\release\koi-engine.exe -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe -OpeningFile .\tests\data\openings\openings-basic.txt -TimeControl 5+3 -Games 20 -KoiColor black -KoiRandomSeed 1 -KoiOwnBook false -OutputDirectory .\artifacts\matches\no-book-5p3-black
-.\tools\stability\uci_match.ps1 -KoiPath .\build\release\koi-engine.exe -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe -OpeningFile .\tests\data\openings\openings-basic.txt -TimeControl 5+3 -Games 20 -KoiColor white -KoiRandomSeed 1 -KoiOwnBook true -KoiBookFile C:\LicensedBooks\book.bin -KoiBookDepth 16 -OutputDirectory .\artifacts\matches\book-5p3-white
-.\tools\stability\uci_match.ps1 -KoiPath .\build\release\koi-engine.exe -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe -OpeningFile .\tests\data\openings\openings-basic.txt -TimeControl 5+3 -Games 20 -KoiColor black -KoiRandomSeed 1 -KoiOwnBook true -KoiBookFile C:\LicensedBooks\book.bin -KoiBookDepth 16 -OutputDirectory .\artifacts\matches\book-5p3-black
+  -OutputDirectory .\artifacts\matches\no-book-1p0-paired
+
+# With a licensed book at 5+3
+.\tools\stability\uci_match.ps1 `
+  -KoiPath .\build\release\koi-engine.exe `
+  -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
+  -OpeningFile .\tests\data\openings\openings-basic.txt `
+  -TimeControl 5+3 -Games 20 -PairedColors `
+  -KoiRandomSeed 1 -KoiOwnBook true -KoiBookFile C:\LicensedBooks\book.bin -KoiBookDepth 16 `
+  -OutputDirectory .\artifacts\matches\book-5p3-paired
 ```
 
 `-TimeControl` accepts only `<minutes>+<increment>` (for example `1+0` or `5+3`)
@@ -526,11 +513,12 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
 
 - **CLI flags:** `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, `koi-engine --help` (`-h`), and `koi-engine bench [depth]` (runs an OpenBench-compatible deterministic benchmark and exits).
 - **Interactive commands (inside a UCI session):**
-  - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, and checkers.
-  - `eval` — prints the active evaluator's static score (side-to-move and White perspectives).
+  - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, and check status.
+  - `eval` — prints the active evaluator's static score (side-to-move and White perspectives), heuristic WDL triplet, and game phase / piece count.
+  - `flip` — toggles the side to move (when legal; rejects positions that would leave the non-moving king in check).
   - `compiler` — prints build version, commit hash, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`).
   - `bench [depth]` — runs the deterministic single-thread benchmark (default depth 10, 16 MB hash) and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second`.
-  - `go perft <depth>` — runs an interruptible perft divide from the current position.
+  - `perft <depth>` / `go perft <depth>` — runs an interruptible perft divide (`depth 1..10`) from the current position.
 
 ## UCI smoke test
 

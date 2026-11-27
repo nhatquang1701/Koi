@@ -20,9 +20,20 @@ unique (GUID or process-unique) name so the suite is safe under `ctest -j`.
 
 ## Running the suite
 
-Configure and build a Release tree (from an x64 Visual Studio developer shell
-on Windows, with the system GCC 14+/Clang 18+ on Linux, or with Homebrew LLVM
-clang 19+ on macOS arm64), then run CTest, preferably in parallel:
+Using the checked-in [CMakePresets.json](../CMakePresets.json) presets:
+
+```bash
+# Windows x64 (from an x64 Visual Studio Developer PowerShell)
+cmake --preset windows-release && cmake --build --preset windows-release && ctest --preset windows-release -j 8
+
+# Linux x86-64 (GCC 14; or use linux-clang-release)
+cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release && ctest --preset linux-gcc-release -j 8
+
+# macOS arm64 (Apple Silicon)
+cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release && ctest --preset macos-arm64-release -j 8
+```
+
+Explicit configure and build commands (or for manual build trees):
 
 ```powershell
 cmake -S . -B build\release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl
