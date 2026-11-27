@@ -800,6 +800,7 @@ Rules for `setoption`:
 | `perft <depth>` | Runs an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position (also CLI `perft <depth> [fen]`). |
 | `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `speedtest`, `-c`/`--cmd`, `compiler`, `eval`, `perft`, `--hce`, `--nnue <path>`, `--version`, `--help`, `--engine-json`, `--protocol`). |
 | `speedtest [threads [hash [seconds]]]` | Runs a timed multi-position NPS throughput benchmark across the leading benchmark positions (defaults `1 128 3`; also invocable as CLI `speedtest` / `--speedtest`). |
+| `options` | Prints the active protocol, evaluator, search, opening-book, and Syzygy option state without mutating search state. |
 | `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |
 | `compiler` | Prints engine version, commit, compiler, C++26 standard, architecture, and ISA (also CLI `compiler`/`--compiler`). |
 | `help` | Prints the interactive command summary. |

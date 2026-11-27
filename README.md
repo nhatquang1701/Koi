@@ -108,6 +108,7 @@ Inside an interactive session (`koi-engine`):
 | :--- | :--- |
 | `bench [depth [hash [threads]]]` | Runs the deterministic benchmark suite and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second` |
 | `speedtest [threads [hash [seconds]]]` | Runs a timed multi-position NPS throughput benchmark (`defaults: 1 128 3`) |
+| `options` | Prints live active UCI option, book, and Syzygy configuration values |
 | `d` | Displays an ASCII board of the current position, FEN, Zobrist key, checkers, and legal move count |
 | `fen` | Prints the six-field FEN of the current position |
 | `key` | Prints the hexadecimal Zobrist position, pawn, and Polyglot book keys |

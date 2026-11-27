@@ -131,6 +131,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
 | `bench` | `[depth [hash [threads]]]` | Run the 16-position deterministic benchmark inside the active session |
 | `speedtest` | `[threads [hash [seconds]]]` | Run a timed multi-position NPS throughput benchmark (`seconds` in `1..60`) |
+| `options` | — | Print live active protocol, evaluator, search, book, and Syzygy option values |
 | `wait` | — | Block until any finite active search or `perft` finishes (useful in piped transcripts) |
 | `compiler` | — | Print engine version, git commit, compiler, C++26 standard, architecture, and ISA |
 | `help` | — | Print the interactive command summary |

@@ -507,6 +507,7 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
   - `compiler` — prints build version, commit hash, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`).
   - `bench [depth [hash [threads]]]` — runs the deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread) and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second`.
   - `speedtest [threads [hash [seconds]]]` — runs a timed multi-position NPS throughput benchmark (defaults: 1 thread, 128 MB hash, 3 seconds).
+  - `options` — prints a snapshot of the live configured protocol, evaluator, search, book, and Syzygy option values.
   - `perft <depth>` / `go perft <depth>` — runs an interruptible perft divide (`depth 1..10`) from the current position.
   - `wait` — blocks until any finite active search or `perft` completes before executing the next command.
   - `help` — prints a concise interactive command reference.

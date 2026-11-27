@@ -60,6 +60,7 @@ Koi discovers its assets automatically with zero config files:
 
 ```bash
 koi-engine bench                  # OpenBench-compatible deterministic benchmark
+koi-engine speedtest 1 128 3      # Timed multi-position NPS throughput check
 koi-engine compiler               # Print toolchain, C++ standard, and ISA capabilities
 koi-engine d [fen]                # Print ASCII board, FEN, Zobrist key, and move count
 koi-engine key [fen]              # Print position, pawn, and Polyglot hash keys
@@ -72,11 +73,12 @@ koi-engine eval [fen]             # Inspect NNUE metadata or HCE term breakdown 
 koi-engine --hce eval [fen]       # Evaluate directly with classical HCE (no network)
 koi-engine --nnue <path> bench    # Benchmark an explicit NNUE weight file
 koi-engine perft 5 [fen]          # Run timed perft divide (depth 1..10)
+koi-engine -c "uci" -c "go depth 6"  # Execute inline protocol commands in batch mode
 koi-engine --version              # Print version and git build commit
 koi-engine --engine-json          # Print En Croissant / Pawn Appétit JSON profile
 ```
 
-Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `flip`, `see <move>`, `compiler`, `bench [depth [hash [threads]]]`, `perft <depth>`, `wait`, and `help`. For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
+Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `flip`, `see <move>`, `options`, `compiler`, `bench [depth [hash [threads]]]`, `speedtest [threads [hash [seconds]]]`, `perft <depth>`, `wait`, and `help`. For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
 
 ---
 
