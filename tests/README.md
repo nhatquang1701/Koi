@@ -145,7 +145,7 @@ C++ unit / integration executables under `tests/unit/` and `tests/integration/`:
 - Runtime and boundaries: `koi_cpu_features_tests`, `koi_cpu_variant_tests`
   (variant parsing, executable names, automatic selection, and the override
   rules), `koi_module_tests`,
-  `syzygy_tablebase_tests`, `opening_book_tests`, `uci_controller_tests`
+  `syzygy_tablebase_tests`, `opening_book_tests`, `cli_support_tests`, `uci_controller_tests`
   (including legal MultiPV/WDL, searchmoves, and lifecycle cases),
   `koi_replay_tests`.
 

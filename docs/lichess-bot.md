@@ -21,6 +21,9 @@ release asset.
   interpreter it used in `~/koi-bot/python-bin`.
 - `git`, `curl`, and a Koi release for the host platform.
 
+!!! tip "Bot token scope"
+    Only an OAuth token with `bot:play` is needed; keep `~/koi-bot/token` readable solely by your user (`chmod 600`).
+
 ## Install
 
 ```bash
@@ -105,10 +108,8 @@ uci_options:
   EvalFile: "/Users/<you>/koi-bot/engines/koi.nnue"
 ```
 
-`EvalFile` is an absolute path on purpose: the engine resolves the network
-against its own working directory, and a relative path silently falls back to
-the required NNUE network (`koi.nnue`). `move_overhead: 150` in the config
-leaves the engine a buffer on the Lichess clock.
+!!! note "Absolute `EvalFile` path"
+    Keep `EvalFile` absolute: the engine resolves relative network paths against its own working directory and falls back to `koi.nnue` beside the binary on failure. Setting `move_overhead: 150` leaves a comfortable margin for Lichess network latency.
 
 ## Opening book
 
