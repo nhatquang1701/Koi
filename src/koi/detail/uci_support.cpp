@@ -1301,4 +1301,139 @@ std::optional<GameState> parse_cli_position_spec(const std::string_view spec, st
     return state;
 }
 
+std::string format_position_debug_json(const std::uint64_t generation,
+                                       const std::string_view command_text,
+                                       const PositionConsistencySnapshot& snapshot,
+                                       const Square en_passant_square,
+                                       const std::uint64_t legal_digest) {
+    const std::string digest_hex = debug_hex(legal_digest);
+    return "\"message\":" + debug_quoted(
+               "position_record command=" + std::string(command_text) +
+               " legal_digest=" + digest_hex) +
+           ",\"command\":" + debug_quoted(command_text) +
+           ",\"generation\":" + std::to_string(generation) +
+           ",\"root_fen\":" + debug_quoted(snapshot.native_fen) +
+           ",\"position_key\":" + debug_quoted(debug_hex(snapshot.native_position_key)) +
+           ",\"side_to_move\":" + debug_quoted(
+               snapshot.native_side_to_move == Color::white ? "white" : "black") +
+           ",\"castling_rights\":" + debug_quoted(
+               debug_castling(snapshot.native_castling_rights)) +
+           ",\"en_passant\":" + debug_quoted(debug_square(en_passant_square)) +
+           ",\"halfmove_clock\":" + std::to_string(snapshot.native_halfmove_clock) +
+           ",\"fullmove_number\":" + std::to_string(snapshot.native_fullmove_number) +
+           ",\"legal_move_count\":" + std::to_string(snapshot.native_legal_moves.size()) +
+           ",\"native_legal_count\":" + std::to_string(snapshot.native_legal_moves.size()) +
+           ",\"shadow_legal_count\":" + std::to_string(snapshot.shadow_legal_moves.size()) +
+           ",\"legal_move_digest\":" + debug_quoted(digest_hex) +
+           ",\"native_shadow_consistent\":" +
+               (snapshot.consistent() ? "true" : "false");
+}
+
+std::string format_hash_resize_debug_json(const HashResizeResult& result) {
+    return "\"requested_mb\":" + std::to_string(result.requested_mb) +
+           ",\"effective_mb\":" + std::to_string(result.effective_mb) +
+           ",\"allocated_bytes\":" + std::to_string(result.allocated_bytes) +
+           ",\"segment_count\":" + std::to_string(result.segment_count) +
+           ",\"total_physical_bytes\":" + std::to_string(result.total_physical_bytes) +
+           ",\"available_physical_bytes\":" +
+               std::to_string(result.available_physical_bytes) +
+           ",\"available_commit_bytes\":" + std::to_string(result.available_commit_bytes) +
+           ",\"status\":" + debug_quoted(hash_status_name(result.status)) +
+           ",\"reason\":" + debug_quoted(hash_reason_name(result.reason));
+}
+
+std::string format_go_debug_json(const std::uint64_t generation, const GameState& root,
+                                 const SearchLimits& limits, const std::size_t threads,
+                                 const bool from_book) {
+    const std::string fen = root.fen();
+    return "\"message\":" + debug_quoted(
+               "go_record generation=" + std::to_string(generation) +
+               " root_fen=" + fen) +
+           ",\"generation\":" + std::to_string(generation) +
+           ",\"root_fen\":" + debug_quoted(fen) +
+           ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
+           ",\"limits\":" + debug_quoted(debug_limits(limits)) +
+           ",\"threads\":" + std::to_string(threads) +
+           ",\"source\":" + debug_quoted(from_book ? "book" : "search");
+}
+
+std::string format_search_completion_debug_json(
+    const std::uint64_t generation, const GameState& search_root,
+    const CompletionCandidate& candidate, const CompletionValidation& validation,
+    const SearchResult& result, const std::string_view source,
+    const std::string_view last_command) {
+    const std::string root_fen = search_root.fen();
+    const std::uint64_t root_key = search_root.position_key();
+    return "\"message\":" + debug_quoted(
+               "completion_record generation=" + std::to_string(generation)) +
+           ",\"generation\":" + std::to_string(generation) +
+           ",\"result_generation\":" + std::to_string(result.identity.generation) +
+           ",\"root_fen\":" + debug_quoted(root_fen) +
+           ",\"root_key\":" + debug_quoted(debug_hex(root_key)) +
+           ",\"result_root_key\":" + debug_quoted(debug_hex(result.identity.root_key)) +
+           ",\"root_key_match\":" +
+               (result.identity.root_key == root_key ? "true" : "false") +
+           ",\"root_fen_match\":" + (result.identity.root_fen == root_fen ? "true" : "false") +
+           ",\"identity_match\":" + (validation.identity_match ? "true" : "false") +
+           ",\"candidate\":" + debug_quoted(
+               candidate.best_move.has_value() ? candidate.best_move->uci() : "0000") +
+           ",\"native_legal\":" + (validation.native_legal ? "true" : "false") +
+           ",\"shadow_legal\":" + (validation.shadow_legal ? "true" : "false") +
+           ",\"searchmoves_legal\":" + (validation.searchmoves_legal ? "true" : "false") +
+           ",\"pv_legal\":" + (validation.pv_legal ? "true" : "false") +
+           ",\"ponder_legal\":" + (validation.ponder_legal ? "true" : "false") +
+           ",\"fallback_used\":" + (validation.fallback_used ? "true" : "false") +
+           ",\"validated\":" + debug_quoted(
+               validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
+           ",\"source\":" + debug_quoted(source) +
+           ",\"disposition\":" + debug_quoted(disposition_name(validation.disposition)) +
+           ",\"reason\":" + debug_quoted(validation.reason) +
+           ",\"completed\":" + (result.completed ? "true" : "false") +
+           ",\"cancelled\":" + (result.cancelled ? "true" : "false") +
+           ",\"failed\":" + (result.failed ? "true" : "false") +
+           ",\"timing_reserve_ms\":" + std::to_string(result.timing.reserve.count()) +
+           ",\"timing_usable_ms\":" + std::to_string(result.timing.usable.count()) +
+           ",\"timing_soft_ms\":" + std::to_string(result.timing.soft_budget.count()) +
+           ",\"timing_hard_ms\":" + std::to_string(result.timing.hard_budget.count()) +
+           ",\"timing_horizon\":" + std::to_string(result.timing.horizon) +
+           ",\"timing_initial_hardness\":" +
+               std::to_string(result.timing.initial_hardness) +
+           ",\"timing_observed_hardness\":" +
+               std::to_string(result.timing.observed_hardness) +
+           ",\"timing_extended\":" +
+               (result.timing.extended_for_hard_position ? "true" : "false") +
+           ",\"timing_hard_deadline\":" +
+               (result.timing.hard_deadline_reached ? "true" : "false") +
+           ",\"last_command\":" + debug_quoted(last_command);
+}
+
+std::string format_book_completion_debug_json(
+    const std::uint64_t generation, const GameState& root,
+    const CompletionCandidate& candidate, const CompletionValidation& validation,
+    const Move book_move, const std::string_view last_command) {
+    return "\"message\":" + debug_quoted(
+               "book_completion_record generation=" + std::to_string(generation)) +
+           ",\"generation\":" + std::to_string(generation) +
+           ",\"result_generation\":" + std::to_string(candidate.identity.generation) +
+           ",\"root_fen\":" + debug_quoted(root.fen()) +
+           ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
+           ",\"result_root_key\":" + debug_quoted(debug_hex(candidate.identity.root_key)) +
+           ",\"root_key_match\":true" +
+           ",\"root_fen_match\":true" +
+           ",\"identity_match\":" + (validation.identity_match ? "true" : "false") +
+           ",\"candidate\":" + debug_quoted(book_move.uci()) +
+           ",\"native_legal\":" + (validation.native_legal ? "true" : "false") +
+           ",\"shadow_legal\":" + (validation.shadow_legal ? "true" : "false") +
+           ",\"searchmoves_legal\":" + (validation.searchmoves_legal ? "true" : "false") +
+           ",\"pv_legal\":" + (validation.pv_legal ? "true" : "false") +
+           ",\"ponder_legal\":" + (validation.ponder_legal ? "true" : "false") +
+           ",\"fallback_used\":" + (validation.fallback_used ? "true" : "false") +
+           ",\"validated\":" + debug_quoted(
+               validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
+           ",\"source\":\"book\"" +
+           ",\"disposition\":" + debug_quoted(disposition_name(validation.disposition)) +
+           ",\"reason\":" + debug_quoted(validation.reason) +
+           ",\"last_command\":" + debug_quoted(last_command);
+}
+
 } // namespace koi::detail

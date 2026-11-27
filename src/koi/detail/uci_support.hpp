@@ -177,6 +177,22 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
     std::string_view display_path, const NnueNetwork& network);
 [[nodiscard]] std::string format_options_summary(const LiveOptionsSnapshot& snapshot);
 [[nodiscard]] std::string format_interactive_help();
+[[nodiscard]] std::string format_position_debug_json(
+    std::uint64_t generation, std::string_view command_text,
+    const PositionConsistencySnapshot& snapshot, Square en_passant_square,
+    std::uint64_t legal_digest);
+[[nodiscard]] std::string format_hash_resize_debug_json(const HashResizeResult& result);
+[[nodiscard]] std::string format_go_debug_json(
+    std::uint64_t generation, const GameState& root, const SearchLimits& limits,
+    std::size_t threads, bool from_book);
+[[nodiscard]] std::string format_search_completion_debug_json(
+    std::uint64_t generation, const GameState& search_root,
+    const CompletionCandidate& candidate, const CompletionValidation& validation,
+    const SearchResult& result, std::string_view source, std::string_view last_command);
+[[nodiscard]] std::string format_book_completion_debug_json(
+    std::uint64_t generation, const GameState& root,
+    const CompletionCandidate& candidate, const CompletionValidation& validation,
+    Move book_move, std::string_view last_command);
 [[nodiscard]] std::optional<std::pair<std::string, std::string>>
 parse_xboard_option_assignment(std::string_view text);
 [[nodiscard]] std::optional<std::chrono::milliseconds>

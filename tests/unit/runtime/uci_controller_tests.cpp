@@ -3423,6 +3423,52 @@ void test_uci_support_helpers_direct() {
         require(help_text.find(cmd) != std::string::npos,
                 std::string("format_interactive_help missing command: ") + cmd);
     }
+
+    const koi::PositionConsistencySnapshot snap = startpos.consistency_snapshot();
+    const std::string pos_json = format_position_debug_json(
+        7, "position startpos", snap, koi::Square::none(), legal_move_digest(snap.native_legal_moves));
+    require(pos_json.find("\"generation\":7") != std::string::npos &&
+                pos_json.find("\"legal_move_count\":20") != std::string::npos &&
+                pos_json.find("info string") == std::string::npos,
+            "format_position_debug_json mismatch; got: " + pos_json);
+
+    koi::HashResizeResult hash_res;
+    hash_res.requested_mb = 64;
+    hash_res.effective_mb = 64;
+    hash_res.status = koi::HashResizeStatus::applied;
+    const std::string hash_json = format_hash_resize_debug_json(hash_res);
+    require(hash_json.find("\"requested_mb\":64") != std::string::npos &&
+                hash_json.find("\"status\":\"applied\"") != std::string::npos,
+            "format_hash_resize_debug_json mismatch; got: " + hash_json);
+
+    koi::SearchLimits go_lim;
+    go_lim.depth = 4;
+    const std::string go_json = format_go_debug_json(7, startpos, go_lim, 2, false);
+    require(go_json.find("\"threads\":2") != std::string::npos &&
+                go_json.find("\"source\":\"search\"") != std::string::npos,
+            "format_go_debug_json mismatch; got: " + go_json);
+
+    koi::CompletionCandidate comp_cand;
+    comp_cand.best_move = *e2e4;
+    comp_cand.identity = koi::SearchRequestIdentity::from(startpos, 7);
+    koi::CompletionValidation comp_val;
+    comp_val.identity_match = true;
+    comp_val.native_legal = true;
+    comp_val.best_move = *e2e4;
+    comp_val.disposition = koi::CompletionDisposition::emit;
+    koi::SearchResult sr;
+    sr.completed = true;
+    sr.identity = comp_cand.identity;
+    const std::string sc_json = format_search_completion_debug_json(
+        7, startpos, comp_cand, comp_val, sr, "search", "go depth 4");
+    const std::string bc_json = format_book_completion_debug_json(
+        7, startpos, comp_cand, comp_val, *e2e4, "go depth 4");
+    require(sc_json.find("\"disposition\":\"emit\"") != std::string::npos &&
+                sc_json.find("\"source\":\"search\"") != std::string::npos &&
+                sc_json.find("info string") == std::string::npos &&
+                bc_json.find("\"source\":\"book\"") != std::string::npos &&
+                bc_json.find("\"candidate\":\"e2e4\"") != std::string::npos,
+            "completion debug JSON helpers mismatch");
 }
 
 } // namespace

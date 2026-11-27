@@ -42,12 +42,8 @@ using detail::BoundedLineRead;
 using detail::ParsedOption;
 using detail::Wdl;
 using detail::cecp_mate_score;
-using detail::debug_castling;
 using detail::debug_hex;
-using detail::debug_limits;
 using detail::debug_quoted;
-using detail::debug_square;
-using detail::disposition_name;
 using detail::equals_ignore_case;
 using detail::find_uci_option;
 using detail::flip_position_fen;
@@ -868,26 +864,9 @@ void UciController::handle_position(std::istream& command, std::string_view comm
         const PositionConsistencySnapshot snapshot = position_.consistency_snapshot();
         debug_json_event(
             "position",
-            "\"message\":" + debug_quoted(
-                "position_record command=" + std::string(command_text) +
-                " legal_digest=" + debug_hex(legal_move_digest(legal))) +
-                ",\"command\":" + debug_quoted(command_text) +
-                ",\"generation\":" + std::to_string(generation_) +
-                ",\"root_fen\":" + debug_quoted(snapshot.native_fen) +
-                ",\"position_key\":" + debug_quoted(debug_hex(snapshot.native_position_key)) +
-                ",\"side_to_move\":" + debug_quoted(
-                    snapshot.native_side_to_move == Color::white ? "white" : "black") +
-                ",\"castling_rights\":" + debug_quoted(
-                    debug_castling(snapshot.native_castling_rights)) +
-                ",\"en_passant\":" + debug_quoted(debug_square(position_.en_passant_square())) +
-                ",\"halfmove_clock\":" + std::to_string(snapshot.native_halfmove_clock) +
-                ",\"fullmove_number\":" + std::to_string(snapshot.native_fullmove_number) +
-                ",\"legal_move_count\":" + std::to_string(snapshot.native_legal_moves.size()) +
-                ",\"native_legal_count\":" + std::to_string(snapshot.native_legal_moves.size()) +
-                ",\"shadow_legal_count\":" + std::to_string(snapshot.shadow_legal_moves.size()) +
-                ",\"legal_move_digest\":" + debug_quoted(debug_hex(legal_move_digest(legal))) +
-                ",\"native_shadow_consistent\":" +
-                    (snapshot.consistent() ? "true" : "false"));
+            detail::format_position_debug_json(
+                generation_, command_text, snapshot, position_.en_passant_square(),
+                legal_move_digest(legal)));
     }
 }
 
@@ -981,20 +960,7 @@ void UciController::handle_setoption(std::istream& command) {
                 // must leave the previous value in place so a retry with the
                 // same requested size is not filtered out as a no-op.
                 hash_mb_ = result.effective_mb;
-                debug_json_event(
-                    "hash_resize",
-                    "\"requested_mb\":" + std::to_string(result.requested_mb) +
-                        ",\"effective_mb\":" + std::to_string(result.effective_mb) +
-                        ",\"allocated_bytes\":" + std::to_string(result.allocated_bytes) +
-                        ",\"segment_count\":" + std::to_string(result.segment_count) +
-                        ",\"total_physical_bytes\":" +
-                            std::to_string(result.total_physical_bytes) +
-                        ",\"available_physical_bytes\":" +
-                            std::to_string(result.available_physical_bytes) +
-                        ",\"available_commit_bytes\":" +
-                            std::to_string(result.available_commit_bytes) +
-                        ",\"status\":" + debug_quoted(hash_status_name(result.status)) +
-                        ",\"reason\":" + debug_quoted(hash_reason_name(result.reason)));
+                debug_json_event("hash_resize", detail::format_hash_resize_debug_json(result));
                 if (result.status == HashResizeStatus::reduced ||
                     result.status == HashResizeStatus::disabled ||
                     result.reason != HashResizeReason::none) {
@@ -2062,15 +2028,8 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
     if (debug_logging_enabled()) {
         debug_json_event(
             "go",
-            "\"message\":" + debug_quoted(
-                "go_record generation=" + std::to_string(generation) +
-                " root_fen=" + root.fen()) +
-                ",\"generation\":" + std::to_string(generation) +
-                ",\"root_fen\":" + debug_quoted(root.fen()) +
-                ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
-                ",\"limits\":" + debug_quoted(debug_limits(limits)) +
-                ",\"threads\":" + std::to_string(threads_) +
-                ",\"source\":" + debug_quoted(book_choice.has_value() ? "book" : "search"));
+            detail::format_go_debug_json(
+                generation, root, limits, threads_, book_choice.has_value()));
     }
     if (book_choice.has_value()) {
         if (debug_logging_enabled()) {
@@ -2142,52 +2101,8 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                 (limits.ponder ? "ponder" : "search");
             debug_json_event(
                 "completion_validation",
-                "\"message\":" + debug_quoted(
-                    "completion_record generation=" + std::to_string(generation)) +
-                    ",\"generation\":" + std::to_string(generation) +
-                    ",\"result_generation\":" + std::to_string(result.identity.generation) +
-                    ",\"root_fen\":" + debug_quoted(search_root.fen()) +
-                    ",\"root_key\":" + debug_quoted(debug_hex(search_root.position_key())) +
-                    ",\"result_root_key\":" + debug_quoted(debug_hex(result.identity.root_key)) +
-                    ",\"root_key_match\":" +
-                        (result.identity.root_key == search_root.position_key() ? "true" : "false") +
-                    ",\"root_fen_match\":" +
-                        (result.identity.root_fen == search_root.fen() ? "true" : "false") +
-                    ",\"identity_match\":" + (validation.identity_match ? "true" : "false") +
-                    ",\"candidate\":" + debug_quoted(
-                        candidate.best_move.has_value() ? candidate.best_move->uci() : "0000") +
-                    ",\"native_legal\":" + (validation.native_legal ? "true" : "false") +
-                    ",\"shadow_legal\":" + (validation.shadow_legal ? "true" : "false") +
-                    ",\"searchmoves_legal\":" + (validation.searchmoves_legal ? "true" : "false") +
-                    ",\"pv_legal\":" + (validation.pv_legal ? "true" : "false") +
-                    ",\"ponder_legal\":" + (validation.ponder_legal ? "true" : "false") +
-                    ",\"fallback_used\":" + (validation.fallback_used ? "true" : "false") +
-                    ",\"validated\":" + debug_quoted(
-                        validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
-                    ",\"source\":" + debug_quoted(source) +
-                    ",\"disposition\":" + debug_quoted(disposition_name(validation.disposition)) +
-                    ",\"reason\":" + debug_quoted(validation.reason) +
-                    ",\"completed\":" + (result.completed ? "true" : "false") +
-                    ",\"cancelled\":" + (result.cancelled ? "true" : "false") +
-                    ",\"failed\":" + (result.failed ? "true" : "false") +
-                    ",\"timing_reserve_ms\":" +
-                        std::to_string(result.timing.reserve.count()) +
-                    ",\"timing_usable_ms\":" +
-                        std::to_string(result.timing.usable.count()) +
-                    ",\"timing_soft_ms\":" +
-                        std::to_string(result.timing.soft_budget.count()) +
-                    ",\"timing_hard_ms\":" +
-                        std::to_string(result.timing.hard_budget.count()) +
-                    ",\"timing_horizon\":" + std::to_string(result.timing.horizon) +
-                    ",\"timing_initial_hardness\":" +
-                        std::to_string(result.timing.initial_hardness) +
-                    ",\"timing_observed_hardness\":" +
-                        std::to_string(result.timing.observed_hardness) +
-                    ",\"timing_extended\":" +
-                        (result.timing.extended_for_hard_position ? "true" : "false") +
-                    ",\"timing_hard_deadline\":" +
-                        (result.timing.hard_deadline_reached ? "true" : "false") +
-                    ",\"last_command\":" + debug_quoted(last_command));
+                detail::format_search_completion_debug_json(
+                    generation, search_root, candidate, validation, result, source, last_command));
         }
         if (validation.disposition == CompletionDisposition::suppress_stale) {
             if (debug_logging_enabled()) {
@@ -2868,29 +2783,8 @@ void UciController::write_book_completion(const std::uint64_t generation, const 
     if (debug_logging_enabled()) {
         debug_json_event(
             "completion_validation",
-            "\"message\":" + debug_quoted(
-                "book_completion_record generation=" + std::to_string(generation)) +
-                ",\"generation\":" + std::to_string(generation) +
-                ",\"result_generation\":" + std::to_string(candidate.identity.generation) +
-                ",\"root_fen\":" + debug_quoted(root.fen()) +
-                ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
-                ",\"result_root_key\":" + debug_quoted(debug_hex(candidate.identity.root_key)) +
-                ",\"root_key_match\":true" +
-                ",\"root_fen_match\":true" +
-                ",\"identity_match\":" + (validation.identity_match ? "true" : "false") +
-                ",\"candidate\":" + debug_quoted(choice.move.uci()) +
-                ",\"native_legal\":" + (validation.native_legal ? "true" : "false") +
-                ",\"shadow_legal\":" + (validation.shadow_legal ? "true" : "false") +
-                ",\"searchmoves_legal\":" + (validation.searchmoves_legal ? "true" : "false") +
-                ",\"pv_legal\":" + (validation.pv_legal ? "true" : "false") +
-                ",\"ponder_legal\":" + (validation.ponder_legal ? "true" : "false") +
-                ",\"fallback_used\":" + (validation.fallback_used ? "true" : "false") +
-                ",\"validated\":" + debug_quoted(
-                    validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
-                ",\"source\":\"book\"" +
-                ",\"disposition\":" + debug_quoted(disposition_name(validation.disposition)) +
-                ",\"reason\":" + debug_quoted(validation.reason) +
-                ",\"last_command\":" + debug_quoted(last_command));
+            detail::format_book_completion_debug_json(
+                generation, root, candidate, validation, choice.move, last_command));
     }
     if (validation.disposition == CompletionDisposition::suppress_stale) {
         debug_event("book completion suppressed as stale generation " + std::to_string(generation));
