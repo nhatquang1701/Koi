@@ -323,6 +323,7 @@ void test_evaluator_and_asset_flags() {
              {"--threads="},
              {"--threads=0"},
              {"--threads=abc"},
+             {"--engine-json", "--hash", "0"},
          }) {
         env.clear_all();
         ScopedStreamCapture err(std::cerr);
@@ -330,6 +331,42 @@ void test_evaluator_and_asset_flags() {
         const auto exit_code = invoke_parse(bad, invalid_runtime);
         koi::test::require(exit_code == std::optional<int>(2) && !err.str().empty(),
                            "missing or out-of-range --hash/--threads must exit 2");
+    }
+
+    {
+        env.clear_all();
+        ScopedStreamCapture out(std::cout);
+        koi::cli::CliOptions json_opts;
+        const auto exit_code = invoke_parse({"--engine-json"}, json_opts);
+        const std::string printed = out.str();
+        koi::test::require(exit_code == std::optional<int>(0) &&
+                               printed.find("\"Threads\", \"value\": 1") != std::string::npos &&
+                               printed.find("\"Hash\", \"value\": 512") != std::string::npos,
+                           "bare --engine-json must default to Threads=1 and Hash=512");
+    }
+    {
+        env.clear_all();
+        ScopedStreamCapture out(std::cout);
+        koi::cli::CliOptions json_opts;
+        const auto exit_code =
+            invoke_parse({"--threads", "1", "--hash", "256", "--engine-json"}, json_opts);
+        const std::string printed = out.str();
+        koi::test::require(exit_code == std::optional<int>(0) &&
+                               printed.find("\"Threads\", \"value\": 1") != std::string::npos &&
+                               printed.find("\"Hash\", \"value\": 256") != std::string::npos,
+                           "--threads and --hash before --engine-json must override JSON settings");
+    }
+    {
+        env.clear_all();
+        ScopedStreamCapture out(std::cout);
+        koi::cli::CliOptions json_opts;
+        const auto exit_code =
+            invoke_parse({"--engine-json", "--hash=128", "--threads=1"}, json_opts);
+        const std::string printed = out.str();
+        koi::test::require(exit_code == std::optional<int>(0) &&
+                               printed.find("\"Threads\", \"value\": 1") != std::string::npos &&
+                               printed.find("\"Hash\", \"value\": 128") != std::string::npos,
+                           "--hash= and --threads= after --engine-json must override JSON settings");
     }
 }
 

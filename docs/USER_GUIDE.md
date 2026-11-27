@@ -962,7 +962,7 @@ protocol clean. Leave this option disabled for normal release use.
    the engine so portable relative assets resolve predictably.
 
     !!! tip "Showing a separate `VERSION` badge (like Stockfish)"
-        Pawn Appétit / En Croissant's local binary scanner only populates `Name` from `id name` and leaves `Version` blank. Run `koi-engine --engine-json` to print a ready-to-paste JSON profile (`name: "Koi"`, `version: "<semver>"`, resolved `path`, defaults) for the GUI's **Edit JSON** dialog (or inspect `koi-engine --version`).
+        Pawn Appétit / En Croissant's local binary scanner only populates `Name` from `id name` and leaves `Version` blank. Run `koi-engine --engine-json` (optionally with `--threads <n> --hash <mb>`, e.g. `koi-engine --threads 4 --hash 256 --engine-json`) to print a ready-to-paste JSON profile (`name: "Koi"`, `version: "<semver>"`, resolved `path`, defaults) for the GUI's **Edit JSON** dialog (or inspect `koi-engine --version`).
 
    - **Protocols (`uci`, `usi`, `ucci`, `ucicyclone`, `xboard`):** Select `Protocol` in UCI options (or launch with `--protocol <name>`, or send `xboard` / `usi` / `ucci` directly on stdin). All modes target standard 8x8 chess (`xboard` implements CECP v2 `protover 2`, `feature`, `setboard`, `usermove`, `ping/pong`, `level`/`st`/`sd`, `time`/`otim`, `post`/`nopost`, `analyze`/`exit`, `undo`/`remove`; `usi` and `ucci`/`ucicyclone` support their handshake, option, `go`, `bestmove resign`/`nobestmove`, and `bye` conventions on 8x8 boards).
 3. Release archives ship a compact Stockfish-verified CC0 opening book as

@@ -96,6 +96,27 @@ class CliSubcommandsTest(unittest.TestCase):
         payload = json.loads(proc.stdout)
         self.assertEqual(payload["name"], "Koi")
         self.assertTrue(payload["version"])
+        self.assertEqual(
+            {entry["name"]: entry["value"] for entry in payload["settings"]},
+            {"Threads": 1, "Hash": 512},
+        )
+
+        expected_threads = min(2, os.cpu_count() or 1)
+        for args, expected_hash in (
+            (["--threads", str(expected_threads), "--hash", "256", "--engine-json"], 256),
+            (["--engine-json", "--hash=128", f"--threads={expected_threads}"], 128),
+        ):
+            custom = self._run(args, disable_nnue=True)
+            self.assertEqual(custom.returncode, 0, custom.stderr)
+            custom_payload = json.loads(custom.stdout)
+            self.assertEqual(
+                {entry["name"]: entry["value"] for entry in custom_payload["settings"]},
+                {"Threads": expected_threads, "Hash": expected_hash},
+            )
+
+        bad_json = self._run(["--engine-json", "--hash", "0"], disable_nnue=True)
+        self.assertEqual(bad_json.returncode, 2, bad_json.stdout)
+        self.assertIn("invalid hash", bad_json.stderr)
 
     def test_compiler_and_perft_boot_without_network(self) -> None:
         comp = self._run(["compiler"], disable_nnue=True)

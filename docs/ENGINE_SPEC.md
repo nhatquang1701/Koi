@@ -110,9 +110,9 @@ Other environment variables relevant to operation:
 
 | Layer | Owner / file | Contract |
 | --- | --- | --- |
-| Process entry point | `src/main.cpp`, `src/cli_support.{hpp,cpp}` | Resolves the executable directory, boot-time NNUE path (`resolve_boot_nnue_path`), pre-boot CLI parsing (`-c`/`--cmd`, `speedtest`, `--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), zero-network subcommands (`compiler`, `nnue`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`), and starts the UCI controller. A boot without a usable network exits 4 with a diagnostic; selection never silently substitutes. |
+| Process entry point | `src/main.cpp`, `src/cli_support.{hpp,cpp}` | Resolves the executable directory, boot-time NNUE path (`resolve_boot_nnue_path`), pre-boot CLI parsing (`version`, `help`, `--engine-json`, `--hash`, `--threads`, `-c`/`--cmd`, `speedtest`, `--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), zero-network subcommands (`compiler`, `nnue`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`), and starts the UCI controller. A boot without a usable network exits 4 with a diagnostic; selection never silently substitutes. |
 | UCI controller | `src/koi/uci_controller.{hpp,cpp}` | Owns the current `GameState`, the worker/search handle, option state, book and Syzygy instances. It is the only layer that writes UCI protocol output. |
-| UCI support | `src/koi/detail/uci_support.{hpp,cpp}` | Protocol-literal-free UCI/XBoard/annotation parsers, `parse_cli_position_spec`, `go` limit parser, network overhead estimator, WDL conversion, FEN flip helper, debug-JSON payload builders (`format_{position,hash_resize,go,search_completion,book_completion,search_move,book_move}_debug_json`), board/key/moves/book/tb/nnue/eval/options/annotate/compiler formatters, interactive help text, and benchmark FENs. |
+| UCI support | `src/koi/detail/uci_support.{hpp,cpp}` | Protocol-literal-free UCI/XBoard/annotation parsers, `parse_cli_position_spec`, `go` limit parser, network overhead estimator, WDL conversion, FEN flip helper, debug-JSON payload builders (`format_{position,hash_resize,go,search_completion,book_completion,search_move,book_move}_debug_json`), board/key/moves/book/tb/nnue/eval/options/bench/speedtest/see/perft/annotate/compiler formatters, interactive help text, and benchmark FENs. |
 | Public search boundary | `SearchService`, `SearchHandle` in `src/koi/search_service.{hpp,cpp}` | `SearchService` owns the shared evaluator, transposition table, and search lifecycle. `SearchHandle` exposes `stop()`, `wait()`, `running()`, and `request_ponderhit()`. |
 | Request session | `detail::SearchSession` in `src/koi/detail/search_session.hpp` | Owns one immutable request snapshot (root, limits, options), identity (generation + root key + root FEN), cancellation flag, worker thread, and the exactly-once completion claim (`CompletionOnce`). |
 | Search orchestration | `detail::SearchRunner` in `src/koi/detail/search_runner.cpp` | Backend dispatch, timing setup, root tablebase probe, iterative deepening, aspiration, serial/Lazy SMP/root-parallel drivers, short-search fallbacks, and result publication. |
@@ -156,9 +156,8 @@ Other environment variables relevant to operation:
    searches.
 8. `ponderhit` is consumed at the top of the next iteration; `TimeManager` is
    reconfigured in place and the elapsed clock restarts so the converted budget
-   is fully available. A node-limited ponder may already have finished; in that
-   case the controller starts a fresh bounded search so the move is still
-   answered.
+   is fully available. If no ponder search is running (including when a finite
+   ponder already finished), `ponderhit` is ignored and no new search starts.
 
 Three unrelated "generation" concepts are deliberately distinct
 (`src/koi/search_types.hpp`): the controller's protocol staleness
@@ -1003,7 +1002,7 @@ empty for the 1.2.0 gate.
 | `koi-perft` | Legal-node count from `startpos` or an optional FEN at a non-negative depth (`--divide` for per-move totals and NPS; `--help` for usage) |
 | `koi-replay` | Replays coordinate moves from `startpos`/`fen` without exposing the vendored library; reports `legal`, `result`, `termination`, final FEN |
 | `koi-eval-features` | Dump NNUE (`--nnue NET`) or clean-HCE (`--hce`) evaluations for a position corpus |
-| `koi-nnue-fixture` | Generates NNUE fixtures (`--arch v4|v5|v8|v9`) for boundary/parity tests |
+| `koi-nnue-fixture` | Generates NNUE fixtures (`--arch v4|v5|v9`) for boundary/parity tests |
 | `tools/build/speed_gate.ps1` | Repeated `koi-bench --report` baseline/candidate comparison; defaults 5 runs, 2% total NPS regression, 2% row regression, rows under 20 ms excluded as timer-quantized |
 | `tools/build/release_verify.ps1` | Fresh Debug and Release configure/build, full CTest/process checks, Threads 1/2/4 tactical gates, benchmark/UCI/replay/En Croissant-style artifacts under `artifacts/verification` |
 | `tools/stability/uci_match.ps1` | Color-aware match harness; writes `koi-uci-match-v2` JSON + PGN with per-ply provenance |
@@ -1060,7 +1059,7 @@ name and version while the tag is the version alone.
   `src/koi/classical_evaluator.*` (`EvalMode=hce` / `KOI_EVALUATOR=hce`).
 - **Threat-pair (`threat-pairs-v1`) networks were rejected.** The 36864-input v5
   form lost its matches (33.75% against the official net) and its export
-  saturates the L1 head; `--arch v8` writes the halfka-only layout instead.
+  saturates the L1 head; the v8 halfka-only layout was later superseded by the v9 `halfka-hm-v2` architecture (`--arch v9` in `koi-nnue-fixture`).
 - **Wide networks were rejected at equal time.** A 1024-wide v8 candidate scored
   48.75-49.00% against the historical 512-wide v3 official net at equal nodes but
   only 50.78% against classical at equal time, where that baseline net scored 62.50%
