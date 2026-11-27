@@ -76,8 +76,8 @@ Koi requires zero configuration files: `koi.nnue`, `book.bin`, and any user-supp
 In addition to standard UCI and XBoard/CECP v2 commands, Koi supports standard chess-engine terminal and benchmark commands:
 
 ```bash
-# OpenBench-compatible deterministic benchmark (default depth 10, 1 thread, 16 MB hash)
-koi-engine bench [depth]
+# OpenBench-compatible deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread)
+koi-engine bench [depth [hash [threads]]]
 
 # Version, GUI profile JSON, protocol selection, and CLI help
 koi-engine --version
@@ -90,12 +90,13 @@ Inside an interactive session (`koi-engine`):
 
 | Command | Description |
 | :--- | :--- |
-| `bench [depth]` | Runs the deterministic benchmark suite and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second` |
+| `bench [depth [hash [threads]]]` | Runs the deterministic benchmark suite and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second` |
 | `d` | Displays an ASCII board of the current position, FEN, Zobrist key, and checkers |
 | `eval` | Prints static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
 | `flip` | Flips the side to move (when legal) for static evaluation comparison |
 | `compiler` | Prints version, git commit, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`) |
 | `perft <depth>` / `go perft <depth>` | Runs an interruptible perft divide (`depth 1..10`) from the current position |
+| `wait` | Blocks until any finite active search or `perft` finishes (useful in piped scripts) |
 
 ---
 

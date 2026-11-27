@@ -75,6 +75,8 @@ public:
     UciController& operator=(const UciController&) = delete;
 
     static constexpr int kDefaultBenchDepth = 10;
+    static constexpr std::size_t kDefaultBenchHashMb = 16;
+    static constexpr std::size_t kDefaultBenchThreads = 1;
 
     // Selects the initial wire protocol (`uci`, `usi`, `ucci`, `ucicyclone`, or
     // `xboard`).  Returns false when `name` is unrecognized.
@@ -82,7 +84,9 @@ public:
     [[nodiscard]] static bool is_valid_protocol(std::string_view name) noexcept;
 
     int run();
-    int run_bench(int depth = kDefaultBenchDepth);
+    int run_bench(int depth = kDefaultBenchDepth,
+                  std::size_t hash_mb = kDefaultBenchHashMb,
+                  std::size_t threads = kDefaultBenchThreads);
 
 private:
     enum class ControllerState : std::uint8_t {
@@ -104,6 +108,7 @@ private:
     void handle_perft_command(std::istream& command);
     void handle_compiler();
     void handle_bench(std::istream& command);
+    void handle_wait();
     void reset_new_game();
     bool handle_xboard_command(std::string_view name, std::istream& command, bool& should_quit);
     void start_xboard_search(bool analyze_mode);
@@ -173,6 +178,7 @@ private:
     std::optional<Move> ponder_predicted_move_;
     std::optional<Move> ponder_expected_move_;
     bool active_ponder_ = false;
+    bool active_search_unbounded_ = false;
     std::size_t hash_mb_ = 512;
     std::size_t threads_ = 1;
     bool show_wdl_ = false;

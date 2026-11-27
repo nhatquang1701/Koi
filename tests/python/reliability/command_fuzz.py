@@ -30,7 +30,7 @@ from unittest_progress import format_progress_eta  # noqa: E402
 
 FRAGMENTS = [
     "uci", "isready", "ucinewgame", "stop", "ponderhit", "go", "position",
-    "setoption", "debug", "register", "d", "eval", "flip", "compiler", "board",
+    "setoption", "debug", "register", "d", "eval", "flip", "compiler", "wait", "board",
     "help", "quitx", "setoption name", "position startpos", "go depth",
     "setoption name Hash value",
 ]

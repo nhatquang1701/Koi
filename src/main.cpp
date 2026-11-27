@@ -153,14 +153,14 @@ void write_engine_json(int argc, char* argv[]) {
 void write_help() {
     std::cout << "Koi " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT
               << ") - C++26 UCI chess engine\n\n"
-              << "Usage: koi-engine [options] [bench [depth]]\n\n"
+              << "Usage: koi-engine [options] [bench [depth [hash_mb [threads]]]]\n\n"
               << "Options:\n"
-              << "  -v, --version            Print engine version and git commit\n"
-              << "  -h, --help               Show this help message\n"
-              << "  --engine-json            Print En Croissant / Pawn Appetit JSON profile\n"
-              << "  --protocol <name>        Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
-              << "  bench [depth]            Run deterministic OpenBench-compatible benchmark (default depth 10)\n\n"
-              << "Interactive UCI commands also include: d, eval, flip, compiler, bench [depth], perft <depth>\n";
+              << "  -v, --version                         Print engine version and git commit\n"
+              << "  -h, --help                            Show this help message\n"
+              << "  --engine-json                         Print En Croissant / Pawn Appetit JSON profile\n"
+              << "  --protocol <name>                     Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
+              << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n\n"
+              << "Interactive UCI commands also include: d, eval, flip, compiler, bench [depth [hash [threads]]], perft <depth>, wait\n";
 }
 
 void set_environment_value(const char* name, std::string_view value) noexcept {
@@ -172,14 +172,16 @@ void set_environment_value(const char* name, std::string_view value) noexcept {
 #endif
 }
 
-bool parse_bench_depth(std::string_view token, int& depth_out) noexcept {
-    int parsed = 0;
+bool parse_bounded_uint(std::string_view token, std::size_t minimum, std::size_t maximum,
+                        std::size_t& value_out) noexcept {
+    std::size_t parsed = 0;
     const auto [end, error] =
         std::from_chars(token.data(), token.data() + token.size(), parsed);
-    if (error != std::errc{} || end != token.data() + token.size() || parsed < 1 || parsed > 64) {
+    if (error != std::errc{} || end != token.data() + token.size() ||
+        parsed < minimum || parsed > maximum) {
         return false;
     }
-    depth_out = parsed;
+    value_out = parsed;
     return true;
 }
 
@@ -213,6 +215,10 @@ int main(int argc, char* argv[]) {
     // via KOI_PROTOCOL / KOI_BENCH_DEPTH.
     std::optional<std::string_view> initial_protocol;
     std::optional<int> bench_depth;
+    std::size_t bench_hash_mb = koi::UciController::kDefaultBenchHashMb;
+    std::size_t bench_threads = koi::UciController::kDefaultBenchThreads;
+    constexpr std::size_t kMaximumBenchHashMb = 4'096;
+    const std::size_t max_bench_threads = koi::maximum_search_threads();
     for (int index = 1; index < argc; ++index) {
         const std::string_view arg(argv[index]);
         if (arg == "--version" || arg == "-v") {
@@ -228,21 +234,40 @@ int main(int argc, char* argv[]) {
             write_engine_json(argc, argv);
             return 0;
         }
-        if (arg == "bench") {
-            int depth = koi::UciController::kDefaultBenchDepth;
-            if (index + 1 < argc) {
-                const std::string_view next_arg(argv[index + 1]);
-                if (!next_arg.starts_with('-')) {
-                    if (!parse_bench_depth(next_arg, depth)) {
-                        std::cerr << "koi-engine: invalid bench depth '" << next_arg
-                                  << "' (expected integer 1..64).\n";
-                        return 2;
-                    }
-                    ++index;
+        if (arg == "bench" || arg == "--bench") {
+            std::size_t depth = static_cast<std::size_t>(koi::UciController::kDefaultBenchDepth);
+            std::size_t hash_mb = koi::UciController::kDefaultBenchHashMb;
+            std::size_t threads = koi::UciController::kDefaultBenchThreads;
+            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
+                const std::string_view next_arg(argv[++index]);
+                if (!parse_bounded_uint(next_arg, 1, 64, depth)) {
+                    std::cerr << "koi-engine: invalid bench depth '" << next_arg
+                              << "' (expected integer 1..64).\n";
+                    return 2;
                 }
             }
-            bench_depth = depth;
+            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
+                const std::string_view next_arg(argv[++index]);
+                if (!parse_bounded_uint(next_arg, 1, kMaximumBenchHashMb, hash_mb)) {
+                    std::cerr << "koi-engine: invalid bench hash '" << next_arg
+                              << "' (expected integer 1.." << kMaximumBenchHashMb << ").\n";
+                    return 2;
+                }
+            }
+            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
+                const std::string_view next_arg(argv[++index]);
+                if (!parse_bounded_uint(next_arg, 1, max_bench_threads, threads)) {
+                    std::cerr << "koi-engine: invalid bench threads '" << next_arg
+                              << "' (expected integer 1.." << max_bench_threads << ").\n";
+                    return 2;
+                }
+            }
+            bench_depth = static_cast<int>(depth);
+            bench_hash_mb = hash_mb;
+            bench_threads = threads;
             set_environment_value("KOI_BENCH_DEPTH", std::to_string(depth));
+            set_environment_value("KOI_BENCH_HASH", std::to_string(hash_mb));
+            set_environment_value("KOI_BENCH_THREADS", std::to_string(threads));
             continue;
         }
         if (arg == "--protocol") {
@@ -256,7 +281,8 @@ int main(int argc, char* argv[]) {
             initial_protocol = arg.substr(std::string_view("--protocol=").size());
         } else {
             std::cerr << "koi-engine: unknown option '" << arg
-                      << "' (supported: --version, --help, --engine-json, --protocol <name>, bench [depth]).\n";
+                      << "' (supported: --version, --help, --engine-json, --protocol <name>, "
+                         "bench [depth [hash [threads]]]).\n";
             return 2;
         }
         if (initial_protocol.has_value()) {
@@ -278,9 +304,23 @@ int main(int argc, char* argv[]) {
     if (!bench_depth.has_value()) {
         if (const char* env_bench = std::getenv("KOI_BENCH_DEPTH");
             env_bench != nullptr && *env_bench != '\0') {
-            int parsed = 0;
-            if (parse_bench_depth(env_bench, parsed)) {
-                bench_depth = parsed;
+            std::size_t parsed = 0;
+            if (parse_bounded_uint(env_bench, 1, 64, parsed)) {
+                bench_depth = static_cast<int>(parsed);
+            }
+        }
+        if (const char* env_hash = std::getenv("KOI_BENCH_HASH");
+            env_hash != nullptr && *env_hash != '\0') {
+            std::size_t parsed = 0;
+            if (parse_bounded_uint(env_hash, 1, kMaximumBenchHashMb, parsed)) {
+                bench_hash_mb = parsed;
+            }
+        }
+        if (const char* env_threads = std::getenv("KOI_BENCH_THREADS");
+            env_threads != nullptr && *env_threads != '\0') {
+            std::size_t parsed = 0;
+            if (parse_bounded_uint(env_threads, 1, max_bench_threads, parsed)) {
+                bench_threads = parsed;
             }
         }
     }
@@ -364,7 +404,7 @@ int main(int argc, char* argv[]) {
                                   engine_directory,
                                   autodiscovered_network && selection.nnue_enabled);
     if (bench_depth.has_value()) {
-        return controller.run_bench(*bench_depth);
+        return controller.run_bench(*bench_depth, bench_hash_mb, bench_threads);
     }
     if (initial_protocol.has_value()) {
         (void)controller.set_protocol(*initial_protocol);

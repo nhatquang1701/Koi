@@ -59,6 +59,7 @@ using detail::hash_reason_name;
 using detail::hash_status_name;
 using detail::join_tokens;
 using detail::kBenchFens;
+using detail::kMaximumHashMegabytes;
 using detail::kMaximumMoveOverheadMs;
 using detail::kMaximumRandomSeed;
 using detail::kUciOptions;
@@ -986,6 +987,8 @@ int UciController::run() {
             handle_compiler();
         } else if (name == "bench") {
             handle_bench(command);
+        } else if (name == "wait") {
+            handle_wait();
         } else if (name == "ponderhit") {
             handle_ponderhit();
         } else if (name == "debug") {
@@ -1747,28 +1750,81 @@ void UciController::handle_compiler() {
 
 void UciController::handle_bench(std::istream& command) {
     int depth = kDefaultBenchDepth;
+    std::size_t hash_mb = kDefaultBenchHashMb;
+    std::size_t threads = kDefaultBenchThreads;
     std::string token;
     if (command >> token) {
         std::uint64_t parsed = 0;
-        if (parse_uint64(token, parsed) && parsed >= 1 && parsed <= 64) {
-            depth = static_cast<int>(parsed);
-        } else {
+        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > 64) {
             write_uci_info_string("bench ignored invalid depth '" + token + "' (expected 1..64)");
             return;
         }
+        depth = static_cast<int>(parsed);
     }
-    (void)run_bench(depth);
+    if (command >> token) {
+        std::uint64_t parsed = 0;
+        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > kMaximumHashMegabytes) {
+            write_uci_info_string("bench ignored invalid hash '" + token + "' (expected 1.." +
+                                  std::to_string(kMaximumHashMegabytes) + ")");
+            return;
+        }
+        hash_mb = static_cast<std::size_t>(parsed);
+    }
+    if (command >> token) {
+        std::uint64_t parsed = 0;
+        const std::uint64_t max_threads = static_cast<std::uint64_t>(maximum_search_threads());
+        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > max_threads) {
+            write_uci_info_string("bench ignored invalid threads '" + token + "' (expected 1.." +
+                                  std::to_string(max_threads) + ")");
+            return;
+        }
+        threads = static_cast<std::size_t>(parsed);
+    }
+    if (command >> token) {
+        write_uci_info_string("bench ignored unexpected trailing argument '" + token + "'");
+        return;
+    }
+    (void)run_bench(depth, hash_mb, threads);
 }
 
-int UciController::run_bench(int depth) {
+void UciController::handle_wait() {
+    if (active_perft_.joinable()) {
+        active_perft_.join();
+    }
+    if (!active_search_.has_value()) {
+        clear_ponder_state();
+        return;
+    }
+    bool unbounded = false;
+    {
+        std::lock_guard lock(output_mutex_);
+        unbounded = active_search_unbounded_;
+    }
+    if (unbounded) {
+        write_uci_info_string("wait ignored: active search has no finite limit");
+        return;
+    }
+    active_search_->wait();
+    active_search_.reset();
+    clear_ponder_state();
+    std::lock_guard lock(output_mutex_);
+    active_search_unbounded_ = false;
+    if (state_ != ControllerState::ShuttingDown) {
+        state_ = ControllerState::Idle;
+    }
+}
+
+int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads) {
     depth = std::clamp(depth, 1, 64);
+    hash_mb = std::clamp<std::size_t>(hash_mb, 1, static_cast<std::size_t>(kMaximumHashMegabytes));
+    threads = std::clamp<std::size_t>(threads, 1, maximum_search_threads());
     stop_and_suppress_active_search();
 
     const std::size_t saved_hash_mb = search_service_.hash_size_mb();
-    (void)search_service_.set_hash_size_mb(16);
+    (void)search_service_.set_hash_size_mb(hash_mb);
 
     SearchOptions options;
-    options.threads = 1;
+    options.threads = threads;
     options.multi_pv = 1;
     options.hash_mb = 0;
     options.interim_report_interval = std::chrono::milliseconds{0};
@@ -1868,6 +1924,7 @@ void UciController::handle_ponderhit() {
             ponder_predicted_move_.reset();
             ponder_expected_move_.reset();
             active_ponder_ = false;
+            active_search_unbounded_ = converted.infinite || converted.ponder;
             state_ = ControllerState::Searching;
             generation = generation_;
         }
@@ -1931,6 +1988,7 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
     {
         std::lock_guard lock(output_mutex_);
         state_ = limits.ponder ? ControllerState::Pondering : ControllerState::Searching;
+        active_search_unbounded_ = limits.infinite || limits.ponder;
         search_protocol = protocol_mode_;
         xboard_analyze_snapshot = xboard_analyze_ || force_analyze;
         xboard_thinking = xboard_post_ || xboard_analyze_snapshot;
@@ -2287,6 +2345,7 @@ void UciController::stop_active_search() {
     active_search_.reset();
     clear_ponder_state();
     std::lock_guard lock(output_mutex_);
+    active_search_unbounded_ = false;
     if (state_ != ControllerState::ShuttingDown) state_ = ControllerState::Idle;
 }
 
@@ -2308,6 +2367,7 @@ void UciController::stop_and_suppress_active_search() {
     clear_ponder_state();
     {
         std::lock_guard lock(output_mutex_);
+        active_search_unbounded_ = false;
         if (state_ != ControllerState::ShuttingDown) state_ = ControllerState::Idle;
     }
 }

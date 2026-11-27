@@ -2953,7 +2953,7 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
         "position fen 4k3/8/8/8/8/8/4R3/4K3 b - - 0 1\n"
         "flip\n"
         "compiler\n"
-        "bench 2\n"
+        "bench 2 16 1\n"
         "quit\n");
     std::ostringstream output;
     std::ostringstream diagnostics;
@@ -3005,6 +3005,39 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     perft_thread.join();
     require(saw_perft && perft_exit == 0 && perft_diag.str().empty(),
             "bare perft 1 command must compute 20 startpos nodes and shut down cleanly");
+
+    std::istringstream wait_input(
+        "uci\n"
+        "isready\n"
+        "position startpos\n"
+        "perft 1\n"
+        "wait\n"
+        "go depth 2\n"
+        "wait\n"
+        "go infinite\n"
+        "wait\n"
+        "stop\n"
+        "quit\n");
+    std::ostringstream wait_output;
+    std::ostringstream wait_diag;
+    auto wait_holder = koi::test::make_uci_controller(wait_input, wait_output, wait_diag);
+    const int wait_exit = wait_holder->run();
+    const std::string wait_raw = wait_output.str();
+    require(wait_exit == 0 && wait_diag.str().empty(),
+            "wait command sequence must shut down cleanly");
+    require(wait_raw.find("Nodes searched: 20") != std::string::npos,
+            "wait after perft must await completion before starting the next command");
+    require(wait_raw.find("wait ignored: active search has no finite limit") != std::string::npos,
+            "wait during an infinite search must refuse cleanly without hanging");
+    std::size_t wait_bestmove_count = 0;
+    for (std::size_t pos = 0;
+         (pos = wait_raw.find("\nbestmove ", pos)) != std::string::npos;
+         pos += 10) {
+        ++wait_bestmove_count;
+    }
+    require(wait_bestmove_count == 2,
+            "wait after finite search plus stop after infinite search must emit two bestmoves; got:\n" +
+                wait_raw);
 }
 
 } // namespace
