@@ -76,6 +76,7 @@ Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`,
 | Section | Contents |
 | :--- | :--- |
 | **[User Guide](docs/USER_GUIDE.md)** | Installation, build presets, UCI options, time controls, GUI registration, opening books, and Syzygy tablebases. |
+| **[CLI & Interactive Reference](docs/CLI.md)** | One-shot subcommands (`bench`, `eval`, `perft`, `compiler`), interactive commands (`d`, `fen`, `key`, `moves`, `book`, `tb`, `see`), protocols, and dev tools. |
 | **[Lichess Bot](docs/lichess-bot.md)** | Running Koi on Lichess via `tools/bot/koi-bot.sh` with automated matchmaking and release updates. |
 | **[System Architecture](docs/ARCHITECTURE.md)** | Interactive module diagram, translation-unit responsibilities, threading model, and 1.0.0 architecture boundaries. |
 | **[Engine Specification](docs/ENGINE_SPEC.md)** | Complete technical specification of rules, search heuristics, NNUE v2–v9 containers, time formulas, and UCI contracts. |

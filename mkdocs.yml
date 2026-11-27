@@ -79,6 +79,7 @@ nav:
       - Changelog: CHANGELOG.md
   - User Guide:
       - Playing & Configuration: docs/USER_GUIDE.md
+      - CLI & Interactive Reference: docs/CLI.md
       - Lichess Bot: docs/lichess-bot.md
   - Architecture & NNUE:
       - System Architecture: docs/ARCHITECTURE.md

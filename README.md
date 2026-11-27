@@ -137,6 +137,7 @@ Available presets in [CMakePresets.json](CMakePresets.json): `windows-release`, 
 
 - **[Documentation Site](https://nhatquang1701.github.io/Koi/)** — Searchable Material site with interactive diagrams.
 - **[User Guide](docs/USER_GUIDE.md)** — Installation, UCI options, time controls, GUI setup, books, and Syzygy tablebases.
+- **[CLI Reference](docs/CLI.md)** — One-shot CLI subcommands, interactive UCI commands, companion dev tools, and environment variables.
 - **[System Architecture](docs/ARCHITECTURE.md)** — Module map, concurrency model, and the 1.0.0 architecture contract.
 - **[Engine Specification](docs/ENGINE_SPEC.md)** — Authoritative technical specification of rules, search, NNUE containers, and UCI semantics.
 - **[NNUE Pipeline](docs/NNUE_PIPELINE.md)** — Self-play data generation, Bullet/PyTorch training, quantization, and SPRT promotion gates.
