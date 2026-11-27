@@ -104,6 +104,14 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
     const std::vector<std::string>& tokens, std::size_t first_index,
     SearchLimits& limits, std::string& error);
 
+[[nodiscard]] SearchLimits parse_go_limits(
+    std::string_view arguments,
+    std::chrono::milliseconds bare_go_fallback = std::chrono::milliseconds{250});
+[[nodiscard]] std::uint32_t derive_network_overhead_ms(
+    std::int64_t previous_remaining_ms, std::int64_t increment_ms,
+    std::int64_t elapsed_ms, std::int64_t current_remaining_ms,
+    std::uint32_t previous_estimate_ms) noexcept;
+
 [[nodiscard]] std::string format_ascii_board(const GameState& position);
 [[nodiscard]] std::string format_compiler_info(std::string_view version, std::string_view commit);
 [[nodiscard]] std::string format_interactive_help();

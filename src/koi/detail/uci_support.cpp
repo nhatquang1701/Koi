@@ -563,4 +563,168 @@ std::string format_compiler_info(const std::string_view version, const std::stri
     return buffer.str();
 }
 
+SearchLimits parse_go_limits(const std::string_view arguments,
+                             const std::chrono::milliseconds bare_go_fallback) {
+    std::istringstream command{std::string(arguments)};
+    const std::vector<std::string> tokens = remaining_tokens(command);
+    SearchLimits limits;
+    std::optional<std::chrono::milliseconds> white_time;
+    std::optional<std::chrono::milliseconds> black_time;
+    std::optional<std::chrono::milliseconds> white_increment;
+    std::optional<std::chrono::milliseconds> black_increment;
+
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        const std::string& token = tokens[index];
+        if (token == "infinite") {
+            limits.infinite = true;
+            continue;
+        }
+        if (token == "ponder") {
+            limits.ponder = true;
+            continue;
+        }
+        if (token == "searchmoves") {
+            limits.search_moves_specified = true;
+            ++index;
+            while (index < tokens.size()) {
+                const auto move = Move::parse_uci(tokens[index]);
+                if (!move.has_value()) {
+                    break;
+                }
+                limits.search_moves.push_back(*move);
+                ++index;
+            }
+            if (index < tokens.size()) {
+                --index;
+            }
+            continue;
+        }
+        if (index + 1 >= tokens.size()) {
+            continue;
+        }
+
+        const std::string& value = tokens[index + 1];
+        if (token == "depth") {
+            std::uint64_t parsed = 0;
+            if (parse_uint64(value, parsed) && parsed > 0 &&
+                parsed <= static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+                limits.depth = static_cast<int>(parsed);
+            }
+            ++index;
+        } else if (token == "mate") {
+            std::uint64_t parsed = 0;
+            if (parse_uint64(value, parsed) && parsed > 0 && parsed <= 64) {
+                limits.mate = static_cast<int>(parsed);
+            }
+            ++index;
+        } else if (token == "perft") {
+            std::uint64_t parsed = 0;
+            // Perft is a debugging command; the cap keeps a typo from asking
+            // for an astronomically long walk.
+            if (parse_uint64(value, parsed) && parsed > 0 && parsed <= 10) {
+                limits.perft = static_cast<int>(parsed);
+            }
+            ++index;
+        } else if (token == "nodes") {
+            std::uint64_t parsed = 0;
+            if (parse_uint64(value, parsed)) {
+                limits.nodes = parsed;
+            }
+            ++index;
+        } else if (token == "movetime") {
+            std::chrono::milliseconds parsed;
+            if (parse_milliseconds(value, parsed)) {
+                limits.movetime = parsed;
+            }
+            ++index;
+        } else if (token == "wtime") {
+            std::chrono::milliseconds parsed;
+            if (parse_milliseconds(value, parsed)) {
+                white_time = parsed;
+            }
+            ++index;
+        } else if (token == "btime") {
+            std::chrono::milliseconds parsed;
+            if (parse_milliseconds(value, parsed)) {
+                black_time = parsed;
+            }
+            ++index;
+        } else if (token == "winc") {
+            std::chrono::milliseconds parsed;
+            if (parse_milliseconds(value, parsed)) {
+                white_increment = parsed;
+            }
+            ++index;
+        } else if (token == "binc") {
+            std::chrono::milliseconds parsed;
+            if (parse_milliseconds(value, parsed)) {
+                black_increment = parsed;
+            }
+            ++index;
+        } else if (token == "movestogo") {
+            std::uint64_t parsed = 0;
+            if (parse_uint64(value, parsed) && parsed > 0 &&
+                parsed <= static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())) {
+                limits.moves_to_go = static_cast<std::uint32_t>(parsed);
+            }
+            ++index;
+        }
+    }
+
+    if (white_time.has_value()) {
+        limits.white_clock = ClockLimit{white_time.value_or(std::chrono::milliseconds::zero()),
+                                        white_increment.value_or(std::chrono::milliseconds::zero())};
+    }
+    if (black_time.has_value()) {
+        limits.black_clock = ClockLimit{black_time.value_or(std::chrono::milliseconds::zero()),
+                                        black_increment.value_or(std::chrono::milliseconds::zero())};
+    }
+
+    if (limits.mate.has_value()) {
+        // A UCI go command may provide several limits; the first reached ends
+        // the search. Keep the stricter of explicit depth and the mate proof
+        // horizon so `mate N` is not discarded when `depth` is also present.
+        const int mate_depth = 2 * *limits.mate - 1;
+        if (!limits.depth.has_value() || mate_depth < *limits.depth) {
+            limits.depth = mate_depth;
+        }
+    }
+
+    const bool has_usable_limit = limits.depth.has_value() || limits.nodes.has_value() ||
+        limits.movetime.has_value() || limits.white_clock.has_value() ||
+        limits.black_clock.has_value() || limits.infinite || limits.ponder ||
+        limits.mate.has_value() || limits.perft.has_value();
+    if (!has_usable_limit) {
+        limits.movetime = bare_go_fallback;
+    }
+    return limits;
+}
+
+std::uint32_t derive_network_overhead_ms(const std::int64_t previous_remaining_ms,
+                                         const std::int64_t increment_ms,
+                                         const std::int64_t elapsed_ms,
+                                         const std::int64_t current_remaining_ms,
+                                         const std::uint32_t previous_estimate_ms) noexcept {
+    if (previous_remaining_ms < 0 || increment_ms < 0 || elapsed_ms < 0 ||
+        current_remaining_ms < 0) {
+        return previous_estimate_ms;
+    }
+    const std::int64_t expected = previous_remaining_ms + increment_ms - elapsed_ms;
+    const std::int64_t excess = expected - current_remaining_ms;
+    // Below the noise floor the GUI clock rounds, and a negative delta means the
+    // GUI clock is newer than Koi's elapsed estimate (or the increment was
+    // applied differently): decay rather than permanently slowing the engine.
+    constexpr std::int64_t kNoiseFloorMs = 25;
+    constexpr std::int64_t kMaximumEstimateMs = 500;
+    if (excess >= kNoiseFloorMs) {
+        const auto candidate = static_cast<std::uint32_t>(
+            std::min<std::int64_t>(excess, kMaximumEstimateMs));
+        return std::max(previous_estimate_ms, candidate);
+    }
+    if (excess <= 0) {
+        return previous_estimate_ms - previous_estimate_ms / 8U;
+    }
+    return previous_estimate_ms;
+}
+
 } // namespace koi::detail
