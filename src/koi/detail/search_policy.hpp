@@ -199,9 +199,9 @@ public:
             // the reference direction (the old -1 searched deeper instead).
             ++reduction;
         }
-        if (history_score > 512) {
-            --reduction;
-        } else if (history_score < -512) {
+        // Moves with history_score >= 128 are excluded from reduction via
+        // high_history_exclusion above, so only negative history adjusts LMR.
+        if (history_score < -512) {
             ++reduction;
         }
         if (continuation_score > 512) {

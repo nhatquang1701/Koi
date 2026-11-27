@@ -357,6 +357,23 @@ private:
     GatedInputBuffer& input_;
 };
 
+class ReleaseOnSubstringBuffer final : public std::stringbuf {
+public:
+    ReleaseOnSubstringBuffer(GatedInputBuffer& input, std::string needle)
+        : input_(input), needle_(std::move(needle)) {}
+
+    int sync() override {
+        if (str().find(needle_) != std::string::npos) {
+            input_.mark_marker();
+        }
+        return std::stringbuf::sync();
+    }
+
+private:
+    GatedInputBuffer& input_;
+    std::string needle_;
+};
+
 class ReleaseOnDepthBuffer final : public std::stringbuf {
 public:
     ReleaseOnDepthBuffer(GatedInputBuffer& input, int depth) : input_(input), depth_(depth) {}
@@ -2931,6 +2948,10 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
         "position startpos moves e2e4\n"
         "d\n"
         "eval\n"
+        "flip\n"
+        "d\n"
+        "position fen 4k3/8/8/8/8/8/4R3/4K3 b - - 0 1\n"
+        "flip\n"
         "compiler\n"
         "bench 2\n"
         "quit\n");
@@ -2950,8 +2971,16 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                 raw.find("Side  : black") != std::string::npos,
             "d command must print Zobrist key and side to move");
     require(raw.find("Side to move   :") != std::string::npos &&
-                raw.find("White relative :") != std::string::npos,
-            "eval command must print side-to-move and white-relative static scores");
+                raw.find("White relative :") != std::string::npos &&
+                raw.find("WDL (stm)      :") != std::string::npos &&
+                raw.find("Game phase     :") != std::string::npos,
+            "eval command must print score, WDL triplet, and game phase");
+    require(raw.find("flipped side to move (white)") != std::string::npos &&
+                raw.find("Fen   : rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1") !=
+                    std::string::npos,
+            "flip command must switch side to move and update the board; got:\n" + raw);
+    require(raw.find("flip rejected: position cannot legally switch sides") != std::string::npos,
+            "flip must reject positions that would leave the non-moving king in check");
     require(raw.find("Compiled by    :") != std::string::npos &&
                 raw.find("SIMD / ISA     :") != std::string::npos,
             "compiler command must print toolchain and ISA metadata");
@@ -2959,6 +2988,23 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                 raw.find("Nodes searched  :") != std::string::npos &&
                 raw.find("Nodes/second    :") != std::string::npos,
             "bench command must print OpenBench-compatible node and NPS summary");
+
+    GatedInputBuffer perft_input("position startpos\nperft 1\n", "quit\n");
+    std::istream perft_in(&perft_input);
+    ReleaseOnSubstringBuffer perft_out(perft_input, "Nodes searched: 20");
+    std::ostream perft_out_stream(&perft_out);
+    std::ostringstream perft_diag;
+    int perft_exit = -1;
+    std::thread perft_thread([&] {
+        auto perft_holder =
+            koi::test::make_uci_controller(perft_in, perft_out_stream, perft_diag);
+        perft_exit = perft_holder->run();
+    });
+    const bool saw_perft = perft_input.wait_for_marker(std::chrono::seconds(5));
+    perft_input.release();
+    perft_thread.join();
+    require(saw_perft && perft_exit == 0 && perft_diag.str().empty(),
+            "bare perft 1 command must compute 20 startpos nodes and shut down cleanly");
 }
 
 } // namespace

@@ -30,8 +30,8 @@ from unittest_progress import format_progress_eta  # noqa: E402
 
 FRAGMENTS = [
     "uci", "isready", "ucinewgame", "stop", "ponderhit", "go", "position",
-    "setoption", "debug", "register", "d", "eval", "compiler", "board", "help",
-    "quitx", "setoption name", "position startpos", "go depth",
+    "setoption", "debug", "register", "d", "eval", "flip", "compiler", "board",
+    "help", "quitx", "setoption name", "position startpos", "go depth",
     "setoption name Hash value",
 ]
 CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -48,7 +48,13 @@ def _is_valid_display_line(line: str) -> bool:
 
 
 def _is_valid_eval_line(line: str) -> bool:
-    return line.startswith(("Evaluator      : ", "Side to move   : ", "White relative : "))
+    return line.startswith((
+        "Evaluator      : ",
+        "Side to move   : ",
+        "White relative : ",
+        "WDL (stm)      : ",
+        "Game phase     : ",
+    ))
 
 
 def _is_valid_compiler_line(line: str) -> bool:

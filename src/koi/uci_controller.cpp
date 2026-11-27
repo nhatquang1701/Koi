@@ -1402,6 +1402,10 @@ int UciController::run() {
             handle_display();
         } else if (name == "eval") {
             handle_eval();
+        } else if (name == "flip") {
+            handle_flip();
+        } else if (name == "perft") {
+            handle_perft_command(command);
         } else if (name == "compiler") {
             handle_compiler();
         } else if (name == "bench") {
@@ -2136,12 +2140,63 @@ void UciController::handle_eval() {
                 << (static_cast<double>(cp) / 100.0) << " (" << cp << " cp)";
             return out.str();
         };
+        SearchInfo eval_info;
+        eval_info.score_cp = score_stm;
+        const Wdl wdl = score_to_wdl(eval_info);
         buffer << "Evaluator      : " << (hce_active_ ? "HCE" : "NNUE") << '\n'
                << "Side to move   : " << format_score(score_stm) << '\n'
-               << "White relative : " << format_score(score_white) << '\n';
+               << "White relative : " << format_score(score_white) << '\n'
+               << "WDL (stm)      : " << std::noshowpos << std::fixed << std::setprecision(1)
+               << (static_cast<double>(wdl.win) / 10.0) << "% W / "
+               << (static_cast<double>(wdl.draw) / 10.0) << "% D / "
+               << (static_cast<double>(wdl.loss) / 10.0) << "% L\n"
+               << "Game phase     : " << position_.game_phase() << "/24 (pieces: "
+               << position_.piece_count() << ")\n";
     }
     std::lock_guard lock(output_mutex_);
     output_ << buffer.str() << std::flush;
+}
+
+void UciController::handle_flip() {
+    stop_and_suppress_active_search();
+    if (position_.in_check()) {
+        write_uci_info_string("flip rejected: position cannot legally switch sides");
+        return;
+    }
+    std::istringstream fen_stream(position_.fen());
+    std::vector<std::string> fields;
+    for (std::string token; fen_stream >> token;) {
+        fields.push_back(std::move(token));
+    }
+    if (fields.size() != 6 || (fields[1] != "w" && fields[1] != "b")) {
+        write_uci_info_string("flip rejected: malformed internal FEN");
+        return;
+    }
+    fields[1] = (fields[1] == "w") ? "b" : "w";
+    fields[3] = "-";
+    const std::string flipped_fen = join_tokens(fields, 0, fields.size());
+    const auto parsed = GameState::from_fen(flipped_fen);
+    if (!parsed.has_value()) {
+        write_uci_info_string("flip rejected: position cannot legally switch sides");
+        return;
+    }
+    position_ = *parsed;
+    position_origin_ = *parsed;
+    position_moves_.clear();
+    write_uci_info_string(position_.side_to_move() == Color::white
+                              ? "flipped side to move (white)"
+                              : "flipped side to move (black)");
+}
+
+void UciController::handle_perft_command(std::istream& command) {
+    std::string token;
+    std::uint64_t parsed = 0;
+    if (!(command >> token) || !parse_uint64(token, parsed) || parsed == 0 || parsed > 10) {
+        write_uci_info_string("perft ignored invalid depth (expected 1..10)");
+        return;
+    }
+    stop_and_suppress_active_search();
+    start_perft(static_cast<int>(parsed));
 }
 
 void UciController::handle_compiler() {
