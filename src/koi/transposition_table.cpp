@@ -8,7 +8,6 @@
 #include <limits>
 #include <mutex>
 #include <new>
-#include <stdexcept>
 #include <thread>
 #include <utility>
 
