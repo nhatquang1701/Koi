@@ -59,7 +59,7 @@ koi-engine help          # or -h, --help
 ```
 
 !!! note "Zero-network subcommands, unquoted FENs & batch mode"
-    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network; `--book <path>` and `--syzygy <path>` apply to both one-shot `book`/`tb` probes and live UCI, `-c`, or `options` sessions; `--hash` and `--threads` also provide defaults for `bench` and `speedtest` when positional hash/threads arguments are omitted). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3` or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd`/`--hash`/`--threads` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make asan` (ASan+UBSan), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make engine-json`, `make version`, `make compiler`, and `make perft PERFT_DEPTH=5 [FEN=...]`.
+    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network; `--book <path>` and `--syzygy <path>` apply to both one-shot `book`/`tb` probes and live UCI, `-c`, or `options` sessions; `--hash` and `--threads` also provide defaults for `bench` and `speedtest` when positional hash/threads arguments are omitted). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci|san>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3`, `koi-engine d moves e4 e5 Nf3`, or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd`/`--hash`/`--threads` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make asan` (ASan+UBSan), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make engine-json`, `make version`, `make compiler`, and `make perft PERFT_DEPTH=5 [FEN=...]`.
 
 ### Example Outputs
 
@@ -169,10 +169,10 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `eval` | — | Print active evaluator architecture (`NNUE` or `HCE`), score (stm & White), WDL, and phase |
 | `nnue` | — | Print active loaded NNUE container metadata and payload SHA-256 checksum (or inactive HCE status) |
 | `flip` | — | Toggle side to move when legal (clears en passant; rejects positions in check) |
-| `makemove` | `<uci...>` | Play one or more legal UCI moves transactionally on the current board |
+| `makemove` | `<move...>` | Play one or more legal UCI or FIDE SAN moves transactionally on the current board |
 | `undo` | `[plies]` | Step back `N` plies (default `1`) in the current position's move history |
 | `history` | — | Print the position origin (`startpos` or FEN), ply count, UCI moves, FIDE SAN movetext (`SAN :`), and full `position ...` command |
-| `see` | `<uci-move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal move in centipawns |
+| `see` | `<move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal UCI or SAN move in centipawns |
 | `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
 | `bench` | `[depth [hash [threads]]]` | Run the 16-position deterministic benchmark inside the active session |
 | `speedtest` | `[threads [hash [seconds]]]` | Run a timed multi-position NPS throughput benchmark (`seconds` in `1..60`) |
@@ -217,7 +217,7 @@ Built from source via CMake presets (not shipped in user-facing release archives
 | Binary / Script | Role | Usage |
 | :--- | :--- | :--- |
 | `koi-bench` | 64-position tactical & 128-position positional strength suite | `koi-bench (--nnue NET \| --hce) [--hash MB] [--optional] [--timed] [--depth-sweep a..b] [--report PATH]` (`--flag=value` supported) |
-| `koi-perft` | Bulk-counting legal move-generator perft & `--divide` counter | `koi-perft [--divide] <depth> [startpos\|fen [moves <uci>...]]` |
+| `koi-perft` | Bulk-counting legal move-generator perft & `--divide` counter | `koi-perft [--divide] <depth> [startpos\|fen [moves <move>...]]` |
 | `koi-replay` | Coordinate move replayer (`legal`, `result`, `termination`, `fen`) | `koi-replay <startpos\|fen 6-field-fen> [moves <uci>...]` |
 | `koi-eval-features` | Bulk CSV evaluator dumper for FEN corpora | `koi-eval-features (--nnue NET \| --hce) [--input FILE] [--output FILE]` (`--flag=value` supported) |
 | `koi-nnue-fixture` | Synthetic v4/v5/v9 `.nnue` generator for C++ & Python boundary tests | `koi-nnue-fixture --arch v4\|v5\|v9 --output <path>` (`--flag=value` supported) |

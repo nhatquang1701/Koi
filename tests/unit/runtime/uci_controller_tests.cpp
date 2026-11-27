@@ -3240,6 +3240,25 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                 undo_bounds_raw.find("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1\n") !=
                     std::string::npos,
             "undo > available plies must reject and preserve position; got:\n" + undo_bounds_raw);
+
+    std::istringstream san_in(
+        "makemove e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O\n"
+        "history\n"
+        "position fen rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2\n"
+        "see exd5\n"
+        "quit\n");
+    std::ostringstream san_out;
+    std::ostringstream san_diag;
+    auto san_ctrl = koi::test::make_uci_controller(san_in, san_out, san_diag);
+    const int san_exit = san_ctrl->run();
+    const std::string san_raw = san_out.str();
+    require(san_exit == 0 && san_diag.str().empty(),
+            "interactive SAN makemove/see sequence must shut down cleanly");
+    require(san_raw.find("info string played 9 moves") != std::string::npos &&
+                san_raw.find("SAN     : 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O\n") !=
+                    std::string::npos &&
+                san_raw.find("SEE e4d5 : +100 cp\n") != std::string::npos,
+            "interactive SAN makemove/see output mismatch; got:\n" + san_raw);
 }
 
 void test_uci_support_helpers_direct() {
@@ -3284,6 +3303,19 @@ void test_uci_support_helpers_direct() {
     require(!parse_cli_position_spec("moves e2e5", move_err).has_value() &&
                 move_err.find("illegal move") != std::string::npos,
             "illegal move in CLI position spec must report illegal move");
+
+    const auto san_moves = parse_cli_position_spec("moves e4 e5 Nf3", spec_error);
+    const auto uci_moves = parse_cli_position_spec("moves e2e4 e7e5 g1f3", spec_error);
+    const auto mixed_moves = parse_cli_position_spec("startpos moves e2e4 e5 Nf3", spec_error);
+    require(san_moves.has_value() && uci_moves.has_value() && mixed_moves.has_value() &&
+                san_moves->fen() == uci_moves->fen() &&
+                mixed_moves->fen() == uci_moves->fen(),
+            "parse_cli_position_spec must accept FIDE SAN and mixed UCI/SAN move lists");
+    std::string ambig_err;
+    require(!parse_cli_position_spec("fen 4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1 moves Nd2", ambig_err)
+                 .has_value() &&
+                ambig_err.find("illegal move") != std::string::npos,
+            "parse_cli_position_spec must reject ambiguous SAN moves");
 
     const std::optional<koi::Move> e2e4 = koi::Move::parse_uci("e2e4");
     const std::optional<koi::Move> d2d4 = koi::Move::parse_uci("d2d4");
@@ -3477,6 +3509,60 @@ void test_uci_support_helpers_direct() {
     check_san("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a7a8q", "a8=Q+");
     check_san("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a7a8n", "a8=N");
     check_san("7k/5Q2/6K1/8/8/8/8/8 w - - 0 1", "f7g7", "Qg7#");
+
+    const auto check_parse_san = [](const std::string_view fen, const std::string_view token,
+                                  const std::optional<std::string_view> expected_uci) {
+        const auto pos = fen.empty()
+            ? decltype(koi::GameState::from_fen(fen))(koi::GameState::startpos())
+            : koi::GameState::from_fen(fen);
+        require(pos.has_value(), "expected valid FEN for parse_san_move test");
+        const auto parsed = parse_san_move(*pos, token);
+        if (!expected_uci.has_value()) {
+            require(!parsed.has_value(),
+                    "expected nullopt for invalid/ambiguous SAN token '" + std::string(token) + "'");
+        } else {
+            require(parsed.has_value() && parsed->uci() == *expected_uci,
+                    "parse_san_move mismatch for '" + std::string(token) + "': expected '" +
+                        std::string(*expected_uci) + "', got '" +
+                        (parsed.has_value() ? parsed->uci() : std::string("<null>")) + "'");
+        }
+    };
+    check_parse_san("", "e4", "e2e4");
+    check_parse_san("", "Nf3", "g1f3");
+    check_parse_san("", "e5", std::nullopt);
+    check_parse_san("", "e2e4", std::nullopt);
+    check_parse_san("", "", std::nullopt);
+    check_parse_san("", "+", std::nullopt);
+    check_parse_san("", "??", std::nullopt);
+    check_parse_san("rnbqkbnr/pppp1ppp/8/3Pp3/8/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 2", "dxe6", "d5e6");
+    check_parse_san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "O-O", "e1g1");
+    check_parse_san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "0-0", "e1g1");
+    check_parse_san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "o-o", "e1g1");
+    check_parse_san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "O-O-O", "e1c1");
+    check_parse_san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "0-0-0", "e1c1");
+    check_parse_san("4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1", "Nbd2", "b1d2");
+    check_parse_san("4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1", "Nfd2", "f1d2");
+    check_parse_san("4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1", "Nd2", std::nullopt);
+    check_parse_san("4k3/8/8/8/8/R7/8/R3K3 w - - 0 1", "R1a2", "a1a2");
+    check_parse_san("4k3/8/8/8/8/R7/8/R3K3 w - - 0 1", "R3a2", "a3a2");
+    check_parse_san("7k/8/8/8/Q3Q3/8/Q7/4K3 w - - 0 1", "Qa4c2", "a4c2");
+    check_parse_san("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a8=Q+", "a7a8q");
+    check_parse_san("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a8=Q", "a7a8q");
+    check_parse_san("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a8Q", "a7a8q");
+    check_parse_san("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a8=N", "a7a8n");
+    check_parse_san("7k/5Q2/6K1/8/8/8/8/8 w - - 0 1", "Qg7#", "f7g7");
+    check_parse_san("7k/5Q2/6K1/8/8/8/8/8 w - - 0 1", "Qg7!", "f7g7");
+    check_parse_san("7k/5Q2/6K1/8/8/8/8/8 w - - 0 1", "Qg7#!!", "f7g7");
+
+    const auto hybrid_uci = parse_move_uci_or_san(startpos, "e2e4");
+    const auto hybrid_san = parse_move_uci_or_san(startpos, "e4");
+    require(hybrid_uci.has_value() && hybrid_uci->uci() == "e2e4" &&
+                hybrid_san.has_value() && hybrid_san->uci() == "e2e4" &&
+                !parse_move_uci_or_san(startpos, "e2e5").has_value(),
+            "parse_move_uci_or_san must accept both UCI and SAN moves");
+    const auto ambig_pos = koi::GameState::from_fen("4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1");
+    require(ambig_pos.has_value() && !parse_move_uci_or_san(*ambig_pos, "Nd2").has_value(),
+            "parse_move_uci_or_san must reject ambiguous SAN");
 
     const std::string history_empty = format_move_history(startpos, {});
     require(history_empty.find("Origin  : startpos\n") != std::string::npos &&

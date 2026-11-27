@@ -1497,7 +1497,7 @@ void UciController::handle_see(std::istream& command) {
         write_uci_info_string("see requires a legal UCI move (e.g. see e4d5)");
         return;
     }
-    const std::optional<Move> move = Move::parse_uci(token);
+    const std::optional<Move> move = detail::parse_move_uci_or_san(position_, token);
     if (!move.has_value() || !position_.is_legal(*move)) {
         write_uci_info_string("see rejected illegal move '" + token + "'");
         return;
@@ -1542,7 +1542,7 @@ void UciController::handle_makemove(std::istream& command) {
     std::vector<Move> applied;
     applied.reserve(tokens.size());
     for (const std::string& token : tokens) {
-        const std::optional<Move> move = Move::parse_uci(token);
+        const std::optional<Move> move = detail::parse_move_uci_or_san(candidate, token);
         if (!move.has_value() || !candidate.is_legal(*move) || !candidate.make_move(*move)) {
             write_uci_info_string("makemove rejected illegal move '" + token + "'");
             return;

@@ -116,7 +116,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  book [fen]                               Probe Polyglot opening book entries for position\n"
               << "  tb [fen]                                 Probe Syzygy tablebases for root WDL and best moves\n"
               << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
-              << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, nnue, flip, makemove <uci...>, undo [plies], history, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
+              << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, nnue, flip, makemove <move...>, undo [plies], history, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
 }
 
 std::optional<GameState> resolve_cli_position(const std::optional<std::string>& fen) {
@@ -836,7 +836,7 @@ std::optional<int> run_zero_network_cli_command(
         if (!root.has_value()) {
             return 2;
         }
-        const std::optional<Move> move = Move::parse_uci(*options.see_move);
+        const std::optional<Move> move = detail::parse_move_uci_or_san(*root, *options.see_move);
         if (!move.has_value() || !root->is_legal(*move)) {
             std::cerr << "koi-engine: illegal move '" << *options.see_move << "' for see.\n";
             return 2;

@@ -176,6 +176,9 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
     std::uint64_t total_nodes, std::int64_t elapsed_ms);
 [[nodiscard]] std::string format_see_result(std::string_view move_uci, int gain_cp);
 [[nodiscard]] std::optional<std::string> move_to_san(const GameState& state, Move move);
+[[nodiscard]] std::optional<Move> parse_san_move(const GameState& state, std::string_view token);
+[[nodiscard]] std::optional<Move> parse_move_uci_or_san(const GameState& state,
+                                                        std::string_view token);
 [[nodiscard]] std::string format_move_history(
     const GameState& origin, const std::vector<Move>& moves);
 [[nodiscard]] std::string format_interactive_help();

@@ -22,7 +22,7 @@
 namespace {
 
 int print_usage(std::ostream& out, const int exit_code) {
-    out << "usage: koi-perft [--divide] <depth> [startpos|fen [moves <uci>...]]\n";
+    out << "usage: koi-perft [--divide] <depth> [startpos|fen [moves <move>...]]\n";
     return exit_code;
 }
 

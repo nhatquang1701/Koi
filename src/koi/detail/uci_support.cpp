@@ -782,10 +782,10 @@ std::string format_interactive_help() {
         "  eval                                Show active evaluator, score, WDL, and phase\n"
         "  nnue                                Show active loaded NNUE metadata and SHA-256\n"
         "  flip                                Flip side to move when legal\n"
-        "  makemove <uci...>                   Play one or more legal UCI moves on the current board\n"
+        "  makemove <move...>                  Play one or more legal UCI/SAN moves on the current board\n"
         "  undo [plies]                        Step back N plies (default 1) in position history\n"
         "  history                             Show position origin, move history, and UCI command\n"
-        "  see <move>                          Show static exchange evaluation for a legal move\n"
+        "  see <move>                          Show static exchange evaluation for a legal UCI/SAN move\n"
         "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"
         "  bench [depth [hash [threads]]]      Run OpenBench-compatible benchmark\n"
         "  speedtest [threads [hash [secs]]]   Run timed NPS throughput benchmark\n"
@@ -1343,7 +1343,7 @@ std::optional<GameState> parse_cli_position_spec(const std::string_view spec, st
     }
 
     for (std::size_t index = move_start; index < tokens.size(); ++index) {
-        const std::optional<Move> move = Move::parse_uci(tokens[index]);
+        const std::optional<Move> move = parse_move_uci_or_san(state, tokens[index]);
         if (!move.has_value() || !state.make_move(*move)) {
             error = "illegal move '" + tokens[index] + "'";
             return std::nullopt;
@@ -1656,6 +1656,61 @@ std::optional<std::string> move_to_san(const GameState& state, const Move move) 
         san.push_back(after.has_legal_move() ? '+' : '#');
     }
     return san;
+}
+
+std::optional<Move> parse_san_move(const GameState& state, std::string_view token) {
+    while (!token.empty() && (token.back() == '+' || token.back() == '#' ||
+                              token.back() == '!' || token.back() == '?')) {
+        token.remove_suffix(1);
+    }
+    if (token.empty()) {
+        return std::nullopt;
+    }
+
+    std::string normalized;
+    if (token == "0-0" || equals_ignore_case(token, "o-o")) {
+        normalized = "O-O";
+    } else if (token == "0-0-0" || equals_ignore_case(token, "o-o-o")) {
+        normalized = "O-O-O";
+    } else {
+        normalized = std::string(token);
+        if (normalized.size() >= 3) {
+            const char promo = normalized.back();
+            const char dest_rank = normalized[normalized.size() - 2];
+            if ((promo == 'Q' || promo == 'R' || promo == 'B' || promo == 'N') &&
+                (dest_rank == '1' || dest_rank == '8')) {
+                normalized.insert(normalized.end() - 1, '=');
+            }
+        }
+    }
+
+    std::array<Move, kMaximumLegalMoves> legal{};
+    const std::size_t legal_count =
+        std::min(state.legal_moves_into(legal), legal.size());
+    for (std::size_t index = 0; index < legal_count; ++index) {
+        const Move move = legal[index];
+        const std::optional<std::string> san = move_to_san(state, move);
+        if (!san.has_value()) {
+            continue;
+        }
+        std::string_view candidate(*san);
+        while (!candidate.empty() && (candidate.back() == '+' || candidate.back() == '#')) {
+            candidate.remove_suffix(1);
+        }
+        if (candidate == normalized) {
+            return move;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<Move> parse_move_uci_or_san(const GameState& state,
+                                          const std::string_view token) {
+    if (const std::optional<Move> uci = Move::parse_uci(token);
+        uci.has_value() && state.is_legal(*uci)) {
+        return uci;
+    }
+    return parse_san_move(state, token);
 }
 
 std::string format_move_history(const GameState& origin, const std::vector<Move>& moves) {

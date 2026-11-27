@@ -254,6 +254,20 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(bad_moves.returncode, 2, bad_moves.stdout)
         self.assertIn("illegal move", bad_moves.stderr)
 
+        d_san_moves = self._run(["d", "moves", "e4", "e5", "Nf3"], disable_nnue=True)
+        self.assertEqual(d_san_moves.returncode, 0, d_san_moves.stderr)
+        self.assertIn(
+            "Fen   : rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2",
+            d_san_moves.stdout,
+        )
+
+        see_san = self._run(
+            ["see", "exd5", "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2"],
+            disable_nnue=True,
+        )
+        self.assertEqual(see_san.returncode, 0, see_san.stderr)
+        self.assertEqual(see_san.stdout.strip(), "SEE e4d5 : +100 cp")
+
     def test_invalid_perft_and_unknown_options(self) -> None:
         bad_depth = self._run(["perft", "99"], disable_nnue=True)
         self.assertEqual(bad_depth.returncode, 2)
@@ -552,6 +566,15 @@ class CliSubcommandsTest(unittest.TestCase):
             makemove_undo.stdout,
         )
 
+        makemove_san = self._run(
+            ["--hce", "-c", "makemove e4 e5 Nf3", "-c", "history"],
+            disable_nnue=True,
+        )
+        self.assertEqual(makemove_san.returncode, 0, makemove_san.stderr)
+        self.assertEqual(makemove_san.stderr, "")
+        self.assertIn("Moves   : e2e4 e7e5 g1f3", makemove_san.stdout)
+        self.assertIn("SAN     : 1. e4 e5 2. Nf3", makemove_san.stdout)
+
         xboard = self._run(
             ["--protocol", "xboard", "--hce", "-c", "protover 2", "-c", "sd 2", "-c", "go"],
             disable_nnue=True,
@@ -646,6 +669,10 @@ class CliSubcommandsTest(unittest.TestCase):
         perft_moves = subprocess.run([str(perft_exe), "1", "moves", "e2e4"], capture_output=True, text=True, timeout=15)
         self.assertEqual(perft_moves.returncode, 0, perft_moves.stderr)
         self.assertEqual(perft_moves.stdout.strip(), "nodes 20")
+
+        perft_san = subprocess.run([str(perft_exe), "1", "moves", "e4"], capture_output=True, text=True, timeout=15)
+        self.assertEqual(perft_san.returncode, 0, perft_san.stderr)
+        self.assertEqual(perft_san.stdout.strip(), "nodes 20")
 
         help_replay = subprocess.run([str(replay_exe), "--help"], capture_output=True, text=True, timeout=15)
         self.assertEqual(help_replay.returncode, 0, help_replay.stderr)
