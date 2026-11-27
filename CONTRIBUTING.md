@@ -45,9 +45,9 @@ On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engin
 # Deterministic OpenBench-compatible node benchmark
 ./build/windows-release/koi-engine.exe bench
 
-# Compiler/ISA readout & fast perft check (requires no NNUE network)
+# Compiler/ISA readout, eval, & fast perft check (`compiler`/`perft` require no NNUE network)
 ./build/windows-release/koi-engine.exe compiler
-./build/windows-release/koi-engine.exe perft 4
+./build/windows-release/koi-engine.exe perft 4 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 
 # Interactive UCI smoke check
 printf "uci\nisready\nposition startpos\ngo depth 4\nquit\n" | ./build/linux-gcc-release/koi-engine

@@ -79,10 +79,10 @@ In addition to standard UCI and XBoard/CECP v2 commands, Koi supports standard c
 # OpenBench-compatible deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread)
 koi-engine bench [depth [hash [threads]]]
 
-# One-shot diagnostics: compiler/ISA info, startpos eval, and timed perft divide
+# One-shot diagnostics: compiler/ISA info, startpos or FEN eval, and timed perft divide
 koi-engine compiler
-koi-engine eval
-koi-engine perft 5
+koi-engine eval [fen]
+koi-engine perft 5 [fen]
 
 # Version, GUI profile JSON, protocol selection, and CLI help
 koi-engine --version
@@ -97,6 +97,9 @@ Inside an interactive session (`koi-engine`):
 | :--- | :--- |
 | `bench [depth [hash [threads]]]` | Runs the deterministic benchmark suite and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second` |
 | `d` | Displays an ASCII board of the current position, FEN, Zobrist key, checkers, and legal move count |
+| `fen` | Prints the six-field FEN of the current position |
+| `key` | Prints the hexadecimal Zobrist position and pawn hash keys |
+| `moves` | Lists all sorted legal moves in UCI coordinate notation |
 | `eval` | Prints active NNUE/HCE metadata, static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
 | `flip` | Flips the side to move (when legal) for static evaluation comparison |
 | `see <move>` | Computes the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns |

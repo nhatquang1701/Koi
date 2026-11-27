@@ -223,6 +223,10 @@ the repository root as the working directory:
   `nnue_training_python` (NNUE export/training round trips), and
   `bullet_data_python` (bulletformat conversion, exporter weight layouts for v4
   and v5, and wrapper line parsing).
+- Runtime / CLI: `cli_subcommands_python` (`tests/python/runtime/cli_subcommands_test.py`)
+  exercises one-shot CLI flags and subcommands (`--version`, `--help`,
+  `--engine-json`, `compiler`, zero-network `perft <depth> [fen]`, `eval [fen]`,
+  `bench`, and invalid-argument error exit codes).
 ## Labels and scheduling
 
 Every test carries CTest labels; combine them with `-L`/`-LE`, for example

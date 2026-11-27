@@ -128,7 +128,7 @@ Other environment variables relevant to operation:
 | --- | --- | --- |
 | Process entry point | `src/main.cpp` | Resolves the executable directory, boot-time NNUE path, evaluator, and starts the UCI controller. A boot without a usable network exits 4 with a diagnostic; selection never silently substitutes. |
 | UCI controller | `src/koi/uci_controller.{hpp,cpp}` | Owns the current `GameState`, the worker/search handle, option state, book and Syzygy instances. It is the only layer that writes UCI protocol output. |
-| UCI support | `src/koi/detail/uci_support.{hpp,cpp}` | Protocol-literal-free UCI/XBoard/annotation parsers, WDL conversion, ASCII board and compiler formatters, interactive help text, and benchmark FENs. |
+| UCI support | `src/koi/detail/uci_support.{hpp,cpp}` | Protocol-literal-free UCI/XBoard/annotation parsers, `go` limit parser, network overhead estimator, WDL conversion, ASCII board and compiler formatters, interactive help text, and benchmark FENs. |
 | Public search boundary | `SearchService`, `SearchHandle` in `src/koi/search_service.{hpp,cpp}` | `SearchService` owns the shared evaluator, transposition table, and search lifecycle. `SearchHandle` exposes `stop()`, `wait()`, `running()`, and `request_ponderhit()`. |
 | Request session | `detail::SearchSession` in `src/koi/detail/search_session.hpp` | Owns one immutable request snapshot (root, limits, options), identity (generation + root key + root FEN), cancellation flag, worker thread, and the exactly-once completion claim (`CompletionOnce`). |
 | Search orchestration | `detail::SearchRunner` in `src/koi/detail/search_runner.cpp` | Backend dispatch, timing setup, root tablebase probe, iterative deepening, aspiration, serial/Lazy SMP/root-parallel drivers, short-search fallbacks, and result publication. |
@@ -789,10 +789,13 @@ Rules for `setoption`:
 | `quit` | Sets shutting-down, cancels/joins, and returns 0 without late protocol output. EOF follows the same cancellation path. |
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
 | `d` | Displays the ASCII board, FEN, Zobrist key, side, check state, and legal move count. |
-| `eval` | Prints active evaluator details (`NNUE` version/feature set/shape or `HCE`), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval`). |
+| `fen` | Prints the six-field FEN of the current position. |
+| `key` | Prints the hexadecimal 64-bit Zobrist position key and pawn hash key. |
+| `moves` | Lists all legal moves sorted lexicographically in UCI coordinate notation. |
+| `eval` | Prints active evaluator details (`NNUE` version/feature set/shape or `HCE`), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval [fen]`). |
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check). |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns. |
-| `perft <depth>` | Runs an interruptible perft divide (`1..10`) from the current position (also CLI `perft <depth>`). |
+| `perft <depth>` | Runs an interruptible perft divide (`1..10`) from the current position (also CLI `perft <depth> [fen]`). |
 | `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `compiler`, `eval`, `perft`, `--version`, `--help`, `--engine-json`, `--protocol`). |
 | `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |
 | `compiler` | Prints engine version, commit, compiler, C++26 standard, architecture, and ISA (also CLI `compiler`/`--compiler`). |
@@ -1070,7 +1073,8 @@ name and version while the tag is the version alone.
 - **Wide networks were rejected at equal time.** A 1024-wide v8 candidate scored
   48.75-49.00% against the historical 512-wide v3 official net at equal nodes but
   only 50.78% against classical at equal time, where that baseline net scored 62.50%
-  (1.1.5+ ships the faster h128 v4 net).
+  (v1.1.5–v1.2.0 shipped the faster `h128` v4 net; post-1.2.0 development promoted
+  the `halfka-hm-v2` 256×2 SCReLU v9 network `koi-v9-hm10-h256-official.nnue`).
 - **Node-limited matches cannot promote a network on their own.** Equal-node
   results can hide an evaluation-cost regression; the equal-time gate is required.
 - **No strength limiting.** `UCI_LimitStrength` and `UCI_Elo` are not advertised

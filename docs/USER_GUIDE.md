@@ -444,7 +444,7 @@ python .\tools\measurement\elo_estimate.py `
 ```
 
 To measure a Koi NNUE network, pass `--koi-eval-file` with the network path. The
-tool reads the container header, selects the matching `nnue-v4`/`nnue-v5`
+tool reads the container header, selects the matching `nnue-v4`/`nnue-v5`/`nnue-v9`
 attestation, and requires the match harness to confirm that the engine enabled
 that exact file; the report records the absolute path, SHA-256, byte size,
 container version, and attestation under `configuration.koi_evaluator`. Missing, malformed, or rejected networks fail with a nonzero exit.
@@ -511,9 +511,12 @@ cases run as ordinary fatal tests.
 
 In addition to standard UCI/XBoard sessions, `koi-engine` supports standard chess-engine CLI options and interactive terminal commands:
 
-- **CLI subcommands & flags:** `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine compiler` (`--compiler`), `koi-engine eval` (`--eval`), `koi-engine perft <depth>` (`1..10`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
+- **CLI subcommands & flags:** `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine compiler` (`--compiler`), `koi-engine eval [fen]` (`--eval [fen]`), `koi-engine perft <depth> [fen]` (`1..10`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
 - **Interactive commands (inside a UCI session):**
   - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, check status, and legal move count.
+  - `fen` — prints the six-field FEN of the current position.
+  - `key` — prints the hexadecimal 64-bit Zobrist position and pawn hash keys.
+  - `moves` — lists all sorted legal moves in UCI coordinate notation.
   - `eval` — prints the active evaluator architecture (`NNUE` container version/feature set/layer shape or `HCE`), static score (side-to-move and White perspectives), heuristic WDL triplet, and game phase / piece count.
   - `flip` — toggles the side to move (when legal; rejects positions that would leave the non-moving king in check).
   - `see <move>` — prints the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns.
