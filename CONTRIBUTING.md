@@ -35,14 +35,14 @@ cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release
 cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release
 ```
 
-Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. Equivalent explicit `cmake -S . -B build/release -G Ninja ...` commands remain documented in the [User Guide](docs/USER_GUIDE.md#build-prerequisites).
+Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-clang-asan`, `linux-gcc-tsan`, `macos-arm64-release`, `macos-arm64-debug`, and `macos-arm64-asan`. Equivalent explicit `cmake -S . -B build/release -G Ninja ...` commands remain documented in the [User Guide](docs/USER_GUIDE.md#build-prerequisites).
 
 ### CPU Dispatch & Quick Smoke Check
 
 On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engine-avx512` or `koi-engine-avx2` when the host CPU supports them (with fast `PEXT`), or runs the baseline build in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary.
 
 ```bash
-# Deterministic OpenBench-compatible node benchmark & timed NPS throughput check (plus Makefile targets: `make tools`, `make smoke`, `make speedtest`, `make profile-build`, `make asan`, `make engine-json`, `make nnue`, `make options`, `make eval`, `make d`, `make version`, `make compiler`, `make perft`)
+# Deterministic OpenBench-compatible node benchmark & timed NPS throughput check (plus Makefile targets: `make tools`, `make smoke`, `make speedtest`, `make profile-build`, `make asan`, `make engine-json`, `make nnue`, `make options`, `make eval`, `make d`, `make pgn`, `make version`, `make compiler`, `make perft`)
 ./build/windows-release/koi-engine.exe bench
 ./build/windows-release/koi-engine.exe speedtest 1 128 3
 
@@ -57,7 +57,7 @@ On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engin
 ./build/linux-gcc-release/koi-engine --hash 64 --threads 1 -c "uci" -c "isready" -c "position startpos" -c "go depth 4"
 ```
 
-Supported zero-network CLI inspection subcommands also include `version`, `help`, `nnue [path]`, `fen [pos]`, `key [pos]`, `moves [pos]`, `flip [pos]`, `book [pos]` (optional `--book <path>`), and `tb [pos]` (optional `--syzygy <path>`), while evaluator-backed `eval [pos]` and `options` boot the active NNUE network or `--hce`. `[pos]` accepts `startpos`, a quoted/unquoted FEN, or `[startpos|fen] [moves <uci>...]`.
+Supported zero-network CLI inspection subcommands also include `version`, `help`, `nnue [path]`, `fen [pos]`, `key [pos]`, `moves [pos]`, `pgn [pos]`, `flip [pos]`, `book [pos]` (optional `--book <path>`), and `tb [pos]` (optional `--syzygy <path>`), while evaluator-backed `eval [pos]` and `options` boot the active NNUE network or `--hce`. `[pos]` accepts `startpos`, a quoted/unquoted FEN, or `[startpos|fen] [moves <uci|san>...]`.
 
 ---
 

@@ -780,6 +780,7 @@ class CliSubcommandsTest(unittest.TestCase):
             epd_file = bench_dir / "suite.epd"
             epd_file.write_text(
                 '6k1/5ppp/8/8/8/8/8/3R2K1 w - - bm Rd8#; id "BackRankMate";\n'
+                '6k1/5ppp/8/8/8/8/8/3R2K1 w - - am Re1; id "AvoidRe1";\n'
                 "Opening | e4 e5 Nf3\n",
                 encoding="utf-8",
             )
@@ -792,6 +793,8 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(bench_epd.returncode, 0, bench_epd.stderr)
             self.assertIn("position BackRankMate ", bench_epd.stdout)
             self.assertIn("expected d1d8 move d1d8 match 1", bench_epd.stdout)
+            self.assertIn("position AvoidRe1 ", bench_epd.stdout)
+            self.assertIn("avoid d1e1 move d1d8 match 1", bench_epd.stdout)
             self.assertIn("position Opening ", bench_epd.stdout)
 
             bad_epd = bench_dir / "bad.epd"
@@ -807,6 +810,20 @@ class CliSubcommandsTest(unittest.TestCase):
             )
             self.assertNotEqual(bad_bench_epd.returncode, 0)
             self.assertIn("illegal EPD bm move", bad_bench_epd.stderr)
+
+            bad_am_epd = bench_dir / "bad_am.epd"
+            bad_am_epd.write_text(
+                '6k1/5ppp/8/8/8/8/8/3R2K1 w - - am Qh9#; id "BadAm";\n',
+                encoding="utf-8",
+            )
+            bad_am_bench = subprocess.run(
+                [str(bench_exe), "--hce", "--epd", str(bad_am_epd), "--depth", "1"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertNotEqual(bad_am_bench.returncode, 0)
+            self.assertIn("illegal EPD am move", bad_am_bench.stderr)
 
         bad_bench_hash = subprocess.run(
             [str(bench_exe), "--hce", "--hash", "0"],
@@ -927,6 +944,21 @@ class CliSubcommandsTest(unittest.TestCase):
                 )
                 self.assertEqual(bad_eval.returncode, 2, bad_eval.stdout)
                 self.assertIn("missing value for", bad_eval.stderr)
+
+            for bad_fixture_args, expected_err in (
+                (["--arch"], "missing value for --arch"),
+                (["--output="], "missing value for --output"),
+                (["--arch=v7", "--output=out.nnue"], "unsupported architecture"),
+                (["--bogus"], "unknown argument"),
+            ):
+                bad_fixture = subprocess.run(
+                    [str(nnue_fixture_exe), *bad_fixture_args],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                self.assertEqual(bad_fixture.returncode, 2, bad_fixture.stdout)
+                self.assertIn(expected_err, bad_fixture.stderr)
 
 
 if __name__ == "__main__":

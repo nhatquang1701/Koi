@@ -73,6 +73,7 @@ struct BenchPosition {
     std::string fen;
     std::string expected_move;
     std::array<std::string, 3> accepted_moves{};
+    std::array<std::string, 3> avoid_moves{};
     std::string category;
     std::uint8_t depth = 0;
 };
@@ -107,6 +108,11 @@ struct PositionProfile {
 bool accepts_move(const BenchPosition& benchmark, const koi::Move& move) {
     return std::find(benchmark.accepted_moves.begin(), benchmark.accepted_moves.end(), move.uci()) !=
         benchmark.accepted_moves.end();
+}
+
+bool avoids_move(const BenchPosition& benchmark, const koi::Move& move) {
+    return std::find(benchmark.avoid_moves.begin(), benchmark.avoid_moves.end(), move.uci()) !=
+        benchmark.avoid_moves.end();
 }
 
 bool parse_uint64(std::string_view value, std::uint64_t& parsed) {
@@ -461,6 +467,36 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
                                 }
                                 ++move_count;
                             }
+                        } else if (opcode == "am" && !operand.empty()) {
+                            std::size_t move_count = 0;
+                            std::size_t pos = 0;
+                            while (pos < operand.size()) {
+                                while (pos < operand.size() &&
+                                       std::isspace(static_cast<unsigned char>(operand[pos])) != 0) {
+                                    ++pos;
+                                }
+                                const std::size_t tok_start = pos;
+                                while (pos < operand.size() &&
+                                       std::isspace(static_cast<unsigned char>(operand[pos])) == 0) {
+                                    ++pos;
+                                }
+                                if (tok_start == pos) {
+                                    break;
+                                }
+                                const std::string_view move_tok =
+                                    operand.substr(tok_start, pos - tok_start);
+                                const auto move =
+                                    koi::detail::parse_move_uci_or_san(*parsed_state, move_tok);
+                                if (!move.has_value()) {
+                                    throw std::runtime_error(
+                                        "illegal EPD am move '" + std::string(move_tok) +
+                                        "' in: " + std::string(payload));
+                                }
+                                if (move_count < position.avoid_moves.size()) {
+                                    position.avoid_moves[move_count] = move->uci();
+                                }
+                                ++move_count;
+                            }
                         }
                     }
                 }
@@ -793,7 +829,23 @@ void write_profile_json(const std::string& path, const BenchmarkConfig& config,
             write_json_string(output, accepted_move);
             first_accepted_move = false;
         }
-        output << "], \"category\": ";
+        output << "]";
+        if (!position.avoid_moves[0].empty()) {
+            output << ", \"avoid_moves\": [";
+            bool first_avoid_move = true;
+            for (const std::string& avoid_move : position.avoid_moves) {
+                if (avoid_move.empty()) {
+                    continue;
+                }
+                if (!first_avoid_move) {
+                    output << ", ";
+                }
+                write_json_string(output, avoid_move);
+                first_avoid_move = false;
+            }
+            output << "]";
+        }
+        output << ", \"category\": ";
         write_json_string(output, position.category);
         output << ", \"hash_mb\": " << config.hash_mb << ", \"hash_state\": \""
                << (config.warm_hash ? "warm" : "cold") << "\", \"threads\": " << config.threads
@@ -1176,7 +1228,8 @@ int main(int argc, char** argv) {
                     }
                     const koi::SearchResult& result = run.result;
                     const bool matched = result.best_move.has_value() &&
-                        accepts_move(benchmark, *result.best_move);
+                        accepts_move(benchmark, *result.best_move) &&
+                        !avoids_move(benchmark, *result.best_move);
                     std::cout << "position " << benchmark.name
                               << " depth " << result.completed_depth
                               << " nodes " << result.stats.nodes
@@ -1187,6 +1240,12 @@ int main(int argc, char** argv) {
                         std::cout << " expected " << benchmark.expected_move
                                   << " move " << (result.best_move.has_value() ? result.best_move->uci() : "0000")
                                   << " match " << (matched ? 1 : 0);
+                    } else if (!benchmark.avoid_moves[0].empty()) {
+                        const bool avoided = result.best_move.has_value() &&
+                            !avoids_move(benchmark, *result.best_move);
+                        std::cout << " avoid " << benchmark.avoid_moves[0]
+                                  << " move " << (result.best_move.has_value() ? result.best_move->uci() : "0000")
+                                  << " match " << (avoided ? 1 : 0);
                     } else {
                         std::cout << " move " << (result.best_move.has_value() ? result.best_move->uci() : "0000");
                     }

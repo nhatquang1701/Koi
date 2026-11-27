@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -48,42 +49,78 @@ koi::NnueNetwork large_v5_fixture() {
     return network;
 }
 
-std::optional<Arguments> parse_arguments(int argc, char** argv) {
+enum class ValueFlagStatus {
+    not_matched,
+    matched,
+    missing_value,
+};
+
+ValueFlagStatus consume_value_flag(const std::string_view argument, const std::string_view flag,
+                                   int& index, const int argc, char** argv,
+                                   std::string_view& destination) {
+    if (argument == flag) {
+        if (index + 1 >= argc || argv[index + 1] == nullptr || argv[index + 1][0] == '\0') {
+            return ValueFlagStatus::missing_value;
+        }
+        destination = argv[++index];
+        return ValueFlagStatus::matched;
+    }
+    if (argument.size() > flag.size() && argument.starts_with(flag) &&
+        argument[flag.size()] == '=') {
+        const std::string_view value = argument.substr(flag.size() + 1);
+        if (value.empty()) {
+            return ValueFlagStatus::missing_value;
+        }
+        destination = value;
+        return ValueFlagStatus::matched;
+    }
+    return ValueFlagStatus::not_matched;
+}
+
+std::optional<Arguments> parse_arguments(int argc, char** argv, std::string& error) {
     std::optional<std::string_view> arch;
     std::optional<std::filesystem::path> output;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
-        if (argument == "--arch") {
-            if (arch.has_value() || index + 1 >= argc || argv[index + 1] == nullptr ||
-                argv[index + 1][0] == '\0') {
-                return std::nullopt;
-            }
-            arch = argv[++index];
-        } else if (argument.starts_with("--arch=")) {
-            const std::string_view value = argument.substr(std::string_view("--arch=").size());
-            if (arch.has_value() || value.empty()) {
+        std::string_view value;
+        const auto arch_status = consume_value_flag(argument, "--arch", index, argc, argv, value);
+        if (arch_status == ValueFlagStatus::missing_value) {
+            error = "missing value for --arch";
+            return std::nullopt;
+        }
+        if (arch_status == ValueFlagStatus::matched) {
+            if (arch.has_value()) {
+                error = "duplicate argument --arch";
                 return std::nullopt;
             }
             arch = value;
-        } else if (argument == "--output") {
-            if (output.has_value() || index + 1 >= argc || argv[index + 1] == nullptr ||
-                argv[index + 1][0] == '\0') {
-                return std::nullopt;
-            }
-            output = std::filesystem::path(argv[++index]);
-        } else if (argument.starts_with("--output=")) {
-            const std::string_view value = argument.substr(std::string_view("--output=").size());
-            if (output.has_value() || value.empty()) {
+            continue;
+        }
+        const auto output_status =
+            consume_value_flag(argument, "--output", index, argc, argv, value);
+        if (output_status == ValueFlagStatus::missing_value) {
+            error = "missing value for --output";
+            return std::nullopt;
+        }
+        if (output_status == ValueFlagStatus::matched) {
+            if (output.has_value()) {
+                error = "duplicate argument --output";
                 return std::nullopt;
             }
             output = std::filesystem::path(value);
-        } else {
-            return std::nullopt;
+            continue;
         }
+        error = "unknown argument " + std::string(argument);
+        return std::nullopt;
     }
 
-    if (!arch.has_value() || !output.has_value() || output->empty() ||
-        (*arch != "v4" && *arch != "v5" && *arch != "v9")) {
+    if (!arch.has_value() || !output.has_value() || output->empty()) {
+        error = "--arch and --output are required";
+        return std::nullopt;
+    }
+    if (*arch != "v4" && *arch != "v5" && *arch != "v9") {
+        error = "unsupported architecture '" + std::string(*arch) +
+                "' (expected v4, v5, or v9)";
         return std::nullopt;
     }
     return Arguments{*arch, std::move(*output)};
@@ -105,9 +142,10 @@ int main(int argc, char** argv) {
             }
         }
     }
-    const auto arguments = parse_arguments(argc, argv);
+    std::string parse_error;
+    const auto arguments = parse_arguments(argc, argv, parse_error);
     if (!arguments.has_value()) {
-        std::cerr << kUsage;
+        std::cerr << "koi-nnue-fixture: " << parse_error << '\n' << kUsage;
         return 2;
     }
 
