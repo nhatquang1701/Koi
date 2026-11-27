@@ -266,7 +266,7 @@ class CliSubcommandsTest(unittest.TestCase):
             disable_nnue=True,
         )
         self.assertEqual(see_san.returncode, 0, see_san.stderr)
-        self.assertEqual(see_san.stdout.strip(), "SEE e4d5 : +100 cp")
+        self.assertEqual(see_san.stdout.strip(), "SEE e4d5 : +0 cp")
 
     def test_invalid_perft_and_unknown_options(self) -> None:
         bad_depth = self._run(["perft", "99"], disable_nnue=True)

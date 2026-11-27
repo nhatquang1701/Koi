@@ -3257,7 +3257,7 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     require(san_raw.find("info string played 9 moves") != std::string::npos &&
                 san_raw.find("SAN     : 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O\n") !=
                     std::string::npos &&
-                san_raw.find("SEE e4d5 : +100 cp\n") != std::string::npos,
+                san_raw.find("SEE e4d5 : +0 cp\n") != std::string::npos,
             "interactive SAN makemove/see output mismatch; got:\n" + san_raw);
 }
 
