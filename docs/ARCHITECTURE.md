@@ -29,6 +29,7 @@ flowchart TD
 
 | File | Responsibility |
 | --- | --- |
+| `src/main.cpp`, `src/cli_support.*` | Entry point, signal/stack setup, CPU variant guard & dispatch, pre-boot CLI/env option parsing (`--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), and zero-network CLI subcommands (`compiler`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`). |
 | `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output (`detail/uci_support.*` never emits `"info string` literals). |
 | `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, `go` limit parser, network overhead estimator, WDL conversion, FEN flip helper, ASCII board/key/moves/book/tb/eval/annotate/compiler formatters, and benchmark FEN suite. |
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |
@@ -78,9 +79,9 @@ The clean HCE is an optional evaluator, not a second production default:
 - Evaluation is tapered mg/eg with explicit PST tables for every piece; the
   internal `KOI_HCE_*_SCALE` variables are development/tuning seams and are not
   a public UCI surface.
-- Selection: `EvalMode=hce` (stops/suppresses the active search first) or the
-  `KOI_EVALUATOR=hce` boot override, which needs no network. `EvalFile` remains
-  an NNUE loader and restores NNUE mode when it succeeds.
+- Selection: `--hce`, `EvalMode=hce` (stops/suppresses the active search first), or the
+  `KOI_EVALUATOR=hce` boot override, which needs no network. `EvalFile` and `--nnue <path>` remain
+  NNUE loaders and restore NNUE mode when loaded.
 - Stability rule: term changes are gated on Mac equal-time screens plus
   independent confirmations (>=126 games; larger where possible); a candidate
   that does not survive is reverted. No unproven evaluator change is kept.

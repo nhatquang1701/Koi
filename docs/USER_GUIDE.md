@@ -5,7 +5,7 @@ chess engine for standard chess. Written in C++26 and process-tested against
 **En Croissant** as the primary GUI workflow, it combines iterative-deepening
 alpha-beta search and a persistent transposition table with a gated Koi-native
 NNUE as the primary evaluator (and a clean hand-crafted classical evaluator
-selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce`). Search runs on a
+selectable via `--hce`, `EvalMode=hce`, or `KOI_EVALUATOR=hce`, plus `--nnue <path>` to load an explicit network). Search runs on a
 cancellable outer worker: `Threads = 1` runs the deterministic serial search,
 while `Threads > 1` starts Lazy SMP helper threads that search the same root
 against the shared transposition table while the main thread publishes the
@@ -44,70 +44,50 @@ cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release && 
 cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release && ctest --preset macos-arm64-release
 ```
 
-Available presets in [CMakePresets.json](../CMakePresets.json) include `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](../Makefile) (`make`, `make EXE=koi-engine`, `make bench`, `make compiler`, `make perft`, `make test`, `make docs`). Explicit toolchain requirements and manual CMake invocations follow below.
+Available presets in [CMakePresets.json](../CMakePresets.json) include `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](../Makefile) (`make`, `make profile-build` for PGO, `make EXE=koi-engine`, `make bench`, `make eval`, `make compiler`, `make perft`, `make test`, `make docs`). Explicit toolchain requirements and manual CMake invocations follow below:
 
-On Windows:
+=== "Windows x64"
 
-- A C++26-capable x64 MSVC toolchain (the CMake configuration selects
-  Visual Studio's `/std:c++latest` compiler mode). Run CMake from an x64
-  Native Tools Command Prompt or x64 Developer PowerShell for Visual Studio,
-  so `cl.exe` is selected; MinGW/GCC/Clang are not supported on Windows.
-- CMake 3.31 or newer.
-- Ninja.
+    - A C++26-capable x64 MSVC toolchain (the CMake configuration selects Visual Studio's `/std:c++latest` compiler mode). Run CMake from an x64 Native Tools Command Prompt or x64 Developer PowerShell for Visual Studio, so `cl.exe` is selected; MinGW/GCC/Clang are not supported on Windows.
+    - CMake 3.31 or newer.
+    - Ninja.
 
-On Linux (x86-64 only):
+    ```powershell
+    cmake -S . -B build\release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl
+    cmake --build build\release --config Release
+    ctest --test-dir build\release -C Release -j 8 --output-on-failure
+    ```
 
-- GCC 14+ or Clang 18+ (the CMake configuration requires one of the two and
-  selects `-std=c++26` / `-std=c++2c`).
-- CMake 3.31 or newer. Distributions such as Ubuntu 24.04 ship an older CMake,
-  so install a newer one first, for example with
-  `python3 -m pip install --upgrade cmake`, `pipx install cmake`, or the
-  Kitware APT repository.
-- Ninja (required for the C++26 named-module build) and a pthreads libc.
-- Optional: `pwsh` for the PowerShell process tests and Python 3 for the
-  Python tooling tests.
+=== "Linux x86-64"
 
-On macOS arm64 (Apple Silicon):
+    - GCC 14+ or Clang 18+ (the CMake configuration requires one of the two and selects `-std=c++26` / `-std=c++2c`).
+    - CMake 3.31 or newer. Distributions such as Ubuntu 24.04 ship an older CMake, so install a newer one first, for example with `python3 -m pip install --upgrade cmake`, `pipx install cmake`, or the Kitware APT repository.
+    - Ninja (required for the C++26 named-module build) and a `pthreads` libc.
+    - Optional: `pwsh` for the PowerShell process tests and Python 3 for the Python tooling tests.
 
-- Homebrew LLVM (clang 19+) is the recommended C++26 toolchain; AppleClang 18+
-  also works. Install the compiler and Ninja with `brew install llvm ninja`.
-- CMake 3.31 or newer, for example `python3 -m pip install --upgrade cmake`.
-- C++26 named modules are disabled on macOS (`-DKOI_BUILD_MODULES=OFF`), and
-  the Linux static-runtime policy does not apply (`-DKOI_STATIC_RUNTIME=OFF`).
-  The engine is CPU-only and uses the CPU NNUE evaluator by default (unless
-  `KOI_EVALUATOR=hce` or `EvalMode=hce` selects the clean classical evaluator).
-- Optional: `pwsh` for the PowerShell process tests and Python 3 for the
-  Python tooling tests.
+    ```bash
+    cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
+    cmake --build build/release --config Release
+    ctest --test-dir build/release -C Release -j 8 --output-on-failure
+    ```
 
-From an x64 Visual Studio developer shell in the repository root:
+=== "macOS arm64 (Apple Silicon)"
 
-```powershell
-cmake -S . -B build\release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl
-cmake --build build\release --config Release
-ctest --test-dir build\release -C Release -j 8 --output-on-failure
-```
+    - Homebrew LLVM (Clang 19+) is the recommended C++26 toolchain; AppleClang 18+ also works. Install the compiler and Ninja with `brew install llvm ninja`.
+    - CMake 3.31 or newer, for example `python3 -m pip install --upgrade cmake`.
+    - C++26 named modules are disabled on macOS (`-DKOI_BUILD_MODULES=OFF`), and the Linux static-runtime policy does not apply (`-DKOI_STATIC_RUNTIME=OFF`). The engine is CPU-only and uses the CPU NNUE evaluator by default (unless `--hce`, `KOI_EVALUATOR=hce`, or `EvalMode=hce` selects the clean classical evaluator).
+    - Optional: `pwsh` for the PowerShell process tests and Python 3 for the Python tooling tests.
 
-On Linux the equivalent commands use the system compiler; substitute
-`clang-18`/`clang++-18` for the Clang build:
-
-```bash
-cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
-cmake --build build/release --config Release
-ctest --test-dir build/release -C Release -j 8 --output-on-failure
-```
-
-On macOS arm64 (Apple Silicon) with Homebrew LLVM:
-
-```bash
-brew install llvm ninja
-cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" \
-  -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" \
-  -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
-cmake --build build/release --config Release
-ctest --test-dir build/release -C Release -j 8 --output-on-failure
-```
+    ```bash
+    brew install llvm ninja
+    cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" \
+      -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" \
+      -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
+    cmake --build build/release --config Release
+    ctest --test-dir build/release -C Release -j 8 --output-on-failure
+    ```
 
 C++26 named modules are auto-detected: they are built with MSVC, Clang 18+,
 and GCC 14+, and the CMake option `KOI_BUILD_MODULES=OFF` skips them (and the
@@ -899,8 +879,8 @@ ponderhit
 
 When the expected move arrives, `ponderhit` keeps the running ponder search and
 converts it in place to a normal timed search, so no speculative work is
-discarded. If the ponder search already finished or none is running, Koi answers
-with a bounded search of the current position. Send `stop` if the expected move
+discarded. If no ponder search is running, an idle `ponderhit` is ignored (no
+search starts). Send `stop` if the expected move
 did not arrive or the GUI cancels the ponder search.
 
 Menu labels can vary by Lucas Chess version. Use an absolute executable path,
