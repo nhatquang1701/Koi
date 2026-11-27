@@ -113,7 +113,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `eval` | — | Print active evaluator architecture (`NNUE` or `HCE`), score (stm & White), WDL, and phase |
 | `flip` | — | Toggle side to move when legal (clears en passant; rejects positions in check) |
 | `see` | `<uci-move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal move in centipawns |
-| `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) from the current position |
+| `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
 | `bench` | `[depth [hash [threads]]]` | Run the 16-position deterministic benchmark inside the active session |
 | `wait` | — | Block until any finite active search or `perft` finishes (useful in piped transcripts) |
 | `compiler` | — | Print engine version, git commit, compiler, C++26 standard, architecture, and ISA |
