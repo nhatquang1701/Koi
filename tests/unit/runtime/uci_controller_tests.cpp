@@ -3484,6 +3484,21 @@ void test_uci_support_helpers_direct() {
                 bc_json.find("\"source\":\"book\"") != std::string::npos &&
                 bc_json.find("\"candidate\":\"e2e4\"") != std::string::npos,
             "completion debug JSON helpers mismatch");
+
+    const std::string sm_json = format_search_move_debug_json(7, startpos, *e2e4, "search");
+    const std::string sm_none =
+        format_search_move_debug_json(7, startpos, std::nullopt, "tablebase");
+    const std::string bm_json = format_book_move_debug_json(7, startpos, *e2e4, 3);
+    require(sm_json.find("\"move\":\"e2e4\"") != std::string::npos &&
+                sm_json.find("\"source\":\"search\"") != std::string::npos &&
+                sm_json.find("\"after_fen\":\"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq") !=
+                    std::string::npos &&
+                sm_none.find("\"move\":\"0000\"") != std::string::npos &&
+                sm_none.find("\"source\":\"tablebase\"") != std::string::npos &&
+                bm_json.find("\"source\":\"book\"") != std::string::npos &&
+                bm_json.find("\"book_depth\":3") != std::string::npos &&
+                bm_json.find("\"move\":\"e2e4\"") != std::string::npos,
+            "move debug JSON helpers mismatch");
 }
 
 } // namespace

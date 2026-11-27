@@ -63,7 +63,7 @@ koi-engine bench                  # OpenBench-compatible deterministic benchmark
 koi-engine speedtest 1 128 3      # Timed multi-position NPS throughput check
 koi-engine compiler               # Print toolchain, C++ standard, and ISA capabilities
 koi-engine nnue [path]            # Inspect NNUE container version, shape, and SHA-256 checksum
-koi-engine d [fen]                # Print ASCII board, FEN, Zobrist key, and move count
+koi-engine d [fen]                # Print ASCII board, FEN, Zobrist key, move count, and FIDE state
 koi-engine fen [fen]              # Print resulting 6-field FEN (e.g. fen moves e2e4 e7e5)
 koi-engine key [fen]              # Print position, pawn, and Polyglot hash keys
 koi-engine moves [fen]            # List sorted legal UCI moves

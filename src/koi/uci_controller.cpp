@@ -42,7 +42,6 @@ using detail::BoundedLineRead;
 using detail::ParsedOption;
 using detail::Wdl;
 using detail::cecp_mate_score;
-using detail::debug_hex;
 using detail::debug_quoted;
 using detail::equals_ignore_case;
 using detail::find_uci_option;
@@ -964,13 +963,10 @@ void UciController::handle_setoption(std::istream& command) {
                 if (result.status == HashResizeStatus::reduced ||
                     result.status == HashResizeStatus::disabled ||
                     result.reason != HashResizeReason::none) {
-                    std::lock_guard lock(output_mutex_);
-                    if (protocol_mode_ != ProtocolMode::xboard) {
-                        output_ << "info string hash requested " << result.requested_mb
-                                << " MB effective " << result.effective_mb << " MB status "
-                                << hash_status_name(result.status) << " reason "
-                                << hash_reason_name(result.reason) << '\n' << std::flush;
-                    }
+                    write_uci_info_string("hash requested " + std::to_string(result.requested_mb) +
+                                          " MB effective " + std::to_string(result.effective_mb) +
+                                          " MB status " + std::string(hash_status_name(result.status)) +
+                                          " reason " + std::string(hash_reason_name(result.reason)));
                 }
             } catch (...) {
                 debug_event("hash resize failed outside the guarded allocation boundary");
@@ -1213,10 +1209,8 @@ void UciController::handle_setoption(std::istream& command) {
                                                ",\"enabled\":true");
         }
         std::lock_guard lock(output_mutex_);
-        if (protocol_mode_ != ProtocolMode::xboard) {
-            output_ << "info string evaluator nnue\n"
-                    << "info string NNUE enabled from " << resolved.string() << '\n' << std::flush;
-        }
+        write_uci_info_string_locked("evaluator nnue");
+        write_uci_info_string_locked("NNUE enabled from " + resolved.string());
         break;
     }
 
@@ -2153,24 +2147,12 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         completed.pv = validation.pv;
         completed.ponder_move = validation.ponder_move;
         if (debug_logging_enabled()) {
-            std::string after_fen = search_root.fen();
-            if (validation.best_move.has_value()) {
-                GameState after_move = search_root;
-                if (after_move.make_move(*validation.best_move)) {
-                    after_fen = after_move.fen();
-                }
-            }
-            const std::string source = result.stats.tbhits != 0 ? "tablebase" :
+            const std::string_view source = result.stats.tbhits != 0 ? "tablebase" :
                 (limits.ponder ? "ponder" : "search");
             debug_json_event(
                 "move",
-                "\"generation\":" + std::to_string(generation) +
-                    ",\"root_fen\":" + debug_quoted(search_root.fen()) +
-                    ",\"root_key\":" + debug_quoted(debug_hex(search_root.position_key())) +
-                    ",\"move\":" + debug_quoted(
-                        validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
-                    ",\"after_fen\":" + debug_quoted(after_fen) +
-                    ",\"source\":" + debug_quoted(source));
+                detail::format_search_move_debug_json(
+                    generation, search_root, validation.best_move, source));
         }
         if (result.failed) {
             // A setup/internal failure still answers with a legal fallback move,
@@ -2808,15 +2790,11 @@ void UciController::write_book_completion(const std::uint64_t generation, const 
         write_no_move_reply(output_, protocol, root);
         return;
     }
-    debug_json_event(
-        "move",
-        "\"generation\":" + std::to_string(generation) +
-            ",\"root_fen\":" + debug_quoted(root.fen()) +
-            ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
-            ",\"move\":" + debug_quoted(
-                validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
-            ",\"source\":\"book\"" +
-            ",\"book_depth\":" + std::to_string(ply));
+    if (debug_logging_enabled()) {
+        debug_json_event(
+            "move",
+            detail::format_book_move_debug_json(generation, root, validation.best_move, ply));
+    }
     std::lock_guard lock(output_mutex_);
     if (generation != generation_) {
         return;

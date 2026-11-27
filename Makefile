@@ -25,7 +25,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release profile-build bench speedtest eval nnue compiler perft smoke test docs clean help
+.PHONY: all release profile-build bench speedtest eval nnue compiler perft d smoke test docs clean help
 
 all: release
 
@@ -101,7 +101,18 @@ compiler: release
 	"$(BUILD_DIR)/koi-engine" compiler
 
 perft: release
-	"$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)"
+	@if [ -n "$(FEN)" ]; then \
+	  "$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)" "$(FEN)"; \
+	else \
+	  "$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)"; \
+	fi
+
+d: release
+	@if [ -n "$(FEN)" ]; then \
+	  "$(BUILD_DIR)/koi-engine" d "$(FEN)"; \
+	else \
+	  "$(BUILD_DIR)/koi-engine" d; \
+	fi
 
 smoke: release
 	@if [ -n "$(EVALFILE)" ]; then \
@@ -131,7 +142,8 @@ help:
 	@echo "  make eval [EVALFILE=...] [FEN=...]     Evaluate startpos or FEN with NNUE/HCE"
 	@echo "  make nnue [EVALFILE=...]               Inspect NNUE container metadata and payload SHA-256"
 	@echo "  make compiler                          Build and print compiler / ISA metadata"
-	@echo "  make perft [PERFT_DEPTH=5]             Build and run timed startpos perft divide"
+	@echo "  make perft [PERFT_DEPTH=5] [FEN=...]   Build and run timed perft divide"
+	@echo "  make d [FEN=...]                       Build and print ASCII board, FEN, key, and FIDE state"
 	@echo "  make smoke [EVALFILE=...]              Run one-shot UCI handshake + depth-2 search smoke check"
 	@echo "  make test                              Build full suite and run CTest"
 	@echo "  make docs                              Build MkDocs Material site strictly"

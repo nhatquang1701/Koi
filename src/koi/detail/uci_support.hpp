@@ -193,6 +193,12 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
     std::uint64_t generation, const GameState& root,
     const CompletionCandidate& candidate, const CompletionValidation& validation,
     Move book_move, std::string_view last_command);
+[[nodiscard]] std::string format_search_move_debug_json(
+    std::uint64_t generation, const GameState& search_root,
+    const std::optional<Move>& best_move, std::string_view source);
+[[nodiscard]] std::string format_book_move_debug_json(
+    std::uint64_t generation, const GameState& root,
+    const std::optional<Move>& best_move, std::size_t book_depth);
 [[nodiscard]] std::optional<std::pair<std::string, std::string>>
 parse_xboard_option_assignment(std::string_view text);
 [[nodiscard]] std::optional<std::chrono::milliseconds>

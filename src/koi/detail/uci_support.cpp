@@ -1465,4 +1465,33 @@ std::string format_book_completion_debug_json(
            ",\"last_command\":" + debug_quoted(last_command);
 }
 
+std::string format_search_move_debug_json(
+    const std::uint64_t generation, const GameState& search_root,
+    const std::optional<Move>& best_move, const std::string_view source) {
+    std::string after_fen = search_root.fen();
+    if (best_move.has_value()) {
+        GameState after_move = search_root;
+        if (after_move.make_move(*best_move)) {
+            after_fen = after_move.fen();
+        }
+    }
+    return "\"generation\":" + std::to_string(generation) +
+           ",\"root_fen\":" + debug_quoted(search_root.fen()) +
+           ",\"root_key\":" + debug_quoted(debug_hex(search_root.position_key())) +
+           ",\"move\":" + debug_quoted(best_move.has_value() ? best_move->uci() : "0000") +
+           ",\"after_fen\":" + debug_quoted(after_fen) +
+           ",\"source\":" + debug_quoted(source);
+}
+
+std::string format_book_move_debug_json(
+    const std::uint64_t generation, const GameState& root,
+    const std::optional<Move>& best_move, const std::size_t book_depth) {
+    return "\"generation\":" + std::to_string(generation) +
+           ",\"root_fen\":" + debug_quoted(root.fen()) +
+           ",\"root_key\":" + debug_quoted(debug_hex(root.position_key())) +
+           ",\"move\":" + debug_quoted(best_move.has_value() ? best_move->uci() : "0000") +
+           ",\"source\":\"book\"" +
+           ",\"book_depth\":" + std::to_string(book_depth);
+}
+
 } // namespace koi::detail
