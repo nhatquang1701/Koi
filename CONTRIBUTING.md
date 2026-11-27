@@ -42,8 +42,9 @@ Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gc
 On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engine-avx512` or `koi-engine-avx2` when the host CPU supports them (with fast `PEXT`), or runs the baseline build in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary.
 
 ```bash
-# Deterministic OpenBench-compatible node benchmark (plus PGO via Makefile: `make profile-build` / `make eval`)
+# Deterministic OpenBench-compatible node benchmark & timed NPS throughput check (plus Makefile targets: `make smoke`, `make speedtest`, `make profile-build`, `make eval`)
 ./build/windows-release/koi-engine.exe bench
+./build/windows-release/koi-engine.exe speedtest 1 128 3
 
 # Zero-network position & asset inspection, compiler/ISA readout, eval (--hce / --nnue <path>), & fast perft
 ./build/windows-release/koi-engine.exe compiler
@@ -52,8 +53,8 @@ On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engin
 ./build/windows-release/koi-engine.exe see e2e4
 ./build/windows-release/koi-engine.exe perft 4 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 
-# Interactive UCI smoke check
-printf "uci\nisready\nposition startpos\ngo depth 4\nquit\n" | ./build/linux-gcc-release/koi-engine
+# Inline UCI smoke check (or `printf "...\nwait\nquit\n" | ./build/.../koi-engine`)
+./build/linux-gcc-release/koi-engine -c "uci" -c "isready" -c "position startpos" -c "go depth 4"
 ```
 
 Supported zero-network CLI inspection subcommands also include `key`, `moves`, `flip`, `book [fen]` (optional `--book <path>`), and `tb [fen]` (optional `--syzygy <path>`).

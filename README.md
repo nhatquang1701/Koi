@@ -76,8 +76,9 @@ Koi requires zero configuration files: `koi.nnue`, `book.bin`, and any user-supp
 In addition to standard UCI and XBoard/CECP v2 commands, Koi supports standard chess-engine terminal and benchmark commands:
 
 ```bash
-# OpenBench-compatible deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread)
+# OpenBench-compatible deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread) and timed speedtest
 koi-engine bench [depth [hash [threads]]]
+koi-engine speedtest [threads [hash [seconds]]]
 
 # One-shot diagnostics: compiler/ISA, board/keys/moves/flip/book/TB/SEE (zero-network), eval, and timed perft divide
 koi-engine compiler
@@ -106,6 +107,7 @@ Inside an interactive session (`koi-engine`):
 | Command | Description |
 | :--- | :--- |
 | `bench [depth [hash [threads]]]` | Runs the deterministic benchmark suite and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second` |
+| `speedtest [threads [hash [seconds]]]` | Runs a timed multi-position NPS throughput benchmark (`defaults: 1 128 3`) |
 | `d` | Displays an ASCII board of the current position, FEN, Zobrist key, checkers, and legal move count |
 | `fen` | Prints the six-field FEN of the current position |
 | `key` | Prints the hexadecimal Zobrist position, pawn, and Polyglot book keys |

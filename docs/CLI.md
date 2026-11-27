@@ -13,6 +13,10 @@ Run one-shot commands directly from a shell (`koi-engine.exe` on Windows, `koi-e
 koi-engine bench [depth [hash [threads]]]
 koi-engine --bench [depth [hash [threads]]]
 
+# Timed multi-position NPS throughput benchmark (defaults: 1 thread, 128 MB hash, 3 seconds)
+koi-engine speedtest [threads [hash [seconds]]]
+koi-engine --speedtest [threads [hash [seconds]]]
+
 # Build metadata, C++26 standard, and active SIMD ISA (no NNUE network required)
 koi-engine compiler
 koi-engine --compiler
@@ -47,7 +51,7 @@ koi-engine --help         # or -h
 ```
 
 !!! note "Zero-network subcommands, unquoted FENs & batch mode"
-    `compiler`, `perft`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before NNUE network discovery and work without a `koi.nnue` file. Both quoted (`koi-engine perft 2 "..."`) and unquoted 6-field FEN arguments are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, illegal `see` or `flip` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make smoke`, `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
+    `compiler`, `perft`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before NNUE network discovery and work without a `koi.nnue` file. Both quoted (`koi-engine perft 2 "..."`) and unquoted 6-field FEN arguments are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, illegal `see` or `flip` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make smoke`, `make speedtest`, `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
 
 ### Example Outputs
 
@@ -126,6 +130,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `see` | `<uci-move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal move in centipawns |
 | `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
 | `bench` | `[depth [hash [threads]]]` | Run the 16-position deterministic benchmark inside the active session |
+| `speedtest` | `[threads [hash [seconds]]]` | Run a timed multi-position NPS throughput benchmark (`seconds` in `1..60`) |
 | `wait` | — | Block until any finite active search or `perft` finishes (useful in piped transcripts) |
 | `compiler` | — | Print engine version, git commit, compiler, C++26 standard, architecture, and ISA |
 | `help` | — | Print the interactive command summary |

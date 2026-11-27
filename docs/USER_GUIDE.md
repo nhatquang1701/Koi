@@ -493,7 +493,7 @@ cases run as ordinary fatal tests.
 
 In addition to standard UCI/XBoard sessions, `koi-engine` supports standard chess-engine CLI options and interactive terminal commands:
 
-- **CLI subcommands & flags:** `koi-engine -c <cmd>` (`--cmd <cmd>`, repeatable batch execution with automatic `wait` + `quit`), `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine compiler` (`--compiler`), `koi-engine d`/`--display [fen]`, `koi-engine key [fen]`, `koi-engine moves [fen]`, `koi-engine flip [fen]`, `koi-engine book [fen]` (optional `--book <path>`), `koi-engine tb [fen]` (optional `--syzygy <path>`), `koi-engine see <move> [fen]`, `koi-engine eval [fen]` (`--eval [fen]`), `koi-engine perft <depth> [fen]` (`1..10`), `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
+- **CLI subcommands & flags:** `koi-engine -c <cmd>` (`--cmd <cmd>`, repeatable batch execution with automatic `wait` + `quit`), `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine speedtest [threads [hash [seconds]]]` (or `--speedtest`, timed multi-position NPS throughput benchmark), `koi-engine compiler` (`--compiler`), `koi-engine d`/`--display [fen]`, `koi-engine key [fen]`, `koi-engine moves [fen]`, `koi-engine flip [fen]`, `koi-engine book [fen]` (optional `--book <path>`), `koi-engine tb [fen]` (optional `--syzygy <path>`), `koi-engine see <move> [fen]`, `koi-engine eval [fen]` (`--eval [fen]`), `koi-engine perft <depth> [fen]` (`1..10`), `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
 - **Interactive commands (inside a UCI session):**
   - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, check status, and legal move count.
   - `fen` — prints the six-field FEN of the current position.
@@ -506,6 +506,7 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
   - `see <move>` — prints the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns.
   - `compiler` — prints build version, commit hash, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`).
   - `bench [depth [hash [threads]]]` — runs the deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread) and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second`.
+  - `speedtest [threads [hash [seconds]]]` — runs a timed multi-position NPS throughput benchmark (defaults: 1 thread, 128 MB hash, 3 seconds).
   - `perft <depth>` / `go perft <depth>` — runs an interruptible perft divide (`depth 1..10`) from the current position.
   - `wait` — blocks until any finite active search or `perft` completes before executing the next command.
   - `help` — prints a concise interactive command reference.

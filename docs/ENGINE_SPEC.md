@@ -27,7 +27,7 @@ and measurement with `EvalMode=hce` or the `KOI_EVALUATOR=hce` boot override.
 | --- | --- | --- |
 | Product name | `Koi` | `src/koi/uci_controller.cpp` (`write_handshake`) |
 | Author string | `Koi team` | `src/koi/uci_controller.cpp` |
-| Protocol | UCI (Universal Chess Interface) | `src/koi/uci_controller.cpp` |
+| Protocol | UCI (default); also supports XBoard/CECP v2, USI, UCCI, and UCI_Cyclone | `src/koi/uci_controller.cpp` |
 | Rules variant | Standard chess only; no Chess960 or other variants | `src/koi/position.cpp` |
 | Language | C++26 (`CMAKE_CXX_STANDARD 26`) | `CMakeLists.txt` |
 | License | GPL-3.0 | `LICENSE` |
@@ -798,7 +798,8 @@ Rules for `setoption`:
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check; also zero-network CLI `flip [fen]`). |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns (also zero-network CLI `see <move> [fen]`). |
 | `perft <depth>` | Runs an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position (also CLI `perft <depth> [fen]`). |
-| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `-c`/`--cmd`, `compiler`, `eval`, `perft`, `--hce`, `--nnue <path>`, `--version`, `--help`, `--engine-json`, `--protocol`). |
+| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `speedtest`, `-c`/`--cmd`, `compiler`, `eval`, `perft`, `--hce`, `--nnue <path>`, `--version`, `--help`, `--engine-json`, `--protocol`). |
+| `speedtest [threads [hash [seconds]]]` | Runs a timed multi-position NPS throughput benchmark across the leading benchmark positions (defaults `1 128 3`; also invocable as CLI `speedtest` / `--speedtest`). |
 | `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |
 | `compiler` | Prints engine version, commit, compiler, C++26 standard, architecture, and ISA (also CLI `compiler`/`--compiler`). |
 | `help` | Prints the interactive command summary. |
@@ -972,9 +973,9 @@ and `KOI_TEST_SHARD`.
 | --- | --- |
 | Rules and state | `koi_core_tests`, `koi_rules_tests`, `native_rule_state_tests`, `perft_tests`, `koi_shadow_diff_tests` |
 | Evaluation | `evaluation_architecture_tests`, `nnue_boundary_tests`, `evaluation_features_tests` |
-| Search | `koi_search_tests_1of4`..`4of4`, `search_ordering_tests`, `search_architecture_tests`, `search_policy_tests`, `search_runtime_tests`, `search_service_tests`, `static_exchange_tests`, `time_manager_tests`, `transposition_table_tests`, `completion_gate_tests`, `koi_strength_tests`, `koi_soak_tests` |
+| Search | `koi_search_tests_1of4`..`4of4`, `search_ordering_tests`, `search_architecture_tests`, `search_policy_tests`, `search_runtime_tests`, `search_service_tests`, `static_exchange_tests`, `time_manager_tests`, `transposition_table_tests`, `completion_gate_tests`, `cli_support_tests`, `uci_controller_tests`, `koi_strength_tests`, `koi_soak_tests` |
 | Process (PowerShell) | `koi_engine_process`, `koi_protocol_fuzz_process` (deterministic adversarial UCI corpus), `koi_protocol_soak_process` (Threads/Hash churn soak with an RSS bound), `koi_protocol_option_churn_process` (option changes during an active search), `koi_protocol_broken_pipe_process` (GUI-disconnect/SIGPIPE shutdown), `koi_engine_perft_responsiveness`, `koi_engine_variant_process`, `koi_engine_en_croissant_process`, `koi_engine_time_safety_process`, `koi_benchmark_process`, `koi_uci_match_process`, `koi_uci_match_clock`, `koi_stockfish_strength_option`, `cutechess_stability_diagnostics`, `cutechess_stability_smoke`, `hash_memory_stability`, `windows_ci_configuration`, `install_book_script`, `package_release_layout` |
-| Python | `elo_*_python`, `release_*_python`, `strength_*_python`, `nnue_*_python`, `koi_*_python`, `measurement_*_python`, `bullet_*_python`, `tune_*_python` |
+| Python | `cli_subcommands_python`, `elo_*_python`, `release_*_python`, `strength_*_python`, `nnue_*_python`, `koi_*_python`, `measurement_*_python`, `bullet_*_python`, `tune_*_python` |
 
 Labels: `unit`, `evaluation`, `search`, `runtime`, `rules`, `integration`,
 `tools`, `process`, `reliability`, `uci`, `matches`, `packaging`, `python`,
@@ -986,7 +987,7 @@ unit -LE heavy` is the fast unit set. Search shards, `koi_strength_tests`,
 
 The exact registered count depends on optional dependencies (`pwsh`, Python 3,
 Cute Chess, `KOI_BUILD_SHADOW_DIFF`, modules). The reference Windows Release +
-Python + Cute Chess configuration registers **86 tests** (`85` without
+Python + Cute Chess configuration registers **87 tests** (`86` without
 `cutechess_stability_smoke`); always treat `ctest -N` on the actual
 build as authoritative.
 
