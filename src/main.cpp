@@ -168,8 +168,23 @@ void write_help() {
               << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n"
               << "  compiler, --compiler                     Print compiler, C++26 standard, and dispatched ISA\n"
               << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
-              << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n\n"
+              << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n"
+              << "  d, --display [fen]                       Display ASCII board, FEN, Zobrist key, and move count\n"
+              << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
+              << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n\n"
               << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait, help\n";
+}
+
+std::optional<koi::GameState> resolve_cli_position(const std::optional<std::string>& fen) {
+    if (!fen.has_value()) {
+        return koi::GameState::startpos();
+    }
+    const auto parsed = koi::GameState::from_fen(*fen);
+    if (!parsed.has_value()) {
+        std::cerr << "koi-engine: invalid FEN '" << *fen << "'\n";
+        return std::nullopt;
+    }
+    return *parsed;
 }
 
 void set_environment_value(const char* name, std::string_view value) noexcept {
@@ -228,9 +243,13 @@ int main(int argc, char* argv[]) {
     std::size_t bench_threads = koi::UciController::kDefaultBenchThreads;
     bool cli_compiler = false;
     bool cli_eval = false;
+    bool cli_display = false;
+    bool cli_key = false;
+    bool cli_moves = false;
     std::optional<std::string> cli_eval_fen;
     std::optional<int> cli_perft_depth;
     std::optional<std::string> cli_perft_fen;
+    std::optional<std::string> cli_inspect_fen;
     constexpr std::size_t kMaximumBenchHashMb = 4'096;
     const std::size_t max_bench_threads = koi::maximum_search_threads();
     const auto collect_trailing_fen = [argc, argv](int& idx,
@@ -270,6 +289,33 @@ int main(int argc, char* argv[]) {
         if (arg == "compiler" || arg == "--compiler") {
             cli_compiler = true;
             set_environment_value("KOI_CLI_COMPILER", "1");
+            continue;
+        }
+        if (arg == "d" || arg == "--display") {
+            cli_display = true;
+            set_environment_value("KOI_CLI_DISPLAY", "1");
+            collect_trailing_fen(index, cli_inspect_fen);
+            if (cli_inspect_fen.has_value()) {
+                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
+            }
+            continue;
+        }
+        if (arg == "key") {
+            cli_key = true;
+            set_environment_value("KOI_CLI_KEY", "1");
+            collect_trailing_fen(index, cli_inspect_fen);
+            if (cli_inspect_fen.has_value()) {
+                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
+            }
+            continue;
+        }
+        if (arg == "moves") {
+            cli_moves = true;
+            set_environment_value("KOI_CLI_MOVES", "1");
+            collect_trailing_fen(index, cli_inspect_fen);
+            if (cli_inspect_fen.has_value()) {
+                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
+            }
             continue;
         }
         if (arg == "eval" || arg == "--eval") {
@@ -349,7 +395,8 @@ int main(int argc, char* argv[]) {
         } else {
             std::cerr << "koi-engine: unknown option '" << arg
                       << "' (supported: --version, --help, --engine-json, --protocol <name>, "
-                         "bench [depth [hash [threads]]], compiler, eval [fen], perft <depth> [fen]).\n";
+                         "bench [depth [hash [threads]]], compiler, eval [fen], "
+                         "perft <depth> [fen], d [fen], key [fen], moves [fen]).\n";
             return 2;
         }
         if (initial_protocol.has_value()) {
@@ -372,6 +419,30 @@ int main(int argc, char* argv[]) {
         if (const char* env_compiler = std::getenv("KOI_CLI_COMPILER");
             env_compiler != nullptr && std::string_view(env_compiler) == "1") {
             cli_compiler = true;
+        }
+    }
+    if (!cli_display) {
+        if (const char* env_display = std::getenv("KOI_CLI_DISPLAY");
+            env_display != nullptr && std::string_view(env_display) == "1") {
+            cli_display = true;
+        }
+    }
+    if (!cli_key) {
+        if (const char* env_key = std::getenv("KOI_CLI_KEY");
+            env_key != nullptr && std::string_view(env_key) == "1") {
+            cli_key = true;
+        }
+    }
+    if (!cli_moves) {
+        if (const char* env_moves = std::getenv("KOI_CLI_MOVES");
+            env_moves != nullptr && std::string_view(env_moves) == "1") {
+            cli_moves = true;
+        }
+    }
+    if (!cli_inspect_fen.has_value()) {
+        if (const char* env_fen = std::getenv("KOI_CLI_FEN");
+            env_fen != nullptr && *env_fen != '\0') {
+            cli_inspect_fen = env_fen;
         }
     }
     if (!cli_eval) {
@@ -443,16 +514,26 @@ int main(int argc, char* argv[]) {
             KOI_ENGINE_BUILD_VERSION, KOI_ENGINE_BUILD_COMMIT) << std::flush;
         return 0;
     }
-    if (cli_perft_depth.has_value()) {
-        koi::GameState root = koi::GameState::startpos();
-        if (cli_perft_fen.has_value()) {
-            const auto parsed = koi::GameState::from_fen(*cli_perft_fen);
-            if (!parsed.has_value()) {
-                std::cerr << "koi-engine: invalid FEN '" << *cli_perft_fen << "'\n";
-                return 2;
-            }
-            root = *parsed;
+    if (cli_display || cli_key || cli_moves) {
+        const std::optional<koi::GameState> root = resolve_cli_position(cli_inspect_fen);
+        if (!root.has_value()) {
+            return 2;
         }
+        if (cli_display) {
+            std::cout << koi::detail::format_ascii_board(*root) << std::flush;
+        } else if (cli_key) {
+            std::cout << koi::detail::format_key_info(*root) << std::flush;
+        } else {
+            std::cout << koi::detail::format_legal_moves(*root) << std::flush;
+        }
+        return 0;
+    }
+    if (cli_perft_depth.has_value()) {
+        const std::optional<koi::GameState> resolved = resolve_cli_position(cli_perft_fen);
+        if (!resolved.has_value()) {
+            return 2;
+        }
+        const koi::GameState& root = *resolved;
         const std::vector<koi::Move> legal_moves = root.legal_moves();
         const auto started = std::chrono::steady_clock::now();
         std::uint64_t total = 0;

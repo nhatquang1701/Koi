@@ -114,6 +114,36 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(unquoted.returncode, 0, unquoted.stderr)
         self.assertIn("Nodes searched: 2039", unquoted.stdout)
 
+    def test_position_inspection_subcommands_without_network(self) -> None:
+        disp = self._run(["d"], disable_nnue=True)
+        self.assertEqual(disp.returncode, 0, disp.stderr)
+        self.assertIn("Moves : 20", disp.stdout)
+
+        kiwipete = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+        disp_unquoted = self._run(["d", *kiwipete.split()], disable_nnue=True)
+        self.assertEqual(disp_unquoted.returncode, 0, disp_unquoted.stderr)
+        self.assertIn(kiwipete, disp_unquoted.stdout)
+        self.assertIn("Moves : 48", disp_unquoted.stdout)
+
+        key_out = self._run(["key"], disable_nnue=True)
+        self.assertEqual(key_out.returncode, 0, key_out.stderr)
+        self.assertIn("Position key :", key_out.stdout)
+        self.assertIn("Pawn key     :", key_out.stdout)
+        self.assertIn("Polyglot key :", key_out.stdout)
+
+        moves_out = self._run(["moves"], disable_nnue=True)
+        self.assertEqual(moves_out.returncode, 0, moves_out.stderr)
+        self.assertIn("Legal moves (20): a2a3 ", moves_out.stdout)
+
+        mate_moves = self._run(["moves", "8/8/8/8/8/6K1/5Q2/7k b - - 0 1"], disable_nnue=True)
+        self.assertEqual(mate_moves.returncode, 0, mate_moves.stderr)
+        self.assertEqual(mate_moves.stdout.strip(), "Legal moves (0): (none)")
+
+        for cmd in ("d", "key", "moves"):
+            bad = self._run([cmd, "bad fen"], disable_nnue=True)
+            self.assertEqual(bad.returncode, 2)
+            self.assertIn("invalid FEN", bad.stderr)
+
     def test_invalid_perft_and_unknown_options(self) -> None:
         bad_depth = self._run(["perft", "99"], disable_nnue=True)
         self.assertEqual(bad_depth.returncode, 2)
