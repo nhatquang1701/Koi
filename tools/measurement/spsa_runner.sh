@@ -7,6 +7,7 @@
 #   SPSA_REFERENCE  reference engine binary (default ~/koi-run/koi-engine-spsa-base)
 #   SPSA_OPENINGS   opening corpus (default tests/data/openings/openings-release-strength-160.txt)
 #   SPSA_NODES      nodes per move (default 10000)
+#   SPSA_EVAL_FILE  optional NNUE path forwarded via -KoiEvalFile
 set -euo pipefail
 if [ "$#" -lt 3 ]; then
     echo "usage: spsa_runner.sh <dir> <tag> <params-json> [games]" >&2
@@ -21,6 +22,14 @@ cd "$root"
 reference=${SPSA_REFERENCE:-$HOME/koi-run/koi-engine-spsa-base}
 openings=${SPSA_OPENINGS:-tests/data/openings/openings-release-strength-160.txt}
 nodes=${SPSA_NODES:-10000}
+default_eval="$root/artifacts/networks/koi-v9-hm10-h256-official.nnue"
+if [ "${SPSA_EVAL_FILE+set}" = set ]; then
+    eval_file="$SPSA_EVAL_FILE"
+elif [ -f "$default_eval" ]; then
+    eval_file="$default_eval"
+else
+    eval_file=""
+fi
 half=$(( games / 2 ))
 if [ "$half" -lt 1 ]; then
     half=1
@@ -34,9 +43,14 @@ git checkout -- src/ 2>/dev/null || true
 if [ -d "$dir/src" ]; then
     cp -R "$dir/src/." src/
 fi
-cmake --build build/release -j 6 > "$dir/build.log" 2>&1
+cmake --build build/release --target koi_engine koi_replay -j 6 > "$dir/build.log" 2>&1
 
 head -n "$half" "$openings" > "$dir/openings.txt"
+
+match_args=()
+if [ -n "$eval_file" ]; then
+    match_args=(-KoiEvalFile "$eval_file")
+fi
 
 for color in white black; do
     pwsh -NoProfile -File tools/stability/uci_match.ps1 \
@@ -48,7 +62,8 @@ for color in white black; do
         -CompactSearchInfo \
         -ReplayPath build/release/koi-replay \
         -OpeningFile "$dir/openings.txt" \
-        -OutputDirectory "$dir/match-$color" > "$dir/match-$color.log" 2>&1
+        -OutputDirectory "$dir/match-$color" \
+        "${match_args[@]}" > "$dir/match-$color.log" 2>&1
 done
 
 python3 - "$dir/match-white" "$dir/match-black" "$dir/score.json" <<'PY'

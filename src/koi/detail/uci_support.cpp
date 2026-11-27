@@ -52,6 +52,60 @@ std::string format_eval_tokens(const MoveScoreEval& eval) {
     return "cp " + std::to_string(eval.score_cp);
 }
 
+std::optional<ParsedOption> parse_setoption(const std::vector<std::string>& tokens) {
+    if (tokens.size() < 2 || tokens[0] != "name") {
+        return std::nullopt;
+    }
+    const auto value = std::find(tokens.begin() + 1, tokens.end(), "value");
+    const std::size_t value_index = static_cast<std::size_t>(value - tokens.begin());
+    if (value == tokens.end() || value_index == 1) {
+        return ParsedOption{join_tokens(tokens, 1, tokens.size()), {}};
+    }
+    return ParsedOption{join_tokens(tokens, 1, value_index),
+                        join_tokens(tokens, value_index + 1, tokens.size())};
+}
+
+std::string debug_square(const Square square) {
+    return square.index() < Square::kInvalid ? square.uci() : "-";
+}
+
+std::string debug_castling(const std::uint8_t rights) {
+    std::string result;
+    if ((rights & kWhiteKingSideCastling) != 0) result += 'K';
+    if ((rights & kWhiteQueenSideCastling) != 0) result += 'Q';
+    if ((rights & kBlackKingSideCastling) != 0) result += 'k';
+    if ((rights & kBlackQueenSideCastling) != 0) result += 'q';
+    return result.empty() ? "-" : result;
+}
+
+std::string debug_limits(const SearchLimits& limits) {
+    std::ostringstream stream;
+    stream << "depth=" << debug_optional(limits.depth)
+           << ",nodes=" << debug_optional(limits.nodes)
+           << ",movetime_ms=" <<
+        (limits.movetime.has_value() ? std::to_string(limits.movetime->count()) : "-")
+           << ",wtime_ms=" <<
+        (limits.white_clock.has_value() ? std::to_string(limits.white_clock->remaining.count()) : "-")
+           << ",btime_ms=" <<
+        (limits.black_clock.has_value() ? std::to_string(limits.black_clock->remaining.count()) : "-")
+           << ",winc_ms=" <<
+        (limits.white_clock.has_value() ? std::to_string(limits.white_clock->increment.count()) : "-")
+           << ",binc_ms=" <<
+        (limits.black_clock.has_value() ? std::to_string(limits.black_clock->increment.count()) : "-")
+           << ",movestogo=" << debug_optional(limits.moves_to_go)
+           << ",infinite=" << (limits.infinite ? "true" : "false")
+           << ",ponder=" << (limits.ponder ? "true" : "false")
+           << ",searchmoves=" << (limits.search_moves_specified ? "true" : "false");
+    if (limits.search_moves_specified) {
+        stream << ",searchmove_list=";
+        for (std::size_t index = 0; index < limits.search_moves.size(); ++index) {
+            if (index != 0) stream << ',';
+            stream << limits.search_moves[index].uci();
+        }
+    }
+    return stream.str();
+}
+
 } // namespace
 
 BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& line,
@@ -148,19 +202,6 @@ bool equals_ignore_case(const std::string_view left, const std::string_view righ
         }
     }
     return true;
-}
-
-std::optional<ParsedOption> parse_setoption(const std::vector<std::string>& tokens) {
-    if (tokens.size() < 2 || tokens[0] != "name") {
-        return std::nullopt;
-    }
-    const auto value = std::find(tokens.begin() + 1, tokens.end(), "value");
-    const std::size_t value_index = static_cast<std::size_t>(value - tokens.begin());
-    if (value == tokens.end() || value_index == 1) {
-        return ParsedOption{join_tokens(tokens, 1, tokens.size()), {}};
-    }
-    return ParsedOption{join_tokens(tokens, 1, value_index),
-                        join_tokens(tokens, value_index + 1, tokens.size())};
 }
 
 std::optional<ParsedOption> parse_setoption_for_protocol(const std::vector<std::string>& tokens,
@@ -342,19 +383,6 @@ std::string debug_quoted(const std::string_view value) {
     return result;
 }
 
-std::string debug_square(const Square square) {
-    return square.index() < Square::kInvalid ? square.uci() : "-";
-}
-
-std::string debug_castling(const std::uint8_t rights) {
-    std::string result;
-    if ((rights & kWhiteKingSideCastling) != 0) result += 'K';
-    if ((rights & kWhiteQueenSideCastling) != 0) result += 'Q';
-    if ((rights & kBlackKingSideCastling) != 0) result += 'k';
-    if ((rights & kBlackQueenSideCastling) != 0) result += 'q';
-    return result.empty() ? "-" : result;
-}
-
 std::string debug_hex(const std::uint64_t value) {
     std::ostringstream stream;
     stream << std::hex << std::setw(16) << std::setfill('0') << value;
@@ -379,34 +407,6 @@ std::uint64_t legal_move_digest(const std::vector<Move>& legal_moves) {
         digest *= 1099511628211ULL;
     }
     return digest;
-}
-
-std::string debug_limits(const SearchLimits& limits) {
-    std::ostringstream stream;
-    stream << "depth=" << debug_optional(limits.depth)
-           << ",nodes=" << debug_optional(limits.nodes)
-           << ",movetime_ms=" <<
-        (limits.movetime.has_value() ? std::to_string(limits.movetime->count()) : "-")
-           << ",wtime_ms=" <<
-        (limits.white_clock.has_value() ? std::to_string(limits.white_clock->remaining.count()) : "-")
-           << ",btime_ms=" <<
-        (limits.black_clock.has_value() ? std::to_string(limits.black_clock->remaining.count()) : "-")
-           << ",winc_ms=" <<
-        (limits.white_clock.has_value() ? std::to_string(limits.white_clock->increment.count()) : "-")
-           << ",binc_ms=" <<
-        (limits.black_clock.has_value() ? std::to_string(limits.black_clock->increment.count()) : "-")
-           << ",movestogo=" << debug_optional(limits.moves_to_go)
-           << ",infinite=" << (limits.infinite ? "true" : "false")
-           << ",ponder=" << (limits.ponder ? "true" : "false")
-           << ",searchmoves=" << (limits.search_moves_specified ? "true" : "false");
-    if (limits.search_moves_specified) {
-        stream << ",searchmove_list=";
-        for (std::size_t index = 0; index < limits.search_moves.size(); ++index) {
-            if (index != 0) stream << ',';
-            stream << limits.search_moves[index].uci();
-        }
-    }
-    return stream.str();
 }
 
 std::vector<Move> legal_pv_prefix(const GameState& root, const std::vector<Move>& pv) {

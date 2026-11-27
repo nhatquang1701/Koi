@@ -111,8 +111,6 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
     const std::vector<std::string>& tokens, std::size_t first, std::size_t last);
 [[nodiscard]] bool equals_ignore_case(std::string_view left, std::string_view right) noexcept;
 
-[[nodiscard]] std::optional<ParsedOption> parse_setoption(
-    const std::vector<std::string>& tokens);
 // UCCI allows `setoption <option> <value>` without `name`/`value` keywords in
 // addition to standard `setoption name <option> value <value>`.
 [[nodiscard]] std::optional<ParsedOption> parse_setoption_for_protocol(
@@ -131,11 +129,8 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] Wdl score_to_wdl(const SearchInfo& info) noexcept;
 
 [[nodiscard]] std::string debug_quoted(std::string_view value);
-[[nodiscard]] std::string debug_square(Square square);
-[[nodiscard]] std::string debug_castling(std::uint8_t rights);
 [[nodiscard]] std::string debug_hex(std::uint64_t value);
 [[nodiscard]] std::uint64_t legal_move_digest(const std::vector<Move>& legal_moves);
-[[nodiscard]] std::string debug_limits(const SearchLimits& limits);
 
 [[nodiscard]] std::vector<Move> legal_pv_prefix(
     const GameState& root, const std::vector<Move>& pv);
