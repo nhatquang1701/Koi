@@ -271,6 +271,21 @@ private:
     std::atomic_int sync_count_ = 0;
 };
 
+[[nodiscard]] std::chrono::milliseconds scale_test_wait_timeout(
+    std::chrono::milliseconds timeout) noexcept {
+#if !defined(NDEBUG) || defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+    return timeout * 4;
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+    return timeout * 4;
+#else
+    return timeout;
+#endif
+#else
+    return timeout;
+#endif
+}
+
 class GatedInputBuffer final : public std::streambuf {
 public:
     GatedInputBuffer(std::string prefix, std::string suffix)
@@ -295,7 +310,8 @@ public:
 
     [[nodiscard]] bool wait_for_marker(std::chrono::milliseconds timeout) {
         std::unique_lock lock(mutex_);
-        return condition_.wait_for(lock, timeout, [this] { return marker_seen_; });
+        return condition_.wait_for(lock, scale_test_wait_timeout(timeout),
+                                   [this] { return marker_seen_; });
     }
 
 protected:
@@ -422,7 +438,7 @@ public:
     [[nodiscard]] bool wait_for_release_count(std::size_t count,
                                               std::chrono::milliseconds timeout) {
         std::unique_lock lock(mutex_);
-        return condition_.wait_for(lock, timeout,
+        return condition_.wait_for(lock, scale_test_wait_timeout(timeout),
                                    [this, count] { return released_stages_ >= count; });
     }
 
@@ -506,7 +522,8 @@ public:
 
     [[nodiscard]] bool wait_for_started(std::chrono::milliseconds timeout) const {
         std::unique_lock lock(mutex_);
-        return started_condition_.wait_for(lock, timeout, [this] { return started_; });
+        return started_condition_.wait_for(lock, scale_test_wait_timeout(timeout),
+                                           [this] { return started_; });
     }
 
     void release() const {
