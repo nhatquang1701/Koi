@@ -944,4 +944,101 @@ std::optional<std::string> flip_position_fen(const std::string_view fen) {
     return join_tokens(fields, 0, fields.size());
 }
 
+std::string translate_ucci_go_arguments(const std::string_view arguments,
+                                        const Color side_to_move) {
+    std::istringstream stream{std::string(arguments)};
+    const std::vector<std::string> tokens = remaining_tokens(stream);
+    std::ostringstream translated;
+    std::optional<std::int64_t> ucci_time;
+    std::optional<std::int64_t> ucci_opptime;
+    std::optional<std::int64_t> ucci_inc;
+    std::optional<std::int64_t> ucci_oppinc;
+
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        const std::string& token = tokens[index];
+        if (index + 1 < tokens.size()) {
+            std::int64_t val = 0;
+            if (token == "time" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                ucci_time = val;
+                ++index;
+                continue;
+            }
+            if (token == "opptime" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                ucci_opptime = val;
+                ++index;
+                continue;
+            }
+            if (token == "increment" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                ucci_inc = val;
+                ++index;
+                continue;
+            }
+            if (token == "oppincrement" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                ucci_oppinc = val;
+                ++index;
+                continue;
+            }
+        }
+        if (translated.tellp() > 0) {
+            translated << ' ';
+        }
+        translated << token;
+    }
+
+    if (ucci_time.has_value()) {
+        if (translated.tellp() > 0) {
+            translated << ' ';
+        }
+        if (side_to_move == Color::white) {
+            translated << "wtime " << *ucci_time;
+            if (ucci_opptime.has_value()) translated << " btime " << *ucci_opptime;
+            if (ucci_inc.has_value()) translated << " winc " << *ucci_inc;
+            if (ucci_oppinc.has_value()) translated << " binc " << *ucci_oppinc;
+        } else {
+            translated << "btime " << *ucci_time;
+            if (ucci_opptime.has_value()) translated << " wtime " << *ucci_opptime;
+            if (ucci_inc.has_value()) translated << " binc " << *ucci_inc;
+            if (ucci_oppinc.has_value()) translated << " winc " << *ucci_oppinc;
+        }
+    }
+    return translated.str();
+}
+
+std::string translate_usi_go_arguments(const std::string_view arguments) {
+    std::istringstream stream{std::string(arguments)};
+    const std::vector<std::string> tokens = remaining_tokens(stream);
+    std::ostringstream translated;
+    bool has_explicit = false;
+    std::optional<std::int64_t> usi_byoyomi;
+
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        const std::string& token = tokens[index];
+        if (token == "byoyomi" && index + 1 < tokens.size()) {
+            std::int64_t val = 0;
+            if (parse_int64_token(tokens[index + 1], val) && val >= 0) {
+                usi_byoyomi = val;
+                ++index;
+                continue;
+            }
+        }
+        if (token == "depth" || token == "nodes" || token == "movetime" ||
+            token == "wtime" || token == "btime" || token == "infinite" ||
+            token == "ponder" || token == "mate") {
+            has_explicit = true;
+        }
+        if (translated.tellp() > 0) {
+            translated << ' ';
+        }
+        translated << token;
+    }
+
+    if (usi_byoyomi.has_value() && !has_explicit) {
+        if (translated.tellp() > 0) {
+            translated << ' ';
+        }
+        translated << "movetime " << std::max<std::int64_t>(1, *usi_byoyomi);
+    }
+    return translated.str();
+}
+
 } // namespace koi::detail

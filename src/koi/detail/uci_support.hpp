@@ -115,6 +115,9 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] SearchLimits parse_go_limits(
     std::string_view arguments,
     std::chrono::milliseconds bare_go_fallback = std::chrono::milliseconds{250});
+[[nodiscard]] std::string translate_ucci_go_arguments(
+    std::string_view arguments, Color side_to_move);
+[[nodiscard]] std::string translate_usi_go_arguments(std::string_view arguments);
 [[nodiscard]] std::uint32_t derive_network_overhead_ms(
     std::int64_t previous_remaining_ms, std::int64_t increment_ms,
     std::int64_t elapsed_ms, std::int64_t current_remaining_ms,

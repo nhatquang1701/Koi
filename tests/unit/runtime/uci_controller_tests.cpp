@@ -18,6 +18,7 @@
 
 #include "koi/position.hpp"
 #include "koi/detail/debug_log.hpp"
+#include "koi/detail/uci_support.hpp"
 #include "koi/nnue.hpp"
 #include "../../support/material_evaluator.hpp"
 #include "../../support/nnue_synthetic.hpp"
@@ -3132,6 +3133,96 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
             "run_eval with malformed FEN must return exit code 2 and diagnostic");
 }
 
+void test_uci_support_helpers_direct() {
+    using namespace koi::detail;
+
+    const std::optional<std::string> flipped =
+        flip_position_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e3 0 1");
+    require(flipped.has_value() &&
+                *flipped == "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+            "flip_position_fen must toggle side and clear en passant square");
+    require(!flip_position_fen("8/8/8/8 w - -").has_value() &&
+                !flip_position_fen("8/8/8/8/8/8/8/8 x - - 0 1").has_value(),
+            "flip_position_fen must reject malformed FENs");
+
+    const std::optional<koi::Move> e2e4 = koi::Move::parse_uci("e2e4");
+    const std::optional<koi::Move> d2d4 = koi::Move::parse_uci("d2d4");
+    require(e2e4.has_value() && d2d4.has_value(), "expected valid UCI moves");
+
+    koi::MoveAnnotationResult move_ann;
+    move_ann.ply = 4;
+    move_ann.side_to_move = koi::Color::black;
+    move_ann.played_move = *d2d4;
+    move_ann.best_move = *e2e4;
+    move_ann.annotation = koi::MoveAnnotation::best;
+    move_ann.centipawn_loss = 0;
+    move_ann.accuracy_percent = 99.5;
+    move_ann.win_prob_before = 0.520;
+    move_ann.win_prob_after = 0.515;
+    move_ann.played_eval = {.score_cp = 15};
+    move_ann.best_eval = {.score_cp = 15};
+    move_ann.depth = 12;
+    move_ann.best_pv = {*e2e4};
+    const std::string ann_line = format_annotate_move_line(move_ann);
+    require(ann_line.rfind("annotate move d2d4 ply 4 side black best e2e4", 0) == 0 &&
+                ann_line.find("info string") == std::string::npos &&
+                ann_line.find(" pv e2e4") != std::string::npos,
+            "format_annotate_move_line must be protocol-literal-free; got: " + ann_line);
+
+    koi::PlayerAnnotationSummary summary;
+    summary.move_count = 10;
+    summary.best = 6;
+    summary.inaccuracy = 1;
+    const std::string sum_line = format_annotate_summary_line("white", summary);
+    require(sum_line.rfind("annotate summary white moves 10", 0) == 0 &&
+                sum_line.find("info string") == std::string::npos,
+            "format_annotate_summary_line must be protocol-literal-free; got: " + sum_line);
+
+    const std::string empty_book = format_book_entries("book.bin", {});
+    const std::string filled_book = format_book_entries(
+        "book.bin", {{*e2e4, 75, 0}, {*d2d4, 25, 0}});
+    require(empty_book.find("no moves for position") != std::string::npos &&
+                filled_book.find("book.bin (2 moves, total weight 100)") != std::string::npos &&
+                filled_book.find("e2e4  weight=75 (75.0%)") != std::string::npos,
+            "format_book_entries mismatch");
+
+    const koi::GameState startpos = koi::GameState::startpos();
+    require(format_syzygy_probe(nullptr, startpos) == "Syzygy : unavailable\n",
+            "format_syzygy_probe(nullptr) must report unavailable");
+
+    const std::string key_info = format_key_info(startpos);
+    require(key_info.find("Position key : ") != std::string::npos &&
+                key_info.find("Pawn key     : ") != std::string::npos &&
+                key_info.find("Polyglot key : ") != std::string::npos,
+            "format_key_info missing hash keys");
+
+    const auto mate_pos =
+        koi::GameState::from_fen("8/8/8/8/8/6K1/5Q2/7k b - - 0 1");
+    require(mate_pos.has_value() &&
+                format_legal_moves(startpos).find("Legal moves (20):") == 0 &&
+                format_legal_moves(*mate_pos) == "Legal moves (0): (none)\n",
+            "format_legal_moves mismatch");
+
+    require(translate_ucci_go_arguments("depth 4 time 1500 opptime 1200 increment 50 oppincrement 25",
+                                        koi::Color::white) ==
+                "depth 4 wtime 1500 btime 1200 winc 50 binc 25",
+            "translate_ucci_go_arguments white mapping mismatch");
+    require(translate_ucci_go_arguments("time 1500 opptime 1200 increment 50 oppincrement 25",
+                                        koi::Color::black) ==
+                "btime 1500 wtime 1200 binc 50 winc 25",
+            "translate_ucci_go_arguments black mapping mismatch");
+    require(translate_usi_go_arguments("byoyomi 500") == "movetime 500" &&
+                translate_usi_go_arguments("depth 6 byoyomi 500") == "depth 6",
+            "translate_usi_go_arguments mapping mismatch");
+
+    const std::string help_text = format_interactive_help();
+    for (const char* cmd : {"bench", "d", "fen", "key", "moves", "book", "tb", "eval", "flip",
+                            "see", "perft", "wait", "compiler", "help"}) {
+        require(help_text.find(cmd) != std::string::npos,
+                std::string("format_interactive_help missing command: ") + cmd);
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -3223,6 +3314,7 @@ int main(int argc, char** argv) {
          test_xboard_suppresses_uci_info_strings_across_all_handlers},
         {"interactive d eval compiler and bench commands",
          test_interactive_engine_commands_display_eval_compiler_and_bench},
+        {"detail/uci_support direct helpers", test_uci_support_helpers_direct},
     };
 
     return koi::test::run_tests(tests, argc, argv);

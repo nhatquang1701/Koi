@@ -78,6 +78,8 @@ using detail::read_bounded_protocol_line;
 using detail::remaining_tokens;
 using detail::root_ply;
 using detail::score_to_wdl;
+using detail::translate_ucci_go_arguments;
+using detail::translate_usi_go_arguments;
 using detail::xboard_terminal_result_line;
 
 // The UCI surface no longer exposes a Speed option; internal time management
@@ -155,85 +157,17 @@ void write_no_move_reply(std::ostream& output, const UciController::ProtocolMode
 SearchLimits parse_protocol_go_limits(const UciController::ProtocolMode mode,
                                       std::string_view arguments,
                                       const Color side_to_move) {
-    if (mode == UciController::ProtocolMode::uci ||
-        mode == UciController::ProtocolMode::xboard) {
+    switch (mode) {
+    case UciController::ProtocolMode::ucci:
+    case UciController::ProtocolMode::ucicyclone:
+        return uci::parse_go_limits(translate_ucci_go_arguments(arguments, side_to_move));
+    case UciController::ProtocolMode::usi:
+        return uci::parse_go_limits(translate_usi_go_arguments(arguments));
+    case UciController::ProtocolMode::uci:
+    case UciController::ProtocolMode::xboard:
         return uci::parse_go_limits(arguments);
     }
-    std::istringstream stream{std::string(arguments)};
-    const std::vector<std::string> tokens = remaining_tokens(stream);
-    std::ostringstream translated;
-    bool has_explicit = false;
-    std::optional<std::int64_t> ucci_time;
-    std::optional<std::int64_t> ucci_opptime;
-    std::optional<std::int64_t> ucci_inc;
-    std::optional<std::int64_t> ucci_oppinc;
-    std::optional<std::int64_t> usi_byoyomi;
-
-    for (std::size_t index = 0; index < tokens.size(); ++index) {
-        const std::string& token = tokens[index];
-        if ((mode == UciController::ProtocolMode::ucci ||
-             mode == UciController::ProtocolMode::ucicyclone) &&
-            index + 1 < tokens.size()) {
-            std::int64_t val = 0;
-            if (token == "time" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
-                ucci_time = val;
-                ++index;
-                continue;
-            }
-            if (token == "opptime" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
-                ucci_opptime = val;
-                ++index;
-                continue;
-            }
-            if (token == "increment" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
-                ucci_inc = val;
-                ++index;
-                continue;
-            }
-            if (token == "oppincrement" && parse_int64_token(tokens[index + 1], val) && val >= 0) {
-                ucci_oppinc = val;
-                ++index;
-                continue;
-            }
-        }
-        if (mode == UciController::ProtocolMode::usi && token == "byoyomi" &&
-            index + 1 < tokens.size()) {
-            std::int64_t val = 0;
-            if (parse_int64_token(tokens[index + 1], val) && val >= 0) {
-                usi_byoyomi = val;
-                ++index;
-                continue;
-            }
-        }
-        if (token == "depth" || token == "nodes" || token == "movetime" ||
-            token == "wtime" || token == "btime" || token == "infinite" ||
-            token == "ponder" || token == "mate") {
-            has_explicit = true;
-        }
-        if (translated.tellp() > 0) {
-            translated << ' ';
-        }
-        translated << token;
-    }
-
-    if (ucci_time.has_value()) {
-        has_explicit = true;
-        if (side_to_move == Color::white) {
-            translated << " wtime " << *ucci_time;
-            if (ucci_opptime.has_value()) translated << " btime " << *ucci_opptime;
-            if (ucci_inc.has_value()) translated << " winc " << *ucci_inc;
-            if (ucci_oppinc.has_value()) translated << " binc " << *ucci_oppinc;
-        } else {
-            translated << " btime " << *ucci_time;
-            if (ucci_opptime.has_value()) translated << " wtime " << *ucci_opptime;
-            if (ucci_inc.has_value()) translated << " binc " << *ucci_inc;
-            if (ucci_oppinc.has_value()) translated << " winc " << *ucci_oppinc;
-        }
-    }
-    if (usi_byoyomi.has_value() && !has_explicit) {
-        translated << " movetime " << std::max<std::int64_t>(1, *usi_byoyomi);
-    }
-    return uci::parse_go_limits(translated.str());
+    return uci::parse_go_limits(arguments);
 }
 
 } // namespace
