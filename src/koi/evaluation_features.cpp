@@ -392,6 +392,30 @@ NnueSparseFeaturesV4 EvaluationFeatureExtractor::encode_sparse_v4(
     return sparse;
 }
 
+NnueSparseFeaturesV4 EvaluationFeatureExtractor::encode_sparse_v9(
+    const EvaluationFeatures& features, const Color perspective) noexcept {
+    NnueSparseFeaturesV4 sparse;
+    const std::size_t finny_slot = halfka_hm_v2_finny_slot_for_square(
+        features.position.king_squares[color_index(perspective)], perspective);
+    for (std::size_t square = 0; square < features.position.board.size(); ++square) {
+        const Piece piece = features.position.board[square];
+        if (piece.empty()) {
+            continue;
+        }
+        if (sparse.count < sparse.indices.size()) {
+            sparse.indices[sparse.count++] = halfka_hm_v2_feature_index(
+                finny_slot, perspective, piece, Square::from_index(static_cast<std::uint8_t>(square)));
+        }
+    }
+    std::sort(sparse.indices.data(), sparse.indices.data() + sparse.count);
+    return sparse;
+}
+
+NnueSparseFeaturesV4 EvaluationFeatureExtractor::encode_sparse_v9(
+    const EvaluationFeatures& features) noexcept {
+    return encode_sparse_v9(features, features.position.side_to_move);
+}
+
 NnueSparseFeaturesThreatV1 EvaluationFeatureExtractor::encode_sparse_threat_v1(
     const EvaluationFeatures& features, const Color perspective) noexcept {
     NnueSparseFeaturesThreatV1 sparse;

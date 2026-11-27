@@ -16,6 +16,8 @@ inline constexpr std::string_view kNnueHalfkaKingBucketV1FeatureSet =
     "halfka-king-bucket-v1";
 inline constexpr std::string_view kNnueHalfkaThreatV5FeatureSet =
     "halfka-king-bucket-v1+threat-pairs-v1";
+inline constexpr std::string_view kNnueHalfkaHmV2FeatureSet =
+    "halfka-hm-v2";
 
 inline constexpr std::size_t kNnuePieceSquareV1FeatureCount = 768;
 inline constexpr std::size_t kNnueKingContextFeatureCount = 128;
@@ -32,6 +34,14 @@ inline constexpr std::size_t kNnueKingBucketCount = 12;
 inline constexpr std::size_t kNnueHalfkaKingBucketPiecePlaneCount = 12;
 inline constexpr std::size_t kNnueHalfkaKingBucketV1FeatureCount =
     kNnueKingBucketCount * kNnueHalfkaKingBucketPiecePlaneCount * 64;
+
+// halfka-hm-v2: 10 horizontally-mirrored king buckets x 12 piece planes x 64
+// squares = 7680 inputs.  The Finny cache tracks each (bucket, mirror_bit)
+// pair separately, requiring 20 slots per perspective.
+inline constexpr std::size_t kNnueHalfkaHmV2KingBucketCount = 10;
+inline constexpr std::size_t kNnueHalfkaHmV2FeatureCount =
+    kNnueHalfkaHmV2KingBucketCount * kNnueHalfkaKingBucketPiecePlaneCount * 64;
+inline constexpr std::size_t kNnueFinnyBucketCapacity = 20;
 
 // threat-pairs-v1: attack relations, bucketed by the own-king bucket.  Every
 // attack relation in the position (either colour attacking the other)
@@ -127,6 +137,10 @@ public:
     // perspective is a real color, not necessarily the side to move.
     [[nodiscard]] static NnueSparseFeaturesV4 encode_sparse_v4(
         const EvaluationFeatures&, Color perspective) noexcept;
+    [[nodiscard]] static NnueSparseFeaturesV4 encode_sparse_v9(
+        const EvaluationFeatures&, Color perspective) noexcept;
+    [[nodiscard]] static NnueSparseFeaturesV4 encode_sparse_v9(
+        const EvaluationFeatures&) noexcept;
     // threat-pairs-v1 alone, and the combined v5 list (group A then group B,
     // sorted).  Both take a real-color perspective, like encode_sparse_v4.
     [[nodiscard]] static NnueSparseFeaturesThreatV1 encode_sparse_threat_v1(
@@ -167,6 +181,61 @@ public:
             square.index() : (square.index() ^ 56U);
         return static_cast<std::uint16_t>(
             bucket * kNnuePieceSquareV1FeatureCount + plane * 64U + sq);
+    }
+
+    // halfka-hm-v2: 10 horizontally-mirrored king buckets + 1-bit horizontal
+    // mirror flag encoded together in finny_slot = bucket * 2 + mirror_bit.
+    [[nodiscard]] static constexpr std::uint8_t halfka_hm_v2_horizontal_mirror(
+        const Square king_square, const Color perspective) noexcept {
+        if (king_square.index() >= Square::kInvalid) {
+            return 0U;
+        }
+        const std::size_t ksq_v = perspective == Color::white ?
+            king_square.index() : (king_square.index() ^ 56U);
+        return (ksq_v & 7U) >= 4U ? std::uint8_t{7U} : std::uint8_t{0U};
+    }
+
+    [[nodiscard]] static constexpr std::size_t halfka_hm_v2_king_bucket_for_square(
+        const Square king_square, const Color perspective) noexcept {
+        if (king_square.index() >= Square::kInvalid) {
+            return 0U;
+        }
+        static constexpr std::array<std::uint8_t, 32> kKingBuckets{
+            0, 1, 2, 3,  // rank 0
+            4, 4, 5, 5,  // rank 1
+            6, 6, 7, 7,  // rank 2
+            6, 6, 7, 7,  // rank 3
+            8, 8, 8, 8,  // rank 4
+            8, 8, 8, 8,  // rank 5
+            9, 9, 9, 9,  // rank 6
+            9, 9, 9, 9,  // rank 7
+        };
+        const std::size_t ksq_v = perspective == Color::white ?
+            king_square.index() : (king_square.index() ^ 56U);
+        const std::size_t file = ksq_v & 7U;
+        const std::size_t file_0_3 = file >= 4U ? (file ^ 7U) : file;
+        const std::size_t rank = ksq_v >> 3U;
+        return kKingBuckets[rank * 4U + file_0_3];
+    }
+
+    [[nodiscard]] static constexpr std::size_t halfka_hm_v2_finny_slot_for_square(
+        const Square king_square, const Color perspective) noexcept {
+        const std::size_t bucket = halfka_hm_v2_king_bucket_for_square(king_square, perspective);
+        const std::size_t mirror_bit =
+            halfka_hm_v2_horizontal_mirror(king_square, perspective) != 0U ? 1U : 0U;
+        return bucket * 2U + mirror_bit;
+    }
+
+    [[nodiscard]] static constexpr std::uint16_t halfka_hm_v2_feature_index(
+        const std::size_t finny_slot, const Color perspective, const Piece piece,
+        const Square square) noexcept {
+        const std::size_t bucket = finny_slot >> 1U;
+        const std::size_t sq_xor = (perspective == Color::white ? 0U : 56U) ^
+            ((finny_slot & 1U) != 0U ? 7U : 0U);
+        const std::size_t type = static_cast<std::size_t>(piece.type);
+        const std::size_t plane = piece.color == perspective ? (type - 1U) : (type + 5U);
+        return static_cast<std::uint16_t>(
+            bucket * kNnuePieceSquareV1FeatureCount + plane * 64U + (square.index() ^ sq_xor));
     }
 };
 

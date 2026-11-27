@@ -2355,6 +2355,227 @@ void test_v4_same_sign_weights_with_out_of_range_bias_disables_int16() {
     }
 }
 
+[[nodiscard]] int reference_v9_score(const koi::NnueNetwork& network,
+                                     const koi::EvaluationFeatures& features,
+                                     const koi::Color perspective) {
+    const koi::Color mover = features.position.side_to_move;
+    const koi::NnueSparseFeaturesV4 own =
+        koi::EvaluationFeatureExtractor::encode_sparse_v9(features, mover);
+    const koi::NnueSparseFeaturesV4 opp =
+        koi::EvaluationFeatureExtractor::encode_sparse_v9(features, koi::opposite(mover));
+    const std::size_t hidden_units = network.manifest.layer_sizes[1];
+    std::vector<std::int32_t> own_sums(hidden_units, 0);
+    std::vector<std::int32_t> opp_sums(hidden_units, 0);
+    for (std::size_t h = 0; h < hidden_units; ++h) {
+        std::int64_t os = network.hidden_bias[h];
+        for (std::size_t idx = 0; idx < own.count; ++idx) {
+            os += network.feature_weights[static_cast<std::size_t>(own.indices[idx]) * hidden_units + h];
+        }
+        std::int64_t ps = network.hidden_bias[h];
+        for (std::size_t idx = 0; idx < opp.count; ++idx) {
+            ps += network.feature_weights[static_cast<std::size_t>(opp.indices[idx]) * hidden_units + h];
+        }
+        own_sums[h] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+            os, std::numeric_limits<std::int32_t>::min(), std::numeric_limits<std::int32_t>::max()));
+        opp_sums[h] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+            ps, std::numeric_limits<std::int32_t>::min(), std::numeric_limits<std::int32_t>::max()));
+    }
+    std::size_t piece_count = 0;
+    for (const koi::Piece& pc : features.position.board) {
+        if (!pc.empty()) {
+            ++piece_count;
+        }
+    }
+    const std::size_t missing = 32U - std::min<std::size_t>(32U, piece_count);
+    const std::size_t bucket = std::min<std::size_t>(7U, missing / 4U);
+    const std::int32_t qa = static_cast<std::int32_t>(network.qa);
+    std::int64_t total = network.bottleneck_bias[bucket];
+    const auto* const weights =
+        network.bottleneck_weights.data() + bucket * (2U * hidden_units);
+    for (std::size_t h = 0; h < hidden_units; ++h) {
+        const std::int64_t a = std::clamp<std::int32_t>(own_sums[h], 0, qa);
+        total += a * a * weights[h];
+    }
+    for (std::size_t h = 0; h < hidden_units; ++h) {
+        const std::int64_t a = std::clamp<std::int32_t>(opp_sums[h], 0, qa);
+        total += a * a * weights[h + hidden_units];
+    }
+    const std::int64_t denom =
+        static_cast<std::int64_t>(network.qa) * network.qa * network.qb;
+    const int mover_score = static_cast<int>(std::clamp<std::int64_t>(
+        (total * static_cast<std::int64_t>(network.eval_scale)) / denom,
+        std::numeric_limits<int>::min(), std::numeric_limits<int>::max()));
+    return perspective == mover ? mover_score : -mover_score;
+}
+
+void test_v9_container_round_trip_and_validation() {
+    const koi::NnueNetwork network = koi::test::synthetic_network_v9(64U);
+    const auto encoded = koi::NnueLoader::serialize(network);
+    require(encoded.has_value(), "synthetic v9 NNUE network must serialize");
+    const auto repeated = koi::NnueLoader::serialize(network);
+    require(repeated.has_value() && *encoded == *repeated,
+            "v9 NNUE serialization must be byte deterministic");
+
+    constexpr std::size_t kInputUnits = 7680;
+    constexpr std::size_t kHiddenUnits = 64;
+    constexpr std::size_t kOutputBuckets = 8;
+    constexpr std::size_t kPayloadSize = kInputUnits * kHiddenUnits * 2 +
+        kHiddenUnits * 4 + kOutputBuckets * (2U * kHiddenUnits) + kOutputBuckets * 4;
+    const std::size_t strings = koi::kKoiNnueQuantization.size() +
+        koi::kKoiNnueHalfkaHmV2FeatureSet.size();
+    require(encoded->size() == 76 + strings + kPayloadSize,
+            "v9 container size must match manifest, strings and payload formula");
+    require((*encoded)[8] == 9 && (*encoded)[28] == 255 && (*encoded)[29] == 64 &&
+                (*encoded)[30] == 0x90U && (*encoded)[31] == 0x01U,
+            "v9 header must pack version=9, qa=255, qb=64, eval_scale=400");
+
+    const auto decoded = koi::NnueLoader::load(*encoded);
+    require(decoded.has_value(), "serialized v9 NNUE network must load");
+    require(decoded->manifest.version == koi::kKoiNnueHalfkaHmV9FormatVersion &&
+                decoded->manifest.layer_sizes == koi::NnueLayerSizes{7680, 64, 8, 1} &&
+                decoded->manifest.feature_set == "halfka-hm-v2" &&
+                decoded->qa == 255 && decoded->qb == 64 && decoded->eval_scale == 400 &&
+                decoded->feature_weights.size() == kInputUnits * kHiddenUnits &&
+                decoded->bottleneck_weights.size() == kOutputBuckets * 2U * kHiddenUnits &&
+                decoded->bottleneck_bias.size() == kOutputBuckets &&
+                decoded->output_weights.empty(),
+            "v9 manifest, scale metadata and arrays must survive a round trip");
+
+    for (const std::size_t bad_offset : {std::size_t{28}, std::size_t{29}}) {
+        std::vector<std::uint8_t> bad = *encoded;
+        bad[bad_offset] = 0;
+        const auto res = koi::NnueLoader::load(bad);
+        require(!res.has_value() && res.error().code == koi::NnueErrorCode::malformed_manifest,
+                "v9 must reject zero qa/qb");
+    }
+    std::vector<std::uint8_t> bad_scale_zero = *encoded;
+    bad_scale_zero[30] = 0;
+    bad_scale_zero[31] = 0;
+    require(!koi::NnueLoader::load(bad_scale_zero).has_value(),
+            "v9 must reject eval_scale=0");
+    std::vector<std::uint8_t> bad_scale_hi = *encoded;
+    bad_scale_hi[30] = 0x01U;
+    bad_scale_hi[31] = 0x10U;  // 4097
+    require(!koi::NnueLoader::load(bad_scale_hi).has_value(),
+            "v9 must reject eval_scale above limit");
+    std::vector<std::uint8_t> corrupt_crc = *encoded;
+    corrupt_crc.back() ^= 1U;
+    const auto crc_res = koi::NnueLoader::load(corrupt_crc);
+    require(!crc_res.has_value() && crc_res.error().code == koi::NnueErrorCode::checksum_mismatch,
+            "v9 must reject checksum mismatch");
+
+    koi::NnueNetwork bad_shift = network;
+    bad_shift.output_shift = 1;
+    require(!koi::NnueLoader::serialize(bad_shift).has_value(),
+            "v9 serialization must reject nonzero shift fields");
+    koi::NnueNetwork bad_fset = network;
+    bad_fset.manifest.feature_set = "halfka-king-bucket-v1";
+    require(!koi::NnueLoader::serialize(bad_fset).has_value(),
+            "v9 must reject non-halfka-hm-v2 feature set");
+}
+
+void test_v9_horizontal_mirror_invariance_and_reference() {
+    const auto weights = std::make_shared<const koi::NnueNetwork>(
+        koi::test::synthetic_network_v9(64U));
+    koi::NnueWorker worker(weights);
+    // Pairs of (position, exact horizontal file mirror).
+    const std::array<std::pair<std::string_view, std::string_view>, 4> mirror_pairs{{
+        {"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b - - 0 1",
+         "rnbkqbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBKQBNR b - - 0 1"},
+        {"r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+         "1kr4r/pppq1pp1/2n1pn1p/1B1p1b2/1b1P1B2/2N1PN1P/PPPQ1PP1/1KR4R w - - 0 10"},
+        {"6k1/5ppp/8/8/8/8/5PPP/2Q3K1 w - - 0 40",
+         "1k6/ppp5/8/8/8/8/PPP5/1K3Q2 w - - 0 40"},
+        {"3k4/8/8/3P4/8/8/8/4K3 w - - 0 1",
+         "4k3/8/8/4P3/8/8/8/3K4 w - - 0 1"},
+    }};
+    for (const auto& [fen_a, fen_b] : mirror_pairs) {
+        const koi::GameState sa = require_state(fen_a);
+        const koi::GameState sb = require_state(fen_b);
+        const koi::EvaluationFeatures fa = koi::EvaluationFeatureExtractor::extract(sa);
+        const koi::EvaluationFeatures fb = koi::EvaluationFeatureExtractor::extract(sb);
+        const koi::NnueSparseFeaturesV4 oa =
+            koi::EvaluationFeatureExtractor::encode_sparse_v9(fa, fa.position.side_to_move);
+        const koi::NnueSparseFeaturesV4 ob =
+            koi::EvaluationFeatureExtractor::encode_sparse_v9(fb, fb.position.side_to_move);
+        require(oa.count == ob.count &&
+                    std::equal(oa.indices.begin(), oa.indices.begin() + oa.count, ob.indices.begin()),
+                "v9 horizontal mirror must emit identical sparse feature indices");
+        const int ref_a = reference_v9_score(*weights, fa, fa.position.side_to_move);
+        const int eval_a = worker.evaluate(fa, fa.position.side_to_move, koi::NnueInferencePath::scalar);
+        const int eval_b = worker.evaluate(fb, fb.position.side_to_move, koi::NnueInferencePath::scalar);
+        require(eval_a == ref_a && eval_b == eval_a,
+                "v9 scalar eval must match reference and be horizontally mirror-invariant");
+        require(worker.evaluate(fa, koi::opposite(fa.position.side_to_move),
+                                koi::NnueInferencePath::scalar) == -eval_a,
+                "v9 perspective flip must negate mover score");
+    }
+}
+
+void test_v9_inference_paths_agree() {
+    for (const std::uint32_t hl : {34U, 384U}) {
+        koi::NnueNetwork net = koi::test::synthetic_network_v9(hl);
+        for (std::size_t idx = 0; idx < net.feature_weights.size(); ++idx) {
+            net.feature_weights[idx] =
+                static_cast<std::int16_t>(static_cast<int>((idx * 73U) % 1101U) - 550);
+        }
+        for (const std::int32_t bias_offset : {0, -50'000, 50'000}) {
+            koi::NnueNetwork variant = net;
+            for (std::int32_t& b : variant.hidden_bias) {
+                b += bias_offset;
+            }
+            const auto weights = std::make_shared<const koi::NnueNetwork>(std::move(variant));
+            koi::NnueWorker w_scalar(weights);
+            koi::NnueWorker w_auto(weights);
+            koi::NnueWorker w_avx2(weights);
+            const std::array<std::string_view, 3> fens{{
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1",
+                "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            }};
+            for (const std::string_view fen : fens) {
+                const koi::GameState state = require_state(fen);
+                const koi::EvaluationFeatures features = koi::EvaluationFeatureExtractor::extract(state);
+                const int expected = reference_v9_score(*weights, features, state.side_to_move());
+                const int s_stateless = w_scalar.evaluate(features, state.side_to_move(), koi::NnueInferencePath::scalar);
+                const int a_stateless = w_auto.evaluate(features, state.side_to_move(), koi::NnueInferencePath::automatic);
+                const int x_stateless = w_avx2.evaluate(features, state.side_to_move(), koi::NnueInferencePath::avx2_compatible);
+                const int s_state = w_scalar.evaluate(state, state.side_to_move(), koi::NnueInferencePath::scalar);
+                const int a_state = w_auto.evaluate(state, state.side_to_move(), koi::NnueInferencePath::automatic);
+                const int a_score_only = w_auto.evaluate_score_only(state, state.side_to_move(), koi::NnueInferencePath::automatic);
+                require(s_stateless == expected && a_stateless == expected &&
+                            x_stateless == expected && s_state == expected &&
+                            a_state == expected && a_score_only == expected &&
+                            w_auto.accumulator().values == w_scalar.accumulator().values &&
+                            w_avx2.accumulator().values == w_scalar.accumulator().values,
+                        "v9 scalar/NEON/AVX2 paths must agree bit-identically");
+            }
+        }
+    }
+}
+
+void test_v9_incremental_and_hm_finny_parity() {
+    for (const std::int32_t bias_offset : {0, 45'000}) {
+        koi::NnueNetwork net = koi::test::synthetic_network_v9(64U);
+        for (std::int32_t& b : net.hidden_bias) {
+            b += bias_offset;
+        }
+        const auto weights = std::make_shared<const koi::NnueNetwork>(std::move(net));
+        walk_incremental_game("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 28,
+                              0x9A9A9A9AULL, weights);
+        walk_incremental_game("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", 16, 0x9B9B9B9BULL, weights);
+        // Horizontal-mirror crossing (e1 <-> d1) and king-bucket crossings (d1 -> d2 -> d3 -> e3).
+        play_scripted_incremental("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+                                  {"e1d1", "e8d8", "d1e1", "d8e8", "e1d2", "e8d7", "d2d3", "d7d6", "d3e3"},
+                                  weights);
+        play_scripted_incremental("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", {"e1g1", "e8c8"}, weights);
+        play_scripted_incremental("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", {"e1c1", "e8g8"}, weights);
+        play_scripted_incremental("rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+                                  {"e5f6"}, weights);
+        play_scripted_incremental("n3k3/1P6/8/8/8/8/8/4K3 w - - 0 1", {"b7a8q"}, weights);
+    }
+}
+
 } // namespace
 
 // Test-only seam: serialize a deterministic v4 fixture network and print the
@@ -2704,6 +2925,13 @@ int main(int argc, char** argv) {
          test_v4_non_multiple_hidden_int16_safe_and_extreme_bias_finny_parity},
         {"NNUE v4 same-sign extreme bias disables int16",
          test_v4_same_sign_weights_with_out_of_range_bias_disables_int16},
+        {"NNUE v9 container round trip and validation",
+         test_v9_container_round_trip_and_validation},
+        {"NNUE v9 horizontal mirror invariance and reference",
+         test_v9_horizontal_mirror_invariance_and_reference},
+        {"NNUE v9 inference paths agree", test_v9_inference_paths_agree},
+        {"NNUE v9 incremental and HM Finny parity",
+         test_v9_incremental_and_hm_finny_parity},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

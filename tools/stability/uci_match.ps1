@@ -60,9 +60,9 @@ param(
 
     [string]$KoiOptionsJsonPath = '',
 
-    # Optional evaluator attestation. For nnue-v4/v5/v6/v8 pass an existing
+    # Optional evaluator attestation. For nnue-v4/v5/v6/v8/v9 pass an existing
     # network with -KoiEvalFile. Existing KoiOptions EvalFile remains supported.
-    [ValidateSet('classical', 'nnue-v4', 'nnue-v5', 'nnue-v6', 'nnue-v8')]
+    [ValidateSet('classical', 'nnue-v4', 'nnue-v5', 'nnue-v6', 'nnue-v8', 'nnue-v9')]
     [string]$KoiEvaluatorMode = 'classical',
 
     [string]$KoiEvalFile = '',
@@ -251,6 +251,7 @@ if (-not [string]::IsNullOrWhiteSpace($evalFileValue)) {
             'nnue-v5' { 5 }
             'nnue-v6' { 6 }
             'nnue-v8' { 8 }
+            'nnue-v9' { 9 }
         }
         if ($networkVersion -ne $expectedNetworkVersion) {
             throw "Koi EvalFile for '$KoiEvaluatorMode' does not contain NNUE v$expectedNetworkVersion."

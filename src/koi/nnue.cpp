@@ -257,6 +257,11 @@ template <typename Integer>
         manifest.layer_sizes[0] == kKoiNnueHalfkaThreatV5FeatureCount;
 }
 
+[[nodiscard]] constexpr bool is_halfka_hm_v9(
+    const NnueManifest& manifest) noexcept {
+    return manifest.version == kKoiNnueHalfkaHmV9FormatVersion;
+}
+
 // Versions 5 and 6 share the feature set, the header skeleton, and the
 // incremental path; only the L1 stage and the payload size differ.
 [[nodiscard]] constexpr bool uses_halfka_threat_features(
@@ -266,6 +271,18 @@ template <typename Integer>
 }
 
 [[nodiscard]] std::optional<std::size_t> payload_size_for(const NnueManifest& manifest) noexcept {
+    if (is_halfka_hm_v9(manifest)) {
+        if (manifest.feature_set != kKoiNnueHalfkaHmV2FeatureSet) {
+            return std::nullopt;
+        }
+        const std::size_t input_units = manifest.layer_sizes[0];
+        const std::size_t hidden_units = manifest.layer_sizes[1];
+        const std::size_t output_buckets = manifest.layer_sizes[2];
+        return input_units * hidden_units * sizeof(std::int16_t) +
+            hidden_units * sizeof(std::int32_t) +
+            output_buckets * (2U * hidden_units) * sizeof(std::int8_t) +
+            output_buckets * sizeof(std::int32_t);
+    }
     if (uses_halfka_threat_features(manifest)) {
         if (manifest.feature_set != kKoiNnueHalfkaThreatV5FeatureSet) {
             return std::nullopt;
@@ -327,8 +344,31 @@ template <typename Integer>
         manifest.version != kKoiNnueHalfkaKingBucketV1FormatVersion &&
         manifest.version != kKoiNnueHalfkaThreatV5FormatVersion &&
         manifest.version != kKoiNnueHalfkaThreatV6FormatVersion &&
-        manifest.version != kKoiNnueHalfkaThreatV8FormatVersion) {
+        manifest.version != kKoiNnueHalfkaThreatV8FormatVersion &&
+        manifest.version != kKoiNnueHalfkaHmV9FormatVersion) {
         return make_error(NnueErrorCode::unsupported_version, "unsupported Koi NNUE container version");
+    }
+    if (is_halfka_hm_v9(manifest)) {
+        if (manifest.feature_set != kKoiNnueHalfkaHmV2FeatureSet) {
+            return make_error(NnueErrorCode::unsupported_feature_set,
+                              "NNUE v9 requires the halfka-hm-v2 feature set");
+        }
+        const std::uint32_t hidden_units = manifest.layer_sizes[1];
+        if (manifest.layer_sizes[0] != kKoiNnueHalfkaHmV2FeatureCount ||
+            manifest.layer_sizes[2] != kKoiNnueOutputBucketCount ||
+            manifest.layer_sizes[3] != 1U ||
+            hidden_units < kKoiNnueMinimumHiddenUnits ||
+            hidden_units > kKoiNnueMaximumHiddenUnits || hidden_units % 2U != 0) {
+            return make_error(
+                NnueErrorCode::invalid_dimensions,
+                "NNUE v9 layer manifest must be 7680 inputs, even hidden units in [32, 8192], "
+                "8 output buckets, and perspective count 1");
+        }
+        if (manifest.quantization != kKoiNnueQuantization) {
+            return make_error(NnueErrorCode::unsupported_quantization,
+                              "only int16/int8 Koi NNUE quantization is supported");
+        }
+        return std::nullopt;
     }
     if (uses_halfka_threat_features(manifest)) {
         if (manifest.feature_set != kKoiNnueHalfkaThreatV5FeatureSet) {
@@ -411,6 +451,18 @@ template <typename Integer>
 
 [[nodiscard]] bool arrays_match_manifest(const NnueNetwork& network) noexcept {
     const auto& sizes = network.manifest.layer_sizes;
+    if (is_halfka_hm_v9(network.manifest)) {
+        return network.qa >= 1U && network.qb >= 1U &&
+            network.eval_scale >= 1U && network.eval_scale <= kKoiNnueMaximumEvalScale &&
+            network.feature_weights.size() ==
+                static_cast<std::size_t>(sizes[0]) * sizes[1] &&
+            network.hidden_bias.size() == sizes[1] &&
+            network.bottleneck_weights.size() ==
+                static_cast<std::size_t>(sizes[2]) * (2U * sizes[1]) &&
+            network.bottleneck_bias.size() == sizes[2] &&
+            network.l1_weights.empty() && network.l1_diff_weights.empty() &&
+            network.l1_bias.empty() && network.output_weights.empty();
+    }
     if (uses_halfka_threat_features(network.manifest)) {
         // v6 and v8 both carry the threat-input diff head; v8 only changes the
         // container version and metadata, not the array layout.
@@ -1383,6 +1435,299 @@ template <typename SumT>
     return finish_inference_v4_dual_scalar(network, own_sums, opp_sums, bucket, accumulator);
 }
 
+// v9 inference (`halfka-hm-v2`): 10 horizontally-mirrored king buckets,
+// dual-perspective SCReLU clipped to [0, qa], int8 head weights (qb),
+// scaled by eval_scale / (qa * qa * qb) via truncating integer division.
+[[nodiscard]] int scale_v9_output(const NnueNetwork& network,
+                                  const std::size_t bucket,
+                                  const std::int64_t dot_sum) noexcept {
+    const std::int64_t total =
+        static_cast<std::int64_t>(network.bottleneck_bias[bucket]) + dot_sum;
+    const std::int64_t denom =
+        static_cast<std::int64_t>(network.qa) * network.qa * network.qb;
+    return clamp_score((total * static_cast<std::int64_t>(network.eval_scale)) / denom);
+}
+
+template <typename SumT, bool WriteAccumulator = true>
+[[nodiscard]] int finish_inference_v9_scalar_t(const NnueNetwork& network,
+                                               std::span<const SumT> own_sums,
+                                               std::span<const SumT> opp_sums,
+                                               const std::size_t bucket,
+                                               NnueAccumulator& accumulator) noexcept {
+    const std::size_t hidden_units = network.manifest.layer_sizes[1];
+    const std::int32_t qa = static_cast<std::int32_t>(network.qa);
+    const auto* const own_weights =
+        network.bottleneck_weights.data() + bucket * (2U * hidden_units);
+    const auto* const opp_weights = own_weights + hidden_units;
+    std::int64_t dot_sum = 0;
+    for (std::size_t i = 0; i < hidden_units; ++i) {
+        const std::int32_t a = std::clamp<std::int32_t>(own_sums[i], 0, qa);
+        if constexpr (WriteAccumulator) {
+            accumulator.values[i] = static_cast<std::int16_t>(a);
+        }
+        dot_sum += static_cast<std::int64_t>(a) * a * own_weights[i];
+    }
+    for (std::size_t i = 0; i < hidden_units; ++i) {
+        const std::int32_t a = std::clamp<std::int32_t>(opp_sums[i], 0, qa);
+        if constexpr (WriteAccumulator) {
+            accumulator.values[i + hidden_units] = static_cast<std::int16_t>(a);
+        }
+        dot_sum += static_cast<std::int64_t>(a) * a * opp_weights[i];
+    }
+    return scale_v9_output(network, bucket, dot_sum);
+}
+
+#if KOI_NNUE_COMPILED_NEON
+template <typename SumT, bool WriteAccumulator = true>
+[[nodiscard]] int finish_inference_v9_neon_t(const NnueNetwork& network,
+                                             std::span<const SumT> own_sums,
+                                             std::span<const SumT> opp_sums,
+                                             const std::size_t bucket,
+                                             NnueAccumulator& accumulator) noexcept {
+    const std::size_t hidden_units = network.manifest.layer_sizes[1];
+    const std::int32_t qa_i32 = static_cast<std::int32_t>(network.qa);
+    const std::int64_t terms_per_lane =
+        static_cast<std::int64_t>((2U * hidden_units + 15U) / 16U);
+    if (qa_i32 > 255 ||
+        terms_per_lane * qa_i32 * qa_i32 * 128 > std::numeric_limits<std::int32_t>::max()) {
+        return finish_inference_v9_scalar_t<SumT, WriteAccumulator>(
+            network, own_sums, opp_sums, bucket, accumulator);
+    }
+    const std::int16_t qa_16 = static_cast<std::int16_t>(network.qa);
+    const int16x8_t zero_16 = vdupq_n_s16(0);
+    const int16x8_t max_16 = vdupq_n_s16(qa_16);
+    const int32x4_t zero_32 = vdupq_n_s32(0);
+    const int32x4_t max_32 = vdupq_n_s32(qa_i32);
+    int32x4_t acc0 = vdupq_n_s32(0);
+    int32x4_t acc1 = vdupq_n_s32(0);
+    int32x4_t acc2 = vdupq_n_s32(0);
+    int32x4_t acc3 = vdupq_n_s32(0);
+    std::int64_t acc_tail = 0;
+
+    const auto accum_persp = [&](std::span<const SumT> sums,
+                                 const std::int8_t* weights,
+                                 std::span<std::int16_t> out_act) noexcept {
+        std::size_t hidden = 0;
+        for (; hidden + 16U <= hidden_units; hidden += 16U) {
+            int16x8_t a_lo;
+            int16x8_t a_hi;
+            if constexpr (std::is_same_v<SumT, std::int16_t>) {
+                a_lo = vminq_s16(vmaxq_s16(vld1q_s16(sums.data() + hidden), zero_16), max_16);
+                a_hi = vminq_s16(vmaxq_s16(vld1q_s16(sums.data() + hidden + 8U), zero_16), max_16);
+            } else {
+                const int32x4_t s0 = vminq_s32(vmaxq_s32(vld1q_s32(sums.data() + hidden), zero_32), max_32);
+                const int32x4_t s1 = vminq_s32(vmaxq_s32(vld1q_s32(sums.data() + hidden + 4U), zero_32), max_32);
+                const int32x4_t s2 = vminq_s32(vmaxq_s32(vld1q_s32(sums.data() + hidden + 8U), zero_32), max_32);
+                const int32x4_t s3 = vminq_s32(vmaxq_s32(vld1q_s32(sums.data() + hidden + 12U), zero_32), max_32);
+                a_lo = vcombine_s16(vqmovn_s32(s0), vqmovn_s32(s1));
+                a_hi = vcombine_s16(vqmovn_s32(s2), vqmovn_s32(s3));
+            }
+            if constexpr (WriteAccumulator) {
+                vst1q_s16(out_act.data() + hidden, a_lo);
+                vst1q_s16(out_act.data() + hidden + 8U, a_hi);
+            }
+            const int8x16_t wb = vld1q_s8(weights + hidden);
+            const int16x8_t w_lo = vmovl_s8(vget_low_s8(wb));
+#if defined(__aarch64__)
+            const int16x8_t w_hi = vmovl_high_s8(wb);
+#else
+            const int16x8_t w_hi = vmovl_s8(vget_high_s8(wb));
+#endif
+            const int16x8_t aw_lo = vmulq_s16(a_lo, w_lo);
+            const int16x8_t aw_hi = vmulq_s16(a_hi, w_hi);
+            acc0 = vmlal_s16(acc0, vget_low_s16(aw_lo), vget_low_s16(a_lo));
+            acc2 = vmlal_s16(acc2, vget_low_s16(aw_hi), vget_low_s16(a_hi));
+#if defined(__aarch64__)
+            acc1 = vmlal_high_s16(acc1, aw_lo, a_lo);
+            acc3 = vmlal_high_s16(acc3, aw_hi, a_hi);
+#else
+            acc1 = vmlal_s16(acc1, vget_high_s16(aw_lo), vget_high_s16(a_lo));
+            acc3 = vmlal_s16(acc3, vget_high_s16(aw_hi), vget_high_s16(a_hi));
+#endif
+        }
+        for (; hidden < hidden_units; ++hidden) {
+            const std::int32_t a = std::clamp<std::int32_t>(sums[hidden], 0, qa_i32);
+            if constexpr (WriteAccumulator) {
+                out_act[hidden] = static_cast<std::int16_t>(a);
+            }
+            acc_tail += static_cast<std::int64_t>(a) * a * weights[hidden];
+        }
+    };
+
+    const std::int8_t* const own_weights =
+        network.bottleneck_weights.data() + bucket * (2U * hidden_units);
+    const std::int8_t* const opp_weights = own_weights + hidden_units;
+    std::span<std::int16_t> own_act;
+    std::span<std::int16_t> opp_act;
+    if constexpr (WriteAccumulator) {
+        own_act = std::span<std::int16_t>(accumulator.values.data(), hidden_units);
+        opp_act = std::span<std::int16_t>(accumulator.values.data() + hidden_units, hidden_units);
+    }
+    accum_persp(own_sums, own_weights, own_act);
+    accum_persp(opp_sums, opp_weights, opp_act);
+
+#if defined(__aarch64__)
+    const std::int64_t dot_sum =
+        static_cast<std::int64_t>(vaddlvq_s32(acc0)) +
+        static_cast<std::int64_t>(vaddlvq_s32(acc1)) +
+        static_cast<std::int64_t>(vaddlvq_s32(acc2)) +
+        static_cast<std::int64_t>(vaddlvq_s32(acc3)) + acc_tail;
+#else
+    const auto sum_lanes_64 = [](const int32x4_t v) noexcept -> std::int64_t {
+        std::array<std::int32_t, 4> tmp{};
+        vst1q_s32(tmp.data(), v);
+        return static_cast<std::int64_t>(tmp[0]) + tmp[1] + tmp[2] + tmp[3];
+    };
+    const std::int64_t dot_sum =
+        sum_lanes_64(acc0) + sum_lanes_64(acc1) +
+        sum_lanes_64(acc2) + sum_lanes_64(acc3) + acc_tail;
+#endif
+    return scale_v9_output(network, bucket, dot_sum);
+}
+#endif
+
+#if KOI_NNUE_COMPILED_AVX2
+template <typename SumT, bool WriteAccumulator = true>
+[[nodiscard]] int finish_inference_v9_avx2_t(const NnueNetwork& network,
+                                             std::span<const SumT> own_sums,
+                                             std::span<const SumT> opp_sums,
+                                             const std::size_t bucket,
+                                             NnueAccumulator& accumulator) noexcept {
+    const std::size_t hidden_units = network.manifest.layer_sizes[1];
+    const std::int32_t qa_i32 = static_cast<std::int32_t>(network.qa);
+    const std::int64_t terms_per_lane =
+        static_cast<std::int64_t>((2U * hidden_units + 15U) / 16U) * 2;
+    if (qa_i32 > 255 ||
+        terms_per_lane * qa_i32 * qa_i32 * 128 > std::numeric_limits<std::int32_t>::max()) {
+        return finish_inference_v9_scalar_t<SumT, WriteAccumulator>(
+            network, own_sums, opp_sums, bucket, accumulator);
+    }
+    const std::int16_t qa_16 = static_cast<std::int16_t>(network.qa);
+    const __m256i zero = _mm256_setzero_si256();
+    const __m256i max_16 = _mm256_set1_epi16(qa_16);
+    const __m256i max_32 = _mm256_set1_epi32(qa_i32);
+    __m256i acc = _mm256_setzero_si256();
+    std::int64_t acc_tail = 0;
+
+    const auto accum_persp = [&](std::span<const SumT> sums,
+                                 const std::int8_t* weights,
+                                 std::span<std::int16_t> out_act) noexcept {
+        std::size_t hidden = 0;
+        for (; hidden + 16U <= hidden_units; hidden += 16U) {
+            __m256i a;
+            if constexpr (std::is_same_v<SumT, std::int16_t>) {
+                const __m256i raw = _mm256_loadu_si256(
+                    reinterpret_cast<const __m256i*>(sums.data() + hidden));
+                a = _mm256_min_epi16(_mm256_max_epi16(raw, zero), max_16);
+            } else {
+                __m256i lo = _mm256_loadu_si256(
+                    reinterpret_cast<const __m256i*>(sums.data() + hidden));
+                __m256i hi = _mm256_loadu_si256(
+                    reinterpret_cast<const __m256i*>(sums.data() + hidden + 8U));
+                lo = _mm256_min_epi32(_mm256_max_epi32(lo, zero), max_32);
+                hi = _mm256_min_epi32(_mm256_max_epi32(hi, zero), max_32);
+                a = _mm256_packs_epi32(lo, hi);
+                a = _mm256_permute4x64_epi64(a, _MM_SHUFFLE(3, 1, 2, 0));
+            }
+            if constexpr (WriteAccumulator) {
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(out_act.data() + hidden), a);
+            }
+            const __m256i w = _mm256_cvtepi8_epi16(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(weights + hidden)));
+            const __m256i aw = _mm256_mullo_epi16(a, w);
+            acc = _mm256_add_epi32(acc, _mm256_madd_epi16(aw, a));
+        }
+        for (; hidden < hidden_units; ++hidden) {
+            const std::int32_t a = std::clamp<std::int32_t>(sums[hidden], 0, qa_i32);
+            if constexpr (WriteAccumulator) {
+                out_act[hidden] = static_cast<std::int16_t>(a);
+            }
+            acc_tail += static_cast<std::int64_t>(a) * a * weights[hidden];
+        }
+    };
+
+    const std::int8_t* const own_weights =
+        network.bottleneck_weights.data() + bucket * (2U * hidden_units);
+    const std::int8_t* const opp_weights = own_weights + hidden_units;
+    std::span<std::int16_t> own_act;
+    std::span<std::int16_t> opp_act;
+    if constexpr (WriteAccumulator) {
+        own_act = std::span<std::int16_t>(accumulator.values.data(), hidden_units);
+        opp_act = std::span<std::int16_t>(accumulator.values.data() + hidden_units, hidden_units);
+    }
+    accum_persp(own_sums, own_weights, own_act);
+    accum_persp(opp_sums, opp_weights, opp_act);
+
+    alignas(32) std::array<std::int32_t, 8> lanes{};
+    _mm256_store_si256(reinterpret_cast<__m256i*>(lanes.data()), acc);
+    std::int64_t dot_sum = acc_tail;
+    for (const std::int32_t lane : lanes) {
+        dot_sum += lane;
+    }
+    return scale_v9_output(network, bucket, dot_sum);
+}
+#endif
+
+template <typename SumT, bool WriteAccumulator = true>
+[[nodiscard]] int dispatch_finish_inference_v9_t(const NnueNetwork& network,
+                                                 std::span<const SumT> own_sums,
+                                                 std::span<const SumT> opp_sums,
+                                                 const std::size_t bucket,
+                                                 NnueAccumulator& accumulator,
+                                                 const bool use_avx2,
+                                                 const bool use_simd) noexcept {
+#if KOI_NNUE_COMPILED_AVX2
+    if (use_avx2) {
+        return finish_inference_v9_avx2_t<SumT, WriteAccumulator>(
+            network, own_sums, opp_sums, bucket, accumulator);
+    }
+#else
+    (void)use_avx2;
+#endif
+#if KOI_NNUE_COMPILED_NEON
+    if (use_simd) {
+        return finish_inference_v9_neon_t<SumT, WriteAccumulator>(
+            network, own_sums, opp_sums, bucket, accumulator);
+    }
+#else
+    (void)use_simd;
+#endif
+    return finish_inference_v9_scalar_t<SumT, WriteAccumulator>(
+        network, own_sums, opp_sums, bucket, accumulator);
+}
+
+[[nodiscard]] int infer_network_sparse_v9(const NnueNetwork& network,
+                                          std::span<const std::uint16_t> own_active,
+                                          std::span<const std::uint16_t> opp_active,
+                                          const std::size_t bucket,
+                                          NnueAccumulator& accumulator,
+                                          const bool use_avx2,
+                                          const bool use_simd = true) noexcept {
+    const std::size_t hidden_units = network.manifest.layer_sizes[1];
+    if (!arrays_match_manifest(network) || bucket >= network.manifest.layer_sizes[2]) {
+        accumulator.values.clear();
+        accumulator.bottleneck_values.clear();
+        return 0;
+    }
+    accumulator.values.assign(hidden_units * 2U, 0);
+    accumulator.bottleneck_values.clear();
+    std::vector<std::int32_t> own_sums(hidden_units, 0);
+    std::vector<std::int32_t> opp_sums(hidden_units, 0);
+#if KOI_NNUE_COMPILED_AVX2
+    if (use_avx2) {
+        accumulate_hidden_sparse_avx2(network, own_active, own_sums);
+        accumulate_hidden_sparse_avx2(network, opp_active, opp_sums);
+    } else
+#endif
+    {
+        accumulate_hidden_sparse_scalar(network, own_active, own_sums);
+        accumulate_hidden_sparse_scalar(network, opp_active, opp_sums);
+    }
+    return dispatch_finish_inference_v9_t<std::int32_t, true>(
+        network, own_sums, opp_sums, bucket, accumulator, use_avx2, use_simd);
+}
+
 // v5 inference: both perspective accumulators feed cross-perspective pair
 // products p[j] = a_own[j] * a_opp[j], then one CReLU hidden layer and a
 // linear head selected by the piece-count bucket.  The scalar path is the
@@ -1976,7 +2321,16 @@ std::expected<std::vector<std::uint8_t>, NnueError> NnueLoader::serialize(
             NnueErrorCode::malformed_manifest,
             "NNUE v1/v2 containers cannot carry nonzero shifts"));
     }
-    if (uses_halfka_threat_features(network.manifest)) {
+    if (is_halfka_hm_v9(network.manifest)) {
+        if (network.qa == 0 || network.qb == 0 ||
+            network.eval_scale == 0 || network.eval_scale > kKoiNnueMaximumEvalScale ||
+            network.hidden_shift != 0 || network.bottleneck_shift != 0 ||
+            network.output_shift != 0 || network.l1_shift != 0 || network.l1_diff_shift != 0) {
+            return std::unexpected(make_error(
+                NnueErrorCode::malformed_manifest,
+                "NNUE v9 must carry valid qa/qb/eval_scale and zero shift fields"));
+        }
+    } else if (uses_halfka_threat_features(network.manifest)) {
         if (network.hidden_shift > kKoiNnueMaximumShift ||
             network.output_shift > kKoiNnueMaximumShift ||
             network.l1_shift > kKoiNnueMaximumShift ||
@@ -2043,7 +2397,8 @@ std::expected<std::vector<std::uint8_t>, NnueError> NnueLoader::serialize(
         append_little_endian(payload, bias);
     }
     if (!is_halfka_king_bucket_v1(network.manifest) &&
-        !uses_halfka_threat_features(network.manifest)) {
+        !uses_halfka_threat_features(network.manifest) &&
+        !is_halfka_hm_v9(network.manifest)) {
         for (const std::int8_t weight : network.output_weights) {
             payload.push_back(static_cast<std::uint8_t>(weight));
         }
@@ -2062,7 +2417,11 @@ std::expected<std::vector<std::uint8_t>, NnueError> NnueLoader::serialize(
     for (const std::uint32_t layer_size : network.manifest.layer_sizes) {
         append_little_endian(container, layer_size);
     }
-    if (uses_halfka_threat_features(network.manifest)) {
+    if (is_halfka_hm_v9(network.manifest)) {
+        container.push_back(network.qa);
+        container.push_back(network.qb);
+        append_little_endian(container, network.eval_scale);
+    } else if (uses_halfka_threat_features(network.manifest)) {
         container.push_back(network.hidden_shift);
         container.push_back(network.output_shift);
         container.push_back(network.l1_shift);
@@ -2116,7 +2475,23 @@ std::expected<NnueNetwork, NnueError> NnueLoader::load(
     std::uint8_t output_shift = 0;
     std::uint8_t l1_shift = 0;
     std::uint8_t l1_diff_shift = 0;
-    if (uses_halfka_threat_features(manifest)) {
+    std::uint8_t v9_qa = 0;
+    std::uint8_t v9_qb = 0;
+    std::uint16_t v9_eval_scale = 0;
+    if (is_halfka_hm_v9(manifest)) {
+        if (container.size() - offset < 4) {
+            return std::unexpected(make_error(NnueErrorCode::malformed_manifest,
+                                               "NNUE v9 scale metadata is truncated"));
+        }
+        v9_qa = container[offset++];
+        v9_qb = container[offset++];
+        if (!read_little_endian(container, offset, v9_eval_scale) ||
+            v9_qa == 0 || v9_qb == 0 || v9_eval_scale == 0 ||
+            v9_eval_scale > kKoiNnueMaximumEvalScale) {
+            return std::unexpected(make_error(NnueErrorCode::malformed_manifest,
+                                               "NNUE v9 qa/qb/eval_scale is invalid"));
+        }
+    } else if (uses_halfka_threat_features(manifest)) {
         if (container.size() - offset < 4) {
             return std::unexpected(make_error(NnueErrorCode::malformed_manifest,
                                                "NNUE v5/v6 scale metadata is truncated"));
@@ -2214,12 +2589,16 @@ std::expected<NnueNetwork, NnueError> NnueLoader::load(
     network.output_shift = output_shift;
     network.l1_shift = l1_shift;
     network.l1_diff_shift = l1_diff_shift;
+    network.qa = v9_qa;
+    network.qb = v9_qb;
+    network.eval_scale = v9_eval_scale;
     const std::size_t input_units = network.manifest.layer_sizes[0];
     const std::size_t hidden_units = network.manifest.layer_sizes[1];
     const std::size_t output_units = network.manifest.layer_sizes[2];
     const std::size_t l1_units = network.manifest.layer_sizes[3];
     const bool threat = uses_halfka_threat_features(network.manifest);
     const bool halfka_v4 = is_halfka_king_bucket_v1(network.manifest);
+    const bool halfka_v9 = is_halfka_hm_v9(network.manifest);
     const std::size_t feature_weight_count = input_units * hidden_units;
     std::size_t payload_offset = 0;
     network.feature_weights.resize(feature_weight_count);
@@ -2265,7 +2644,8 @@ std::expected<NnueNetwork, NnueError> NnueLoader::load(
     const std::size_t v4_head_inputs = halfka_v4_head_inputs(network.manifest);
     network.bottleneck_weights.resize(
         threat ? output_units * l1_units :
-        (halfka_v4 ? output_units * v4_head_inputs : hidden_units * output_units));
+        (halfka_v9 ? output_units * (2U * hidden_units) :
+        (halfka_v4 ? output_units * v4_head_inputs : hidden_units * output_units)));
     for (std::int8_t& weight : network.bottleneck_weights) {
         if (payload_offset >= payload.size()) {
             return std::unexpected(invalid_file_size_error());
@@ -2280,7 +2660,7 @@ std::expected<NnueNetwork, NnueError> NnueLoader::load(
         }
         bias = static_cast<std::int32_t>(encoded);
     }
-    if (!halfka_v4 && !threat) {
+    if (!halfka_v4 && !halfka_v9 && !threat) {
         network.output_weights.resize(output_units);
         for (std::int8_t& weight : network.output_weights) {
             if (payload_offset >= payload.size()) {
@@ -2354,12 +2734,15 @@ NnueWorker::NnueWorker(std::shared_ptr<const NnueNetwork> weights,
         const bool threat = uses_halfka_threat_features(weights_->manifest);
         const bool halfka_v4 = is_halfka_king_bucket_v1(weights_->manifest);
         const bool dual_v4 = is_halfka_dual_v4(weights_->manifest);
-        supports_incremental_ = halfka_v4 || threat;
+        const bool hm_v9 = is_halfka_hm_v9(weights_->manifest);
+        supports_incremental_ = halfka_v4 || hm_v9 || threat;
         threat_features_ = threat;
         dual_v4_ = dual_v4;
-        accumulator_.values.resize(dual_v4 ? hidden_units * 2U : hidden_units);
+        halfka_hm_v9_ = hm_v9;
+        accumulator_.values.resize((dual_v4 || hm_v9) ? hidden_units * 2U : hidden_units);
         accumulator_.bottleneck_values.resize(threat ? hidden_units :
-            (halfka_v4 ? halfka_v4_head_inputs(weights_->manifest) : weights_->manifest.layer_sizes[2]));
+            (halfka_v4 ? halfka_v4_head_inputs(weights_->manifest) :
+            (hm_v9 ? std::size_t{0} : weights_->manifest.layer_sizes[2])));
     }
 }
 
@@ -2368,6 +2751,7 @@ int NnueWorker::evaluate(const EvaluationFeatures& features, const Color perspec
     if (!network_usable_) {
         return 0;
     }
+    const bool use_hm_v9 = is_halfka_hm_v9(weights_->manifest);
     const bool use_halfka = is_halfka_king_bucket_v1(weights_->manifest);
     const bool use_dual_halfka = is_halfka_dual_v4(weights_->manifest);
     const bool use_threat = uses_halfka_threat_features(weights_->manifest);
@@ -2377,7 +2761,17 @@ int NnueWorker::evaluate(const EvaluationFeatures& features, const Color perspec
         (path == NnueInferencePath::automatic && avx2_available());
     const bool use_simd = path != NnueInferencePath::scalar;
     int score = 0;
-    if (use_threat) {
+    if (use_hm_v9) {
+        const Color mover = features.position.side_to_move;
+        const NnueSparseFeaturesV4 own =
+            EvaluationFeatureExtractor::encode_sparse_v9(features, mover);
+        const NnueSparseFeaturesV4 opp =
+            EvaluationFeatureExtractor::encode_sparse_v9(features, opposite(mover));
+        score = infer_network_sparse_v9(
+            *weights_, std::span<const std::uint16_t>(own.indices.data(), own.count),
+            std::span<const std::uint16_t>(opp.indices.data(), opp.count),
+            piece_count_bucket(features), accumulator_, use_avx2, use_simd);
+    } else if (use_threat) {
         // Both perspectives feed the head: own is the side to move, opponent
         // is the other side.  The sign flip below keeps the documented
         // "raw score is mover-relative" contract.  Version 6 adds the
@@ -2465,7 +2859,7 @@ KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
         const std::size_t slot = static_cast<std::size_t>(slot_cursor_);
         if (!threat) {
             materialize_slot_perspective_v4(state, mover_index, slot);
-            if (is_halfka_dual_v4(weights_->manifest)) {
+            if (dual_v4_ || halfka_hm_v9_) {
                 materialize_slot_perspective_v4(state, opponent_index, slot);
             }
         }
@@ -2488,7 +2882,8 @@ KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
                 const Square king_sq = king_bb != 0 ?
                     Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
                     Square{};
-                const std::size_t bucket =
+                const std::size_t bucket = halfka_hm_v9_ ?
+                    EvaluationFeatureExtractor::halfka_hm_v2_finny_slot_for_square(king_sq, real) :
                     EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, real);
                 refresh_finny_bucket_v4(state, real, bucket, scratch_values_[index].data());
                 scratch_buckets_[index] = static_cast<std::uint8_t>(bucket);
@@ -2543,7 +2938,10 @@ KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
             score = finish_inference_v5_scalar(*weights_, mover_sums, opponent_sums,
                                                bucket, accumulator_);
         }
-    } else if (is_halfka_dual_v4(weights_->manifest)) {
+    } else if (halfka_hm_v9_) {
+        score = dispatch_finish_inference_v9_t<std::int32_t, WriteAccumulator>(
+            *weights_, mover_sums, opponent_sums, bucket, accumulator_, use_avx2, use_simd);
+    } else if (dual_v4_) {
 #if KOI_NNUE_COMPILED_AVX2
         if (use_avx2) {
             score = finish_inference_v4_dual_avx2(*weights_, mover_sums, opponent_sums,
@@ -2605,7 +3003,7 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
         if (slot_computed_[mover_index][slot] == 0) {
             materialize_slot_perspective_v4_impl<std::int16_t>(state, mover_index, slot);
         }
-        if (dual_v4_ && slot_computed_[opponent_index][slot] == 0) {
+        if ((dual_v4_ || halfka_hm_v9_) && slot_computed_[opponent_index][slot] == 0) {
             materialize_slot_perspective_v4_impl<std::int16_t>(state, opponent_index, slot);
         }
         mover_sums_16 = std::span<const std::int16_t>(
@@ -2626,7 +3024,8 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
             const Square king_sq = king_bb != 0 ?
                 Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
                 Square{};
-            const std::size_t bucket_idx =
+            const std::size_t bucket_idx = halfka_hm_v9_ ?
+                EvaluationFeatureExtractor::halfka_hm_v2_finny_slot_for_square(king_sq, real) :
                 EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, real);
             refresh_finny_bucket_v4_impl<std::int16_t>(
                 state, real, bucket_idx, scratch_values_16_[index].data());
@@ -2642,7 +3041,10 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
     }
     const std::size_t bucket = output_bucket_for_pieces(pieces);
     int score = 0;
-    if (dual_v4_) {
+    if (halfka_hm_v9_) {
+        score = dispatch_finish_inference_v9_t<std::int16_t, WriteAccumulator>(
+            *weights_, mover_sums_16, opponent_sums_16, bucket, accumulator_, use_avx2, use_simd);
+    } else if (dual_v4_) {
 #if KOI_NNUE_COMPILED_AVX2
         if (use_avx2) {
             score = finish_inference_v4_dual_avx2_t<std::int16_t>(
@@ -2701,24 +3103,27 @@ void NnueWorker::ensure_incremental_storage() {
     hidden_units_ = weights_->manifest.layer_sizes[1];
     threat_features_ = uses_halfka_threat_features(weights_->manifest);
     dual_v4_ = is_halfka_dual_v4(weights_->manifest);
+    halfka_hm_v9_ = is_halfka_hm_v9(weights_->manifest);
     if (!int16_safe_known_) {
         int16_safe_ = compute_int16_accumulator_safe(*weights_);
         int16_safe_known_ = true;
     } else if (threat_features_) {
         int16_safe_ = false;
     }
+    const std::size_t finny_slots =
+        halfka_hm_v9_ ? kNnueFinnyBucketCapacity : kNnueKingBucketCount;
     const std::size_t slot_entries = kIncrementalSlotCount * hidden_units_;
     for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
         if (int16_safe_) {
             slot_values_16_[index].assign(slot_entries, 0);
             scratch_values_16_[index].assign(hidden_units_, 0);
-            finny_values_16_[index].assign(kNnueKingBucketCount * hidden_units_, 0);
+            finny_values_16_[index].assign(finny_slots * hidden_units_, 0);
             finny_valid_[index].fill(0);
         } else {
             slot_values_[index].assign(slot_entries, 0);
             scratch_values_[index].assign(hidden_units_, 0);
             if (!threat_features_) {
-                finny_values_[index].assign(kNnueKingBucketCount * hidden_units_, 0);
+                finny_values_[index].assign(finny_slots * hidden_units_, 0);
                 finny_valid_[index].fill(0);
             }
         }
@@ -2826,10 +3231,14 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
         cached_sums = finny_values_[index].data() + bucket * hidden_units_;
     }
 
+    const std::size_t feat_bucket = halfka_hm_v9_ ? (bucket >> 1U) : bucket;
+    const std::size_t base = feat_bucket * kNnuePieceSquareV1FeatureCount;
+    const std::size_t sq_xor = (perspective == Color::white ? 0U : 56U) ^
+        (halfka_hm_v9_ && (bucket & 1U) != 0U ? 7U : 0U);
+
     if (finny_valid_[index][bucket] == 0) {
         std::array<std::uint16_t, kNnueSparseFeatureCapacityV4> active_buf{};
         std::size_t active_count = 0;
-        const std::size_t base = bucket * kNnuePieceSquareV1FeatureCount;
         const std::size_t own_c = perspective == Color::white ? 0U : 1U;
         const std::size_t opp_c = 1U - own_c;
         const std::array<std::size_t, 2> color_order{own_c, opp_c};
@@ -2839,19 +3248,11 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
                 const std::size_t plane = plane_group * 6U + (pt - 1U);
                 const std::size_t plane_base = base + plane * 64U;
                 std::uint64_t bb = current_bbs[c][pt];
-                if (perspective == Color::white) {
-                    while (bb != 0 && active_count < active_buf.size()) {
-                        const std::size_t sq = static_cast<std::size_t>(std::countr_zero(bb));
-                        bb &= bb - 1U;
-                        active_buf[active_count++] = static_cast<std::uint16_t>(plane_base + sq);
-                    }
-                } else {
-                    while (bb != 0 && active_count < active_buf.size()) {
-                        const std::size_t sq = static_cast<std::size_t>(std::countr_zero(bb));
-                        bb &= bb - 1U;
-                        active_buf[active_count++] =
-                            static_cast<std::uint16_t>(plane_base + (sq ^ 56U));
-                    }
+                while (bb != 0 && active_count < active_buf.size()) {
+                    const std::size_t sq = static_cast<std::size_t>(std::countr_zero(bb));
+                    bb &= bb - 1U;
+                    active_buf[active_count++] =
+                        static_cast<std::uint16_t>(plane_base + (sq ^ sq_xor));
                 }
             }
         }
@@ -2880,7 +3281,6 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
     std::array<std::uint16_t, 64> added{};
     std::size_t removed_count = 0;
     std::size_t added_count = 0;
-    const std::size_t base = bucket * kNnuePieceSquareV1FeatureCount;
     const std::size_t own_c = perspective == Color::white ? 0U : 1U;
     const std::size_t opp_c = 1U - own_c;
     const std::array<std::size_t, 2> color_order{own_c, opp_c};
@@ -2897,30 +3297,17 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
             const std::size_t plane_base = base + plane * 64U;
             std::uint64_t rem_bb = old_bb & ~new_bb;
             std::uint64_t add_bb = new_bb & ~old_bb;
-            if (perspective == Color::white) {
-                while (rem_bb != 0 && removed_count < removed.size()) {
-                    const std::size_t sq = static_cast<std::size_t>(std::countr_zero(rem_bb));
-                    rem_bb &= rem_bb - 1U;
-                    removed[removed_count++] = static_cast<std::uint16_t>(plane_base + sq);
-                }
-                while (add_bb != 0 && added_count < added.size()) {
-                    const std::size_t sq = static_cast<std::size_t>(std::countr_zero(add_bb));
-                    add_bb &= add_bb - 1U;
-                    added[added_count++] = static_cast<std::uint16_t>(plane_base + sq);
-                }
-            } else {
-                while (rem_bb != 0 && removed_count < removed.size()) {
-                    const std::size_t sq = static_cast<std::size_t>(std::countr_zero(rem_bb));
-                    rem_bb &= rem_bb - 1U;
-                    removed[removed_count++] =
-                        static_cast<std::uint16_t>(plane_base + (sq ^ 56U));
-                }
-                while (add_bb != 0 && added_count < added.size()) {
-                    const std::size_t sq = static_cast<std::size_t>(std::countr_zero(add_bb));
-                    add_bb &= add_bb - 1U;
-                    added[added_count++] =
-                        static_cast<std::uint16_t>(plane_base + (sq ^ 56U));
-                }
+            while (rem_bb != 0 && removed_count < removed.size()) {
+                const std::size_t sq = static_cast<std::size_t>(std::countr_zero(rem_bb));
+                rem_bb &= rem_bb - 1U;
+                removed[removed_count++] =
+                    static_cast<std::uint16_t>(plane_base + (sq ^ sq_xor));
+            }
+            while (add_bb != 0 && added_count < added.size()) {
+                const std::size_t sq = static_cast<std::size_t>(std::countr_zero(add_bb));
+                add_bb &= add_bb - 1U;
+                added[added_count++] =
+                    static_cast<std::uint16_t>(plane_base + (sq ^ sq_xor));
             }
         }
     }
@@ -3020,7 +3407,8 @@ void NnueWorker::refresh_slot_perspective_v4_finny(const GameState& state,
     const Square king_sq = king_bb != 0 ?
         Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
         Square{};
-    const std::size_t bucket =
+    const std::size_t bucket = halfka_hm_v9_ ?
+        EvaluationFeatureExtractor::halfka_hm_v2_finny_slot_for_square(king_sq, perspective) :
         EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, perspective);
     refresh_finny_bucket_v4(
         state, perspective, bucket,
@@ -3670,6 +4058,12 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
     const Color real = index == 0U ? Color::white : Color::black;
     const std::int16_t* const weight_base = weights_->feature_weights.data();
     const std::size_t count = hidden_units_;
+    const auto feature_idx = [&](const std::size_t cache_slot, const Piece pc,
+                                 const Square sq) noexcept -> std::uint16_t {
+        return halfka_hm_v9_ ?
+            EvaluationFeatureExtractor::halfka_hm_v2_feature_index(cache_slot, real, pc, sq) :
+            EvaluationFeatureExtractor::halfka_king_bucket_feature_index(cache_slot, real, pc, sq);
+    };
     for (std::size_t cur = s + 1U; cur <= slot; ++cur) {
         const PendingMoveV4& pm = slot_pending_move_[cur];
         const SumT* const parent_ptr = values_base + (cur - 1U) * count;
@@ -3680,14 +4074,10 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
             const std::size_t bucket = slot_buckets_[index][cur];
             const Square from = pm.move.from();
             const Square to = pm.move.to();
-            const std::uint16_t sub0 =
-                EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                    bucket, real, Piece{pm.moving_piece, pm.mover}, from);
+            const std::uint16_t sub0 = feature_idx(bucket, Piece{pm.moving_piece, pm.mover}, from);
             const PieceType placed = pm.kind == MoveKind::promotion ?
                 promotion_piece_type(pm.move.promotion()) : pm.moving_piece;
-            const std::uint16_t add0 =
-                EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                    bucket, real, Piece{placed, pm.mover}, to);
+            const std::uint16_t add0 = feature_idx(bucket, Piece{placed, pm.mover}, to);
             if constexpr (std::is_same_v<SumT, std::int16_t>) {
                 if (pm.captured_piece != PieceType::none) {
                     Square captured = to;
@@ -3696,10 +4086,8 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                             Square::from_index(static_cast<std::uint8_t>(to.index() - 8U)) :
                             Square::from_index(static_cast<std::uint8_t>(to.index() + 8U));
                     }
-                    const std::uint16_t sub1 =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            bucket, real, Piece{pm.captured_piece, opposite(pm.mover)},
-                            captured);
+                    const std::uint16_t sub1 = feature_idx(
+                        bucket, Piece{pm.captured_piece, opposite(pm.mover)}, captured);
                     apply_fused_s16_sub2_add1(
                         weight_base, count, parent_ptr, target_ptr, sub0, sub1, add0);
                 } else if (pm.kind == MoveKind::castling) [[unlikely]] {
@@ -3709,14 +4097,10 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                         (king_side ? 7U : 0U) : (king_side ? 63U : 56U);
                     const std::uint8_t rook_to = pm.mover == Color::white ?
                         (king_side ? 5U : 3U) : (king_side ? 61U : 59U);
-                    const std::uint16_t sub1 =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            bucket, real, Piece{PieceType::rook, pm.mover},
-                            Square::from_index(rook_from));
-                    const std::uint16_t add1 =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            bucket, real, Piece{PieceType::rook, pm.mover},
-                            Square::from_index(rook_to));
+                    const std::uint16_t sub1 = feature_idx(
+                        bucket, Piece{PieceType::rook, pm.mover}, Square::from_index(rook_from));
+                    const std::uint16_t add1 = feature_idx(
+                        bucket, Piece{PieceType::rook, pm.mover}, Square::from_index(rook_to));
                     apply_fused_s16_sub2_add2(
                         weight_base, count, parent_ptr, target_ptr, sub0, sub1, add0, add1);
                 } else {
@@ -3735,10 +4119,8 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                             Square::from_index(static_cast<std::uint8_t>(to.index() - 8U)) :
                             Square::from_index(static_cast<std::uint8_t>(to.index() + 8U));
                     }
-                    removed[removed_count++] =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            bucket, real, Piece{pm.captured_piece, opposite(pm.mover)},
-                            captured);
+                    removed[removed_count++] = feature_idx(
+                        bucket, Piece{pm.captured_piece, opposite(pm.mover)}, captured);
                 }
                 if (pm.kind == MoveKind::castling) {
                     const bool king_side = pm.mover == Color::white ? to.index() == 6U :
@@ -3747,14 +4129,10 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                         (king_side ? 7U : 0U) : (king_side ? 63U : 56U);
                     const std::uint8_t rook_to = pm.mover == Color::white ?
                         (king_side ? 5U : 3U) : (king_side ? 61U : 59U);
-                    removed[removed_count++] =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            bucket, real, Piece{PieceType::rook, pm.mover},
-                            Square::from_index(rook_from));
-                    added[added_count++] =
-                        EvaluationFeatureExtractor::halfka_king_bucket_feature_index(
-                            bucket, real, Piece{PieceType::rook, pm.mover},
-                            Square::from_index(rook_to));
+                    removed[removed_count++] = feature_idx(
+                        bucket, Piece{PieceType::rook, pm.mover}, Square::from_index(rook_from));
+                    added[added_count++] = feature_idx(
+                        bucket, Piece{PieceType::rook, pm.mover}, Square::from_index(rook_to));
                 }
                 apply_fused_perspective_deltas(
                     parent_ptr, target_ptr,
@@ -3801,8 +4179,11 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
         if (moving == PieceType::king) {
             const std::size_t mover_idx = mover == Color::white ? 0U : 1U;
             slot_buckets_[mover_idx][child_idx] = static_cast<std::uint8_t>(
-                EvaluationFeatureExtractor::halfka_king_bucket_for_square(
-                    metadata.move.to(), mover));
+                halfka_hm_v9_ ?
+                    EvaluationFeatureExtractor::halfka_hm_v2_finny_slot_for_square(
+                        metadata.move.to(), mover) :
+                    EvaluationFeatureExtractor::halfka_king_bucket_for_square(
+                        metadata.move.to(), mover));
             slot_buckets_[1U - mover_idx][child_idx] =
                 slot_buckets_[1U - mover_idx][from_slot];
         } else {

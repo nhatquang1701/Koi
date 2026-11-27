@@ -342,14 +342,17 @@ with this evaluator; the unit suite lives in `classical_evaluator_tests`.
 
 The loader accepts Koi NNUE containers with magic `KOI-NNUE`, quantization
 `int16/int8`, a SHA-256 payload digest, and a 256 MiB maximum file size
-(`src/koi/nnue.cpp`). Supported versions are 2, 3, 4, 5, 6, and 8; version 1 is
+(`src/koi/nnue.cpp`). Supported versions are 2, 3, 4, 5, 6, 8, and 9; version 1 is
 not accepted by `validate_manifest` (v2 uses the `"piece-square-v1"` feature
 set name and is the earliest container version defined in `src/koi/nnue.hpp`).
 **There is no version 7 container:** no v7 constant or parser branch
 exists, and the `koi-v7-*` names under `artifacts/training/` are trainer
 experiment labels whose exports are v4 containers. Version 8 accepts either
 the 36864-input v6 threat layout or the 9216-input v4 HalfKA-only layout,
-selected by the input width in the header.
+selected by the input width in the header. Version 9 uses the 10-bucket
+horizontally-mirrored `halfka-hm-v2` feature set (`7680` inputs) with
+dual-perspective SCReLU quantization (`qa`, `qb`, `eval_scale` packed in header
+bytes 28..31) and 8 piece-count output buckets.
 
 | Version | Feature set | Inputs | Head | Notes |
 | --- | --- | --- | --- | --- |
@@ -359,29 +362,37 @@ selected by the input width in the header.
 | 5 | `halfka-king-bucket-v1+threat-pairs-v1` | 36864 | Two-layer integer head: 8..128 L1 units → 8 buckets | Adds threat-pairs group and cross-perspective pair products |
 | 6 | Same as v5 | 36864 | Adds an antisymmetric L1 difference channel | Extra `l1_units × hidden_units` int8 matrix; split diff shift |
 | 8 | `halfka-king-bucket-v1` (9216) or `+threat-pairs-v1` (36864) | 9216 or 36864 | Same as v4 (9216) or v6 (36864) | Input width selects HalfKA-only or threat-pairs layout |
+| 9 | `halfka-hm-v2` | 7680 | even hidden 32..8192 → SCReLU `clamp(x,0,QA)^2` (`2 * hidden`) → 8 buckets | 10 symmetric horizontally-mirrored king buckets; `qa`/`qb`/`eval_scale` in header bytes 28..31 |
 
 Feature geometry (`src/koi/evaluation_features.hpp`):
 
 - `halfka-king-bucket-v1`: 12 own-king buckets × 12 piece planes × 64 squares =
   **9216** inputs. Plane order is own pawn..king followed by opponent pawn..king,
   relative to the perspective.
+- `halfka-hm-v2`: 10 horizontally-mirrored own-king buckets × 12 piece planes × 64
+  squares = **7680** inputs. Piece squares mirror vertically by perspective and
+  horizontally whenever `(ksq_v & 7) >= 4`; Finny caches use 20 `(bucket, mirror)`
+  slots per perspective.
 - `threat-pairs-v1`: 2304 inputs per king bucket × 12 buckets = **27648**.
   Each attack relation yields one input; non-sliders index victim type and
   square, sliders also index attacker type and square.
 - Combined v5 input: 9216 + 27648 = **36864**.
-- Sparse feature capacities: 64 (v4), 128 (threat group), 160 (combined v5).
+- Sparse feature capacities: 64 (v4/v9), 128 (threat group), 160 (combined v5).
 
 Inference:
 
 - First layer is an int16 weight matrix over sparse binary inputs, accumulated
-  into int32 sums (or `int16` incremental accumulator sums in v4 when safe
-  range holds). Clipped ReLU clamps to `[0, 127]`.
+  into int32 sums (or `int16` incremental accumulator sums in v4/v9 when safe
+  range holds). Clipped ReLU clamps to `[0, 127]` (v2–v8); v9 applies SCReLU
+  with `clamp(acc, 0, qa)^2` across both perspectives (`2 * hidden` inputs).
 - v4 forms pair products from the two halves of the hidden activation and a
   linear head selected by piece-count bucket.
   `output_bucket_for_pieces()` is `min(7, (32 - min(32, pieces)) / 4)`.
+- v9 evaluates `((bottleneck_bias[bucket] + sum_i (a_i * w_i) * a_i) * eval_scale) / (qa * qa * qb)`
+  using truncating signed `int64` division toward zero and clamping to centipawns.
 - v5/v6 pair the two perspectives cross-wise (`own[i] * opp[i]`); v6 adds an
   own-minus-opp diff channel. The L1 stage is followed by an 8-bucket int8 head.
-- Explicit shifts are stored for v3+ and capped at 20
+- Explicit shifts are stored for v3+ (up to v8) and capped at 20
   (`kKoiNnueMaximumShift`). v5 adds `l1_shift`; v6 adds `l1_diff_shift`, where
   zero selects the legacy combined head.
 - The loader validates magic, version, feature string, layer dimensions,
@@ -396,7 +407,9 @@ Incremental accumulator (`NnueWorker`):
   accumulators stay thread-local.
 - v4+ networks keep two perspective accumulators in 132 slots (root plus deepest
   line). Every cached slot is keyed by position key; a skipped or failed
-  notification causes a refresh, never a wrong score.
+  notification causes a refresh, never a wrong score. v9 uses a 20-slot
+  `(bucket, mirror)` Finny table so horizontal mirror flips (`e1` ↔ `d1`)
+  refresh incrementally from the mirrored bucket cache.
 - v5+ additionally stores each perspective's sorted threat list and applies a
   sorted-list difference on make/unmake.
 - The worker reports `incremental_make_count` and `incremental_fallback_count`
@@ -406,8 +419,8 @@ SIMD paths (`src/koi/nnue.cpp`):
 
 | Path | Availability | Scope |
 | --- | --- | --- |
-| AVX2 | x86-64 builds compiled with AVX2 **and** runtime `cpu_supports_avx2()` | Sparse/dense accumulator, v4 pair products and bucket dot product, v5 cross pair products and L1 stage |
-| NEON | arm64 builds with `__ARM_NEON` | v4 fused `int16` accumulator deltas, CReLU clamp/pack, and hidden-layer inference; scalar fallback for non-v4 formats |
+| AVX2 | x86-64 builds compiled with AVX2 **and** runtime `cpu_supports_avx2()` | Sparse/dense accumulator, v4 pair products and bucket dot product, v5 cross pair products and L1 stage, v9 SCReLU clamp and bucket dot product |
+| NEON | arm64 builds with `__ARM_NEON` | v4 and v9 fused `int16` accumulator deltas, clamp/pack, and hidden-layer SCReLU/CReLU inference; scalar fallback for non-v4/v9 formats |
 | Scalar | Always compiled | Reference path and fallback; every vector path must agree exactly |
 
 The AVX2 code is only compiled on x86-64; arm64 builds use NEON kernels for v4

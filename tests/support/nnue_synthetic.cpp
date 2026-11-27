@@ -157,4 +157,38 @@ NnueNetwork synthetic_network_v6() {
     return network;
 }
 
+NnueNetwork synthetic_network_v9(const std::uint32_t hidden_units) {
+    NnueNetwork network;
+    network.manifest.magic = std::string(kKoiNnueMagic);
+    network.manifest.version = kKoiNnueHalfkaHmV9FormatVersion;
+    network.manifest.layer_sizes = {
+        kKoiNnueHalfkaHmV2FeatureCount, hidden_units, kKoiNnueOutputBucketCount, 1};
+    network.manifest.feature_set = std::string(kKoiNnueHalfkaHmV2FeatureSet);
+    network.manifest.quantization = std::string(kKoiNnueQuantization);
+    network.qa = 255;
+    network.qb = 64;
+    network.eval_scale = 400;
+    const std::size_t input_units = network.manifest.layer_sizes[0];
+    const std::size_t output_buckets = network.manifest.layer_sizes[2];
+    network.feature_weights.resize(input_units * hidden_units);
+    network.hidden_bias.resize(hidden_units);
+    network.bottleneck_weights.resize(output_buckets * (2U * hidden_units));
+    network.bottleneck_bias.resize(output_buckets);
+    for (std::size_t index = 0; index < network.feature_weights.size(); ++index) {
+        network.feature_weights[index] =
+            static_cast<std::int16_t>(static_cast<int>((index * 17U) % 101U) - 50);
+    }
+    for (std::size_t index = 0; index < network.hidden_bias.size(); ++index) {
+        network.hidden_bias[index] = static_cast<std::int32_t>(index % 31U) - 10;
+    }
+    for (std::size_t index = 0; index < network.bottleneck_weights.size(); ++index) {
+        network.bottleneck_weights[index] =
+            static_cast<std::int8_t>(static_cast<int>((index * 29U) % 121U) - 60);
+    }
+    for (std::size_t index = 0; index < network.bottleneck_bias.size(); ++index) {
+        network.bottleneck_bias[index] = static_cast<std::int32_t>(index * 4096) - 8192;
+    }
+    return network;
+}
+
 } // namespace koi::test

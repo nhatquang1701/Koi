@@ -47,10 +47,16 @@ inline constexpr std::uint32_t kKoiNnueHalfkaThreatV6FormatVersion = 6;
 // math (36864 inputs) or the v4 halfka-only layout (9216 inputs), and the CPU
 // loader selects the math from the architecture word.
 inline constexpr std::uint32_t kKoiNnueHalfkaThreatV8FormatVersion = 8;
+// Version 9 uses halfka-hm-v2 (7680 inputs: 10 horizontally-mirrored king
+// buckets), dual-perspective SCReLU (QA=255, QB=64, EVAL_SCALE=400 packed in
+// header bytes 28..31), and 8 piece-count output buckets.
+inline constexpr std::uint32_t kKoiNnueHalfkaHmV9FormatVersion = 9;
 inline constexpr std::uint32_t kKoiNnueHalfkaKingBucketV1FeatureCount =
     static_cast<std::uint32_t>(kNnueHalfkaKingBucketV1FeatureCount);
 inline constexpr std::uint32_t kKoiNnueHalfkaThreatV5FeatureCount =
     static_cast<std::uint32_t>(kNnueHalfkaThreatV5FeatureCount);
+inline constexpr std::uint32_t kKoiNnueHalfkaHmV2FeatureCount =
+    static_cast<std::uint32_t>(kNnueHalfkaHmV2FeatureCount);
 inline constexpr std::uint32_t kKoiNnueOutputBucketCount = 8;
 inline constexpr std::uint32_t kKoiNnueMinimumHiddenUnits = 32;
 inline constexpr std::uint32_t kKoiNnueMaximumHiddenUnits = 8192;
@@ -60,10 +66,13 @@ inline constexpr std::uint32_t kKoiNnueMaximumL1Units = 128;
 // header.  Values beyond this cannot be expressed meaningfully by the integer
 // pipelines the containers target.
 inline constexpr std::uint8_t kKoiNnueMaximumShift = 20;
+inline constexpr std::uint16_t kKoiNnueMaximumEvalScale = 4096;
 inline constexpr std::string_view kKoiNnueHalfkaKingBucketV1FeatureSet =
     kNnueHalfkaKingBucketV1FeatureSet;
 inline constexpr std::string_view kKoiNnueHalfkaThreatV5FeatureSet =
     kNnueHalfkaThreatV5FeatureSet;
+inline constexpr std::string_view kKoiNnueHalfkaHmV2FeatureSet =
+    kNnueHalfkaHmV2FeatureSet;
 inline constexpr std::uint32_t kKoiNnueFeatureCount =
     static_cast<std::uint32_t>(kNnuePieceSquareV1FeatureCount);
 inline constexpr std::uint32_t kKoiNnuePieceSquareKingPawnV2FeatureCount =
@@ -139,6 +148,12 @@ struct NnueNetwork {
     // `(pair_sum >> l1_shift) + (diff_sum >> l1_diff_shift) + bias`, whose L1
     // bias is stored at the plain 127 scale.  Versions 2-5 leave it at zero.
     std::uint8_t l1_diff_shift = 0;
+
+    // Version 9 SCReLU quantization & scaling parameters stored in header bytes
+    // 28..31 (`qa`, `qb`, `eval_scale` u16 LE); versions 2-8 leave them zero.
+    std::uint8_t qa = 0;
+    std::uint8_t qb = 0;
+    std::uint16_t eval_scale = 0;
 
 };
 
@@ -293,14 +308,14 @@ private:
     std::uint8_t scratch_pieces_ = 0;
     std::uint64_t scratch_key_ = 0;
     bool scratch_valid_ = false;
-    // Finny Table for HalfKA v4 king-bucket refreshes: caches the accumulator
-    // sums and 12 piece bitboards per (perspective, king_bucket).
+    // Finny Table for HalfKA v4/v9 king-bucket refreshes: caches the accumulator
+    // sums and 12 piece bitboards per (perspective, finny_slot).
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> finny_values_;
     std::array<std::vector<std::int16_t>, kIncrementalPerspectives> finny_values_16_;
-    std::array<std::array<std::array<std::array<std::uint64_t, 7>, 2>, kNnueKingBucketCount>,
+    std::array<std::array<std::array<std::array<std::uint64_t, 7>, 2>, kNnueFinnyBucketCapacity>,
                kIncrementalPerspectives>
         finny_bitboards_{};
-    std::array<std::array<std::uint8_t, kNnueKingBucketCount>, kIncrementalPerspectives>
+    std::array<std::array<std::uint8_t, kNnueFinnyBucketCapacity>, kIncrementalPerspectives>
         finny_valid_{};
     // v5 group B sets, flattened per perspective as slot * capacity entries.
     static constexpr std::size_t kThreatListCapacity = 128;
@@ -308,10 +323,11 @@ private:
     std::array<std::vector<std::uint8_t>, kIncrementalPerspectives> slot_threat_counts_;
     std::array<std::vector<std::uint16_t>, kIncrementalPerspectives> scratch_threats_;
     std::array<std::uint8_t, kIncrementalPerspectives> scratch_threat_counts_{};
-    // v4 halfka networks do not carry threat features; allocating or copying
+    // v4/v9 halfka networks do not carry threat features; allocating or copying
     // the per-slot threat buffers on the make path is pure overhead there.
     bool threat_features_ = false;
     bool dual_v4_ = false;
+    bool halfka_hm_v9_ = false;
     bool overflow_safe_ = false;
     bool int16_safe_known_ = false;
     bool int16_safe_ = false;
