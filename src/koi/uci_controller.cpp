@@ -2343,6 +2343,7 @@ void UciController::write_readyok() {
 void UciController::write_perft_results(GameState root, const int depth,
                                         const std::stop_token stop_token,
                                         const std::uint64_t generation) {
+    const auto started = std::chrono::steady_clock::now();
     std::vector<std::pair<Move, std::uint64_t>> counts;
     const std::vector<Move> legal_moves = root.legal_moves();
     counts.reserve(legal_moves.size());
@@ -2364,6 +2365,11 @@ void UciController::write_perft_results(GameState root, const int depth,
         total += result.nodes;
         counts.emplace_back(move, result.nodes);
     }
+    const auto elapsed_ms = std::max<std::int64_t>(
+        1, std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - started)
+               .count());
+    const std::uint64_t nps = (total * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
     debug_event("perft depth " + std::to_string(depth) + " nodes " + std::to_string(total));
     std::lock_guard lock(output_mutex_);
     if (stop_token.stop_requested() || generation != generation_ ||
@@ -2374,7 +2380,10 @@ void UciController::write_perft_results(GameState root, const int depth,
         for (const auto& [move, nodes] : counts) {
             output_ << "info string " << move.uci() << ": " << nodes << '\n';
         }
-        output_ << "info string Nodes searched: " << total << '\n' << std::flush;
+        output_ << "info string Nodes searched: " << total << '\n'
+                << "info string Time (ms): " << elapsed_ms << " | Nodes/second: " << nps
+                << '\n'
+                << std::flush;
     }
     state_ = ControllerState::Idle;
 }

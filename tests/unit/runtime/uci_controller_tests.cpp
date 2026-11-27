@@ -3036,6 +3036,9 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
             "wait command sequence must shut down cleanly");
     require(wait_raw.find("Nodes searched: 20") != std::string::npos,
             "wait after perft must await completion before starting the next command");
+    require(wait_raw.find("info string Time (ms): ") != std::string::npos &&
+                wait_raw.find(" | Nodes/second: ") != std::string::npos,
+            "perft completion must emit timing and NPS summary");
     require(wait_raw.find("wait ignored: active search has no finite limit") != std::string::npos,
             "wait during an infinite search must refuse cleanly without hanging");
     std::size_t wait_bestmove_count = 0;
