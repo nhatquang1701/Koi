@@ -65,6 +65,11 @@ int main(int argument_count, char* arguments[]) {
     if (argument_count < 2) {
         return usage();
     }
+    const std::string_view first(arguments[1]);
+    if (first == "-h" || first == "--help") {
+        std::cout << "usage: koi-replay <startpos|fen six-field-fen> [moves <coordinate>...]\n";
+        return 0;
+    }
 
     int move_start = argument_count;
     for (int index = 1; index < argument_count; ++index) {

@@ -939,7 +939,11 @@ if(Python3_Interpreter_FOUND)
     set_property(
         TEST cli_subcommands_python
         APPEND
-        PROPERTY ENVIRONMENT "KOI_ENGINE_EXE=$<TARGET_FILE:koi_engine>"
+        PROPERTY ENVIRONMENT
+            "KOI_ENGINE_EXE=$<TARGET_FILE:koi_engine>"
+            "KOI_PERFT_EXE=$<TARGET_FILE:koi_perft>"
+            "KOI_REPLAY_EXE=$<TARGET_FILE:koi_replay>"
+            "KOI_BENCH_EXE=$<TARGET_FILE:koi_bench>"
     )
 else()
     message(STATUS

@@ -34,6 +34,19 @@ def _resolve_engine() -> pathlib.Path:
     raise unittest.SkipTest("No built koi-engine executable found; set KOI_ENGINE_EXE")
 
 
+def _resolve_tool(env_name: str, binary_stem: str, engine: pathlib.Path) -> pathlib.Path:
+    env_exe = os.environ.get(env_name)
+    if env_exe:
+        path = pathlib.Path(env_exe)
+        if path.is_file():
+            return path
+    suffix = engine.suffix
+    sibling = engine.parent / f"{binary_stem}{suffix}"
+    if sibling.is_file():
+        return sibling
+    raise unittest.SkipTest(f"No built {binary_stem} executable found; set {env_name}")
+
+
 class CliSubcommandsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -147,6 +160,60 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Total time (ms) :", bench.stdout)
         self.assertIn("Nodes searched  :", bench.stdout)
         self.assertIn("Nodes/second    :", bench.stdout)
+
+    def test_developer_tool_cli_subcommands(self) -> None:
+        perft_exe = _resolve_tool("KOI_PERFT_EXE", "koi-perft", self.engine)
+        replay_exe = _resolve_tool("KOI_REPLAY_EXE", "koi-replay", self.engine)
+        bench_exe = _resolve_tool("KOI_BENCH_EXE", "koi-bench", self.engine)
+
+        help_perft = subprocess.run([str(perft_exe), "--help"], capture_output=True, text=True, timeout=15)
+        self.assertEqual(help_perft.returncode, 0, help_perft.stderr)
+        self.assertIn("usage: koi-perft", help_perft.stdout)
+
+        perft_plain = subprocess.run([str(perft_exe), "3"], capture_output=True, text=True, timeout=15)
+        self.assertEqual(perft_plain.returncode, 0, perft_plain.stderr)
+        self.assertEqual(perft_plain.stdout.strip(), "nodes 8902")
+
+        kiwipete = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+        perft_div = subprocess.run(
+            [str(perft_exe), "--divide", "2", kiwipete],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(perft_div.returncode, 0, perft_div.stderr)
+        self.assertIn("nodes 2039", perft_div.stdout)
+
+        perft_unquoted = subprocess.run(
+            [str(perft_exe), "--divide", "2", *kiwipete.split()],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(perft_unquoted.returncode, 0, perft_unquoted.stderr)
+        self.assertIn("nodes 2039", perft_unquoted.stdout)
+
+        bad_fen = subprocess.run([str(perft_exe), "1", "bad fen"], capture_output=True, text=True, timeout=15)
+        self.assertNotEqual(bad_fen.returncode, 0)
+        self.assertIn("invalid FEN", bad_fen.stderr)
+
+        help_replay = subprocess.run([str(replay_exe), "--help"], capture_output=True, text=True, timeout=15)
+        self.assertEqual(help_replay.returncode, 0, help_replay.stderr)
+        self.assertIn("usage: koi-replay", help_replay.stdout)
+
+        replay_ok = subprocess.run(
+            [str(replay_exe), "startpos", "moves", "e2e4", "e7e5"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(replay_ok.returncode, 0, replay_ok.stderr)
+        self.assertIn("legal 1", replay_ok.stdout)
+        self.assertIn("termination ongoing", replay_ok.stdout)
+
+        help_bench = subprocess.run([str(bench_exe), "--help"], capture_output=True, text=True, timeout=15)
+        self.assertEqual(help_bench.returncode, 0, help_bench.stderr)
+        self.assertIn("usage: koi-bench", help_bench.stdout)
 
 
 if __name__ == "__main__":

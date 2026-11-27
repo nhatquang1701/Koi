@@ -906,12 +906,22 @@ void write_speed_json(const std::string& path, const BenchmarkConfig& config,
     }
 }
 
+constexpr std::string_view kBenchUsage =
+    "usage: koi-bench [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path | --hce] [--profile-json path] [--iteration-profile-json path] [--report path]\n";
+
 } // namespace
 
 int main(int argc, char** argv) {
+    for (int index = 1; index < argc; ++index) {
+        const std::string_view argument(argv[index]);
+        if (argument == "-h" || argument == "--help") {
+            std::cout << kBenchUsage;
+            return 0;
+        }
+    }
     auto config = parse_arguments(argc, argv);
     if (!config.has_value()) {
-        std::cerr << "usage: koi-bench [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path | --hce] [--profile-json path] [--iteration-profile-json path] [--report path]\n";
+        std::cerr << kBenchUsage;
         return 2;
     }
     if (config->iteration_profile_json_path.has_value() && config->threads != 1) {
