@@ -102,7 +102,7 @@ see e1d1
 SEE e1d1 : +0 cp
 ```
 
-See the [User Guide](USER_GUIDE.md#uci-options-quick-reference) for the complete table of 27 advertised UCI options and the [Engine Specification](ENGINE_SPEC.md#7-protocol-behavior) for `CompletionGate` and bounded line guarantees.
+See the [User Guide](USER_GUIDE.md#uci-options-quick-reference) for the complete table of 27 advertised UCI options and the [Engine Specification](ENGINE_SPEC.md#7-uci-surface) for `CompletionGate` and bounded line guarantees.
 
 ---
 
