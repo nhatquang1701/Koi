@@ -1536,160 +1536,42 @@ void UciController::handle_fen() {
 }
 
 void UciController::handle_key() {
-    std::ostringstream buffer;
-    buffer << "Position key : " << detail::debug_hex(position_.position_key()) << '\n'
-           << "Pawn key     : " << detail::debug_hex(position_.pawn_key()) << '\n'
-           << "Polyglot key : " << detail::debug_hex(position_.polyglot_key()) << '\n';
+    const std::string text = detail::format_key_info(position_);
     std::lock_guard lock(output_mutex_);
-    output_ << buffer.str() << std::flush;
+    output_ << text << std::flush;
 }
 
 void UciController::handle_moves() {
-    const std::vector<Move> raw_moves = position_.legal_moves();
-    std::vector<std::string> moves;
-    moves.reserve(raw_moves.size());
-    for (const Move& move : raw_moves) {
-        moves.push_back(move.uci());
-    }
-    std::sort(moves.begin(), moves.end());
-    std::ostringstream buffer;
-    buffer << "Legal moves (" << moves.size() << "):";
-    if (moves.empty()) {
-        buffer << " (none)";
-    } else {
-        for (const std::string& move : moves) {
-            buffer << ' ' << move;
-        }
-    }
-    buffer << '\n';
+    const std::string text = detail::format_legal_moves(position_);
     std::lock_guard lock(output_mutex_);
-    output_ << buffer.str() << std::flush;
+    output_ << text << std::flush;
 }
 
 void UciController::handle_book() {
-    const std::filesystem::path book_path = resolved_book_path();
-    std::ostringstream buffer;
+    std::string text;
     if (!book_is_available()) {
-        buffer << "Opening book : unavailable\n";
+        text = "Opening book : unavailable\n";
     } else {
+        const std::filesystem::path book_path = resolved_book_path();
         const std::vector<BookChoice> entries = opening_book_.probe_all(position_);
-        const std::string name = book_path.filename().string();
-        if (entries.empty()) {
-            buffer << "Opening book : " << name << " (no moves for position)\n";
-        } else {
-            std::uint64_t total_weight = 0;
-            for (const BookChoice& entry : entries) {
-                total_weight += entry.weight;
-            }
-            buffer << "Opening book : " << name << " (" << entries.size()
-                   << " moves, total weight " << total_weight << ")\n"
-                   << std::fixed << std::setprecision(1);
-            for (const BookChoice& entry : entries) {
-                const double pct = total_weight > 0
-                    ? (100.0 * static_cast<double>(entry.weight) /
-                       static_cast<double>(total_weight))
-                    : 0.0;
-                buffer << "  " << entry.move.uci() << "  weight=" << entry.weight
-                       << " (" << pct << "%)\n";
-            }
-        }
+        text = detail::format_book_entries(book_path.filename().string(), entries);
     }
     std::lock_guard lock(output_mutex_);
-    output_ << buffer.str() << std::flush;
+    output_ << text << std::flush;
 }
 
 void UciController::handle_tb() {
     ensure_auto_syzygy_loaded();
-    std::ostringstream buffer;
-    if (!syzygy_ || !syzygy_->enabled()) {
-        buffer << "Syzygy : unavailable\n";
-    } else if (!syzygy_->probe_eligible(position_)) {
-        buffer << "Syzygy : loaded (max " << syzygy_->large_table_limit()
-               << " pieces; position has " << position_.piece_count()
-               << ", not eligible)\n";
-    } else if (const std::optional<SyzygyRootResult> root = syzygy_->probe_root(position_);
-               !root.has_value()) {
-        buffer << "Syzygy : loaded (max " << syzygy_->large_table_limit()
-               << " pieces; no hit)\n";
-    } else {
-        const char* wdl_name = "draw";
-        switch (root->wdl) {
-        case SyzygyWdl::win:
-            wdl_name = "win";
-            break;
-        case SyzygyWdl::cursed_win:
-            wdl_name = "cursed win";
-            break;
-        case SyzygyWdl::draw:
-            wdl_name = "draw";
-            break;
-        case SyzygyWdl::blessed_loss:
-            wdl_name = "blessed loss";
-            break;
-        case SyzygyWdl::loss:
-            wdl_name = "loss";
-            break;
-        }
-        buffer << "Syzygy : " << wdl_name << " (" << std::showpos << root->score.score_cp
-               << " cp) | moves:";
-        if (root->moves.empty()) {
-            buffer << " (none)";
-        } else {
-            for (const Move& move : root->moves) {
-                buffer << ' ' << move.uci();
-            }
-        }
-        buffer << '\n';
-    }
+    const std::string text = detail::format_syzygy_probe(syzygy_.get(), position_);
     std::lock_guard lock(output_mutex_);
-    output_ << buffer.str() << std::flush;
+    output_ << text << std::flush;
 }
 
 void UciController::handle_eval() {
     const std::shared_ptr<const Evaluator> evaluator = search_service_.evaluator();
-    std::ostringstream buffer;
-    if (evaluator == nullptr) {
-        buffer << "Evaluator      : unavailable\n";
-    } else {
-        const int score_stm = evaluator->evaluate(position_, position_.side_to_move());
-        const int score_white =
-            (position_.side_to_move() == Color::white) ? score_stm : -score_stm;
-        auto format_score = [](const int cp) {
-            std::ostringstream out;
-            out << std::showpos << std::fixed << std::setprecision(2)
-                << (static_cast<double>(cp) / 100.0) << " (" << cp << " cp)";
-            return out.str();
-        };
-        SearchInfo eval_info;
-        eval_info.score_cp = score_stm;
-        const Wdl wdl = score_to_wdl(eval_info);
-        buffer << "Evaluator      : ";
-        if (hce_active_) {
-            buffer << "HCE (classical tapered)";
-        } else if (const auto* nnue = dynamic_cast<const NnueEvaluator*>(evaluator.get());
-                   nnue != nullptr && nnue->network() != nullptr) {
-            const NnueManifest& m = nnue->network()->manifest;
-            const bool dual =
-                (m.version == kKoiNnueHalfkaHmV9FormatVersion) ||
-                (m.version == kKoiNnueHalfkaKingBucketV1FormatVersion && m.layer_sizes[3] == 2U);
-            buffer << "NNUE (v" << m.version << ' ' << m.feature_set << ", "
-                   << m.layer_sizes[0] << "->" << m.layer_sizes[1]
-                   << (dual ? "x2->" : "->") << m.layer_sizes[2] << ')';
-        } else {
-            buffer << "NNUE";
-        }
-        buffer << '\n'
-               << "Side to move   : " << format_score(score_stm) << '\n'
-               << "White relative : " << format_score(score_white) << '\n'
-               << "WDL (stm)      : " << std::noshowpos << std::fixed << std::setprecision(1)
-               << (static_cast<double>(wdl.win) / 10.0) << "% W / "
-               << (static_cast<double>(wdl.draw) / 10.0) << "% D / "
-               << (static_cast<double>(wdl.loss) / 10.0) << "% L\n"
-               << "Game phase     : " << position_.game_phase() << "/24 (pieces: "
-               << position_.piece_count() << ")\n";
-    }
+    const std::string text = detail::format_eval_summary(position_, evaluator.get(), hce_active_);
     std::lock_guard lock(output_mutex_);
-    output_ << buffer.str() << std::flush;
+    output_ << text << std::flush;
 }
 
 void UciController::handle_see(std::istream& command) {

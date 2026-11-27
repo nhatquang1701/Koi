@@ -71,6 +71,15 @@ std::optional<Arguments> parse_arguments(int argc, char** argv) {
 } // namespace
 
 int main(int argc, char** argv) {
+    for (int index = 1; index < argc; ++index) {
+        if (argv[index] != nullptr) {
+            const std::string_view argument(argv[index]);
+            if (argument == "-h" || argument == "--help") {
+                std::cout << kUsage;
+                return 0;
+            }
+        }
+    }
     const auto arguments = parse_arguments(argc, argv);
     if (!arguments.has_value()) {
         std::cerr << kUsage;

@@ -17,6 +17,14 @@
 #include "koi/move_annotation.hpp"
 #include "koi/search_types.hpp"
 
+namespace koi {
+
+struct BookChoice;
+class Evaluator;
+class SyzygyTablebase;
+
+} // namespace koi
+
 namespace koi::detail {
 
 enum class BoundedLineRead : std::uint8_t {
@@ -113,6 +121,14 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
     std::uint32_t previous_estimate_ms) noexcept;
 
 [[nodiscard]] std::string format_ascii_board(const GameState& position);
+[[nodiscard]] std::string format_key_info(const GameState& position);
+[[nodiscard]] std::string format_legal_moves(const GameState& position);
+[[nodiscard]] std::string format_book_entries(
+    std::string_view book_name, const std::vector<BookChoice>& entries);
+[[nodiscard]] std::string format_syzygy_probe(
+    const SyzygyTablebase* syzygy, const GameState& position);
+[[nodiscard]] std::string format_eval_summary(
+    const GameState& position, const Evaluator* evaluator, bool hce_active);
 [[nodiscard]] std::string format_compiler_info(std::string_view version, std::string_view commit);
 [[nodiscard]] std::string format_interactive_help();
 

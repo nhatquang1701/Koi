@@ -1,6 +1,10 @@
 #include "koi/detail/uci_support.hpp"
 
 #include "koi/detail/uci_option_table.hpp"
+#include "koi/evaluator.hpp"
+#include "koi/nnue.hpp"
+#include "koi/opening_book.hpp"
+#include "koi/syzygy_tablebase.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -495,6 +499,151 @@ std::string format_ascii_board(const GameState& position) {
            << "Side  : " << (white_to_move ? "white" : "black") << '\n'
            << "Check : " << (checked ? "yes" : "no") << '\n'
            << "Moves : " << position.legal_moves().size() << '\n';
+    return buffer.str();
+}
+
+std::string format_key_info(const GameState& position) {
+    std::ostringstream buffer;
+    buffer << "Position key : " << debug_hex(position.position_key()) << '\n'
+           << "Pawn key     : " << debug_hex(position.pawn_key()) << '\n'
+           << "Polyglot key : " << debug_hex(position.polyglot_key()) << '\n';
+    return buffer.str();
+}
+
+std::string format_legal_moves(const GameState& position) {
+    const std::vector<Move> raw_moves = position.legal_moves();
+    std::vector<std::string> moves;
+    moves.reserve(raw_moves.size());
+    for (const Move& move : raw_moves) {
+        moves.push_back(move.uci());
+    }
+    std::sort(moves.begin(), moves.end());
+    std::ostringstream buffer;
+    buffer << "Legal moves (" << moves.size() << "):";
+    if (moves.empty()) {
+        buffer << " (none)";
+    } else {
+        for (const std::string& move : moves) {
+            buffer << ' ' << move;
+        }
+    }
+    buffer << '\n';
+    return buffer.str();
+}
+
+std::string format_book_entries(const std::string_view book_name,
+                                    const std::vector<BookChoice>& entries) {
+    std::ostringstream buffer;
+    if (entries.empty()) {
+        buffer << "Opening book : " << book_name << " (no moves for position)\n";
+        return buffer.str();
+    }
+    std::uint64_t total_weight = 0;
+    for (const BookChoice& entry : entries) {
+        total_weight += entry.weight;
+    }
+    buffer << "Opening book : " << book_name << " (" << entries.size()
+           << " moves, total weight " << total_weight << ")\n"
+           << std::fixed << std::setprecision(1);
+    for (const BookChoice& entry : entries) {
+        const double pct = total_weight > 0
+            ? (100.0 * static_cast<double>(entry.weight) / static_cast<double>(total_weight))
+            : 0.0;
+        buffer << "  " << entry.move.uci() << "  weight=" << entry.weight
+               << " (" << pct << "%)\n";
+    }
+    return buffer.str();
+}
+
+std::string format_syzygy_probe(const SyzygyTablebase* const syzygy, const GameState& position) {
+    std::ostringstream buffer;
+    if (syzygy == nullptr || !syzygy->enabled()) {
+        buffer << "Syzygy : unavailable\n";
+    } else if (!syzygy->probe_eligible(position)) {
+        buffer << "Syzygy : loaded (max " << syzygy->large_table_limit()
+               << " pieces; position has " << position.piece_count()
+               << ", not eligible)\n";
+    } else if (const std::optional<SyzygyRootResult> root = syzygy->probe_root(position);
+               !root.has_value()) {
+        buffer << "Syzygy : loaded (max " << syzygy->large_table_limit()
+               << " pieces; no hit)\n";
+    } else {
+        const char* wdl_name = "draw";
+        switch (root->wdl) {
+        case SyzygyWdl::win:
+            wdl_name = "win";
+            break;
+        case SyzygyWdl::cursed_win:
+            wdl_name = "cursed win";
+            break;
+        case SyzygyWdl::draw:
+            wdl_name = "draw";
+            break;
+        case SyzygyWdl::blessed_loss:
+            wdl_name = "blessed loss";
+            break;
+        case SyzygyWdl::loss:
+            wdl_name = "loss";
+            break;
+        }
+        buffer << "Syzygy : " << wdl_name << " (" << std::showpos << root->score.score_cp
+               << " cp) | moves:";
+        if (root->moves.empty()) {
+            buffer << " (none)";
+        } else {
+            for (const Move& move : root->moves) {
+                buffer << ' ' << move.uci();
+            }
+        }
+        buffer << '\n';
+    }
+    return buffer.str();
+}
+
+std::string format_eval_summary(const GameState& position,
+                                const Evaluator* const evaluator,
+                                const bool hce_active) {
+    std::ostringstream buffer;
+    if (evaluator == nullptr) {
+        buffer << "Evaluator      : unavailable\n";
+        return buffer.str();
+    }
+    const int score_stm = evaluator->evaluate(position, position.side_to_move());
+    const int score_white =
+        (position.side_to_move() == Color::white) ? score_stm : -score_stm;
+    auto format_score = [](const int cp) {
+        std::ostringstream out;
+        out << std::showpos << std::fixed << std::setprecision(2)
+            << (static_cast<double>(cp) / 100.0) << " (" << cp << " cp)";
+        return out.str();
+    };
+    SearchInfo eval_info;
+    eval_info.score_cp = score_stm;
+    const Wdl wdl = score_to_wdl(eval_info);
+    buffer << "Evaluator      : ";
+    if (hce_active) {
+        buffer << "HCE (classical tapered)";
+    } else if (const auto* nnue = dynamic_cast<const NnueEvaluator*>(evaluator);
+               nnue != nullptr && nnue->network() != nullptr) {
+        const NnueManifest& m = nnue->network()->manifest;
+        const bool dual =
+            (m.version == kKoiNnueHalfkaHmV9FormatVersion) ||
+            (m.version == kKoiNnueHalfkaKingBucketV1FormatVersion && m.layer_sizes[3] == 2U);
+        buffer << "NNUE (v" << m.version << ' ' << m.feature_set << ", "
+               << m.layer_sizes[0] << "->" << m.layer_sizes[1]
+               << (dual ? "x2->" : "->") << m.layer_sizes[2] << ')';
+    } else {
+        buffer << "NNUE";
+    }
+    buffer << '\n'
+           << "Side to move   : " << format_score(score_stm) << '\n'
+           << "White relative : " << format_score(score_white) << '\n'
+           << "WDL (stm)      : " << std::noshowpos << std::fixed << std::setprecision(1)
+           << (static_cast<double>(wdl.win) / 10.0) << "% W / "
+           << (static_cast<double>(wdl.draw) / 10.0) << "% D / "
+           << (static_cast<double>(wdl.loss) / 10.0) << "% L\n"
+           << "Game phase     : " << position.game_phase() << "/24 (pieces: "
+           << position.piece_count() << ")\n";
     return buffer.str();
 }
 

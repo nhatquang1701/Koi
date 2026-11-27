@@ -215,6 +215,17 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(help_bench.returncode, 0, help_bench.stderr)
         self.assertIn("usage: koi-bench", help_bench.stdout)
 
+        eval_features_exe = _resolve_tool("KOI_EVAL_FEATURES_EXE", "koi-eval-features", self.engine)
+        nnue_fixture_exe = _resolve_tool("KOI_NNUE_FIXTURE_EXE", "koi-nnue-fixture", self.engine)
+        for tool_exe, expected_prefix in (
+            (eval_features_exe, "usage: koi-eval-features"),
+            (nnue_fixture_exe, "usage: koi-nnue-fixture"),
+        ):
+            for flag in ("-h", "--help"):
+                proc = subprocess.run([str(tool_exe), flag], capture_output=True, text=True, timeout=15)
+                self.assertEqual(proc.returncode, 0, f"{tool_exe} {flag}: {proc.stderr}")
+                self.assertIn(expected_prefix, proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

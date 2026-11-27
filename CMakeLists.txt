@@ -944,6 +944,8 @@ if(Python3_Interpreter_FOUND)
             "KOI_PERFT_EXE=$<TARGET_FILE:koi_perft>"
             "KOI_REPLAY_EXE=$<TARGET_FILE:koi_replay>"
             "KOI_BENCH_EXE=$<TARGET_FILE:koi_bench>"
+            "KOI_EVAL_FEATURES_EXE=$<TARGET_FILE:koi_eval_features>"
+            "KOI_NNUE_FIXTURE_EXE=$<TARGET_FILE:koi_nnue_fixture>"
     )
 else()
     message(STATUS

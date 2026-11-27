@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
             use_hce = true;
         } else if (argument == "--nnue" && index + 1 < argc) {
             nnue_path = argv[++index];
-        } else if (argument == "--help") {
+        } else if (argument == "-h" || argument == "--help") {
             std::cout << "usage: koi-eval-features (--nnue NET | --hce) [--input FILE] [--output FILE]\n"
                          "  reads FEN or FEN;cp;... rows (stdin by default) and writes\n"
                          "  CSV rows fen,label_cp,<evaluator>_cp from the side-to-move perspective\n";
