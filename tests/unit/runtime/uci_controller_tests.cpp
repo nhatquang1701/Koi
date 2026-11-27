@@ -3541,11 +3541,10 @@ void test_uci_support_helpers_direct() {
     {
         koi::test::TempDirectory scratch;
         const std::filesystem::path book_file = scratch.file("cli-book.bin");
-        const std::optional<koi::Move> e2e4_move = koi::Move::parse_uci("e2e4");
-        require(e2e4_move.has_value(), "expected valid e2e4 move");
-        koi::test::write_polyglot_book_file(
-            book_file, {{koi::GameState::startpos().polyglot_key(), *e2e4_move, 100}});
-        const std::filesystem::path tb_dir = scratch.subdir("empty-tb");
+        write_book(book_file, {{koi::GameState::startpos().polyglot_key(),
+                                polyglot_move("e2", "e4"), 100, 0}});
+        const std::filesystem::path tb_dir = scratch.file("empty-tb");
+        std::filesystem::create_directories(tb_dir);
 
         std::istringstream in;
         std::ostringstream out;
