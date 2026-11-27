@@ -46,7 +46,7 @@ jobs:
           if errorlevel 1 exit /b 1
       - name: Upload Release test diagnostics
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: release-test-diagnostics
           path: |
@@ -97,7 +97,7 @@ jobs:
           exit /b 0
       - name: Upload Windows flake diagnostics
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: windows-flake-test-diagnostics
           path: |
@@ -142,7 +142,7 @@ jobs:
           if errorlevel 1 exit /b 1
       - name: Upload Debug test diagnostics
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: debug-test-diagnostics
           path: |
@@ -188,7 +188,7 @@ jobs:
           if errorlevel 1 exit /b 1
       - name: Upload sanitizer diagnostics
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: sanitizer-test-diagnostics
           path: |
@@ -265,7 +265,7 @@ jobs:
           dir artifacts\packages
       - name: Upload the Windows package
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: koi-engine-windows-package
           path: |

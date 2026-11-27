@@ -34,7 +34,7 @@ jobs:
           pwsh -NoProfile -File tests/integration/packaging/package_release_test.ps1 -BuildDirectory build/ci-release -PackageScript tools/build/package_release.ps1
           (cd artifacts/packages && sha256sum -c koi-engine-v1.2.0-linux-x86_64.tar.gz.sha256)
           '
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-candidate-linux-package
           path: |
@@ -219,7 +219,7 @@ jobs:
             --expected-threads "$THREADS" \
             --expected-max-moves "$MAX_MOVES" \
             --expected-opening-count 32
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: release-candidate-${{ matrix.leg }}-games

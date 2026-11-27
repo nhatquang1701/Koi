@@ -58,7 +58,7 @@ jobs:
             exit 1
           fi
           echo "sha256=$actual_sha" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-nnue-network
           path: artifacts/release-nnue/koi.nnue
@@ -138,7 +138,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not ($smokeOutput -match '^bestmove ')) {
             throw "Packaged koi-engine.exe smoke test failed"
           }
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows-assets
           path: |
@@ -188,7 +188,7 @@ jobs:
           done
           printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | timeout 15 "$extracted/koi-engine" | grep -q "bestmove "
           '
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-linux-assets
           path: |
@@ -227,7 +227,7 @@ jobs:
           archive=$(find artifacts/release -maxdepth 1 -name "*-macos-arm64.tar.gz" | head -n 1)
           tar -xzf "$archive" -C "$extracted"
           printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | "$extracted/koi-engine" | grep -q "bestmove "
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-macos-assets
           path: |
