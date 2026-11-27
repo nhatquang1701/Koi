@@ -373,10 +373,26 @@ def annotate_pgn_file(
     own_book: bool = False,
     max_games: Optional[int] = None,
     include_glyphs: bool = False,
+    eval_file: Optional[Path] = None,
+    hce: bool = False,
 ) -> Dict[str, Any]:
     """Read `pgn_path`, annotate every game with Koi, and return PGN text + structured JSON."""
 
     _validate_annotation_options(depth, movetime_ms, nodes, threads, hash_mb, max_games)
+    if eval_file is not None and hce:
+        raise elo_oracle.OracleError("--eval-file and --hce cannot be combined.")
+    resolved_eval_file: Optional[Path] = None
+    engine_env: Optional[Dict[str, str]] = None
+    if eval_file is not None:
+        resolved_eval_file = elo_oracle._resolve_file(
+            eval_file, "NNUE file", "--eval-file <path.nnue>"
+        )
+        engine_env = {
+            "KOI_NNUE_PATH": str(resolved_eval_file),
+            "KOI_EVALUATOR": "nnue",
+        }
+    elif hce:
+        engine_env = {"KOI_EVALUATOR": "hce"}
 
     chess, pgn = elo_oracle._load_chess_modules()
     raw_pgn, pgn_bytes = elo_oracle._read_pgn(pgn_path)
@@ -406,7 +422,7 @@ def annotate_pgn_file(
     annotated_pgn_blocks: List[str] = []
     report_games: List[Dict[str, Any]] = []
 
-    with elo_oracle.UciEngine(koi_path, "Koi") as koi:
+    with elo_oracle.UciEngine(koi_path, "Koi", extra_env=engine_env) as koi:
         engine_metadata = koi.metadata(engine_options)
         for index, game in enumerate(games, start=1):
             start_fen = game.headers.get("FEN")
@@ -443,6 +459,10 @@ def annotate_pgn_file(
         "source_pgn": str(pgn_path),
         "source_sha256": hashlib.sha256(pgn_bytes).hexdigest(),
         "engine": engine_metadata,
+        "evaluator": {
+            "mode": "hce" if hce else "nnue",
+            "eval_file": str(resolved_eval_file) if resolved_eval_file is not None else None,
+        },
         "limits": {
             "depth": depth if (depth is not None or (movetime_ms is None and nodes is None)) else None,
             "movetime_ms": movetime_ms,
@@ -472,6 +492,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include suffix glyphs (!, ?!, ?, ??) on SAN in addition to $N NAGs.",
     )
+    parser.add_argument(
+        "--eval-file",
+        type=Path,
+        default=None,
+        help="Explicit NNUE network path forwarded via KOI_NNUE_PATH.",
+    )
+    parser.add_argument(
+        "--hce",
+        action="store_true",
+        help="Annotate using the built-in classical evaluator (KOI_EVALUATOR=hce).",
+    )
     parser.add_argument("--output-pgn", type=Path, default=None, help="Write annotated PGN output here.")
     parser.add_argument("--output-json", type=Path, default=None, help="Write JSON report here.")
     return parser
@@ -494,6 +525,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             own_book=args.own_book,
             max_games=args.max_games,
             include_glyphs=args.include_glyphs,
+            eval_file=args.eval_file,
+            hce=args.hce,
         )
         if args.output_pgn is not None:
             args.output_pgn.parent.mkdir(parents=True, exist_ok=True)

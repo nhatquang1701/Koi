@@ -281,7 +281,9 @@ The default `koi-pgn-forensics-v1` report is written below
 
 `tools/measurement/annotate_pgn.py` drives Koi's native UCI `annotate` analyzer
 over PGN files to score and classify each move (`best`, `excellent`, `good`,
-`inaccuracy`, `mistake`, `blunder`) and compute accuracy/CPL summaries.
+`inaccuracy`, `mistake`, `blunder`) and compute accuracy/CPL summaries, with
+optional `--eval-file <path.nnue>` or `--hce` evaluator selection and structured
+`--output-json` / `--output-pgn` reporting.
 
 ## Read-only GigaBase sampling
 

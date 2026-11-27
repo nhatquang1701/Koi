@@ -88,8 +88,8 @@ void write_help(std::string_view version, std::string_view commit) {
               << ") - C++26 UCI chess engine\n\n"
               << "Usage: koi-engine [options] [command]\n\n"
               << "Options & commands:\n"
-              << "  -v, --version                            Print engine version and git commit\n"
-              << "  -h, --help                               Show this help message\n"
+              << "  version, -v, --version                   Print engine version and git commit\n"
+              << "  help, -h, --help                         Show this help message\n"
               << "  --engine-json                            Print En Croissant / Pawn Appetit JSON profile\n"
               << "  --protocol <name>                        Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
               << "  -c, --cmd <command>                      Execute UCI/protocol command(s) in batch mode and exit (repeatable)\n"
@@ -251,13 +251,25 @@ std::optional<int> parse_cli_options(
         }
     };
 
+    const auto append_cli_command = [&out](std::string_view cmd) {
+        out.commands.emplace_back(cmd);
+        std::string joined;
+        for (const std::string& command : out.commands) {
+            if (!joined.empty()) {
+                joined.push_back('\n');
+            }
+            joined.append(command);
+        }
+        set_environment_value("KOI_CLI_COMMANDS", joined);
+    };
+
     for (int index = 1; index < argc; ++index) {
         const std::string_view arg(argv[index]);
-        if (arg == "--version" || arg == "-v") {
+        if (arg == "version" || arg == "--version" || arg == "-v") {
             std::cout << "Koi " << version << " (" << commit << ")\n";
             return 0;
         }
-        if (arg == "--help" || arg == "-h") {
+        if (arg == "help" || arg == "--help" || arg == "-h") {
             write_help(version, commit);
             return 0;
         }
@@ -532,15 +544,7 @@ std::optional<int> parse_cli_options(
                 std::cerr << "koi-engine: missing command for --cmd.\n";
                 return 2;
             }
-            out.commands.emplace_back(argv[++index]);
-            std::string joined;
-            for (const std::string& command : out.commands) {
-                if (!joined.empty()) {
-                    joined.push_back('\n');
-                }
-                joined.append(command);
-            }
-            set_environment_value("KOI_CLI_COMMANDS", joined);
+            append_cli_command(argv[++index]);
             continue;
         }
         if (arg.starts_with("--cmd=")) {
@@ -549,15 +553,7 @@ std::optional<int> parse_cli_options(
                 std::cerr << "koi-engine: missing command for --cmd.\n";
                 return 2;
             }
-            out.commands.emplace_back(cmd_arg);
-            std::string joined;
-            for (const std::string& command : out.commands) {
-                if (!joined.empty()) {
-                    joined.push_back('\n');
-                }
-                joined.append(command);
-            }
-            set_environment_value("KOI_CLI_COMMANDS", joined);
+            append_cli_command(cmd_arg);
             continue;
         }
         std::optional<std::string_view> parsed_protocol;
@@ -572,9 +568,9 @@ std::optional<int> parse_cli_options(
             parsed_protocol = arg.substr(std::string_view("--protocol=").size());
         } else {
             std::cerr << "koi-engine: unknown option '" << arg
-                      << "' (supported: --version, --help, --engine-json, --protocol <name>, "
-                         "-c/--cmd <command>, --hce, --nnue <path>, --book <path>, "
-                         "--syzygy <path>, bench [depth [hash [threads]]], "
+                      << "' (supported: version/--version, help/--help, --engine-json, "
+                         "--protocol <name>, -c/--cmd <command>, --hce, --nnue <path>, "
+                         "--book <path>, --syzygy <path>, bench [depth [hash [threads]]], "
                          "speedtest [threads [hash [seconds]]], compiler, nnue [path], eval [fen], "
                          "options, perft <depth> [fen], d [fen], fen [fen], key [fen], moves [fen], flip [fen], "
                          "book [fen], tb [fen], see <move> [fen]).\n";

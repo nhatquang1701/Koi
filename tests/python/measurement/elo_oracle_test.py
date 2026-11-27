@@ -7,6 +7,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import tools.measurement.annotate_pgn as annotate_pgn
 import tools.measurement.elo_oracle as elo_oracle
@@ -810,6 +811,148 @@ class MoveAnnotationTests(unittest.TestCase):
                 movetime_ms=None,
                 nodes=None,
                 engine_options={},
+            )
+
+    def test_annotate_pgn_evaluator_env_flags(self):
+        import tools.measurement.annotate_pgn as annotate_pgn
+
+        fake_koi = """
+import json
+import os
+import sys
+
+log_path = os.environ.get("KOI_TEST_ENV_LOG")
+if log_path:
+    with open(log_path, "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "KOI_EVALUATOR": os.environ.get("KOI_EVALUATOR"),
+                "KOI_NNUE_PATH": os.environ.get("KOI_NNUE_PATH"),
+            },
+            handle,
+        )
+
+for raw in sys.stdin:
+    line = raw.strip()
+    if line == "uci":
+        print("id name Koi test")
+        print("id author Koi")
+        print("uciok", flush=True)
+    elif line == "isready":
+        print("readyok", flush=True)
+    elif line.startswith("annotate "):
+        print(
+            "info string annotate move e2e4 ply 1 side white best e2e4 class best cpl 0 acc 100.0 wp_before 0.5000 wp_after 0.5000 eval cp 25 best_eval cp 25 depth 2 nag 1 glyph ! pv e2e4",
+            flush=True,
+        )
+        print("info string annotate summary white moves 1 accuracy 100.0 avg_cpl 0.00 best 1", flush=True)
+        print("info string annotate summary black moves 0 accuracy 100.0 avg_cpl 0.00", flush=True)
+    elif line == "quit":
+        break
+""".lstrip()
+
+        with tempfile.TemporaryDirectory(prefix="koi annotate env ") as temporary_directory:
+            tmp = Path(temporary_directory)
+            script = tmp / "fake_koi_env.py"
+            script.write_text(fake_koi, encoding="utf-8")
+            if sys.platform == "win32":
+                engine_cmd = tmp / "fake_koi_env.cmd"
+                engine_cmd.write_text(f'@"{sys.executable}" "{script}"\n', encoding="utf-8")
+            else:
+                engine_cmd = tmp / "fake_koi_env.sh"
+                engine_cmd.write_text(
+                    f'#!/bin/sh\nexec "{sys.executable}" "{script}"\n',
+                    encoding="utf-8",
+                )
+                engine_cmd.chmod(0o755)
+            pgn_path = tmp / "game.pgn"
+            pgn_path.write_text('[Result "*"]\n\n1. e4 *\n', encoding="utf-8")
+            eval_file = tmp / "sample.nnue"
+            eval_file.write_bytes(b"KOI-NNUE")
+            env_log = tmp / "observed_env.json"
+
+            out_hce = tmp / "hce.json"
+            with mock.patch.dict(os.environ, {"KOI_TEST_ENV_LOG": str(env_log)}, clear=False):
+                os.environ.pop("KOI_EVALUATOR", None)
+                os.environ.pop("KOI_NNUE_PATH", None)
+                self.assertEqual(
+                    annotate_pgn.main(
+                        [
+                            "--pgn",
+                            str(pgn_path),
+                            "--koi",
+                            str(engine_cmd),
+                            "--hce",
+                            "--depth",
+                            "2",
+                            "--output-json",
+                            str(out_hce),
+                        ]
+                    ),
+                    0,
+                )
+            hce_payload = json.loads(out_hce.read_text(encoding="utf-8"))
+            self.assertEqual(hce_payload["evaluator"], {"mode": "hce", "eval_file": None})
+            self.assertEqual(
+                json.loads(env_log.read_text(encoding="utf-8")),
+                {"KOI_EVALUATOR": "hce", "KOI_NNUE_PATH": None},
+            )
+
+            out_nnue = tmp / "nnue.json"
+            with mock.patch.dict(os.environ, {"KOI_TEST_ENV_LOG": str(env_log)}, clear=False):
+                self.assertEqual(
+                    annotate_pgn.main(
+                        [
+                            "--pgn",
+                            str(pgn_path),
+                            "--koi",
+                            str(engine_cmd),
+                            "--eval-file",
+                            str(eval_file),
+                            "--depth",
+                            "2",
+                            "--output-json",
+                            str(out_nnue),
+                        ]
+                    ),
+                    0,
+                )
+            nnue_payload = json.loads(out_nnue.read_text(encoding="utf-8"))
+            self.assertEqual(
+                nnue_payload["evaluator"],
+                {"mode": "nnue", "eval_file": str(eval_file.resolve())},
+            )
+            self.assertEqual(
+                json.loads(env_log.read_text(encoding="utf-8")),
+                {"KOI_EVALUATOR": "nnue", "KOI_NNUE_PATH": str(eval_file.resolve())},
+            )
+
+            self.assertEqual(
+                annotate_pgn.main(
+                    [
+                        "--pgn",
+                        str(pgn_path),
+                        "--koi",
+                        str(engine_cmd),
+                        "--hce",
+                        "--eval-file",
+                        str(eval_file),
+                    ]
+                ),
+                2,
+            )
+            self.assertEqual(
+                annotate_pgn.main(
+                    [
+                        "--pgn",
+                        str(pgn_path),
+                        "--koi",
+                        str(engine_cmd),
+                        "--eval-file",
+                        str(tmp / "missing.nnue"),
+                    ]
+                ),
+                2,
             )
 
 

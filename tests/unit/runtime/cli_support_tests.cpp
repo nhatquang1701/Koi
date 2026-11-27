@@ -175,6 +175,25 @@ void test_inline_cmd_parsing_and_env_roundtrip() {
     koi::test::require(!reexec.has_value() && reexec_options.commands == options.commands,
                        "empty argv must restore KOI_CLI_COMMANDS after CPU selector re-exec");
 
+    {
+        env.clear_all();
+        ScopedStreamCapture out(std::cout);
+        koi::cli::CliOptions ver_opts;
+        const auto exit_code = invoke_parse({"version"}, ver_opts);
+        koi::test::require(exit_code == std::optional<int>(0) &&
+                               out.str().find("Koi ") == 0,
+                           "bare version subcommand must exit 0 with version banner");
+    }
+    {
+        env.clear_all();
+        ScopedStreamCapture out(std::cout);
+        koi::cli::CliOptions help_opts;
+        const auto exit_code = invoke_parse({"help"}, help_opts);
+        koi::test::require(exit_code == std::optional<int>(0) &&
+                               out.str().find("Usage: koi-engine") != std::string::npos,
+                           "bare help subcommand must exit 0 with usage summary");
+    }
+
     for (const std::vector<std::string>& invalid : std::vector<std::vector<std::string>>{
              {"-c"},
              {"--cmd="},

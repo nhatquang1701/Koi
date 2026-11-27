@@ -79,12 +79,12 @@ class CliSubcommandsTest(unittest.TestCase):
         )
 
     def test_version_help_and_engine_json(self) -> None:
-        for flag in ("--version", "-v"):
+        for flag in ("version", "--version", "-v"):
             proc = self._run([flag], disable_nnue=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertTrue(proc.stdout.startswith("Koi "), proc.stdout)
 
-        for flag in ("--help", "-h"):
+        for flag in ("help", "--help", "-h"):
             proc = self._run([flag], disable_nnue=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn("Usage: koi-engine", proc.stdout)

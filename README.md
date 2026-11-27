@@ -99,10 +99,10 @@ koi-engine perft 5 [fen]
 koi-engine --hce eval [fen]
 koi-engine --nnue <path> eval [fen]
 koi-engine -c "position startpos moves e2e4" -c "go depth 6"
-koi-engine --version
+koi-engine version                       # or -v, --version
 koi-engine --engine-json
 koi-engine --protocol xboard
-koi-engine --help
+koi-engine help                          # or -h, --help
 ```
 
 Inside an interactive session (`koi-engine`):

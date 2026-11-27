@@ -725,9 +725,16 @@ def _measurement_metadata(
 class UciEngine:
     """Small line-oriented UCI client with shell-free process handling."""
 
-    def __init__(self, path: Path, label: str):
+    def __init__(
+        self,
+        path: Path,
+        label: str,
+        *,
+        extra_env: Optional[Dict[str, str]] = None,
+    ):
         self.path = path
         self.label = label
+        self.extra_env = dict(extra_env) if extra_env else None
         self.process: Optional[subprocess.Popen[str]] = None
         self._stdout_queue: "queue.Queue[Optional[str]]" = queue.Queue()
         self._stderr_lines: List[str] = []
@@ -758,6 +765,10 @@ class UciEngine:
             "errors": "replace",
             "bufsize": 1,
         }
+        if self.extra_env:
+            env = os.environ.copy()
+            env.update(self.extra_env)
+            popen_kwargs["env"] = env
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
