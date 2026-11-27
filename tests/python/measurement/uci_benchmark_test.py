@@ -352,6 +352,27 @@ class UciBenchmarkReportTest(unittest.TestCase):
                     source_revision="abc1234",
                 )
 
+    def test_peak_rss_supports_darwin_ps_sampling(self):
+        samples = [" 2048\n", " 4096\n", " 3072\n"]
+        index = 0
+
+        def fake_ps(*_args, **_kwargs):
+            nonlocal index
+            out = samples[min(index, len(samples) - 1)]
+            index += 1
+            return mock.Mock(returncode=0, stdout=out)
+
+        with mock.patch.object(uci_benchmark.sys, "platform", "darwin"), \
+                mock.patch.object(uci_benchmark.subprocess, "run", side_effect=fake_ps):
+            rss = uci_benchmark._PeakRss(12345)
+            rss._sample()
+            summary = rss.close()
+
+        self.assertEqual(
+            summary,
+            {"bytes": 4096 * 1024, "supported": True, "method": "macos_ps_rss"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

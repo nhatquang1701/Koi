@@ -1,5 +1,7 @@
 #include <array>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -12,10 +14,11 @@
 
 namespace {
 
-constexpr std::array<const char*, 29> kCliEnvVars = {
+constexpr std::array<const char*, 30> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_EVALUATOR",
     "KOI_NNUE_PATH",
+    "KOI_NNUE_AUTODETECT",
     "KOI_CLI_COMMANDS",
     "KOI_CLI_COMPILER",
     "KOI_CLI_DISPLAY",
@@ -378,6 +381,39 @@ void test_bench_and_protocol_bounds() {
     }
 }
 
+void test_boot_nnue_path_resolution() {
+    ScopedCliEnvGuard env;
+    koi::test::TempDirectory scratch;
+    const std::filesystem::path discovered_net = scratch.file("koi.nnue");
+    {
+        std::ofstream out(discovered_net, std::ios::binary);
+        out << "dummy";
+    }
+
+    set_or_unset_env("KOI_NNUE_PATH", "from-env.nnue");
+    const auto explicit_res =
+        koi::cli::resolve_boot_nnue_path(scratch.path(), std::optional<std::string>{"from-arg.nnue"});
+    koi::test::require(explicit_res.path == std::filesystem::path("from-arg.nnue") &&
+                           !explicit_res.autodiscovered,
+                       "explicit override must win over KOI_NNUE_PATH without autodiscovery flag");
+
+    const auto env_res = koi::cli::resolve_boot_nnue_path(scratch.path());
+    koi::test::require(env_res.path == std::filesystem::path("from-env.nnue") &&
+                           !env_res.autodiscovered,
+                       "KOI_NNUE_PATH must win over autodiscovery without autodiscovery flag");
+
+    env.clear_all();
+    set_or_unset_env("KOI_NNUE_AUTODETECT", "0");
+    const auto disabled_res = koi::cli::resolve_boot_nnue_path(scratch.path());
+    koi::test::require(disabled_res.path.empty() && !disabled_res.autodiscovered,
+                       "KOI_NNUE_AUTODETECT=0 must suppress boot-time network discovery");
+
+    env.clear_all();
+    const auto auto_res = koi::cli::resolve_boot_nnue_path(scratch.path());
+    koi::test::require(auto_res.path == discovered_net && auto_res.autodiscovered,
+                       "discoverable koi.nnue must resolve with autodiscovered=true");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -387,6 +423,7 @@ int main(int argc, char** argv) {
         {"Evaluator and asset flags", test_evaluator_and_asset_flags},
         {"Unquoted FEN and inspection subcommands", test_unquoted_fen_and_inspection_subcommands},
         {"Bench and protocol bounds", test_bench_and_protocol_bounds},
+        {"Boot NNUE path resolution", test_boot_nnue_path_resolution},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

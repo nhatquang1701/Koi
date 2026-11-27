@@ -90,9 +90,13 @@ class _PeakRss:
     def __init__(self, pid: int):
         self.pid = pid
         self.value: int | None = None
-        self.supported = sys.platform.startswith("linux") or os.name == "nt"
-        self.method = "linux_proc_vm_hwm" if sys.platform.startswith("linux") else (
-            "windows_peak_working_set" if os.name == "nt" else None)
+        self.supported = sys.platform.startswith("linux") or sys.platform == "darwin" or os.name == "nt"
+        self.method = (
+            "linux_proc_vm_hwm"
+            if sys.platform.startswith("linux")
+            else ("macos_ps_rss" if sys.platform == "darwin"
+                  else ("windows_peak_working_set" if os.name == "nt" else None))
+        )
         self._handle = None
         if os.name == "nt":
             self._open_windows_handle()
@@ -119,6 +123,22 @@ class _PeakRss:
                         return
             except (FileNotFoundError, PermissionError, ValueError, OSError):
                 return
+        elif sys.platform == "darwin":
+            try:
+                proc = subprocess.run(
+                    ["ps", "-o", "rss=", "-p", str(self.pid)],
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
+                    check=False,
+                )
+                if proc.returncode == 0:
+                    text = proc.stdout.strip()
+                    if text:
+                        rss_bytes = int(text.splitlines()[0].strip()) * 1024
+                        self.value = rss_bytes if self.value is None else max(self.value, rss_bytes)
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                return
         elif os.name == "nt" and self._handle:
             class ProcessMemoryCounters(ctypes.Structure):
                 _fields_ = [("cb", ctypes.c_ulong), ("PageFaultCount", ctypes.c_ulong),
@@ -139,9 +159,10 @@ class _PeakRss:
                 self.method = None
 
     def _sample_loop(self) -> None:
+        interval = 0.05 if sys.platform == "darwin" else 0.01
         while not self._stop.is_set():
             self._sample()
-            self._stop.wait(0.01)
+            self._stop.wait(interval)
 
     def close(self) -> dict[str, Any]:
         self._sample()

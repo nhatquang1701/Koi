@@ -128,7 +128,7 @@ with a position-specific diagnostic.
 Linux builds use the same command with their engine and corpus paths. The
 report records the supplied revision, so pass the revision that produced the
 engine binaries. Windows reports `PeakWorkingSetSize`; Linux reports
-`VmHWM`. Unsupported operating systems are marked explicitly.
+`VmHWM`; macOS reports `ps` RSS high-water. Unsupported operating systems are marked explicitly.
 
 Install the measurement dependencies from the repository root:
 

@@ -14,7 +14,7 @@
 | Protocol | UCI (default); also supports XBoard/CECP v2, USI, UCCI, and UCI_Cyclone | `src/koi/uci_controller.cpp` |
 | Rules variant | Standard chess only; no Chess960 or other variants | `src/koi/position.cpp` |
 | Language | C++26 (`CMAKE_CXX_STANDARD 26`) | `CMakeLists.txt` |
-| License | GPL-3.0 | `LICENSE` |
+| License | GPL-3.0-or-later | `LICENSE` |
 | Current build version pin | `1.2.0` | `project(koi_engine VERSION 1.2.0 ...)`, `CMakeLists.txt:3` |
 | Compiled build identity | `KOI_ENGINE_BUILD_VERSION="${PROJECT_VERSION}"` | `CMakeLists.txt` |
 | UCI identity/version | `id name Koi <version>` (CMake project pin), `id author`, and `info string build <commit>`; there is no separate `uci` version field | `src/koi/uci_controller.cpp` |
@@ -110,9 +110,9 @@ Other environment variables relevant to operation:
 
 | Layer | Owner / file | Contract |
 | --- | --- | --- |
-| Process entry point | `src/main.cpp` | Resolves the executable directory, boot-time NNUE path, evaluator, and starts the UCI controller. A boot without a usable network exits 4 with a diagnostic; selection never silently substitutes. |
+| Process entry point | `src/main.cpp`, `src/cli_support.{hpp,cpp}` | Resolves the executable directory, boot-time NNUE path (`resolve_boot_nnue_path`), pre-boot CLI parsing (`-c`/`--cmd`, `speedtest`, `--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), zero-network subcommands (`compiler`, `nnue`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`), and starts the UCI controller. A boot without a usable network exits 4 with a diagnostic; selection never silently substitutes. |
 | UCI controller | `src/koi/uci_controller.{hpp,cpp}` | Owns the current `GameState`, the worker/search handle, option state, book and Syzygy instances. It is the only layer that writes UCI protocol output. |
-| UCI support | `src/koi/detail/uci_support.{hpp,cpp}` | Protocol-literal-free UCI/XBoard/annotation parsers, `go` limit parser, network overhead estimator, WDL conversion, ASCII board and compiler formatters, interactive help text, and benchmark FENs. |
+| UCI support | `src/koi/detail/uci_support.{hpp,cpp}` | Protocol-literal-free UCI/XBoard/annotation parsers, `parse_cli_position_spec`, `go` limit parser, network overhead estimator, WDL conversion, FEN flip helper, debug-JSON payload builders (`format_{position,hash_resize,go,search_completion,book_completion,search_move,book_move}_debug_json`), board/key/moves/book/tb/nnue/eval/options/annotate/compiler formatters, interactive help text, and benchmark FENs. |
 | Public search boundary | `SearchService`, `SearchHandle` in `src/koi/search_service.{hpp,cpp}` | `SearchService` owns the shared evaluator, transposition table, and search lifecycle. `SearchHandle` exposes `stop()`, `wait()`, `running()`, and `request_ponderhit()`. |
 | Request session | `detail::SearchSession` in `src/koi/detail/search_session.hpp` | Owns one immutable request snapshot (root, limits, options), identity (generation + root key + root FEN), cancellation flag, worker thread, and the exactly-once completion claim (`CompletionOnce`). |
 | Search orchestration | `detail::SearchRunner` in `src/koi/detail/search_runner.cpp` | Backend dispatch, timing setup, root tablebase probe, iterative deepening, aspiration, serial/Lazy SMP/root-parallel drivers, short-search fallbacks, and result publication. |
@@ -785,7 +785,7 @@ Rules for `setoption`:
 | `undo [plies]` | Reverts `N` plies (default `1`) from `position_moves_` when sufficient move history is available. |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns (also zero-network CLI `see <move> [fen]`). |
 | `perft <depth>` | Runs an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position (also CLI `perft <depth> [fen]`). |
-| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `speedtest`, `-c`/`--cmd`, `compiler`, `eval`, `perft`, `--hce`, `--nnue <path>`, `--version`, `--help`, `--engine-json`, `--protocol`). |
+| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`; see [CLI Reference](CLI.md) for full flags and batch `-c`/`--cmd` mode). |
 | `speedtest [threads [hash [seconds]]]` | Runs a timed multi-position NPS throughput benchmark across the leading benchmark positions (defaults `1 128 3`; also invocable as CLI `speedtest` / `--speedtest`). |
 | `options` | Prints the active protocol, evaluator, search, opening-book, and Syzygy option state without mutating search state. |
 | `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |

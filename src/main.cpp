@@ -6,7 +6,6 @@
 #include <optional>
 #include <sstream>
 #include <string_view>
-#include <system_error>
 #include <utility>
 
 #if defined(__linux__)
@@ -114,33 +113,10 @@ int main(int argc, char* argv[]) {
     // below. `setoption name EvalFile` can load a different network at
     // runtime; a rejected file keeps the boot evaluator instead of failing.
     const std::filesystem::path engine_directory = koi::cli::executable_directory(argc, argv);
-    std::filesystem::path nnue_path;
-    bool autodiscovered_network = false;
-    if (const char* environment_path = std::getenv("KOI_NNUE_PATH");
-        environment_path != nullptr && *environment_path != '\0') {
-        nnue_path = environment_path;
-    } else {
-        // Auto-discovery: `koi.nnue` beside the binary, packaged `nnue/koi.nnue`,
-        // or a single `*.nnue` in either place.  Falls back to the working
-        // directory for development runs.  KOI_NNUE_AUTODETECT=0 disables it and
-        // `EvalFile` still overrides the boot-time choice at runtime.
-        if (auto discovered = koi::discover_nnue_network(engine_directory);
-            discovered.has_value()) {
-            nnue_path = *discovered;
-            autodiscovered_network = true;
-        } else {
-            std::error_code working_error;
-            const std::filesystem::path working_directory =
-                std::filesystem::current_path(working_error);
-            if (!working_error && working_directory != engine_directory) {
-                if (auto discovered = koi::discover_nnue_network(working_directory);
-                    discovered.has_value()) {
-                    nnue_path = *discovered;
-                    autodiscovered_network = true;
-                }
-            }
-        }
-    }
+    const koi::cli::BootNnueResolution nnue_resolution =
+        koi::cli::resolve_boot_nnue_path(engine_directory);
+    const std::filesystem::path& nnue_path = nnue_resolution.path;
+    const bool autodiscovered_network = nnue_resolution.autodiscovered;
     koi::EvaluatorSelection selection;
     if (koi::cli::hce_requested_from_environment()) {
         // Explicit development/measurement override: boot without a network.

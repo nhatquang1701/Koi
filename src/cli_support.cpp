@@ -171,6 +171,30 @@ std::filesystem::path executable_directory(int argc, char* argv[]) {
     return resolved_executable_path(argc, argv).parent_path();
 }
 
+BootNnueResolution resolve_boot_nnue_path(
+    const std::filesystem::path& engine_directory,
+    const std::optional<std::string>& explicit_override) {
+    if (explicit_override.has_value() && !explicit_override->empty()) {
+        return {std::filesystem::path(*explicit_override), false};
+    }
+    if (const char* env_path = std::getenv("KOI_NNUE_PATH");
+        env_path != nullptr && *env_path != '\0') {
+        return {std::filesystem::path(env_path), false};
+    }
+    if (const auto discovered = discover_nnue_network(engine_directory); discovered.has_value()) {
+        return {*discovered, true};
+    }
+    std::error_code working_error;
+    const std::filesystem::path working_directory = std::filesystem::current_path(working_error);
+    if (!working_error && working_directory != engine_directory) {
+        if (const auto cwd_discovered = discover_nnue_network(working_directory);
+            cwd_discovered.has_value()) {
+            return {*cwd_discovered, true};
+        }
+    }
+    return {};
+}
+
 bool hce_requested_from_environment() noexcept {
     const char* value = std::getenv("KOI_EVALUATOR");
     if (value == nullptr) {
@@ -771,26 +795,8 @@ std::optional<int> run_zero_network_cli_command(
     }
     if (options.nnue_info) {
         const std::filesystem::path engine_directory = executable_directory(argc, argv);
-        std::filesystem::path target_path;
-        if (options.nnue_info_path.has_value()) {
-            target_path = std::filesystem::path(*options.nnue_info_path);
-        } else if (const char* env_path = std::getenv("KOI_NNUE_PATH");
-                   env_path != nullptr && *env_path != '\0') {
-            target_path = std::filesystem::path(env_path);
-        } else if (const auto discovered = discover_nnue_network(engine_directory);
-                   discovered.has_value()) {
-            target_path = *discovered;
-        } else {
-            std::error_code working_error;
-            const std::filesystem::path working_directory =
-                std::filesystem::current_path(working_error);
-            if (!working_error && working_directory != engine_directory) {
-                if (const auto cwd_discovered = discover_nnue_network(working_directory);
-                    cwd_discovered.has_value()) {
-                    target_path = *cwd_discovered;
-                }
-            }
-        }
+        const std::filesystem::path target_path =
+            resolve_boot_nnue_path(engine_directory, options.nnue_info_path).path;
         if (target_path.empty()) {
             std::cerr << "koi-engine: no NNUE network found to inspect "
                          "(pass a path or set KOI_NNUE_PATH).\n";

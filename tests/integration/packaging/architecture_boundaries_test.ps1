@@ -305,6 +305,10 @@ foreach ($cliFile in @('src/cli_support.hpp', 'src/cli_support.cpp')) {
         }
     }
 }
+$mainSource = Read-RepositoryFile 'src/main.cpp'
+if ($mainSource -notmatch 'resolve_boot_nnue_path\(' -or $mainSource -match 'discover_nnue_network\(') {
+    Fail 'src/main.cpp must delegate NNUE discovery to resolve_boot_nnue_path() instead of calling discover_nnue_network() directly'
+}
 
 # 4. Engine core sources must not contain dead/tooling translation units.
 Write-Output '[4/4] check CMake core sources, reliability fuzzer location, and architecture docs'

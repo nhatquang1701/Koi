@@ -39,8 +39,16 @@ struct CliOptions {
     std::optional<std::string> perft_fen;
 };
 
+struct BootNnueResolution {
+    std::filesystem::path path;
+    bool autodiscovered = false;
+};
+
 [[nodiscard]] std::filesystem::path resolved_executable_path(int argc, char* argv[]);
 [[nodiscard]] std::filesystem::path executable_directory(int argc, char* argv[]);
+[[nodiscard]] BootNnueResolution resolve_boot_nnue_path(
+    const std::filesystem::path& engine_directory,
+    const std::optional<std::string>& explicit_override = std::nullopt);
 [[nodiscard]] bool hce_requested_from_environment() noexcept;
 
 [[nodiscard]] std::optional<int> parse_cli_options(
