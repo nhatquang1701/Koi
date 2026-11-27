@@ -271,7 +271,7 @@ $controllerImpl = Read-RepositoryFile 'src/koi/uci_controller.cpp'
 if (-not $controllerImpl.Contains('#include "koi/detail/uci_support.hpp"')) {
     Fail 'uci_controller.cpp must include detail/uci_support.hpp'
 }
-if ($controllerImpl -match 'BoundedLineRead read_bounded_protocol_line\(|std::string format_ascii_board\(') {
+if ($controllerImpl -match 'BoundedLineRead read_bounded_protocol_line\(|std::string format_ascii_board\(|std::string format_key_info\(|std::string format_legal_moves\(|std::string format_book_entries\(|std::string format_syzygy_probe\(|std::string format_eval_summary\(|std::string format_annotate_move_line\(|std::string format_annotate_summary_line\(|std::optional<std::string> flip_position_fen\(') {
     Fail 'uci_controller.cpp must not redefine extracted detail/uci_support helpers'
 }
 $nnueImpl = Read-RepositoryFile 'src/koi/nnue.cpp'
@@ -335,6 +335,13 @@ foreach ($required in @('Architecture contract (1.0.0)', 'frozen for 1.0.0')) {
     if ($architecture -notmatch [regex]::Escape($required)) {
         Fail "docs/ARCHITECTURE.md is missing '$required'"
     }
+}
+if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot 'docs/CLI.md'))) {
+    Fail 'docs/CLI.md is missing'
+}
+$mkdocsConfig = Read-RepositoryFile 'mkdocs.yml'
+if ($mkdocsConfig -notmatch 'CLI\.md') {
+    Fail 'mkdocs.yml must include CLI.md in site navigation'
 }
 
 if ($failures.Count -ne 0) {
