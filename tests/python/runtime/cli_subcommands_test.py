@@ -155,6 +155,11 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(bad_eval.returncode, 2)
         self.assertIn("invalid FEN", bad_eval.stderr)
 
+        hce_eval = self._run(["eval"], extra_env={"KOI_EVALUATOR": "hce"})
+        self.assertEqual(hce_eval.returncode, 0, hce_eval.stderr)
+        self.assertIn("HCE (classical tapered)", hce_eval.stdout)
+        self.assertIn("Total (White)", hce_eval.stdout)
+
         bench = self._run(["bench", "3", "8", "1"], extra_env=extra)
         self.assertEqual(bench.returncode, 0, bench.stderr)
         self.assertIn("Total time (ms) :", bench.stdout)

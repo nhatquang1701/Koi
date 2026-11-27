@@ -1,6 +1,7 @@
 #include "koi/detail/uci_support.hpp"
 
 #include "koi/detail/uci_option_table.hpp"
+#include "koi/classical_evaluator.hpp"
 #include "koi/evaluator.hpp"
 #include "koi/nnue.hpp"
 #include "koi/opening_book.hpp"
@@ -644,6 +645,41 @@ std::string format_eval_summary(const GameState& position,
            << (static_cast<double>(wdl.loss) / 10.0) << "% L\n"
            << "Game phase     : " << position.game_phase() << "/24 (pieces: "
            << position.piece_count() << ")\n";
+    if (const auto* hce = dynamic_cast<const ClassicalEvaluator*>(evaluator); hce != nullptr) {
+        const ClassicalEvalTrace tr = hce->trace(position);
+        const int phase = std::clamp(tr.phase, 0, 24);
+        auto write_row = [&buffer, phase](const char* label, const ClassicalScore s) {
+            const int total_cp = (s.mg * phase + s.eg * (24 - phase)) / 24;
+            buffer << std::left << std::setw(15) << label << "| "
+                   << std::right << std::showpos << std::fixed << std::setprecision(2)
+                   << std::setw(7) << (static_cast<double>(s.mg) / 100.0) << " | "
+                   << std::setw(7) << (static_cast<double>(s.eg) / 100.0) << " | "
+                   << std::setw(6) << (static_cast<double>(total_cp) / 100.0) << '\n';
+        };
+        buffer << "\nTerm           |      MG |      EG |   Total\n"
+               << "---------------+---------+---------+--------\n";
+        write_row("Material", tr.material);
+        write_row("PST", tr.pst);
+        write_row("Mobility", tr.mobility);
+        write_row("Pawns", tr.pawns);
+        write_row("King safety", tr.king_safety);
+        write_row("Threats", tr.threats);
+        write_row("Pieces", tr.piece_terms);
+        write_row("Space & dev", tr.space_dev);
+        write_row("Tempo", tr.tempo);
+        buffer << "---------------+---------+---------+--------\n"
+               << std::left << std::setw(15) << "Total (White)" << "| "
+               << std::right << std::showpos << std::fixed << std::setprecision(2)
+               << std::setw(7) << (static_cast<double>(tr.total.mg) / 100.0) << " | "
+               << std::setw(7) << (static_cast<double>(tr.total.eg) / 100.0) << " | "
+               << std::setw(6) << (static_cast<double>(tr.total_white_cp) / 100.0) << '\n'
+               << std::noshowpos;
+        if (tr.insufficient_material) {
+            buffer << "Note           : insufficient material draw (score 0 cp)\n";
+        } else if (tr.opposite_bishop_draw) {
+            buffer << "Note           : opposite-colored bishops damping applied (1/4)\n";
+        }
+    }
     return buffer.str();
 }
 

@@ -232,6 +232,33 @@ void test_concurrent_evaluation_is_safe_and_stable() {
     require(mismatches == 0, "concurrent HCE evaluations must be identical");
 }
 
+void test_trace_matches_evaluate_across_positions() {
+    const ClassicalEvaluator evaluator;
+    const std::array<const char*, 6> fens{{
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 b - - 0 7",
+        "8/5pk1/7p/3p4/3P4/5PP1/5K2/8 w - - 0 40",
+        "8/8/4k3/8/3B4/8/4K3/3b4 w - - 0 1",
+        "4k3/8/8/8/8/8/8/4K3 w - - 0 1",
+    }};
+    for (const char* fen : fens) {
+        const GameState state = state_from_fen(fen);
+        const koi::ClassicalEvalTrace tr = evaluator.trace(state);
+        const int expected = evaluator.evaluate(state, Color::white);
+        require(tr.total_white_cp == expected,
+                std::string("trace total_white_cp must match evaluate(white) for ") + fen);
+    }
+    const koi::ClassicalEvalTrace mid = evaluator.trace(state_from_fen(
+        "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 b - - 0 7"));
+    require(!mid.insufficient_material && mid.tempo.mg == -10 && mid.phase > 0,
+            "active middlegame trace must populate phase, tempo, and non-insufficient flag");
+    const koi::ClassicalEvalTrace ins =
+        evaluator.trace(state_from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1"));
+    require(ins.insufficient_material && ins.total_white_cp == 0,
+            "insufficient material trace flag and zero score must be set");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -246,6 +273,7 @@ int main(int argc, char** argv) {
         {"endgame fixture invariants", test_endgame_fixture_invariants},
         {"pawn/king/piece directions", test_pawn_king_and_piece_terms_are_directional},
         {"concurrent evaluation", test_concurrent_evaluation_is_safe_and_stable},
+        {"trace matches evaluate", test_trace_matches_evaluate_across_positions},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

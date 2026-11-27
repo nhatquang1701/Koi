@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "koi/position.hpp"
+#include "koi/classical_evaluator.hpp"
 #include "koi/detail/debug_log.hpp"
 #include "koi/detail/uci_support.hpp"
 #include "koi/nnue.hpp"
@@ -3214,6 +3215,16 @@ void test_uci_support_helpers_direct() {
     require(translate_usi_go_arguments("byoyomi 500") == "movetime 500" &&
                 translate_usi_go_arguments("depth 6 byoyomi 500") == "depth 6",
             "translate_usi_go_arguments mapping mismatch");
+
+    const koi::ClassicalEvaluator hce_eval;
+    const std::string hce_summary = format_eval_summary(startpos, &hce_eval, true);
+    require(hce_summary.find("HCE (classical tapered)") != std::string::npos &&
+                hce_summary.find("Term           |") != std::string::npos &&
+                hce_summary.find("Material") != std::string::npos &&
+                hce_summary.find("Tempo") != std::string::npos &&
+                hce_summary.find("Total (White)") != std::string::npos,
+            "format_eval_summary with ClassicalEvaluator must emit HCE breakdown table; got:\n" +
+                hce_summary);
 
     const std::string help_text = format_interactive_help();
     for (const char* cmd : {"bench", "d", "fen", "key", "moves", "book", "tb", "eval", "flip",

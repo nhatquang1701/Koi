@@ -761,4 +761,115 @@ int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) cons
     return perspective == Color::white ? score : -score;
 }
 
+ClassicalEvalTrace ClassicalEvaluator::trace(const GameState& state) const {
+    const EvalBoard eval = make_eval_board(state);
+    ClassicalEvalTrace tr{};
+    tr.phase = eval.phase;
+    if (insufficient_material(eval)) {
+        tr.insufficient_material = true;
+        return tr;
+    }
+
+    auto to_public = [](const Score s) noexcept { return ClassicalScore{s.mg, s.eg}; };
+
+    Score material_sum{};
+    Score pst_sum{};
+    Score total{};
+    for (int square = 0; square < 64; ++square) {
+        const Piece piece = eval.board[static_cast<std::size_t>(square)];
+        if (piece.empty()) {
+            continue;
+        }
+        const std::size_t color = index_of(piece.color);
+        const int s = sign_of(color);
+        const Score mat = material(piece.type);
+        const Score pst = piece_square(piece.type, square, piece.color);
+        material_sum += scaled(mat, s, s);
+        pst_sum += scaled(pst, s, s);
+        total += scaled(mat + pst, s, s);
+    }
+
+    Score mobility_sum{};
+    Score pawns_sum{};
+    Score king_safety_sum{};
+    Score threats_sum{};
+    Score piece_terms_sum{};
+    Score space_dev_sum{};
+
+    for (std::size_t color = 0; color < 2; ++color) {
+        const int sign = sign_of(color);
+        Score side{};
+
+        for (int square = 0; square < 64; ++square) {
+            const Piece piece = eval.board[static_cast<std::size_t>(square)];
+            if (piece.empty() || index_of(piece.color) != color) {
+                continue;
+            }
+            const Score weight = mobility_weight(piece.type);
+            const int mobility = eval.piece_mobility[static_cast<std::size_t>(square)];
+            int piece_mobility_scale = 100;
+            switch (piece.type) {
+            case PieceType::knight: piece_mobility_scale = hce_tuning().mobility_knight; break;
+            case PieceType::bishop: piece_mobility_scale = hce_tuning().mobility_bishop; break;
+            case PieceType::rook: piece_mobility_scale = hce_tuning().mobility_rook; break;
+            case PieceType::queen: piece_mobility_scale = hce_tuning().mobility_queen; break;
+            default: break;
+            }
+            const Score mob_term = percent_of(
+                Score{weight.mg * mobility, weight.eg * mobility},
+                hce_tuning().mobility * piece_mobility_scale / 100);
+            side += mob_term;
+            mobility_sum += scaled(mob_term, sign, sign);
+        }
+
+        const Score pawns_term = percent_of(pawn_structure(eval, color), hce_tuning().pawn_structure);
+        const Score king_term = percent_of(king_safety(eval, color), hce_tuning().king_safety);
+        const Score threats_term = percent_of(threats(eval, color), hce_tuning().threats);
+        const Score piece_term = percent_of(piece_features(eval, color), hce_tuning().piece_terms);
+        const Score center_term{eval.center_control[color] * 3, 0};
+        const Score dev_term{static_cast<int>(eval.development[color]) * 4, 0};
+
+        side += pawns_term;
+        side += king_term;
+        side += threats_term;
+        side += piece_term;
+        side += center_term;
+        side += dev_term;
+
+        pawns_sum += scaled(pawns_term, sign, sign);
+        king_safety_sum += scaled(king_term, sign, sign);
+        threats_sum += scaled(threats_term, sign, sign);
+        piece_terms_sum += scaled(piece_term, sign, sign);
+        space_dev_sum += scaled(center_term + dev_term, sign, sign);
+
+        total += scaled(side, sign, sign);
+    }
+
+    const Score tempo = eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10};
+    const Score tempo_term = percent_of(tempo, hce_tuning().tempo);
+    total += tempo_term;
+
+    total.eg = total.eg * hce_tuning().eg_component / 100;
+    int score = tapered(total, eval.phase);
+    if (opposite_bishop_draw(eval)) {
+        tr.opposite_bishop_draw = true;
+        score = score / 4;
+    }
+    score = score * hce_tuning().evaluation / 100;
+    score = std::clamp(score, -detail::kMateThreshold + 1, detail::kMateThreshold - 1);
+
+    tr.material = to_public(material_sum);
+    tr.pst = to_public(pst_sum);
+    tr.mobility = to_public(mobility_sum);
+    tr.pawns = to_public(pawns_sum);
+    tr.king_safety = to_public(king_safety_sum);
+    tr.threats = to_public(threats_sum);
+    tr.piece_terms = to_public(piece_terms_sum);
+    tr.space_dev = to_public(space_dev_sum);
+    tr.tempo = to_public(tempo_term);
+    tr.total = to_public(total);
+    tr.total_white_cp = score;
+    return tr;
+}
+
 } // namespace koi
