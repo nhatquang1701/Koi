@@ -55,6 +55,35 @@ class StockfishMatchOptionsTests(unittest.TestCase):
         self.assertEqual(command[command.index("-BatchId") + 1], "batch-03")
         self.assertEqual(command[command.index("-RunLabel") + 1], "before")
 
+    def test_evaluator_flags_and_paired_colors_are_forwarded_and_validated(self):
+        default_cmd = stockfish_match.build_command(
+            self.parser.parse_args(self.base), powershell="pwsh-test"
+        )
+        self.assertNotIn("-KoiEvalFile", default_cmd)
+        self.assertNotIn("-KoiEvaluatorMode", default_cmd)
+        self.assertNotIn("-PairedColors", default_cmd)
+
+        args = self.parser.parse_args(
+            self.base
+            + [
+                "--koi-eval-file",
+                "artifacts/networks/koi.nnue",
+                "--koi-evaluator-mode",
+                "nnue-v9",
+                "--paired-colors",
+            ]
+        )
+        command = stockfish_match.build_command(args, powershell="pwsh-test")
+        self.assertEqual(
+            command[command.index("-KoiEvalFile") + 1],
+            str(Path("artifacts/networks/koi.nnue")),
+        )
+        self.assertEqual(command[command.index("-KoiEvaluatorMode") + 1], "nnue-v9")
+        self.assertIn("-PairedColors", command)
+
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.parser.parse_args(self.base + ["--koi-evaluator-mode", "nnue-v99"])
+
 
 if __name__ == "__main__":
     unittest.main()

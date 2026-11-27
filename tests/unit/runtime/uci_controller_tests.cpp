@@ -3518,6 +3518,20 @@ void test_uci_support_helpers_direct() {
         require(line.find("info string") == std::string::npos,
                 "format_perft_divide_lines must remain protocol-literal free");
     }
+
+    const std::string bench_text = format_bench_summary(400, 250);
+    const std::string bench_clamped = format_bench_summary(40, 0);
+    const std::string speed_text = format_speedtest_summary(4, 256, 800, 250);
+    const std::string speed_clamped = format_speedtest_summary(1, 16, 40, 0);
+    require(bench_text.find("Total time (ms) : 250\nNodes searched  : 400\nNodes/second    : 1600\n") !=
+                    std::string::npos &&
+                bench_clamped.find("Total time (ms) : 1\nNodes searched  : 40\nNodes/second    : 40000\n") !=
+                    std::string::npos &&
+                speed_text.find("Threads         : 4\nHash (MB)       : 256\nTotal time (ms) : 250\nNodes searched  : 800\nNodes/second    : 3200\n") !=
+                    std::string::npos &&
+                speed_clamped.find("Total time (ms) : 1\nNodes searched  : 40\nNodes/second    : 40000\n") !=
+                    std::string::npos,
+            "format_bench_summary or format_speedtest_summary mismatch");
 }
 
 } // namespace

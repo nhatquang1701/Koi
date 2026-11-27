@@ -955,6 +955,58 @@ for raw in sys.stdin:
                 2,
             )
 
+    def test_resolve_koi_env_and_oracle_book_audit_cli_flags(self):
+        import tools.measurement.book_audit as book_audit
+        import tools.measurement.elo_oracle as elo_oracle
+
+        with tempfile.TemporaryDirectory(prefix="koi oracle env ") as temporary_directory:
+            tmp = Path(temporary_directory)
+            eval_file = tmp / "oracle.nnue"
+            eval_file.write_bytes(b"KOI-NNUE")
+            pgn_path = tmp / "game.pgn"
+            pgn_path.write_text('[Result "*"]\n\n1. e4 *\n', encoding="utf-8")
+            koi_path = tmp / "koi.cmd"
+            koi_path.write_text("@echo off\n", encoding="utf-8")
+            sf_path = tmp / "sf.cmd"
+            sf_path.write_text("@echo off\n", encoding="utf-8")
+            book_path = tmp / "book.bin"
+            book_path.write_bytes(b"\x00" * 16)
+
+            self.assertIsNone(elo_oracle._resolve_koi_env(None, False))
+            self.assertEqual(elo_oracle._resolve_koi_env(None, True), {"KOI_EVALUATOR": "hce"})
+            self.assertEqual(
+                elo_oracle._resolve_koi_env(eval_file, False),
+                {"KOI_NNUE_PATH": str(eval_file.resolve()), "KOI_EVALUATOR": "nnue"},
+            )
+            with self.assertRaises(elo_oracle.OracleError):
+                elo_oracle._resolve_koi_env(eval_file, True)
+            with self.assertRaises(elo_oracle.OracleError):
+                elo_oracle._resolve_koi_env(tmp / "missing.nnue", False)
+
+            with mock.patch.object(elo_oracle, "run_book_audit", return_value={"ok": True}) as mocked_audit:
+                out_path = tmp / "audit.json"
+                rc = book_audit.main(
+                    [
+                        "--pgn",
+                        str(pgn_path),
+                        "--koi",
+                        str(koi_path),
+                        "--stockfish",
+                        str(sf_path),
+                        "--book",
+                        str(book_path),
+                        "--output",
+                        str(out_path),
+                        "--koi-eval-file",
+                        str(eval_file),
+                    ]
+                )
+                self.assertEqual(rc, 0)
+                self.assertEqual(
+                    mocked_audit.call_args.kwargs["koi_env"],
+                    {"KOI_NNUE_PATH": str(eval_file.resolve()), "KOI_EVALUATOR": "nnue"},
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

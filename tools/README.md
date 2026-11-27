@@ -262,7 +262,8 @@ python .\tools\measurement\elo_oracle.py `
 
 The report records engine identity, handshake/options, input SHA-256, root FEN,
 actual SAN/UCI move, Koi suggestion, Stockfish scores, timings, and separate CPL
-for the actual and suggested move. Scores are normalized to White's perspective;
+for the actual and suggested move (use `--koi-eval-file <path.nnue>` or `--hce`
+to pin Koi's evaluator). Scores are normalized to White's perspective;
 mate is represented as +/-100000 cp. Do not turn a CPL report into an Elo claim
 without a comparable baseline and color-balanced match evidence.
 
@@ -336,7 +337,8 @@ python .\tools\measurement\book_audit.py `
   --book C:\LicensedBooks\book.bin
 ```
 
-Use `--output .\artifacts\verification\book-audit.json` for a stable path. The
+Use `--output .\artifacts\verification\book-audit.json` for a stable path, and
+`--koi-eval-file <path.nnue>` or `--hce` to select Koi's evaluator. The
 book is an external licensed input; do not commit or redistribute it.
 
 ## Stockfish matches
@@ -366,7 +368,9 @@ opponent. Omit the strength option to leave strength limiting disabled.
 shutdown bound. In a clocked match, the `--time-control` / `-TimeControl`
 chess clock remains the deadline for `bestmove`.
 
-Use `--depth`, `--movetime-ms`, or `--nodes` for fixed limits, and use
+Use `--depth`, `--movetime-ms`, or `--nodes` for fixed limits,
+`--koi-eval-file` / `--koi-evaluator-mode` to pin and attest Koi's evaluator,
+`--paired-colors` to alternate Koi's color across game pairs, and use
 `--fen-file name | six-field FEN` through the existing harness for named FEN
 positions. Run balanced conditions with Koi White and Koi Black, and record the
 exact engine paths, options, time control, opening/FEN input, and generated JSON

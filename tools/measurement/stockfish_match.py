@@ -90,6 +90,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--book-random", choices=("true", "false"), default="false", help="Koi BookRandom value")
     parser.add_argument("--threads", type=_positive_int, default=4, help="Koi and opponent Threads")
     parser.add_argument("--hash", type=_positive_int, default=512, dest="hash_mb", help="Koi Hash in MiB")
+    parser.add_argument("--koi-eval-file", type=Path, help="Explicit Koi NNUE file forwarded as -KoiEvalFile")
+    parser.add_argument(
+        "--koi-evaluator-mode",
+        choices=("classical", "nnue-v4", "nnue-v5", "nnue-v6", "nnue-v8", "nnue-v9"),
+        help="Optional Koi evaluator attestation mode forwarded as -KoiEvaluatorMode",
+    )
+    parser.add_argument(
+        "--paired-colors",
+        action="store_true",
+        help="Alternate Koi's color across paired games via -PairedColors",
+    )
     parser.add_argument(
         "--opponent-elo",
         "--stockfish-elo",
@@ -177,6 +188,12 @@ def build_command(args: argparse.Namespace, powershell: Optional[str] = None) ->
     _append(command, "-KoiBookRandom", args.book_random)
     _append(command, "-Threads", args.threads)
     _append(command, "-Hash", args.hash_mb)
+    if getattr(args, "koi_eval_file", None) is not None:
+        _append(command, "-KoiEvalFile", args.koi_eval_file)
+    if getattr(args, "koi_evaluator_mode", None) is not None:
+        _append(command, "-KoiEvaluatorMode", args.koi_evaluator_mode)
+    if getattr(args, "paired_colors", False):
+        command.append("-PairedColors")
     if getattr(args, "opponent_elo", None) is not None:
         _append(command, "-OpponentElo", args.opponent_elo)
     _append(command, "-MaxPlies", args.max_plies)

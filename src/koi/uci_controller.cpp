@@ -1722,17 +1722,12 @@ int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads
         1, std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now() - started)
                .count());
-    const std::uint64_t nps = (total_nodes * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
 
     (void)search_service_.set_hash_size_mb(saved_hash_mb);
     search_service_.clear_hash();
 
     std::lock_guard lock(output_mutex_);
-    output_ << "\n===========================\n"
-            << "Total time (ms) : " << elapsed_ms << '\n'
-            << "Nodes searched  : " << total_nodes << '\n'
-            << "Nodes/second    : " << nps << '\n'
-            << std::flush;
+    output_ << detail::format_bench_summary(total_nodes, elapsed_ms) << std::flush;
     return 0;
 }
 
@@ -1819,18 +1814,12 @@ int UciController::run_speedtest(std::size_t threads, std::size_t hash_mb, int r
         1, std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now() - started)
                .count());
-    const std::uint64_t nps = (total_nodes * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
 
     (void)search_service_.set_hash_size_mb(saved_hash_mb);
     search_service_.clear_hash();
 
     std::lock_guard lock(output_mutex_);
-    output_ << "\n===========================\n"
-            << "Threads         : " << threads << '\n'
-            << "Hash (MB)       : " << hash_mb << '\n'
-            << "Total time (ms) : " << elapsed_ms << '\n'
-            << "Nodes searched  : " << total_nodes << '\n'
-            << "Nodes/second    : " << nps << '\n'
+    output_ << detail::format_speedtest_summary(threads, hash_mb, total_nodes, elapsed_ms)
             << std::flush;
     return 0;
 }

@@ -1511,4 +1511,28 @@ std::vector<std::string> format_perft_divide_lines(
     return lines;
 }
 
+std::string format_bench_summary(const std::uint64_t total_nodes,
+                                 const std::int64_t elapsed_ms) {
+    const auto safe_elapsed_ms = std::max<std::int64_t>(1, elapsed_ms);
+    const std::uint64_t nps =
+        (total_nodes * 1000ULL) / static_cast<std::uint64_t>(safe_elapsed_ms);
+    return "\n===========================\nTotal time (ms) : " +
+           std::to_string(safe_elapsed_ms) + "\nNodes searched  : " +
+           std::to_string(total_nodes) + "\nNodes/second    : " +
+           std::to_string(nps) + "\n";
+}
+
+std::string format_speedtest_summary(const std::size_t threads, const std::size_t hash_mb,
+                                     const std::uint64_t total_nodes,
+                                     const std::int64_t elapsed_ms) {
+    const auto safe_elapsed_ms = std::max<std::int64_t>(1, elapsed_ms);
+    const std::uint64_t nps =
+        (total_nodes * 1000ULL) / static_cast<std::uint64_t>(safe_elapsed_ms);
+    return "\n===========================\nThreads         : " + std::to_string(threads) +
+           "\nHash (MB)       : " + std::to_string(hash_mb) +
+           "\nTotal time (ms) : " + std::to_string(safe_elapsed_ms) +
+           "\nNodes searched  : " + std::to_string(total_nodes) +
+           "\nNodes/second    : " + std::to_string(nps) + "\n";
+}
+
 } // namespace koi::detail

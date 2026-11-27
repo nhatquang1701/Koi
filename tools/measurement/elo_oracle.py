@@ -1142,6 +1142,7 @@ def run_search_analysis(
     stockfish_path: Path,
     movetime_ms: int,
     threads: int,
+    koi_env: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     chess, _pgn_module = _load_chess_modules()
     started_at = _utc_timestamp()
@@ -1155,7 +1156,7 @@ def run_search_analysis(
     actual_cpls: List[int] = []
     koi_cpls: List[int] = []
 
-    with UciEngine(koi_path, "Koi") as koi, UciEngine(stockfish_path, "Stockfish") as stockfish:
+    with UciEngine(koi_path, "Koi", extra_env=koi_env) as koi, UciEngine(stockfish_path, "Stockfish") as stockfish:
         for game in games:
             result_positions: List[Dict[str, Any]] = []
             for position in game["positions"]:
@@ -1331,6 +1332,7 @@ def run_book_audit(
     book_path: Path,
     movetime_ms: int,
     threads: int,
+    koi_env: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     chess, _pgn_module = _load_chess_modules()
     started_at = _utc_timestamp()
@@ -1348,7 +1350,7 @@ def run_book_audit(
     actual_cpls: List[int] = []
     book_hits = 0
 
-    with UciEngine(koi_path, "Koi") as koi, UciEngine(stockfish_path, "Stockfish") as stockfish:
+    with UciEngine(koi_path, "Koi", extra_env=koi_env) as koi, UciEngine(stockfish_path, "Stockfish") as stockfish:
         for game in games:
             result_positions: List[Dict[str, Any]] = []
             for position in game["positions"]:
@@ -1533,7 +1535,31 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="run the separate licensed-book audit mode",
     )
+    parser.add_argument(
+        "--koi-eval-file",
+        type=Path,
+        default=None,
+        help="explicit NNUE network path forwarded to Koi via KOI_NNUE_PATH",
+    )
+    parser.add_argument(
+        "--hce",
+        action="store_true",
+        help="run Koi with the built-in classical evaluator (KOI_EVALUATOR=hce)",
+    )
     return parser
+
+
+def _resolve_koi_env(
+    koi_eval_file: Optional[Path], hce: bool
+) -> Optional[Dict[str, str]]:
+    if koi_eval_file is not None and hce:
+        raise OracleError("--koi-eval-file and --hce cannot be combined")
+    if koi_eval_file is not None:
+        resolved = _resolve_file(koi_eval_file, "NNUE file", "--koi-eval-file <path.nnue>")
+        return {"KOI_NNUE_PATH": str(resolved), "KOI_EVALUATOR": "nnue"}
+    if hce:
+        return {"KOI_EVALUATOR": "hce"}
+    return None
 
 
 def _write_json(path: Path, report: Dict[str, Any]) -> None:
@@ -1573,6 +1599,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.koi, args.stockfish, "book-audit mode"
         )
         book_path = _resolve_file(args.book, "Licensed book", "--book <book.bin>")
+        koi_env = _resolve_koi_env(args.koi_eval_file, args.hce)
         report = run_book_audit(
             games,
             pgn_path,
@@ -1582,11 +1609,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             book_path,
             args.movetime_ms,
             args.threads,
+            koi_env=koi_env,
         )
     else:
         koi_path, stockfish_path = _resolve_engine_paths(
             args.koi, args.stockfish, "analysis mode"
         )
+        koi_env = _resolve_koi_env(args.koi_eval_file, args.hce)
         report = run_search_analysis(
             games,
             pgn_path,
@@ -1595,6 +1624,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             stockfish_path,
             args.movetime_ms,
             args.threads,
+            koi_env=koi_env,
         )
 
     _write_json(output_path, report)

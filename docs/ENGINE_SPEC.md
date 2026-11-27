@@ -790,7 +790,7 @@ Rules for `setoption`:
 | `options` | Prints the active protocol, evaluator, search, opening-book, and Syzygy option state without mutating search state (also CLI `options` / `--options`). |
 | `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |
 | `compiler` | Prints engine version, commit, compiler, C++26 standard, architecture, and ISA (also CLI `compiler`/`--compiler`). |
-| `help` | Prints the interactive command summary. |
+| `help` | Prints the interactive command summary (also CLI `help`, `--help`, `-h`). |
 | Unknown command | Ignored. An exception during command handling is converted to `info string command failed: ...` and the loop continues. A protocol line longer than 1 MiB is consumed and rejected with `info string command rejected: line exceeds 1048576 bytes`; the session continues. |
 
 Behaviour details:
@@ -1003,7 +1003,7 @@ empty for the 1.2.0 gate.
 | `koi-perft` | Legal-node count from `startpos` or an optional FEN at a non-negative depth (`--divide` for per-move totals and NPS; `--help` for usage) |
 | `koi-replay` | Replays coordinate moves from `startpos`/`fen` without exposing the vendored library; reports `legal`, `result`, `termination`, final FEN |
 | `koi-eval-features` | Dump NNUE (`--nnue NET`) or clean-HCE (`--hce`) evaluations for a position corpus |
-| `koi-nnue-fixture` | Generates NNUE fixtures for boundary/parity tests |
+| `koi-nnue-fixture` | Generates NNUE fixtures (`--arch v4|v5|v8|v9`) for boundary/parity tests |
 | `tools/build/speed_gate.ps1` | Repeated `koi-bench --report` baseline/candidate comparison; defaults 5 runs, 2% total NPS regression, 2% row regression, rows under 20 ms excluded as timer-quantized |
 | `tools/build/release_verify.ps1` | Fresh Debug and Release configure/build, full CTest/process checks, Threads 1/2/4 tactical gates, benchmark/UCI/replay/En Croissant-style artifacts under `artifacts/verification` |
 | `tools/stability/uci_match.ps1` | Color-aware match harness; writes `koi-uci-match-v2` JSON + PGN with per-ply provenance |
