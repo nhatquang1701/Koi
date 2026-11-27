@@ -878,4 +878,70 @@ std::uint32_t derive_network_overhead_ms(const std::int64_t previous_remaining_m
     return previous_estimate_ms;
 }
 
+std::string format_annotate_move_line(const MoveAnnotationResult& result) {
+    std::ostringstream line;
+    line << std::fixed;
+    line << "info string annotate move " << result.played_move.uci()
+         << " ply " << result.ply
+         << " side " << (result.side_to_move == Color::white ? "white" : "black")
+         << " best " << result.best_move.uci()
+         << " classification " << move_annotation_name(result.annotation)
+         << " cpl " << result.centipawn_loss
+         << " accuracy " << std::setprecision(1) << result.accuracy_percent
+         << " wp_before " << std::setprecision(3) << result.win_prob_before
+         << " wp_after " << std::setprecision(3) << result.win_prob_after
+         << " eval " << format_eval_tokens(result.played_eval)
+         << " best_eval " << format_eval_tokens(result.best_eval)
+         << " depth " << result.depth;
+    if (const std::string_view glyph = move_annotation_glyph(result.annotation); !glyph.empty()) {
+        line << " glyph " << glyph;
+    }
+    if (const int nag = move_annotation_nag(result.annotation); nag > 0) {
+        line << " nag " << nag;
+    }
+    if (!result.best_pv.empty()) {
+        line << " pv";
+        for (const Move& pv_move : result.best_pv) {
+            line << ' ' << pv_move.uci();
+        }
+    }
+    return line.str();
+}
+
+std::string format_annotate_summary_line(const char* side_name,
+                                         const PlayerAnnotationSummary& summary) {
+    std::ostringstream line;
+    line << std::fixed;
+    line << "info string annotate summary " << side_name
+         << " moves " << summary.move_count
+         << " accuracy " << std::setprecision(1) << summary.average_accuracy
+         << " avg_cpl " << std::setprecision(1) << summary.average_cpl
+         << " brilliant " << summary.brilliant
+         << " great " << summary.great
+         << " best " << summary.best
+         << " excellent " << summary.excellent
+         << " good " << summary.good
+         << " book " << summary.book
+         << " forced " << summary.forced
+         << " inaccuracy " << summary.inaccuracy
+         << " mistake " << summary.mistake
+         << " miss " << summary.miss
+         << " blunder " << summary.blunder;
+    return line.str();
+}
+
+std::optional<std::string> flip_position_fen(const std::string_view fen) {
+    std::istringstream fen_stream{std::string(fen)};
+    std::vector<std::string> fields;
+    for (std::string token; fen_stream >> token;) {
+        fields.push_back(std::move(token));
+    }
+    if (fields.size() != 6 || (fields[1] != "w" && fields[1] != "b")) {
+        return std::nullopt;
+    }
+    fields[1] = (fields[1] == "w") ? "b" : "w";
+    fields[3] = "-";
+    return join_tokens(fields, 0, fields.size());
+}
+
 } // namespace koi::detail

@@ -16,7 +16,6 @@
 
 #include "koi/game_state.hpp"
 #include "koi/completion_gate.hpp"
-
 #include "koi/opening_book.hpp"
 #include "koi/search_service.hpp"
 
@@ -83,7 +82,7 @@ public:
     bool set_protocol(std::string_view name);
     [[nodiscard]] static bool is_valid_protocol(std::string_view name) noexcept;
 
-        int run();
+    int run();
     int run_bench(int depth = kDefaultBenchDepth,
                   std::size_t hash_mb = kDefaultBenchHashMb,
                   std::size_t threads = kDefaultBenchThreads);

@@ -12,7 +12,6 @@
 #include <chrono>
 #include <cstdint>
 #include <exception>
-#include <iomanip>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -52,6 +51,9 @@ using detail::debug_square;
 using detail::disposition_name;
 using detail::equals_ignore_case;
 using detail::find_uci_option;
+using detail::flip_position_fen;
+using detail::format_annotate_move_line;
+using detail::format_annotate_summary_line;
 using detail::format_eval_tokens;
 using detail::hash_reason_name;
 using detail::hash_status_name;
@@ -232,58 +234,6 @@ SearchLimits parse_protocol_go_limits(const UciController::ProtocolMode mode,
         translated << " movetime " << std::max<std::int64_t>(1, *usi_byoyomi);
     }
     return uci::parse_go_limits(translated.str());
-}
-
-std::string format_annotate_move_line(const MoveAnnotationResult& result) {
-    std::ostringstream line;
-    line << std::fixed;
-    line << "info string annotate move " << result.played_move.uci()
-         << " ply " << result.ply
-         << " side " << (result.side_to_move == Color::white ? "white" : "black")
-         << " best " << result.best_move.uci()
-         << " classification " << move_annotation_name(result.annotation)
-         << " cpl " << result.centipawn_loss
-         << " accuracy " << std::setprecision(1) << result.accuracy_percent
-         << " wp_before " << std::setprecision(3) << result.win_prob_before
-         << " wp_after " << std::setprecision(3) << result.win_prob_after
-         << " eval " << format_eval_tokens(result.played_eval)
-         << " best_eval " << format_eval_tokens(result.best_eval)
-         << " depth " << result.depth;
-    if (const std::string_view glyph = move_annotation_glyph(result.annotation); !glyph.empty()) {
-        line << " glyph " << glyph;
-    }
-    if (const int nag = move_annotation_nag(result.annotation); nag > 0) {
-        line << " nag " << nag;
-    }
-    if (!result.best_pv.empty()) {
-        line << " pv";
-        for (const Move& pv_move : result.best_pv) {
-            line << ' ' << pv_move.uci();
-        }
-    }
-    return line.str();
-}
-
-std::string format_annotate_summary_line(const char* side_name,
-                                         const PlayerAnnotationSummary& summary) {
-    std::ostringstream line;
-    line << std::fixed;
-    line << "info string annotate summary " << side_name
-         << " moves " << summary.move_count
-         << " accuracy " << std::setprecision(1) << summary.average_accuracy
-         << " avg_cpl " << std::setprecision(1) << summary.average_cpl
-         << " brilliant " << summary.brilliant
-         << " great " << summary.great
-         << " best " << summary.best
-         << " excellent " << summary.excellent
-         << " good " << summary.good
-         << " book " << summary.book
-         << " forced " << summary.forced
-         << " inaccuracy " << summary.inaccuracy
-         << " mistake " << summary.mistake
-         << " miss " << summary.miss
-         << " blunder " << summary.blunder;
-    return line.str();
 }
 
 } // namespace
@@ -1598,19 +1548,12 @@ void UciController::handle_flip() {
         write_uci_info_string("flip rejected: position cannot legally switch sides");
         return;
     }
-    std::istringstream fen_stream(position_.fen());
-    std::vector<std::string> fields;
-    for (std::string token; fen_stream >> token;) {
-        fields.push_back(std::move(token));
-    }
-    if (fields.size() != 6 || (fields[1] != "w" && fields[1] != "b")) {
+    const std::optional<std::string> flipped_fen = flip_position_fen(position_.fen());
+    if (!flipped_fen.has_value()) {
         write_uci_info_string("flip rejected: malformed internal FEN");
         return;
     }
-    fields[1] = (fields[1] == "w") ? "b" : "w";
-    fields[3] = "-";
-    const std::string flipped_fen = join_tokens(fields, 0, fields.size());
-    const auto parsed = GameState::from_fen(flipped_fen);
+    const auto parsed = GameState::from_fen(*flipped_fen);
     if (!parsed.has_value()) {
         write_uci_info_string("flip rejected: position cannot legally switch sides");
         return;
