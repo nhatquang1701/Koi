@@ -3202,7 +3202,7 @@ void test_uci_support_helpers_direct() {
     const auto implicit_moves = parse_cli_position_spec("moves e2e4 e7e5", spec_error);
     const auto start_moves = parse_cli_position_spec("startpos moves e2e4", spec_error);
     const auto explicit_fen_moves = parse_cli_position_spec(
-        "fen 8/8/8/8/8/4k3/4P3/4K3 w - - 0 1 moves e2e4", spec_error);
+        "fen 8/8/8/8/8/4k3/4P3/4K3 w - - 0 1 moves e1d1", spec_error);
     koi::test::require(empty_spec.has_value() && start_spec.has_value() &&
                            empty_spec->fen() == koi::GameState::startpos().fen() &&
                            start_spec->fen() == koi::GameState::startpos().fen(),
@@ -3216,7 +3216,7 @@ void test_uci_support_helpers_direct() {
                                "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
                        "startpos moves CLI position spec must apply moves");
     koi::test::require(explicit_fen_moves.has_value() &&
-                           explicit_fen_moves->fen() == "8/8/8/8/4P3/4k3/8/4K3 b - - 0 1",
+                           explicit_fen_moves->fen() == "8/8/8/8/8/4k3/4P3/3K4 b - - 1 1",
                        "fen ... moves ... CLI position spec must apply moves to FEN");
     std::string fen_err;
     require(!parse_cli_position_spec("bad fen", fen_err).has_value() &&
