@@ -403,7 +403,7 @@ std::string debug_quoted(const std::string_view value) {
     return result;
 }
 
-std::uint64_t legal_move_digest(const std::vector<Move>& legal_moves) {
+std::uint64_t legal_move_digest(const std::span<const Move> legal_moves) {
     std::vector<std::string> coordinates;
     coordinates.reserve(legal_moves.size());
     for (const Move& move : legal_moves) {

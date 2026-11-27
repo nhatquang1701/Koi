@@ -2654,17 +2654,20 @@ void SearchRunner::run_impl() {
         result.failure_reason = SearchFailureReason::internal_error;
         try {
                     if (!result.best_move.has_value()) {
-                        const std::vector<Move> legal = root.legal_moves();
-                for (const Move& move : legal) {
-                    if (!limits.search_moves_specified ||
-                        std::find(limits.search_moves.begin(), limits.search_moves.end(), move) !=
-                            limits.search_moves.end()) {
-                            result.best_move = move;
-                            result.pv = {move};
-                            break;
+                        std::array<Move, kMaximumLegalMoves> legal{};
+                        const std::size_t legal_count =
+                            std::min(root.legal_moves_into(legal), legal.size());
+                        for (std::size_t index = 0; index < legal_count; ++index) {
+                            const Move& move = legal[index];
+                            if (!limits.search_moves_specified ||
+                                std::find(limits.search_moves.begin(), limits.search_moves.end(),
+                                          move) != limits.search_moves.end()) {
+                                result.best_move = move;
+                                result.pv = {move};
+                                break;
+                            }
+                        }
                     }
-                }
-            }
         } catch (...) {
         }
         if (limits.ponder) {

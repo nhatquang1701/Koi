@@ -77,8 +77,7 @@ static int short_fallback_evaluate(const Evaluator& evaluator, const GameState& 
 // position is live and not currently draw-terminated.
 static std::optional<int> fallback_terminal_or_draw_score(
     const GameState& state, const Color root_color, const int mate_distance) {
-    const std::vector<Move> legal_moves = state.legal_moves();
-    if (legal_moves.empty()) {
+    if (!state.has_legal_move()) {
         if (!state.in_check()) {
             return 0;
         }
@@ -899,8 +898,7 @@ std::optional<ShortFallbackChoice> scored_safe_checking_capture(
                 continue;
             }
 
-            const std::vector<Move> evasions = after_check.legal_moves();
-            if (evasions.empty()) {
+            if (!after_check.has_legal_move()) {
                 return ShortFallbackChoice{
                     metadata.move, after_check.in_check() ? kMateScore - 1 : 0};
             }
@@ -1008,8 +1006,7 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                 // remains decisive.
                 score = *move_terminal;
             } else if (after_move.in_check()) {
-                const std::vector<Move> evasions = after_move.legal_moves();
-                if (evasions.empty()) {
+                if (!after_move.has_legal_move()) {
                     score = kMateScore - 1;
                 } else if (perform_deep_fallback) {
                     score = checked_root_fallback_score(

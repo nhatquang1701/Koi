@@ -777,6 +777,37 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(profile_eq["hash_mb"], 24)
             self.assertEqual(profile_eq["positions"][0]["hash_mb"], 24)
 
+            epd_file = bench_dir / "suite.epd"
+            epd_file.write_text(
+                '6k1/5ppp/8/8/8/8/8/3R2K1 w - - bm Rd8#; id "BackRankMate";\n'
+                "Opening | e4 e5 Nf3\n",
+                encoding="utf-8",
+            )
+            bench_epd = subprocess.run(
+                [str(bench_exe), "--hce", "--epd", str(epd_file), "--depth", "2"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(bench_epd.returncode, 0, bench_epd.stderr)
+            self.assertIn("position BackRankMate ", bench_epd.stdout)
+            self.assertIn("expected d1d8 move d1d8 match 1", bench_epd.stdout)
+            self.assertIn("position Opening ", bench_epd.stdout)
+
+            bad_epd = bench_dir / "bad.epd"
+            bad_epd.write_text(
+                '6k1/5ppp/8/8/8/8/8/3R2K1 w - - bm Qh9#; id "Bad";\n',
+                encoding="utf-8",
+            )
+            bad_bench_epd = subprocess.run(
+                [str(bench_exe), "--hce", "--epd", str(bad_epd), "--depth", "1"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertNotEqual(bad_bench_epd.returncode, 0)
+            self.assertIn("illegal EPD bm move", bad_bench_epd.stderr)
+
         bad_bench_hash = subprocess.run(
             [str(bench_exe), "--hce", "--hash", "0"],
             capture_output=True,

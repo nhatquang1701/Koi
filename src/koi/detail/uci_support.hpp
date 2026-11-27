@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <iosfwd>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -128,7 +129,7 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] Wdl score_to_wdl(const SearchInfo& info) noexcept;
 
 [[nodiscard]] std::string debug_quoted(std::string_view value);
-[[nodiscard]] std::uint64_t legal_move_digest(const std::vector<Move>& legal_moves);
+[[nodiscard]] std::uint64_t legal_move_digest(std::span<const Move> legal_moves);
 
 [[nodiscard]] std::vector<Move> legal_pv_prefix(
     const GameState& root, const std::vector<Move>& pv);

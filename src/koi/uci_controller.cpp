@@ -14,6 +14,7 @@
 #include <exception>
 #include <limits>
 #include <memory>
+#include <span>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -903,17 +904,19 @@ void UciController::handle_position(std::istream& command, std::string_view comm
     position_moves_ = std::move(parsed_moves);
     position_ = std::move(candidate);
     if (debug_logging_enabled()) {
-        const std::vector<Move> legal = position_.legal_moves();
+        std::array<Move, kMaximumLegalMoves> legal{};
+        const std::size_t legal_count =
+            std::min(position_.legal_moves_into(legal), legal.size());
         debug_event("position accepted generation " + std::to_string(generation_) +
                     " key " + std::to_string(position_.position_key()) +
                     " fen " + position_.fen() +
-                    " legal_moves " + std::to_string(legal.size()));
+                    " legal_moves " + std::to_string(legal_count));
         const PositionConsistencySnapshot snapshot = position_.consistency_snapshot();
         debug_json_event(
             "position",
             detail::format_position_debug_json(
                 generation_, command_text, snapshot, position_.en_passant_square(),
-                legal_move_digest(legal)));
+                legal_move_digest(std::span<const Move>(legal.data(), legal_count))));
     }
 }
 

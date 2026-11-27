@@ -49,7 +49,7 @@ Besides `koi-engine` itself, five standalone developer CLI executables are built
 alongside the engine. Every tool supports `-h` / `--help` and `-v` / `--version`; full flag tables and
 examples live in [CLI & Interactive Reference](../docs/CLI.md):
 
-- `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), `--hash MB`, timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
+- `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), `--hash MB`, `--fen-file` / `--epd` (supporting 4/6-field FENs, EPD `bm`/`id` tactical grading, and UCI/SAN move lists), timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
 - `koi-perft` — fast standalone perft runner supporting `--divide` and `[startpos|fen [moves <move>...]]`.
 - `koi-replay` — deterministic UCI game replay driver.
 - `koi-eval-features` — exports NNUE or HCE static evaluations for a FEN corpus to CSV.

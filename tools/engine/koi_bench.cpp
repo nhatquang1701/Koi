@@ -19,6 +19,7 @@
 
 #include "koi/game_state.hpp"
 #include "koi/classical_evaluator.hpp"
+#include "koi/detail/uci_support.hpp"
 #include "koi/nnue.hpp"
 #include "koi/search_service.hpp"
 #include "koi/strength_suite.hpp"
@@ -194,9 +195,10 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
             config.report_json_path = std::string(flag_value);
             continue;
         }
-        if (match_value_flag(argument, "--fen-file", index, argc, argv, flag_value, bad_flag_value)) {
-            // External position list: one FEN per line, blank lines and
-            // #-prefixed comments are ignored.
+        if (match_value_flag(argument, "--fen-file", index, argc, argv, flag_value, bad_flag_value) ||
+            match_value_flag(argument, "--epd", index, argc, argv, flag_value, bad_flag_value)) {
+            // External position list (FEN, EPD with bm/id, or move list); blank
+            // lines and #-prefixed comments are ignored.
             if (bad_flag_value) return std::nullopt;
             config.fen_file_path = std::string(flag_value);
             continue;
@@ -351,12 +353,119 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
             throw std::runtime_error("empty benchmark position in FEN file: " + path);
         }
         BenchPosition position;
+        std::string epd_id;
+        bool is_epd = false;
         if (payload.find('/') != std::string_view::npos) {
-            const auto state = koi::GameState::from_fen(payload);
-            if (!state.has_value()) {
-                throw std::runtime_error("invalid benchmark position: " + std::string(payload));
+            std::optional<koi::GameState> parsed_state;
+            if (payload.find(';') == std::string_view::npos) {
+                if (const auto fen_state = koi::GameState::from_fen(payload); fen_state.has_value()) {
+                    parsed_state = *fen_state;
+                }
             }
-            position.fen = state->fen();
+            if (!parsed_state.has_value()) {
+                std::size_t cursor = 0;
+                std::array<std::string_view, 4> fields{};
+                for (std::size_t field_index = 0; field_index < fields.size(); ++field_index) {
+                    while (cursor < payload.size() &&
+                           std::isspace(static_cast<unsigned char>(payload[cursor])) != 0) {
+                        ++cursor;
+                    }
+                    const std::size_t start = cursor;
+                    while (cursor < payload.size() &&
+                           std::isspace(static_cast<unsigned char>(payload[cursor])) == 0) {
+                        ++cursor;
+                    }
+                    if (start == cursor) {
+                        throw std::runtime_error(
+                            "invalid benchmark position: " + std::string(payload));
+                    }
+                    fields[field_index] = payload.substr(start, cursor - start);
+                }
+                std::string_view ops = trim(payload.substr(cursor));
+                if (!ops.empty() && payload.find(';') == std::string_view::npos) {
+                    throw std::runtime_error(
+                        "invalid benchmark position: " + std::string(payload));
+                }
+                std::string fen4;
+                fen4.reserve(fields[0].size() + fields[1].size() + fields[2].size() +
+                             fields[3].size() + 8);
+                fen4.append(fields[0]).push_back(' ');
+                fen4.append(fields[1]).push_back(' ');
+                fen4.append(fields[2]).push_back(' ');
+                fen4.append(fields[3]);
+                fen4 += " 0 1";
+                const auto epd_state = koi::GameState::from_fen(fen4);
+                if (!epd_state.has_value()) {
+                    throw std::runtime_error(
+                        "invalid benchmark position: " + std::string(payload));
+                }
+                parsed_state = *epd_state;
+                if (!ops.empty()) {
+                    is_epd = true;
+                    while (!ops.empty()) {
+                        const std::size_t semi = ops.find(';');
+                        const std::string_view op = trim(
+                            semi == std::string_view::npos ? ops : ops.substr(0, semi));
+                        ops = semi == std::string_view::npos
+                            ? std::string_view{}
+                            : ops.substr(semi + 1);
+                        if (op.empty()) {
+                            continue;
+                        }
+                        std::size_t split = 0;
+                        while (split < op.size() &&
+                               std::isspace(static_cast<unsigned char>(op[split])) == 0) {
+                            ++split;
+                        }
+                        const std::string_view opcode = op.substr(0, split);
+                        const std::string_view operand = trim(op.substr(split));
+                        if (opcode == "id" && !operand.empty()) {
+                            std::string_view cleaned = operand;
+                            if (cleaned.size() >= 2 && cleaned.front() == '"' &&
+                                cleaned.back() == '"') {
+                                cleaned = cleaned.substr(1, cleaned.size() - 2);
+                            }
+                            if (!cleaned.empty()) {
+                                epd_id = std::string(cleaned);
+                            }
+                        } else if (opcode == "bm" && !operand.empty()) {
+                            std::size_t move_count = 0;
+                            std::size_t pos = 0;
+                            while (pos < operand.size()) {
+                                while (pos < operand.size() &&
+                                       std::isspace(static_cast<unsigned char>(operand[pos])) != 0) {
+                                    ++pos;
+                                }
+                                const std::size_t tok_start = pos;
+                                while (pos < operand.size() &&
+                                       std::isspace(static_cast<unsigned char>(operand[pos])) == 0) {
+                                    ++pos;
+                                }
+                                if (tok_start == pos) {
+                                    break;
+                                }
+                                const std::string_view move_tok =
+                                    operand.substr(tok_start, pos - tok_start);
+                                const auto move =
+                                    koi::detail::parse_move_uci_or_san(*parsed_state, move_tok);
+                                if (!move.has_value()) {
+                                    throw std::runtime_error(
+                                        "illegal EPD bm move '" + std::string(move_tok) +
+                                        "' in: " + std::string(payload));
+                                }
+                                if (move_count == 0) {
+                                    position.expected_move = move->uci();
+                                }
+                                if (move_count < position.accepted_moves.size()) {
+                                    position.accepted_moves[move_count] = move->uci();
+                                }
+                                ++move_count;
+                            }
+                        }
+                    }
+                }
+            }
+            position.fen = parsed_state->fen();
         } else {
             koi::GameState state = koi::GameState::startpos();
             std::size_t cursor = 0;
@@ -372,16 +481,19 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
                     break;
                 }
                 const std::string_view token = payload.substr(token_start, cursor - token_start);
-                const auto move = koi::Move::parse_uci(token);
+                const auto move = koi::detail::parse_move_uci_or_san(state, token);
                 if (!move.has_value() || !state.make_move(*move)) {
-                    throw std::runtime_error("illegal UCI move in FEN file: " + std::string(token));
+                    throw std::runtime_error(
+                        "illegal move in FEN/EPD file: " + std::string(token));
                 }
             }
             position.fen = state.fen();
         }
-        position.category = "fen-file";
+        position.category = is_epd ? "epd" : "fen-file";
         if (!name.empty()) {
             position.name = std::string(name);
+        } else if (!epd_id.empty()) {
+            position.name = std::move(epd_id);
         } else {
             const std::size_t index = positions.size() + 1;
             position.name = "fen-";
@@ -918,7 +1030,7 @@ void write_speed_json(const std::string& path, const BenchmarkConfig& config,
 }
 
 constexpr std::string_view kBenchUsage =
-    "usage: koi-bench [--hash MB] [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path | --hce] [--profile-json path] [--iteration-profile-json path] [--report path]\n";
+    "usage: koi-bench [--hash MB] [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file|--epd path] [--nnue path | --hce] [--profile-json path] [--iteration-profile-json path] [--report path]\n";
 
 } // namespace
 

@@ -28,7 +28,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release tools profile-build bench speedtest eval nnue options engine-json version compiler perft d smoke test asan docs clean help
+.PHONY: all release tools profile-build bench speedtest eval nnue options engine-json version compiler perft d pgn smoke test asan docs clean help
 
 all: release
 
@@ -137,6 +137,13 @@ d: release
 	  "$(BUILD_DIR)/koi-engine" d; \
 	fi
 
+pgn: release
+	@if [ -n "$(FEN)" ]; then \
+	  "$(BUILD_DIR)/koi-engine" pgn "$(FEN)"; \
+	else \
+	  "$(BUILD_DIR)/koi-engine" pgn; \
+	fi
+
 smoke: release
 	@if [ -n "$(EVALFILE)" ]; then \
 	  "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" -c "uci" -c "isready" -c "position startpos" -c "go depth 2"; \
@@ -176,6 +183,7 @@ help:
 	@echo "  make compiler                          Build and print compiler / ISA metadata"
 	@echo "  make perft [PERFT_DEPTH=5] [FEN=...]   Build and run timed perft divide"
 	@echo "  make d [FEN=...]                       Build and print ASCII board, FEN, key, and FIDE state"
+	@echo "  make pgn [FEN=...]                     Build and export position/moves as FIDE PGN"
 	@echo "  make smoke [EVALFILE=...]              Run one-shot UCI handshake + depth-2 search smoke check"
 	@echo "  make test                              Build full suite and run CTest"
 	@echo "  make asan                              Build Debug ASan+UBSan and run fast unit tests"
