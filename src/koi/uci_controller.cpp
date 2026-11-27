@@ -778,6 +778,8 @@ int UciController::run() {
             handle_undo(command);
         } else if (name == "history") {
             handle_history();
+        } else if (name == "pgn") {
+            handle_pgn();
         } else if (name == "perft") {
             handle_perft_command(command);
         } else if (name == "compiler") {
@@ -1402,7 +1404,7 @@ void UciController::handle_annotate(std::istream& command) {
         return;
     }
 
-    const std::optional<Move> played_move = Move::parse_uci(tokens[0]);
+    const std::optional<Move> played_move = detail::parse_move_uci_or_san(position_, tokens[0]);
     if (!played_move.has_value()) {
         write_uci_info_string("annotate error: invalid move " + tokens[0]);
         return;
@@ -1592,6 +1594,12 @@ void UciController::handle_undo(std::istream& command) {
 
 void UciController::handle_history() {
     const std::string text = detail::format_move_history(position_origin_, position_moves_);
+    std::lock_guard lock(output_mutex_);
+    output_ << text << std::flush;
+}
+
+void UciController::handle_pgn() {
+    const std::string text = detail::format_pgn(position_origin_, position_moves_);
     std::lock_guard lock(output_mutex_);
     output_ << text << std::flush;
 }

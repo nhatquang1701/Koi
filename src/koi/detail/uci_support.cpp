@@ -785,6 +785,7 @@ std::string format_interactive_help() {
         "  makemove <move...>                  Play one or more legal UCI/SAN moves on the current board\n"
         "  undo [plies]                        Step back N plies (default 1) in position history\n"
         "  history                             Show position origin, move history, and UCI command\n"
+        "  pgn                                 Export current position and move history as FIDE PGN\n"
         "  see <move>                          Show static exchange evaluation for a legal UCI/SAN move\n"
         "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"
         "  bench [depth [hash [threads]]]      Run OpenBench-compatible benchmark\n"
@@ -1713,6 +1714,37 @@ std::optional<Move> parse_move_uci_or_san(const GameState& state,
     return parse_san_move(state, token);
 }
 
+namespace {
+
+std::string format_san_movetext(const GameState& origin, const std::vector<Move>& moves,
+                                GameState& final_state) {
+    final_state = origin;
+    final_state.detach_mirror();
+    std::ostringstream out;
+    bool first = true;
+    for (std::size_t index = 0; index < moves.size(); ++index) {
+        const Move& move = moves[index];
+        const std::string token = move_to_san(final_state, move).value_or(move.uci());
+        if (!first) {
+            out << ' ';
+        }
+        first = false;
+        if (final_state.side_to_move() == Color::white) {
+            out << final_state.fullmove_number() << ". " << token;
+        } else if (index == 0) {
+            out << final_state.fullmove_number() << "... " << token;
+        } else {
+            out << token;
+        }
+        if (!final_state.make_move(move)) {
+            break;
+        }
+    }
+    return out.str();
+}
+
+} // namespace
+
 std::string format_move_history(const GameState& origin, const std::vector<Move>& moves) {
     const std::string origin_fen = origin.fen();
     const bool is_startpos = (origin_fen == GameState::startpos().fen());
@@ -1726,23 +1758,8 @@ std::string format_move_history(const GameState& origin, const std::vector<Move>
         for (const Move& move : moves) {
             out << ' ' << move.uci();
         }
-        out << "\nSAN     :";
-        GameState current = origin;
-        current.detach_mirror();
-        for (std::size_t index = 0; index < moves.size(); ++index) {
-            const Move& move = moves[index];
-            const std::string token = move_to_san(current, move).value_or(move.uci());
-            if (current.side_to_move() == Color::white) {
-                out << ' ' << current.fullmove_number() << ". " << token;
-            } else if (index == 0) {
-                out << ' ' << current.fullmove_number() << "... " << token;
-            } else {
-                out << ' ' << token;
-            }
-            if (!current.make_move(move)) {
-                break;
-            }
-        }
+        GameState final_state = origin;
+        out << "\nSAN     : " << format_san_movetext(origin, moves, final_state);
     }
     out << "\nCommand : position " << (is_startpos ? "startpos" : ("fen " + origin_fen));
     if (!moves.empty()) {
@@ -1752,6 +1769,36 @@ std::string format_move_history(const GameState& origin, const std::vector<Move>
         }
     }
     out << '\n';
+    return out.str();
+}
+
+std::string format_pgn(const GameState& origin, const std::vector<Move>& moves) {
+    GameState final_state = origin;
+    const std::string movetext = format_san_movetext(origin, moves, final_state);
+    const char* result = "*";
+    if (!final_state.has_legal_move()) {
+        result = final_state.in_check()
+            ? (final_state.side_to_move() == Color::white ? "0-1" : "1-0")
+            : "1/2-1/2";
+    } else if (final_state.is_draw_by_rule()) {
+        result = "1/2-1/2";
+    }
+
+    const std::string origin_fen = origin.fen();
+    const bool is_startpos = (origin_fen == GameState::startpos().fen());
+    std::ostringstream out;
+    out << "[Event \"Koi Session\"]\n"
+        << "[Site \"?\"]\n"
+        << "[Date \"????.??.??\"]\n"
+        << "[Round \"?\"]\n"
+        << "[White \"?\"]\n"
+        << "[Black \"?\"]\n"
+        << "[Result \"" << result << "\"]\n";
+    if (!is_startpos) {
+        out << "[SetUp \"1\"]\n"
+            << "[FEN \"" << origin_fen << "\"]\n";
+    }
+    out << '\n' << (movetext.empty() ? std::string(result) : (movetext + ' ' + result)) << '\n';
     return out.str();
 }
 

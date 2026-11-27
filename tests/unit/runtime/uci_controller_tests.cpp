@@ -3259,6 +3259,26 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                     std::string::npos &&
                 san_raw.find("SEE e4d5 : +0 cp\n") != std::string::npos,
             "interactive SAN makemove/see output mismatch; got:\n" + san_raw);
+
+    std::istringstream pgn_in(
+        "makemove f3 e5 g4 Qh4#\n"
+        "pgn\n"
+        "position startpos\n"
+        "annotate e4 depth 1\n"
+        "quit\n");
+    std::ostringstream pgn_out;
+    std::ostringstream pgn_diag;
+    auto pgn_ctrl = koi::test::make_uci_controller(pgn_in, pgn_out, pgn_diag);
+    const int pgn_exit = pgn_ctrl->run();
+    const std::string pgn_raw = pgn_out.str();
+    require(pgn_exit == 0 && pgn_diag.str().empty(),
+            "interactive pgn and SAN annotate sequence must shut down cleanly");
+    require(pgn_raw.find("[Event \"Koi Session\"]\n") != std::string::npos &&
+                pgn_raw.find("[Result \"0-1\"]\n") != std::string::npos &&
+                pgn_raw.find("1. f3 e5 2. g4 Qh4# 0-1\n") != std::string::npos &&
+                pgn_raw.find("info string annotate move e2e4 ply 0 side white ") !=
+                    std::string::npos,
+            "interactive pgn and SAN annotate output mismatch; got:\n" + pgn_raw);
 }
 
 void test_uci_support_helpers_direct() {
@@ -3471,8 +3491,8 @@ void test_uci_support_helpers_direct() {
 
     const std::string help_text = format_interactive_help();
     for (const char* cmd : {"bench", "speedtest", "options", "d", "fen", "key", "moves", "book",
-                            "tb", "eval", "nnue", "flip", "makemove", "undo", "history", "see",
-                            "perft", "wait", "compiler", "help"}) {
+                            "tb", "eval", "nnue", "flip", "makemove", "undo", "history", "pgn",
+                            "see", "perft", "wait", "compiler", "help"}) {
         require(help_text.find(cmd) != std::string::npos,
                 std::string("format_interactive_help missing command: ") + cmd);
     }
@@ -3601,6 +3621,37 @@ void test_uci_support_helpers_direct() {
     const std::string history_black = format_move_history(*black_pos, {*e7e5, *e2e4});
     require(history_black.find("SAN     : 5... e5 6. e4\n") != std::string::npos,
             "format_move_history black-to-move SAN mismatch; got:\n" + history_black);
+
+    const std::string pgn_empty = format_pgn(startpos, {});
+    require(pgn_empty.find("[Event \"Koi Session\"]\n") != std::string::npos &&
+                pgn_empty.find("[Result \"*\"]\n") != std::string::npos &&
+                pgn_empty.find("[SetUp") == std::string::npos &&
+                pgn_empty.ends_with("\n\n*\n") &&
+                pgn_empty.find("info string") == std::string::npos,
+            "format_pgn empty mismatch; got:\n" + pgn_empty);
+
+    const auto f2f3 = koi::Move::parse_uci("f2f3");
+    const auto g2g4 = koi::Move::parse_uci("g2g4");
+    const auto d8h4 = koi::Move::parse_uci("d8h4");
+    require(f2f3.has_value() && g2g4.has_value() && d8h4.has_value(),
+            "expected valid Fool's Mate UCI fixtures");
+    const std::string pgn_fools = format_pgn(startpos, {*f2f3, *e7e5, *g2g4, *d8h4});
+    require(pgn_fools.find("[Result \"0-1\"]\n") != std::string::npos &&
+                pgn_fools.find("\n\n1. f3 e5 2. g4 Qh4# 0-1\n") != std::string::npos,
+            "format_pgn Fool's Mate mismatch; got:\n" + pgn_fools);
+
+    const std::string pgn_black = format_pgn(*black_pos, {*e7e5, *e2e4});
+    require(pgn_black.find("[SetUp \"1\"]\n") != std::string::npos &&
+                pgn_black.find("[FEN \"" + black_fen + "\"]\n") != std::string::npos &&
+                pgn_black.find("\n\n5... e5 6. e4 *\n") != std::string::npos,
+            "format_pgn custom FEN mismatch; got:\n" + pgn_black);
+
+    const auto stalemate_pos = koi::GameState::from_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
+    require(stalemate_pos.has_value(), "stalemate FEN fixture must parse");
+    const std::string pgn_stale = format_pgn(*stalemate_pos, {});
+    require(pgn_stale.find("[Result \"1/2-1/2\"]\n") != std::string::npos &&
+                pgn_stale.ends_with("\n\n1/2-1/2\n"),
+            "format_pgn stalemate mismatch; got:\n" + pgn_stale);
 
     const koi::PositionConsistencySnapshot snap = startpos.consistency_snapshot();
     const std::string pos_json = format_position_debug_json(

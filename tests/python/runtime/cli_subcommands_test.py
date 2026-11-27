@@ -575,6 +575,16 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Moves   : e2e4 e7e5 g1f3", makemove_san.stdout)
         self.assertIn("SAN     : 1. e4 e5 2. Nf3", makemove_san.stdout)
 
+        pgn_export = self._run(
+            ["--hce", "-c", "makemove f3 e5 g4 Qh4#", "-c", "pgn"],
+            disable_nnue=True,
+        )
+        self.assertEqual(pgn_export.returncode, 0, pgn_export.stderr)
+        self.assertEqual(pgn_export.stderr, "")
+        self.assertIn('[Event "Koi Session"]', pgn_export.stdout)
+        self.assertIn('[Result "0-1"]', pgn_export.stdout)
+        self.assertIn("1. f3 e5 2. g4 Qh4# 0-1", pgn_export.stdout)
+
         xboard = self._run(
             ["--protocol", "xboard", "--hce", "-c", "protover 2", "-c", "sd 2", "-c", "go"],
             disable_nnue=True,

@@ -172,6 +172,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `makemove` | `<move...>` | Play one or more legal UCI or FIDE SAN moves transactionally on the current board |
 | `undo` | `[plies]` | Step back `N` plies (default `1`) in the current position's move history |
 | `history` | — | Print the position origin (`startpos` or FEN), ply count, UCI moves, FIDE SAN movetext (`SAN :`), and full `position ...` command |
+| `pgn` | — | Export the current position and move history as FIDE PGN (Seven Tag Roster, `[SetUp]`/`[FEN]` when custom, SAN movetext, and result) |
 | `see` | `<move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal UCI or SAN move in centipawns |
 | `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
 | `bench` | `[depth [hash [threads]]]` | Run the 16-position deterministic benchmark inside the active session |

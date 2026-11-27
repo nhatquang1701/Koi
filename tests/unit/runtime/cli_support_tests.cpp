@@ -193,7 +193,8 @@ void test_inline_cmd_parsing_and_env_roundtrip() {
         const auto exit_code = invoke_parse({"help"}, help_opts);
         koi::test::require(exit_code == std::optional<int>(0) &&
                                out.str().find("Usage: koi-engine") != std::string::npos &&
-                               out.str().find("history") != std::string::npos,
+                               out.str().find("history") != std::string::npos &&
+                               out.str().find("pgn") != std::string::npos,
                            "bare help subcommand must exit 0 with usage summary");
     }
 

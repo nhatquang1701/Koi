@@ -127,6 +127,7 @@ private:
     void handle_makemove(std::istream& command);
     void handle_undo(std::istream& command);
     void handle_history();
+    void handle_pgn();
     void handle_perft_command(std::istream& command);
     void handle_compiler();
     void handle_bench(std::istream& command);
