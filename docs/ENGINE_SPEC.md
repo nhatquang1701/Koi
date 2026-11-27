@@ -794,11 +794,11 @@ Rules for `setoption`:
 | `moves` | Lists all legal moves sorted lexicographically in UCI coordinate notation (also zero-network CLI `moves [fen]`). |
 | `book` | Lists all legal Polyglot book entries with weights and selection percentages for the current position. |
 | `tb` | Probes active Syzygy tablebases for root WDL classification and optimal root moves. |
-| `eval` | Prints active evaluator details (`NNUE` version/feature set/shape or `HCE`), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval [fen]`). |
+| `eval` | Prints active evaluator details (`NNUE` version/feature set/shape, payload SHA-256 prefix, output bucket, quantization parameters, or `HCE` term breakdown), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval [fen]`). |
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check). |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns (also zero-network CLI `see <move> [fen]`). |
 | `perft <depth>` | Runs an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position (also CLI `perft <depth> [fen]`). |
-| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `compiler`, `eval`, `perft`, `--version`, `--help`, `--engine-json`, `--protocol`). |
+| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `compiler`, `eval`, `perft`, `--hce`, `--nnue <path>`, `--version`, `--help`, `--engine-json`, `--protocol`). |
 | `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |
 | `compiler` | Prints engine version, commit, compiler, C++26 standard, architecture, and ISA (also CLI `compiler`/`--compiler`). |
 | `help` | Prints the interactive command summary. |

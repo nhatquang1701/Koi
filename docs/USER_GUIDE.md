@@ -513,7 +513,7 @@ cases run as ordinary fatal tests.
 
 In addition to standard UCI/XBoard sessions, `koi-engine` supports standard chess-engine CLI options and interactive terminal commands:
 
-- **CLI subcommands & flags:** `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine compiler` (`--compiler`), `koi-engine eval [fen]` (`--eval [fen]`), `koi-engine perft <depth> [fen]` (`1..10`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
+- **CLI subcommands & flags:** `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine compiler` (`--compiler`), `koi-engine eval [fen]` (`--eval [fen]`), `koi-engine perft <depth> [fen]` (`1..10`), `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
 - **Interactive commands (inside a UCI session):**
   - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, check status, and legal move count.
   - `fen` — prints the six-field FEN of the current position.

@@ -31,6 +31,10 @@ koi-engine see <move> [fen]
 koi-engine eval [fen]
 koi-engine --eval [fen]
 
+# Force built-in classical evaluation or select a specific NNUE network file
+koi-engine --hce eval [fen]
+koi-engine --nnue <path> eval [fen]
+
 # Identity, GUI JSON profile, initial protocol dialect, and help
 koi-engine --version      # or -v
 koi-engine --engine-json
@@ -60,6 +64,9 @@ koi-engine --help         # or -h
     White relative : +0.20 (+20 cp)
     WDL (stm)      : 35.9% W / 29.5% D / 34.6% L
     Game phase     : 24/24 (pieces: 32)
+    Network SHA256 : 6290b13822c3
+    Output bucket  : 0 (of 8)
+    Quantization   : int16/int8 (QA=255, QB=64, scale=400)
     ```
 
 === "`KOI_EVALUATOR=hce koi-engine eval` (Kiwipete)"
