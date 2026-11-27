@@ -323,6 +323,7 @@ set(KOI_CORE_SOURCES
     src/koi/detail/consistency.cpp
     src/koi/detail/debug_log.cpp
     src/koi/detail/fen_validation.cpp
+    src/koi/detail/nnue_io.cpp
     src/koi/detail/root_fallback.cpp
     src/koi/detail/uci_support.cpp
     src/koi/detail/attack_tables.cpp
@@ -368,6 +369,10 @@ set(KOI_MODULE_SOURCES
 
 # Fathom is vendored C; compiling it as C++ keeps the toolchain single-language.
 set_source_files_properties(third_party/fathom/tbprobe.c PROPERTIES LANGUAGE CXX)
+if(NOT MSVC)
+    set_source_files_properties(third_party/fathom/tbprobe.c
+        PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-declarations")
+endif()
 
 # Translates the MSVC /arch flag used by the Windows build into the GCC/Clang
 # equivalent so both platforms share one set of call sites. The AVX-512 flag set
