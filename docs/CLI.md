@@ -55,6 +55,30 @@ koi-engine --help         # or -h
     Game phase     : 24/24 (pieces: 32)
     ```
 
+=== "`KOI_EVALUATOR=hce koi-engine eval` (Kiwipete)"
+
+    ```text
+    Evaluator      : HCE (classical tapered)
+    Side to move   : +1.49 (+149 cp)
+    White relative : +1.49 (+149 cp)
+    WDL (stm)      : 42.3% W / 26.3% D / 31.4% L
+    Game phase     : 24/24 (pieces: 32)
+
+    Term           |      MG |      EG |   Total
+    ---------------+---------+---------+--------
+    Material       |   +0.00 |   +0.00 |  +0.00
+    PST            |   +1.15 |   +0.30 |  +1.15
+    Mobility       |   +0.10 |   +0.14 |  +0.10
+    Pawns          |   +0.18 |   +0.24 |  +0.18
+    King safety    |   -0.11 |   -0.06 |  -0.11
+    Threats        |   +0.32 |   +0.29 |  +0.32
+    Pieces         |   -0.25 |   -0.15 |  -0.25
+    Space & dev    |   +0.00 |   +0.00 |  +0.00
+    Tempo          |   +0.10 |   +0.10 |  +0.10
+    ---------------+---------+---------+--------
+    Total (White)  |   +1.49 |   +0.86 |  +1.49
+    ```
+
 === "`koi-engine compiler`"
 
     ```text
