@@ -7,7 +7,8 @@ direction, and every node names a real translation unit or header.
 ```mermaid
 flowchart TD
     GUI["UCI / XBoard GUI · Arena<br/>Cute Chess · lichess-bot"] -- "UCI / XBoard" --> UCI
-    UCI["uci_controller.cpp<br/>options · protocol output<br/>bench · d · eval · flip · see · perft · wait"]
+    UCI["uci_controller.cpp<br/>options · protocol output<br/>d · fen · key · moves · book · tb<br/>bench · eval · flip · see · perft · wait"]
+    UCI --> UCISUPPORT["detail/uci_support.*<br/>parsers · go limits · formatters"]
     UCI --> TIME["time_manager.cpp<br/>soft/hard budgets<br/>move overhead"]
     UCI --> SERVICE["search_service.cpp<br/>request snapshot<br/>cancellation · exactly-once"]
     SERVICE --> RUNNER["detail/search_runner.cpp<br/>iterative deepening<br/>aspiration · Lazy SMP root split"]
@@ -19,7 +20,7 @@ flowchart TD
     CONTEXT --> SEE["static_exchange.cpp<br/>bitboard SEE"]
     CONTEXT --> ORDER["search_ordering.cpp<br/>history · killers · counters · corrhist"]
     CONTEXT --> EVAL["Evaluator boundary<br/>NNUE (default) · Clean HCE (EvalMode=hce)"]
-    EVAL --> NNUE["nnue.cpp · detail/nnue_io.cpp · classical_evaluator.cpp<br/>HalfKA-HM v9 SCReLU · AVX2/NEON · HCE"]
+    EVAL --> NNUE["nnue.cpp · detail/nnue_kernels.hpp<br/>detail/nnue_io.cpp · classical_evaluator.cpp<br/>HalfKA-HM v9 SCReLU · AVX2/NEON · HCE"]
     UCI --> BOOK["opening_book.cpp<br/>optional Polyglot book"]
     UCI --> TB["syzygy_tablebase.cpp<br/>optional Syzygy probing"]
 ```
@@ -29,7 +30,7 @@ flowchart TD
 | File | Responsibility |
 | --- | --- |
 | `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output. |
-| `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, WDL conversion, ASCII board and compiler formatters, and benchmark FEN suite. |
+| `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, `go` limit parser, network overhead estimator, WDL conversion, ASCII board and compiler formatters, and benchmark FEN suite. |
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |
 | `detail/search_session.cpp` | One immutable request, worker ownership, cancellation/ponderhit timer, completion claim. |
 | `detail/root_fallback.*` | Bounded root-fallback policy: emergency static/one-ply scanners used when a short search cannot complete an authoritative iteration. |

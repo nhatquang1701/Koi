@@ -67,7 +67,7 @@ koi-engine --version     # Print version and git build commit
 koi-engine --engine-json # Print En Croissant / Pawn Appétit JSON profile
 ```
 
-Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `eval`, `flip`, `see <move>`, `compiler`, `bench [depth [hash [threads]]]`, `perft <depth>`, `wait`, and `help`.
+Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `flip`, `see <move>`, `compiler`, `bench [depth [hash [threads]]]`, `perft <depth>`, `wait`, and `help`.
 
 ---
 

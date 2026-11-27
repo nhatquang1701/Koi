@@ -515,8 +515,10 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
 - **Interactive commands (inside a UCI session):**
   - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, check status, and legal move count.
   - `fen` — prints the six-field FEN of the current position.
-  - `key` — prints the hexadecimal 64-bit Zobrist position and pawn hash keys.
+  - `key` — prints the hexadecimal 64-bit Zobrist position, pawn, and Polyglot book keys.
   - `moves` — lists all sorted legal moves in UCI coordinate notation.
+  - `book` — lists weighted legal Polyglot opening book entries for the position.
+  - `tb` — probes active Syzygy tablebases for root WDL outcome and best moves.
   - `eval` — prints the active evaluator architecture (`NNUE` container version/feature set/layer shape or `HCE`), static score (side-to-move and White perspectives), heuristic WDL triplet, and game phase / piece count.
   - `flip` — toggles the side to move (when legal; rejects positions that would leave the non-moving king in check).
   - `see <move>` — prints the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns.

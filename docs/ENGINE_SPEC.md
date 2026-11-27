@@ -790,8 +790,10 @@ Rules for `setoption`:
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
 | `d` | Displays the ASCII board, FEN, Zobrist key, side, check state, and legal move count. |
 | `fen` | Prints the six-field FEN of the current position. |
-| `key` | Prints the hexadecimal 64-bit Zobrist position key and pawn hash key. |
+| `key` | Prints the hexadecimal 64-bit Zobrist position key, pawn hash key, and Polyglot book key. |
 | `moves` | Lists all legal moves sorted lexicographically in UCI coordinate notation. |
+| `book` | Lists all legal Polyglot book entries with weights and selection percentages for the current position. |
+| `tb` | Probes active Syzygy tablebases for root WDL classification and optimal root moves. |
 | `eval` | Prints active evaluator details (`NNUE` version/feature set/shape or `HCE`), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval [fen]`). |
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check). |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns. |

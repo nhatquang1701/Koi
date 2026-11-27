@@ -42,7 +42,7 @@
 | **Pruning & Ordering** | Adaptive Null-Move Pruning with verification · Reverse Futility, Futility, Razoring, ProbCut, SEE pruning · Internal Iterative Reductions (IIR) & Singular Extensions / Multi-Cut · Late Move Reductions (LMR) · Quiet, Capture, Pawn, Continuation (6-ply), Counter-Move, and 6-table Static Eval Correction Histories |
 | **Evaluation** | **HalfKA-HM v9 NNUE** (`7680 → 256×2 → 1`, SCReLU, 10 mirrored king buckets, 8 output buckets, 20-slot Finny cache) with AVX-512 / AVX2 / ARM NEON kernels · Built-in tapered classical evaluator (`EvalMode=hce` or `KOI_EVALUATOR=hce`) |
 | **Protocols & Assets** | **UCI**, **XBoard/CECP v2**, **USI**, **UCCI**, **UCI_Cyclone** (`--protocol` / `Protocol` option) · Flag-proof time management · In-place `ponder`/`ponderhit` · `UCI_ShowWDL` · Bundled Stockfish-verified CC0 Polyglot book (`book.bin`) · Automatic Syzygy 3–7 man WDL/DTZ probing (`syzygy/`) |
-| **Hardware & CLI** | Silent x86-64 CPU dispatch (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon `arm64` · Interactive `bench`, `d`, `eval`, `compiler`, and `go perft` commands |
+| **Hardware & CLI** | Silent x86-64 CPU dispatch (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon `arm64` · Interactive & CLI `bench`, `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `see`, `compiler`, and `perft` |
 
 ---
 
@@ -98,8 +98,10 @@ Inside an interactive session (`koi-engine`):
 | `bench [depth [hash [threads]]]` | Runs the deterministic benchmark suite and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second` |
 | `d` | Displays an ASCII board of the current position, FEN, Zobrist key, checkers, and legal move count |
 | `fen` | Prints the six-field FEN of the current position |
-| `key` | Prints the hexadecimal Zobrist position and pawn hash keys |
+| `key` | Prints the hexadecimal Zobrist position, pawn, and Polyglot book keys |
 | `moves` | Lists all sorted legal moves in UCI coordinate notation |
+| `book` | Probes active Polyglot opening book weights and percentages for the position |
+| `tb` | Probes active Syzygy tablebases for root WDL outcome and best moves |
 | `eval` | Prints active NNUE/HCE metadata, static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
 | `flip` | Flips the side to move (when legal) for static evaluation comparison |
 | `see <move>` | Computes the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns |
