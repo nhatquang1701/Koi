@@ -392,6 +392,24 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("feature ", xboard.stdout)
         self.assertIn("move ", xboard.stdout)
 
+        live_options = self._run(
+            [
+                "--hce",
+                "-c",
+                "setoption name Hash value 32",
+                "-c",
+                "setoption name Contempt value 15",
+                "-c",
+                "options",
+            ],
+            disable_nnue=True,
+        )
+        self.assertEqual(live_options.returncode, 0, live_options.stderr)
+        self.assertEqual(live_options.stderr, "")
+        self.assertIn("Hash            : 32 MB", live_options.stdout)
+        self.assertIn("Contempt        : 15 cp", live_options.stdout)
+        self.assertIn("Evaluator       : HCE", live_options.stdout)
+
         for bad_args, expected_err in (
             (["-c"], "missing command for --cmd"),
             (["--cmd="], "missing command for --cmd"),

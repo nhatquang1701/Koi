@@ -271,7 +271,7 @@ $controllerImpl = Read-RepositoryFile 'src/koi/uci_controller.cpp'
 if (-not $controllerImpl.Contains('#include "koi/detail/uci_support.hpp"')) {
     Fail 'uci_controller.cpp must include detail/uci_support.hpp'
 }
-if ($controllerImpl -match 'BoundedLineRead read_bounded_protocol_line\(|std::string format_ascii_board\(|std::string format_key_info\(|std::string format_legal_moves\(|std::string format_book_entries\(|std::string format_syzygy_probe\(|std::string format_eval_summary\(|std::string format_annotate_move_line\(|std::string format_annotate_summary_line\(|std::optional<std::string> flip_position_fen\(|std::string translate_ucci_go_arguments\(|std::string translate_usi_go_arguments\(|std::optional<std::pair<std::string, std::string>>\s+parse_xboard_option_assignment\(|std::optional<std::chrono::milliseconds>\s+parse_xboard_centiseconds_ms\(|bool is_bare_coordinate_move_token\(') {
+if ($controllerImpl -match 'BoundedLineRead read_bounded_protocol_line\(|std::string format_ascii_board\(|std::string format_key_info\(|std::string format_legal_moves\(|std::string format_book_entries\(|std::string format_syzygy_probe\(|std::string format_eval_summary\(|std::string format_options_summary\(|std::string format_annotate_move_line\(|std::string format_annotate_summary_line\(|std::optional<std::string> flip_position_fen\(|std::string translate_ucci_go_arguments\(|std::string translate_usi_go_arguments\(|std::optional<std::pair<std::string, std::string>>\s+parse_xboard_option_assignment\(|std::optional<std::chrono::milliseconds>\s+parse_xboard_centiseconds_ms\(|bool is_bare_coordinate_move_token\(') {
     Fail 'uci_controller.cpp must not redefine extracted detail/uci_support helpers'
 }
 $nnueImpl = Read-RepositoryFile 'src/koi/nnue.cpp'

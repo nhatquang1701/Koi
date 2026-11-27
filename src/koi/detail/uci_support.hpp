@@ -44,6 +44,38 @@ struct Wdl {
     int loss = 0;
 };
 
+struct LiveOptionsSnapshot {
+    std::string_view protocol_name = "uci";
+    std::string evaluator_name;
+    std::string eval_file;
+    std::size_t hash_mb = 512;
+    std::size_t threads = 1;
+    std::size_t multi_pv = 1;
+    bool ponder = false;
+    bool analyse_mode = false;
+    bool show_wdl = false;
+    std::uint32_t contempt_cp = 0;
+    std::uint32_t move_overhead_ms = 30;
+    bool dynamic_overhead = false;
+    std::uint32_t observed_gui_overhead_ms = 0;
+    std::uint32_t slow_mover_percent = 100;
+    std::uint32_t random_seed = 0;
+    bool own_book = false;
+    bool own_book_explicit = false;
+    bool book_available = false;
+    std::string book_file = "book.bin";
+    std::uint8_t book_depth = 16;
+    bool book_random = false;
+    bool book_safety = true;
+    std::uint8_t book_safety_depth = 2;
+    std::string syzygy_path;
+    bool syzygy_auto_detected = false;
+    std::uint8_t syzygy_probe_depth = 1;
+    std::uint8_t syzygy_probe_limit = 7;
+    std::uint8_t syzygy_interior_depth = 0;
+    bool syzygy_50_move_rule = true;
+};
+
 inline constexpr std::array<std::string_view, 16> kBenchFens{{
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
@@ -138,6 +170,7 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
     const char* side_name, const PlayerAnnotationSummary& summary);
 [[nodiscard]] std::optional<std::string> flip_position_fen(std::string_view fen);
 [[nodiscard]] std::string format_compiler_info(std::string_view version, std::string_view commit);
+[[nodiscard]] std::string format_options_summary(const LiveOptionsSnapshot& snapshot);
 [[nodiscard]] std::string format_interactive_help();
 [[nodiscard]] std::optional<std::pair<std::string, std::string>>
 parse_xboard_option_assignment(std::string_view text);

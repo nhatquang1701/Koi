@@ -3029,6 +3029,19 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                     std::string::npos,
             "invalid speedtest arguments must emit clear diagnostics and stay alive");
 
+    const ControllerResult options_result = run_controller(
+        "setoption name Hash value 64\n"
+        "setoption name Contempt value 25\n"
+        "setoption name UCI_ShowWDL value true\n"
+        "options\n"
+        "quit\n");
+    require(options_result.exit_code == 0 &&
+                options_result.output.find("Protocol        : uci") != std::string::npos &&
+                options_result.output.find("Hash            : 64 MB") != std::string::npos &&
+                options_result.output.find("Contempt        : 25 cp") != std::string::npos &&
+                options_result.output.find("UCI_ShowWDL     : true") != std::string::npos,
+            "options command must print live configured UCI option values");
+
     GatedInputBuffer perft_input("position startpos\nperft 1\n", "quit\n");
     std::istream perft_in(&perft_input);
     ReleaseOnSubstringBuffer perft_out(perft_input, "Nodes searched: 20");
@@ -3285,9 +3298,21 @@ void test_uci_support_helpers_direct() {
             "format_eval_summary with ClassicalEvaluator must emit HCE breakdown table; got:\n" +
                 hce_summary);
 
+    LiveOptionsSnapshot opts_snapshot;
+    opts_snapshot.evaluator_name = "NNUE";
+    opts_snapshot.hash_mb = 256;
+    opts_snapshot.contempt_cp = 40;
+    const std::string opts_summary = format_options_summary(opts_snapshot);
+    require(opts_summary.find("Evaluator       : NNUE") != std::string::npos &&
+                opts_summary.find("EvalFile        : <autodiscovery>") != std::string::npos &&
+                opts_summary.find("Hash            : 256 MB") != std::string::npos &&
+                opts_summary.find("Contempt        : 40 cp") != std::string::npos &&
+                opts_summary.find("SyzygyPath      : <none>") != std::string::npos,
+            "format_options_summary must format live configuration clearly");
+
     const std::string help_text = format_interactive_help();
-    for (const char* cmd : {"bench", "speedtest", "d", "fen", "key", "moves", "book", "tb",
-                            "eval", "flip", "see", "perft", "wait", "compiler", "help"}) {
+    for (const char* cmd : {"bench", "speedtest", "options", "d", "fen", "key", "moves", "book",
+                            "tb", "eval", "flip", "see", "perft", "wait", "compiler", "help"}) {
         require(help_text.find(cmd) != std::string::npos,
                 std::string("format_interactive_help missing command: ") + cmd);
     }

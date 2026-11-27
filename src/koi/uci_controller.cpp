@@ -733,6 +733,8 @@ int UciController::run() {
             handle_bench(command);
         } else if (name == "speedtest") {
             handle_speedtest(command);
+        } else if (name == "options") {
+            handle_options();
         } else if (name == "wait") {
             handle_wait();
         } else if (name == "help") {
@@ -1592,6 +1594,45 @@ void UciController::handle_help() {
     const std::string text = detail::format_interactive_help();
     std::lock_guard lock(output_mutex_);
     output_ << text << std::flush;
+}
+
+void UciController::handle_options() {
+    const bool book_available = book_is_available();
+    detail::LiveOptionsSnapshot snapshot;
+    snapshot.evaluator_name = hce_active_ ? "HCE" : "NNUE";
+    snapshot.eval_file = !eval_file_.empty()
+        ? eval_file_.string()
+        : (nnue_autodiscovered_ ? "<autodiscovery>" : "<default>");
+    snapshot.hash_mb = hash_mb_;
+    snapshot.threads = threads_;
+    snapshot.multi_pv = multi_pv_;
+    snapshot.ponder = ponder_enabled_;
+    snapshot.analyse_mode = analyse_mode_;
+    snapshot.contempt_cp = contempt_cp_;
+    snapshot.move_overhead_ms = move_overhead_ms_;
+    snapshot.dynamic_overhead = dynamic_overhead_;
+    snapshot.slow_mover_percent = slow_mover_percent_;
+    snapshot.random_seed = random_seed_;
+    snapshot.own_book = own_book_;
+    snapshot.own_book_explicit = own_book_explicit_;
+    snapshot.book_available = book_available;
+    snapshot.book_file = book_file_;
+    snapshot.book_depth = book_depth_;
+    snapshot.book_random = book_random_;
+    snapshot.book_safety = book_safety_;
+    snapshot.book_safety_depth = book_safety_depth_;
+    snapshot.syzygy_path = syzygy_path_.string();
+    snapshot.syzygy_auto_detected = syzygy_auto_detected_;
+    snapshot.syzygy_probe_depth = syzygy_probe_depth_;
+    snapshot.syzygy_probe_limit = syzygy_probe_limit_;
+    snapshot.syzygy_interior_depth = syzygy_interior_depth_;
+    snapshot.syzygy_50_move_rule = syzygy_50_move_rule_;
+
+    std::lock_guard lock(output_mutex_);
+    snapshot.protocol_name = protocol_mode_name(protocol_mode_);
+    snapshot.show_wdl = show_wdl_;
+    snapshot.observed_gui_overhead_ms = observed_gui_overhead_ms_;
+    output_ << detail::format_options_summary(snapshot) << std::flush;
 }
 
 int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads) {

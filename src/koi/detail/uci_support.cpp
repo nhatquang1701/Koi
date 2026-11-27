@@ -729,9 +729,49 @@ std::string format_interactive_help() {
         "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"
         "  bench [depth [hash [threads]]]      Run OpenBench-compatible benchmark\n"
         "  speedtest [threads [hash [secs]]]   Run timed NPS throughput benchmark\n"
+        "  options                             Show live active UCI option values\n"
         "  compiler                            Show compiler, C++ standard, and ISA\n"
         "  help                                Show this command summary\n"
         "  quit                                Exit the engine\n";
+}
+
+std::string format_options_summary(const LiveOptionsSnapshot& snapshot) {
+    const auto bool_str = [](const bool value) noexcept -> const char* {
+        return value ? "true" : "false";
+    };
+    std::ostringstream buffer;
+    buffer << "Protocol        : " << snapshot.protocol_name << '\n'
+           << "Evaluator       : " << snapshot.evaluator_name << '\n'
+           << "EvalFile        : "
+           << (snapshot.eval_file.empty() ? "<autodiscovery>" : snapshot.eval_file) << '\n'
+           << "Hash            : " << snapshot.hash_mb << " MB\n"
+           << "Threads         : " << snapshot.threads << '\n'
+           << "MultiPV         : " << snapshot.multi_pv << '\n'
+           << "Ponder          : " << bool_str(snapshot.ponder) << '\n'
+           << "UCI_AnalyseMode : " << bool_str(snapshot.analyse_mode) << '\n'
+           << "UCI_ShowWDL     : " << bool_str(snapshot.show_wdl) << '\n'
+           << "Contempt        : " << snapshot.contempt_cp << " cp\n"
+           << "Move Overhead   : " << snapshot.move_overhead_ms
+           << " ms (dynamic: " << bool_str(snapshot.dynamic_overhead)
+           << ", observed: " << snapshot.observed_gui_overhead_ms << " ms)\n"
+           << "Slow Mover      : " << snapshot.slow_mover_percent << " %\n"
+           << "RandomSeed      : " << snapshot.random_seed << '\n'
+           << "OwnBook         : " << bool_str(snapshot.own_book)
+           << " (explicit: " << bool_str(snapshot.own_book_explicit)
+           << ", available: " << bool_str(snapshot.book_available)
+           << ", file: " << snapshot.book_file
+           << ", depth: " << static_cast<unsigned>(snapshot.book_depth)
+           << ", random: " << bool_str(snapshot.book_random)
+           << ", safety: " << bool_str(snapshot.book_safety) << '/'
+           << static_cast<unsigned>(snapshot.book_safety_depth) << ")\n"
+           << "SyzygyPath      : "
+           << (snapshot.syzygy_path.empty() ? "<none>" : snapshot.syzygy_path)
+           << " (auto: " << bool_str(snapshot.syzygy_auto_detected)
+           << ", depth: " << static_cast<unsigned>(snapshot.syzygy_probe_depth)
+           << ", limit: " << static_cast<unsigned>(snapshot.syzygy_probe_limit)
+           << ", interior: " << static_cast<unsigned>(snapshot.syzygy_interior_depth)
+           << ", 50-move: " << bool_str(snapshot.syzygy_50_move_rule) << ")\n";
+    return buffer.str();
 }
 
 std::string format_compiler_info(const std::string_view version, const std::string_view commit) {

@@ -121,6 +121,7 @@ private:
     void handle_compiler();
     void handle_bench(std::istream& command);
     void handle_speedtest(std::istream& command);
+    void handle_options();
     void handle_wait();
     void handle_help();
     void reset_new_game();
