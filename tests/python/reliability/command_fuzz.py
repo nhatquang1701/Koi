@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Randomized raw UCI-command-line fuzz for Koi.
 
-Sends arbitrary command lines (unknown commands, control characters, random
-tokens and fragments) followed by a deterministic healthy search.  Unknown
-commands must be inert; stdout must stay protocol-valid; stderr may only contain
-documented position errors; at least one legal bestmove must complete.
+Sends arbitrary command lines (unknown commands, interactive commands, control
+characters, random tokens and fragments) followed by a deterministic healthy
+search.  Unknown commands must be inert; stdout must stay valid for the
+commands sent; stderr may only contain documented position errors; at least one
+legal bestmove must complete.
 
-    python artifacts/plans/reliability-2026-10-31/command_fuzz.py \
-        --engine build/full-release/koi-engine.exe --cases 500 \
-        --workers 4 --out artifacts/plans/reliability-2026-10-31/command-fuzz.json
+    python tests/python/reliability/command_fuzz.py \
+        --engine build/release/koi-engine.exe --cases 500 \
+        --workers 4 --out build/tmp/command-fuzz.json
 """
 
 from __future__ import annotations
@@ -29,11 +30,35 @@ from unittest_progress import format_progress_eta  # noqa: E402
 
 FRAGMENTS = [
     "uci", "isready", "ucinewgame", "stop", "ponderhit", "go", "position",
-    "setoption", "debug", "register", "d", "eval", "board", "help", "quitx",
-    "setoption name", "position startpos", "go depth", "setoption name Hash value",
+    "setoption", "debug", "register", "d", "eval", "compiler", "board", "help",
+    "quitx", "setoption name", "position startpos", "go depth",
+    "setoption name Hash value",
 ]
 CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 PUNCT = " \t/\\;:'\"{}[]()<>|&*#@!$%^~`+-=_,.?"
+
+
+def _is_valid_display_line(line: str) -> bool:
+    return (
+        line == " +---+---+---+---+---+---+---+---+"
+        or (line.startswith(" | ") and line.endswith((" 1", " 2", " 3", " 4", " 5", " 6", " 7", " 8")))
+        or line == "   a   b   c   d   e   f   g   h"
+        or line.startswith(("Fen   : ", "Key   : ", "Side  : ", "Check : "))
+    )
+
+
+def _is_valid_eval_line(line: str) -> bool:
+    return line.startswith(("Evaluator      : ", "Side to move   : ", "White relative : "))
+
+
+def _is_valid_compiler_line(line: str) -> bool:
+    return line.startswith((
+        "Koi ",
+        "Compiled by    : ",
+        "C++ standard   : ",
+        "Architecture   : ",
+        "SIMD / ISA     : ",
+    ))
 
 
 def random_command(rng: random.Random) -> str:
@@ -87,15 +112,27 @@ def run_case(config: dict) -> dict:
                 move,
             ):
                 result["bad_stdout"].append(f"invalid bestmove: {move!r}")
+        sent_tokens = {
+            parts[0] for raw_line in lines if (parts := raw_line.split())
+        }
+        allow_display = "d" in sent_tokens
+        allow_eval = "eval" in sent_tokens
+        allow_compiler = "compiler" in sent_tokens
         for line in stdout.splitlines():
-            if line and not (
+            if not line:
+                continue
+            if (
                 line.startswith("id ")
                 or line.startswith("option name ")
                 or line.startswith("info ")
                 or line in ("uciok", "readyok")
                 or line.startswith("bestmove ")
+                or (allow_display and _is_valid_display_line(line))
+                or (allow_eval and _is_valid_eval_line(line))
+                or (allow_compiler and _is_valid_compiler_line(line))
             ):
-                result["bad_stdout"].append(f"non-UCI stdout: {line!r}")
+                continue
+            result["bad_stdout"].append(f"non-UCI stdout: {line!r}")
         for line in proc.stderr.splitlines():
             if line and not line.startswith("UCI position error:"):
                 result["bad_stderr"].append(line)
