@@ -267,7 +267,7 @@ jobs:
           test -s koi.nnue
           ls -lh *.zip *.tar.gz *.package.json koi.nnue
       - name: Attest SLSA build provenance for release archives
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             artifacts/release/*.zip
