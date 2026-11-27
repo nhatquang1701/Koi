@@ -912,7 +912,7 @@ protocol clean. Leave this option disabled for normal release use.
 ## Register in En Croissant (primary)
 
 1. Build the Release target and resolve the absolute path to
-   `build\release\koi-engine.exe` (`build/release/koi-engine` on Linux) — or
+   `build\release\koi-engine.exe` (`build/release/koi-engine` on Linux and macOS) — or
    the executable in your chosen build directory.
 2. In **Pawn Appétit** / **En Croissant**, add a UCI engine and select that `koi-engine` path.
    Keep the engine's working directory beside the executable when configuring
@@ -956,7 +956,7 @@ per search. Any other standard UCI GUI can use the same executable and options.
 
 ## Generic UCI fallback (including Lucas Chess)
 
-1. Build the engine and resolve the path to `koi-engine.exe`.
+1. Build the engine and resolve the path to `koi-engine` (`koi-engine.exe` on Windows).
 2. In Lucas Chess, open the engine-management or configuration dialog and add
    the built executable as an external UCI engine.
 3. Save the engine configuration, then select Koi for play.
@@ -1046,7 +1046,7 @@ only valid UCI responses, with no logging or diagnostics mixed into it. For
 the smoke test, also confirm that stderr is empty for a valid transcript. If
 Lucas Chess cannot start the engine, verify the executable path, that the
 Release build exists, and that the process can complete the `uci` / `isready`
-handshake from PowerShell.
+handshake from your terminal.
 
 For final Lucas acceptance, play at least one short standard game after the
 handshake succeeds. Confirm that the GUI receives a legal move after `go`,
@@ -1088,18 +1088,21 @@ Release archives contain strictly the engine binaries, `koi.nnue`, `book.bin`,
 and `LICENSE`.
 
 !!! note "Source-only developer tools"
-    Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`) and the test suite are excluded from user-facing release archives; build them from source via `CMakePresets.json` when needed.
+    Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`, `koi-nnue-fixture`) and the test suite are excluded from user-facing release archives; build them from source via `CMakePresets.json` when needed.
 The repository retains third-party license texts under `third_party/` (`chess-library` and `fathom`), while generated release archives keep the flat layout above.
 Do not include generated benchmark profiles, match JSON/PGN, debug logs, or
 tablebase data in the repository release commit; write those artifacts under the
-repository-local artifacts directory such as `artifacts\verification` or
-`artifacts\matches`. An Elo, CPL, or strength
+repository-local artifacts directory such as `artifacts/verification` or
+`artifacts/matches`. An Elo, CPL, or strength
 claim requires fresh comparable Stockfish CPL or match data with the executable,
 options, time control, and input provenance recorded alongside the report.
 
 ## References
 
+- [CLI & Interactive Reference](CLI.md)
+- [En Croissant](https://encroissant.org/)
 - [Lucas Chess](https://lucaschess.pythonanywhere.com/)
 - [Universal Chess Interface (UCI) reference](https://www.shredderchess.com/chess-info/features/uci-universal-chess-interface.html)
 - [Disservin/chess-library](https://github.com/Disservin/chess-library)
+- [Fathom (Syzygy probing library)](https://github.com/jdart1/Fathom)
 - [C++ compiler support for C++26](https://en.cppreference.com/w/cpp/compiler_support/26)

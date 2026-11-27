@@ -29,6 +29,7 @@ struct CliOptions {
     bool tb = false;
     bool nnue_info = false;
     bool eval = false;
+    bool options = false;
     std::optional<std::string> see_move;
     std::optional<std::string> book_path;
     std::optional<std::string> syzygy_path;

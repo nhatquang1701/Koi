@@ -38,9 +38,10 @@ koi-engine book [fen]                  # or --book <path> book [fen]
 koi-engine tb [fen]                    # or --syzygy <dir> tb [fen]
 koi-engine see <move> [fen]
 
-# Static NNUE/HCE evaluation readout for startpos or custom FEN
+# Static NNUE/HCE evaluation and live option summary
 koi-engine eval [fen]
 koi-engine --eval [fen]
+koi-engine options                     # or --options
 
 # Force built-in classical evaluation or select a specific NNUE network file
 koi-engine --hce eval [fen]

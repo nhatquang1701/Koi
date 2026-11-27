@@ -92,6 +92,7 @@ koi-engine book [fen]                  # optional --book <path>
 koi-engine tb [fen]                    # optional --syzygy <dir>
 koi-engine see <move> [fen]
 koi-engine eval [fen]
+koi-engine options                     # print live active protocol, evaluator, book, and Syzygy options
 koi-engine perft 5 [fen]
 
 # Evaluator selection, inline batch commands, version, GUI JSON, protocol, and help

@@ -72,6 +72,7 @@ koi-engine book [fen]             # Probe active or --book <path> Polyglot weigh
 koi-engine tb [fen]               # Probe active or --syzygy <dir> Syzygy tablebases
 koi-engine see <move> [fen]       # Compute static exchange evaluation (SEE) in cp
 koi-engine eval [fen]             # Inspect NNUE metadata or HCE term breakdown table
+koi-engine options                # Print live active protocol, evaluator, book, and Syzygy options
 koi-engine --hce eval [fen]       # Evaluate directly with classical HCE (no network)
 koi-engine --nnue <path> bench    # Benchmark an explicit NNUE weight file
 koi-engine perft 5 [fen]          # Run timed perft divide (depth 1..10)

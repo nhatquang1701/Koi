@@ -14,7 +14,7 @@
 
 namespace {
 
-constexpr std::array<const char*, 30> kCliEnvVars = {
+constexpr std::array<const char*, 31> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_EVALUATOR",
     "KOI_NNUE_PATH",
@@ -35,6 +35,7 @@ constexpr std::array<const char*, 30> kCliEnvVars = {
     "KOI_CLI_SEE_MOVE",
     "KOI_CLI_FEN",
     "KOI_CLI_EVAL",
+    "KOI_CLI_OPTIONS",
     "KOI_CLI_EVAL_FEN",
     "KOI_CLI_PERFT",
     "KOI_CLI_PERFT_FEN",
@@ -189,7 +190,8 @@ void test_inline_cmd_parsing_and_env_roundtrip() {
                            "missing or empty --cmd error must explain why it failed");
     }
 
-    for (const std::string_view subcommand : {"bench", "speedtest", "nnue", "eval", "compiler", "fen"}) {
+    for (const std::string_view subcommand :
+         {"bench", "speedtest", "nnue", "eval", "options", "compiler", "fen"}) {
         env.clear_all();
         ScopedStreamCapture err(std::cerr);
         koi::cli::CliOptions conflict_options;
@@ -352,6 +354,14 @@ void test_bench_and_protocol_bounds() {
                            reexec_speed.speedtest_hash_mb == 32 &&
                            reexec_speed.speedtest_seconds == 5,
                        "KOI_SPEEDTEST* variables must roundtrip across empty argv");
+
+    env.clear_all();
+    koi::cli::CliOptions opt_flags;
+    koi::test::require(!invoke_parse({"--options"}, opt_flags).has_value() && opt_flags.options,
+                       "--options must enable options readout");
+    koi::cli::CliOptions reexec_opts;
+    koi::test::require(!invoke_parse({}, reexec_opts).has_value() && reexec_opts.options,
+                       "KOI_CLI_OPTIONS must roundtrip across empty argv");
 
     env.clear_all();
     koi::cli::CliOptions proto_opts;

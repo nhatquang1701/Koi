@@ -94,6 +94,7 @@ public:
                       std::size_t hash_mb = kDefaultSpeedtestHashMb,
                       int runtime_seconds = kDefaultSpeedtestSeconds);
     int run_eval(std::optional<std::string_view> fen = std::nullopt);
+    int run_options();
 
 private:
     enum class ControllerState : std::uint8_t {

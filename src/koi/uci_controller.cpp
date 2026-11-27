@@ -1852,6 +1852,12 @@ int UciController::run_eval(const std::optional<std::string_view> fen) {
     return 0;
 }
 
+int UciController::run_options() {
+    ensure_auto_syzygy_loaded();
+    handle_options();
+    return 0;
+}
+
 void UciController::handle_ponderhit() {
     SearchLimits base_limits;
     {

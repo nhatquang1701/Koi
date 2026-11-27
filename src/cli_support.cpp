@@ -102,6 +102,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  compiler, --compiler                     Print compiler, C++26 standard, and dispatched ISA\n"
               << "  nnue [path]                              Inspect NNUE container metadata and verify payload SHA-256\n"
               << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
+              << "  options, --options                       Print live active protocol, evaluator, book, and Syzygy options\n"
               << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n"
               << "  d, --display [fen]                       Display ASCII board, FEN, Zobrist key, and move count\n"
               << "  fen [fen]                                Print six-field FEN for startpos, FEN, or moves sequence\n"
@@ -363,6 +364,11 @@ std::optional<int> parse_cli_options(
             }
             continue;
         }
+        if (arg == "options" || arg == "--options") {
+            out.options = true;
+            set_environment_value("KOI_CLI_OPTIONS", "1");
+            continue;
+        }
         if (arg == "perft") {
             if (index + 1 >= argc) {
                 std::cerr << "koi-engine: missing depth for perft (expected integer 1..10).\n";
@@ -570,7 +576,7 @@ std::optional<int> parse_cli_options(
                          "-c/--cmd <command>, --hce, --nnue <path>, --book <path>, "
                          "--syzygy <path>, bench [depth [hash [threads]]], "
                          "speedtest [threads [hash [seconds]]], compiler, nnue [path], eval [fen], "
-                         "perft <depth> [fen], d [fen], fen [fen], key [fen], moves [fen], flip [fen], "
+                         "options, perft <depth> [fen], d [fen], fen [fen], key [fen], moves [fen], flip [fen], "
                          "book [fen], tb [fen], see <move> [fen]).\n";
             return 2;
         }
@@ -705,6 +711,12 @@ std::optional<int> parse_cli_options(
             out.eval = true;
         }
     }
+    if (!out.options) {
+        if (const char* env_options = std::getenv("KOI_CLI_OPTIONS");
+            env_options != nullptr && std::string_view(env_options) == "1") {
+            out.options = true;
+        }
+    }
     if (!out.eval_fen.has_value()) {
         if (const char* env_eval_fen = std::getenv("KOI_CLI_EVAL_FEN");
             env_eval_fen != nullptr && *env_eval_fen != '\0') {
@@ -779,7 +791,7 @@ std::optional<int> parse_cli_options(
     if (!out.commands.empty() &&
         (out.bench_depth.has_value() || out.speedtest || out.compiler || out.nnue_info ||
          out.display || out.fen || out.key || out.moves || out.flip || out.book || out.tb ||
-         out.see_move.has_value() || out.eval || out.perft_depth.has_value())) {
+         out.see_move.has_value() || out.eval || out.options || out.perft_depth.has_value())) {
         std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
         return 2;
     }

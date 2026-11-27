@@ -274,6 +274,13 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(bad_eval.returncode, 2)
         self.assertIn("invalid FEN", bad_eval.stderr)
 
+        cli_opts = self._run(["--hce", "--protocol", "xboard", "options"], disable_nnue=True)
+        self.assertEqual(cli_opts.returncode, 0, cli_opts.stderr)
+        self.assertEqual(cli_opts.stderr, "")
+        self.assertIn("Protocol        : xboard", cli_opts.stdout)
+        self.assertIn("Evaluator       : HCE", cli_opts.stdout)
+        self.assertIn("Hash            : 512 MB", cli_opts.stdout)
+
         hce_eval = self._run(["eval"], extra_env={"KOI_EVALUATOR": "hce"})
         self.assertEqual(hce_eval.returncode, 0, hce_eval.stderr)
         self.assertIn("HCE (classical tapered)", hce_eval.stdout)
@@ -589,6 +596,11 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertIn("Format version : v9", inspected.stdout)
             self.assertIn("Feature set    : halfka-hm-v2", inspected.stdout)
             self.assertIn("Status         : valid (checksum verified)", inspected.stdout)
+
+            nnue_opts = self._run(["--nnue", str(v9_path), "options"], disable_nnue=True)
+            self.assertEqual(nnue_opts.returncode, 0, nnue_opts.stderr)
+            self.assertIn("Evaluator       : NNUE", nnue_opts.stdout)
+            self.assertIn("fixture-v9.nnue (boot)", nnue_opts.stdout)
 
 
 if __name__ == "__main__":

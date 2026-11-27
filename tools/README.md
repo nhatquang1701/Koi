@@ -519,6 +519,8 @@ Training and inspection use the Rust/CUDA Bullet pipeline and Python utilities:
   (`halfka-king-bucket-v1+threat-pairs-v1`, 36864 inputs).
 - `tools/measurement/nnue_info.py` inspects `v4`/`v5`/`v6`/`v8`/`v9` `.nnue`
   containers offline and verifies their embedded payload SHA-256 checksums.
+- `tools/measurement/validate_corpus_perspective.py` checks `FEN;cp` training
+  corpora for side-to-move-relative score correlation before conversion.
 - `koi-dataset-v2` encodes four index groups (`A_stm`, `B_stm`, `A_opp`,
   `B_opp`) per record. The converter carries the corpus game result through when
   the labels record one, and the bullet trainer's `--wdl` weight (default `0.5`)

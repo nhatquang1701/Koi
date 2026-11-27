@@ -19,6 +19,7 @@ import sys
 
 # ``koi_chess`` mirrors the python-chess API subset this tool needs and is
 # standard-library only, so the validator runs without python-chess installed.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import koi_chess as chess
 
 PIECE_CP = {
