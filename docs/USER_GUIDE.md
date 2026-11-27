@@ -345,9 +345,8 @@ same 9216-input payload as the version 4 network and differs only in its version
 word. The version 8 container also accepts the 36864-input `threat-pairs-v1` form
 written by `--arch v6`, whose payload is otherwise identical; the input width
 selects the layout. The threat-input form measured weaker than the HalfKA-only
-nets in every match, so `--arch v8` trains the HalfKA-only layout. The version 3
-trainer (`train_nnue_sf.py`) remains available, and version 2, 3, and 4
-containers still load:
+nets in every match, so `--arch v8` trains the HalfKA-only layout. Legacy
+version 2, 3, and 4 containers still load:
 
 ```powershell
 python .\tools\measurement\gen_training_data.py all --games 30000 --workers 3 --label-depth 10
@@ -362,7 +361,7 @@ python .\tools\measurement\train_nnue_koi.py --dataset .\artifacts\training\koi-
 The games stage records the white-relative outcome of every self-play game, so
 `positions.txt` rows are `FEN;result` and `labels.txt` rows are
 `FEN;cp;best_move;result` (`1.0`/`0.5`/`0.0`). The trailing column is optional for
-every reader: `koi_dataset.py`, `train_nnue_koi.py`, and `train_nnue_sf.py` split on
+every reader: `koi_dataset.py` and `train_nnue_koi.py` split on
 `;` and read the leading fields, so older corpora keep working and the result can be
 used as a WDL target once a trainer consumes it.
 
@@ -378,9 +377,8 @@ production evaluator, and the UCI `EvalFile` option still swaps the network at r
 
 ### Training a network
 
-Networks are trained with the Python trainer directly. The Koi NNUE Studio GUI
-(and its headless wrapper) was removed on 2026-10-06; see the
-[NNUE Studio removal record](history/removed-nnue-studio.md).
+Networks are trained with the Bullet GPU trainer (`tools/nnue/run_bullet.py`) or
+the PyTorch CPU trainer (`tools/measurement/train_nnue_koi.py`).
 
 ```powershell
 python .\tools\measurement\train_nnue_koi.py --corpus .\artifacts\training\corpus.txt `

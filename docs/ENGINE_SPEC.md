@@ -999,7 +999,6 @@ empty for the 1.2.0 gate.
 | `koi-eval-features` | Dump NNUE (`--nnue NET`) or clean-HCE (`--hce`) evaluations for a position corpus |
 | `koi-nnue-fixture` | Generates NNUE fixtures for boundary/parity tests |
 | `tools/build/speed_gate.ps1` | Repeated `koi-bench --report` baseline/candidate comparison; defaults 5 runs, 2% total NPS regression, 2% row regression, rows under 20 ms excluded as timer-quantized |
-| `tools/build/performance_gate.ps1` | Older/alternate NPS comparison harness (threads 2 by default) |
 | `tools/build/release_verify.ps1` | Fresh Debug and Release configure/build, full CTest/process checks, Threads 1/2/4 tactical gates, benchmark/UCI/replay/En Croissant-style artifacts under `artifacts/verification` |
 | `tools/stability/uci_match.ps1` | Color-aware match harness; writes `koi-uci-match-v2` JSON + PGN with per-ply provenance |
 | `tools/stability/sprt_compare.ps1` | Candidate-vs-baseline SPRT wrapper; exit 0 accept, 1 reject, 2 more games |

@@ -8,8 +8,8 @@ Two stages, both parallelised across worker threads:
   2. label     - score each FEN with Stockfish at a fixed depth and write
                  ``FEN;cp;best_move;result`` rows (cp is from the side to move).
 
-The output is consumed by ``train_nnue_koi.py`` (version 4) directly or through
-``koi_dataset.py``, and by the legacy ``train_nnue_sf.py`` (version 3).  The
+The output is consumed by ``train_nnue_koi.py`` directly or through
+``koi_dataset.py``, and by ``tools/nnue/to_bullet.py`` for Bullet training.  The
 trailing result field is optional for those readers: they split on ``;`` and
 read the leading fields, so corpora without results keep working.
 Everything is resumable: position dumps are appended and the labeler skips

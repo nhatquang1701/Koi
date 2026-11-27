@@ -39,9 +39,11 @@ chmod 600 ~/koi-bot/token
 ~/koi-bot/koi-bot.sh stop
 ```
 
-`install` verifies the release package against its `.sha256` sidecar, installs
+`install` downloads the latest release package (verifying the `.sha256` sidecar when present), installs
 `koi-engine` plus the shipped `.nnue` under `~/koi-bot/engines`, and writes
-`~/koi-bot/config.yml` (mode 600) pointing `EvalFile` at that net.
+`~/koi-bot/config.yml` (mode 600) pointing `EvalFile` at that net with rated
+bot-vs-bot matchmaking enabled (`KOI_BOT_MATCHMAKING=true` by default,
+`KOI_BOT_MATCHMAKING_TIMEOUT=5` minutes).
 
 ## Commands
 
@@ -52,6 +54,7 @@ chmod 600 ~/koi-bot/token
 | `koi-bot.sh stop` | stop the bot and its engine processes |
 | `koi-bot.sh restart` | stop, then start |
 | `koi-bot.sh status` | engine version, net, service state, last log lines |
+| `koi-bot.sh reconfigure` | rewrite `config.yml` from current environment settings |
 | `koi-bot.sh logs [N]` | tail the bot log |
 | `koi-bot.sh update [--force]` | install the newest release and restart only when the tag changed |
 | `koi-bot.sh install-launchd` | start at login, restart on crash, check for a new release hourly |
@@ -111,7 +114,7 @@ leaves the engine a buffer on the Lichess clock.
 
 You can use either the bundled CC0 `book.bin` shipped in release archives or
 build/supply your own Polyglot book (for example with
-`tools/book/build_database_book.py` or `tools/build/install_book.ps1`, or a
+`tools/book/build_verified_book.py` or `tools/build/install_book.ps1`, or a
 local book such as Cerebellum Light) placed next to the engine binary as
 `book.bin`:
 

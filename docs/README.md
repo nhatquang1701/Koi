@@ -25,6 +25,7 @@ Welcome to the **Koi** documentation index. Start with the **[Documentation Home
 ## Releases & Archive
 
 - **[Release Notes (v1.2.0)](releases/v1.2.0.md)** — Latest release highlights, search/evaluation improvements, SF19 Elo measurement, and package provenance (earlier notes: [v1.1.6](releases/v1.1.6.md), [v1.1.5](releases/v1.1.5.md), [v1.1.4](releases/v1.1.4.md), [v1.1.3](releases/v1.1.3.md), [v1.1.2](releases/v1.1.2.md), [v1.1.1](releases/v1.1.1.md), [v1.1.0](releases/v1.1.0.md), [v1.0.0](releases/v1.0.0.md)).
-- **[Removed NNUE Studio](history/removed-nnue-studio.md)** — Historical record of the retired tkinter training GUI and the CLI tools that replaced it.
+- **[Changelog](../CHANGELOG.md)** — Version-by-version summary including unreleased changes.
+- **[Security Policy](../SECURITY.md)** — Responsible vulnerability disclosure and hardened input scope.
 
 > **Workspace Layout:** Generated build trees belong under `build/` and generated benchmark, match, or verification reports belong under `artifacts/`. Neither directory is committed to the repository.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage tracked Koi Markdown as the MkDocs source tree.
+"""Stage tracked Koi Markdown and static docs assets as the MkDocs source tree.
 
 The source tree is deliberately assembled from Git's index instead of the
 working tree.  That makes the Pages corpus reproducible and keeps ignored
@@ -8,11 +8,11 @@ build products, local notes, networks, books, and tablebases out of the site.
 
 from __future__ import annotations
 
+import posixpath
 import re
 import shutil
 import subprocess
 import sys
-import posixpath
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
@@ -22,11 +22,11 @@ BRANCH = "koi-engine"
 SCRIPT_PATH = Path(__file__).resolve()
 REPOSITORY_ROOT = SCRIPT_PATH.parents[2]
 SOURCE_DIRECTORY = REPOSITORY_ROOT / "build" / "pages-src"
-ARCHIVE_INDEX = SOURCE_DIRECTORY / "archive" / "index.md"
 EXCLUDED_PREFIXES = (
     "third_party/",
     "build/",
     ".superpowers/",
+    ".github/",
     "artifacts/",
 )
 MARKDOWN_LINK = re.compile(r"(?<!!)\[([^\]]+)\]\(([^)]+)\)")
@@ -57,6 +57,15 @@ def tracked_markdown_paths() -> list[PurePosixPath]:
         path
         for path in tracked_paths("*.md")
         if not path.as_posix().startswith(EXCLUDED_PREFIXES)
+    ]
+
+
+def tracked_asset_paths() -> list[PurePosixPath]:
+    """Return committed static asset paths under docs/assets/."""
+    return [
+        path
+        for path in tracked_paths("docs/assets")
+        if not path.as_posix().endswith(".md")
     ]
 
 
@@ -100,14 +109,8 @@ def rewrite_links(
     source_to_output: dict[PurePosixPath, PurePosixPath],
     repository_paths: set[PurePosixPath],
 ) -> str:
-    """Keep corpus links relative; turn omitted tracked files into GitHub links.
+    """Keep corpus links relative; turn omitted tracked files into GitHub links."""
 
-    A Markdown target that resolves to another staged page stays untouched. A
-    target for committed source or generated-artifact documentation that is
-    deliberately outside the corpus links to GitHub, where repository files
-    belong. Targets for local-only files become plain text instead of a broken
-    site link.
-    """
     def replace(match: re.Match[str]) -> str:
         label, destination = match.groups()
         target, suffix = split_destination(destination)
@@ -135,32 +138,6 @@ def rewrite_links(
     return MARKDOWN_LINK.sub(replace, markdown)
 
 
-def write_archive_index(paths: list[PurePosixPath]) -> None:
-    """Generate one stable, searchable entry point for historical records."""
-    archive_paths = [path for path in paths if path.as_posix().startswith("docs/superpowers/")]
-    groups = {
-        "Specifications": "docs/superpowers/specs/",
-        "Implementation plans": "docs/superpowers/plans/",
-        "Verification records": "docs/superpowers/verification/",
-    }
-    lines = [
-        "# Project archive",
-        "",
-        "Tracked Koi design, planning, and verification records are preserved here.",
-        "",
-    ]
-    for heading, prefix in groups.items():
-        lines.extend([f"## {heading}", ""])
-        entries = [path for path in archive_paths if path.as_posix().startswith(prefix)]
-        for path in entries:
-            relative_target = "../" + path.as_posix()
-            title = path.name.removesuffix(".md")
-            lines.append(f"- [{title}]({relative_target})")
-        lines.append("")
-    ARCHIVE_INDEX.parent.mkdir(parents=True, exist_ok=True)
-    ARCHIVE_INDEX.write_text("\n".join(lines), encoding="utf-8")
-
-
 def main() -> int:
     paths = tracked_markdown_paths()
     if not paths:
@@ -186,8 +163,18 @@ def main() -> int:
             encoding="utf-8",
         )
 
-    write_archive_index(paths)
-    print(f"Staged {len(paths)} tracked Markdown files in {SOURCE_DIRECTORY.relative_to(REPOSITORY_ROOT)}")
+    asset_paths = tracked_asset_paths()
+    for asset_path in asset_paths:
+        source = REPOSITORY_ROOT.joinpath(*asset_path.parts)
+        relative_asset = asset_path.relative_to("docs")
+        destination = SOURCE_DIRECTORY.joinpath(*relative_asset.parts)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+    print(
+        f"Staged {len(paths)} tracked Markdown files and {len(asset_paths)} static assets "
+        f"in {SOURCE_DIRECTORY.relative_to(REPOSITORY_ROOT)}"
+    )
     return 0
 
 

@@ -16,7 +16,7 @@ Directory map:
 | Directory | Purpose |
 | --- | --- |
 | `tools/build/` | build, package, book-install, and verification scripts |
-| `tools/book/` | `build_verified_book.py` & `polyglot.py` (compact Stockfish-verified CC0 opening book producing `assets/book/koi.bin` for releases without external deps), `build_book.py` (Polyglot book from CC0 Lichess opening data), `build_database_book.py` (legacy raw-count CC0 Lichess-database builder), and `build_polyglot_subset.py` (compact opening subset of a larger book) |
+| `tools/book/` | `build_verified_book.py` & `polyglot.py` (compact Stockfish-verified CC0 opening book producing `assets/book/koi.bin` for releases without external deps) |
 | `tools/bot/` | Lichess bot control script (install, start, stop, auto-update) |
 | `tools/engine/` | small C++ command-line tools built with Koi |
 | `tools/measurement/` | PGN, oracle, corpus, tuning, and NNUE tooling |
@@ -52,23 +52,6 @@ previewed as stale):
 ```powershell
 & .\tools\build\prune_generated_trees.ps1
 & .\tools\build\prune_generated_trees.ps1 -Apply
-```
-
-## Fixed-depth performance gate
-
-`performance_gate.ps1` compares two explicitly supplied `koi-bench` executables
-using repeated cold-hash, fixed-depth, timed runs of the 64-position strength
-suite. It reports the median total elapsed time for each executable and fails
-only when the candidate median is more than 5% slower. Profiles and logs belong
-under `artifacts/verification/`, and this is intentionally a standalone
-measurement command rather than a CTest threshold:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build\performance_gate.ps1 `
-  -BaselineExecutable .\build\release\koi-bench.exe `
-  -CandidateExecutable .\build\release\koi-bench.exe `
-  -Runs 5 -Threads 4 `
-  -OutputDirectory .\artifacts\verification\performance-gate
 ```
 
 ## Speed program gate
@@ -513,9 +496,8 @@ set `EvalFile` or the pinned measurement options.
 
 ## NNUE training
 
-Training is driven by the Python trainer and the bullet pipeline; the Koi NNUE
-Studio GUI and its headless wrapper were removed on 2026-10-06 (see
-`docs/history/removed-nnue-studio.md` for what it did and why).
+Training is driven by the Python trainer (`train_nnue_koi.py`) and the Rust/CUDA
+Bullet pipeline (`tools/nnue/run_bullet.py`).
 
 - `tools/measurement/train_nnue_koi.py` is the primary trainer on CPU PyTorch.
   `--arch v4` trains the within-perspective `halfka-king-bucket-v1` network
