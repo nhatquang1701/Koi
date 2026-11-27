@@ -20,6 +20,12 @@ koi-engine --compiler
 # Timed perft divide from startpos or custom FEN (depth 1..10; no NNUE network required)
 koi-engine perft <depth> [fen]
 
+# Zero-network board diagram, Zobrist/Polyglot hash keys, and legal move listing
+koi-engine d [fen]
+koi-engine --display [fen]
+koi-engine key [fen]
+koi-engine moves [fen]
+
 # Static NNUE/HCE evaluation readout for startpos or custom FEN
 koi-engine eval [fen]
 koi-engine --eval [fen]
@@ -32,7 +38,7 @@ koi-engine --help         # or -h
 ```
 
 !!! note "Zero-network subcommands & unquoted FENs"
-    `compiler`, `perft`, `--version`, `--help`, and `--engine-json` execute before NNUE network discovery and work without a `koi.nnue` file. Both quoted (`koi-engine perft 2 "..."`) and unquoted 6-field FEN arguments are supported. Invalid perft depths, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make bench`, `make compiler`, and `make perft PERFT_DEPTH=5`.
+    `compiler`, `perft`, `d`, `key`, `moves`, `--version`, `--help`, and `--engine-json` execute before NNUE network discovery and work without a `koi.nnue` file. Both quoted (`koi-engine perft 2 "..."`) and unquoted 6-field FEN arguments are supported. Invalid perft depths, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make bench`, `make compiler`, and `make perft PERFT_DEPTH=5`.
 
 ### Example Outputs
 
@@ -152,7 +158,7 @@ Built from source via CMake presets (not shipped in user-facing release archives
 | `koi-replay` | Coordinate move replayer (`legal`, `result`, `termination`, `fen`) | `koi-replay <startpos\|fen 6-field-fen> [moves <uci>...]` |
 | `koi-eval-features` | Bulk CSV evaluator dumper for FEN corpora | `koi-eval-features (--nnue NET \| --hce) [--input FILE] [--output FILE]` |
 | `koi-nnue-fixture` | Synthetic v4/v5 `.nnue` generator for C++ & Python boundary tests | `koi-nnue-fixture --arch v4\|v5 --output <path>` |
-| `tools/measurement/nnue_info.py` | Offline NNUE container inspector & SHA-256 payload verifier | `python tools/measurement/nnue_info.py <network.nnue>` |
+| `tools/measurement/nnue_info.py` | Offline NNUE container inspector & SHA-256 payload verifier | `python tools/measurement/nnue_info.py <network.nnue> [--json] [--verify]` |
 
 For full measurement, SPRT matching, and packaging documentation, see [Developer Tools](../tools/README.md).
 

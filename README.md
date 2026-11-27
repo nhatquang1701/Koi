@@ -81,6 +81,9 @@ koi-engine bench [depth [hash [threads]]]
 
 # One-shot diagnostics: compiler/ISA info, startpos or FEN eval, and timed perft divide
 koi-engine compiler
+koi-engine d [fen]
+koi-engine key [fen]
+koi-engine moves [fen]
 koi-engine eval [fen]
 koi-engine perft 5 [fen]
 

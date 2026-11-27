@@ -543,7 +543,7 @@ Typical commands:
 ```powershell
 python .\tools\nnue\to_bullet.py --help
 python .\tools\nnue\run_bullet.py --help
-python .\tools\measurement\nnue_info.py .\artifacts\networks\koi-v9-hm10-h256-official.nnue
+python .\tools\measurement\nnue_info.py .\artifacts\networks\koi-v9-hm10-h256-official.nnue --verify
 ```
 
 Validation runs the 64-position gate (`koi-bench --nnue`) and an equal-time,
