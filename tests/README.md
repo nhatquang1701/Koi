@@ -74,7 +74,7 @@ ctest --test-dir build\release -C Release -R koi_strength_tests --output-on-fail
 ```
 
 The current Windows Release configuration with Python 3 and Cute Chess registers
-**86 tests** (`85` without `cutechess_stability_smoke`; `KOI_BUILD_SHADOW_DIFF=OFF`);
+**87 tests** (`86` without `cutechess_stability_smoke`; `KOI_BUILD_SHADOW_DIFF=OFF`);
 `ctest -N` is authoritative for a given build. The count varies with optional
 dependencies:
 `koi_shadow_diff_tests` requires `-DKOI_BUILD_SHADOW_DIFF=ON`, and

@@ -1,23 +1,7 @@
 # Koi engine specification
 
-This page is the engineering specification for the Koi engine in this repository.
-It describes the code as it stands on branch `koi-engine` at the v1.2.0
-release, and it names the
-implementation files and constants that define each behaviour. It is a
-specification of observed behaviour, not a roadmap: where a feature is absent,
-experimental, or deliberately limited, the text says so.
-
-The engine is a standard-chess UCI engine written in C++26. `Threads=1` is the
-deterministic configuration; `Threads>1` is intentionally nondeterministic Lazy
-SMP. Release packages ship the gated Koi-native NNUE evaluator as the primary
-evaluator: the network is bundled flat beside the executables as `koi.nnue`,
-auto-discovered at boot, and
-advertised through the `EvalFile` default `<autodiscovery>`. The original hand-crafted
-classical evaluator was removed on 2026-10-28 and replaced with the clean rewrite
-in `src/koi/classical_evaluator.hpp` and `src/koi/classical_evaluator.cpp`; NNUE
-stays the default and production evaluator, and a default boot without a usable
-network exits 4 with a diagnostic. The clean HCE is selectable for development
-and measurement with `EvalMode=hce` or the `KOI_EVALUATOR=hce` boot override.
+!!! info "Specification Scope"
+    This page documents observed behaviour on branch `koi-engine` from the v1.2.0 baseline forward, naming the implementation files and constants that define each contract. Koi targets standard 8×8 chess in C++26 (`Threads=1` deterministic, `Threads>1` Lazy SMP), boots with the gated Koi-native NNUE (`koi.nnue` beside the executable, advertised via `EvalFile` default `<autodiscovery>`, exiting `4` with a diagnostic when absent), and provides a clean classical evaluator (`src/koi/classical_evaluator.{hpp,cpp}`) via `--hce`, `EvalMode=hce`, or `KOI_EVALUATOR=hce`.
 
 ## 1. Identity and platforms
 
@@ -1112,7 +1096,7 @@ name and version while the tag is the version alone.
 - **NNUE v1 containers are not accepted** by the current loader (versions 2, 3,
   4, 5, 6, 8, and 9 are).
 - **Test count depends on optional features:** `tests/README.md`,
-  `docs/USER_GUIDE.md`, and §9.1 document 86 registered tests in the reference
-  Windows Release + Python + Cute Chess configuration (`85` without
+  `docs/USER_GUIDE.md`, and §9.1 document 87 registered tests in the reference
+  Windows Release + Python + Cute Chess configuration (`86` without
   `cutechess_stability_smoke`), while `ctest -N` is authoritative for any
   specific build tree.

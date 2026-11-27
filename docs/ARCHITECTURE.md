@@ -31,7 +31,7 @@ flowchart TD
 | --- | --- |
 | `src/main.cpp`, `src/cli_support.*` | Entry point, signal/stack setup, CPU variant guard & dispatch, pre-boot CLI/env option parsing (`-c`/`--cmd` batch script, `speedtest`, `--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), and zero-network CLI subcommands (`compiler`, `nnue`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`). |
 | `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output (`detail/uci_support.*` never emits `"info string` literals). |
-| `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, `parse_cli_position_spec` (`[startpos|fen] [moves ...]`), `go` limit parser, network overhead estimator, WDL conversion, FEN flip helper, ASCII board/key/moves/book/tb/nnue/eval/options/annotate/compiler formatters, and benchmark FEN suite. |
+| `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, `parse_cli_position_spec` (`[startpos|fen] [moves ...]`), `go` limit parser, network overhead estimator, debug-JSON payload builders, WDL conversion, FEN flip helper, ASCII board/key/moves/book/tb/nnue/eval/options/annotate/compiler formatters, and benchmark FEN suite. |
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |
 | `detail/search_session.cpp` | One immutable request, worker ownership, cancellation/ponderhit timer, completion claim. |
 | `detail/root_fallback.*` | Bounded root-fallback policy: emergency static/one-ply scanners used when a short search cannot complete an authoritative iteration. |
