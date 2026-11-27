@@ -1298,7 +1298,8 @@ bool is_bare_coordinate_move_token(const std::string_view token) noexcept {
     return true;
 }
 
-std::optional<GameState> parse_cli_position_spec(const std::string_view spec, std::string& error) {
+std::optional<ParsedCliPosition> parse_cli_position_with_history(
+    const std::string_view spec, std::string& error) {
     error.clear();
     std::istringstream stream{std::string(spec)};
     std::vector<std::string> tokens;
@@ -1306,7 +1307,7 @@ std::optional<GameState> parse_cli_position_spec(const std::string_view spec, st
         tokens.push_back(std::move(token));
     }
     if (tokens.empty()) {
-        return GameState::startpos();
+        return ParsedCliPosition{GameState::startpos(), {}, GameState::startpos()};
     }
 
     GameState state = GameState::startpos();
@@ -1343,14 +1344,26 @@ std::optional<GameState> parse_cli_position_spec(const std::string_view spec, st
         }
     }
 
+    const GameState origin = state;
+    std::vector<Move> moves;
+    moves.reserve(tokens.size() > move_start ? tokens.size() - move_start : 0);
     for (std::size_t index = move_start; index < tokens.size(); ++index) {
         const std::optional<Move> move = parse_move_uci_or_san(state, tokens[index]);
         if (!move.has_value() || !state.make_move(*move)) {
             error = "illegal move '" + tokens[index] + "'";
             return std::nullopt;
         }
+        moves.push_back(*move);
     }
-    return state;
+    return ParsedCliPosition{origin, std::move(moves), std::move(state)};
+}
+
+std::optional<GameState> parse_cli_position_spec(const std::string_view spec, std::string& error) {
+    auto parsed = parse_cli_position_with_history(spec, error);
+    if (!parsed.has_value()) {
+        return std::nullopt;
+    }
+    return std::move(parsed->state);
 }
 
 std::string format_position_debug_json(const std::uint64_t generation,

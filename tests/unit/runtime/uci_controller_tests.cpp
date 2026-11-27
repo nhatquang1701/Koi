@@ -2646,6 +2646,32 @@ void test_xboard_cecp_protocol_gameplay_and_controls() {
             "mated position in XBoard go must emit mate result");
     require(xboard.output.find("uciok") != std::string::npos,
             "switching back from XBoard via uci must emit uciok");
+
+    const ControllerResult xboard_san = run_controller(
+        "xboard\n"
+        "protover 2\n"
+        "new\n"
+        "force\n"
+        "usermove e4\n"
+        "usermove e5\n"
+        "usermove Nf3\n"
+        "usermove Nc6\n"
+        "usermove Bb5\n"
+        "usermove a6\n"
+        "usermove Ba4\n"
+        "usermove Nf6\n"
+        "usermove O-O\n"
+        "ping 9\n"
+        "usermove e5\n"
+        "quit\n");
+    require(xboard_san.exit_code == 0 && xboard_san.diagnostics.empty(),
+            "XBoard SAN usermove sequence must remain clean");
+    require(xboard_san.output.find("pong 9") != std::string::npos &&
+                xboard_san.output.find("Illegal move: e5") != std::string::npos &&
+                xboard_san.output.find("Illegal move: O-O") == std::string::npos &&
+                xboard_san.output.find("Illegal move: Nf3") == std::string::npos,
+            "XBoard usermove must accept legal FIDE SAN and reject illegal SAN; got:\n" +
+                xboard_san.output);
 }
 
 class ThrowingTestEvaluator final : public koi::Evaluator {
@@ -3336,6 +3362,14 @@ void test_uci_support_helpers_direct() {
                  .has_value() &&
                 ambig_err.find("illegal move") != std::string::npos,
             "parse_cli_position_spec must reject ambiguous SAN moves");
+    const auto with_history = parse_cli_position_with_history("moves e4 e5 Nf3", spec_error);
+    require(with_history.has_value() &&
+                with_history->origin.fen() == koi::GameState::startpos().fen() &&
+                with_history->moves.size() == 3 &&
+                with_history->moves[2].uci() == "g1f3" &&
+                with_history->state.fen() ==
+                    "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2",
+            "parse_cli_position_with_history must return origin, applied moves, and state");
 
     const std::optional<koi::Move> e2e4 = koi::Move::parse_uci("e2e4");
     const std::optional<koi::Move> d2d4 = koi::Move::parse_uci("d2d4");

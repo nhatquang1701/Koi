@@ -644,7 +644,7 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
 
     stop_and_suppress_active_search();
     apply_pending_xboard_move();
-    const std::optional<Move> parsed_move = Move::parse_uci(move_token);
+    const std::optional<Move> parsed_move = detail::parse_move_uci_or_san(position_, move_token);
     if (!parsed_move.has_value() || !position_.is_legal(*parsed_move) ||
         !position_.make_move(*parsed_move)) {
         std::lock_guard lock(output_mutex_);

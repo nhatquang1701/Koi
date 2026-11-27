@@ -14,7 +14,7 @@
 
 namespace {
 
-constexpr std::array<const char*, 33> kCliEnvVars = {
+constexpr std::array<const char*, 34> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_CLI_HASH",
     "KOI_CLI_THREADS",
@@ -27,6 +27,7 @@ constexpr std::array<const char*, 33> kCliEnvVars = {
     "KOI_CLI_FEN_CMD",
     "KOI_CLI_KEY",
     "KOI_CLI_MOVES",
+    "KOI_CLI_PGN",
     "KOI_CLI_FLIP",
     "KOI_CLI_BOOK",
     "KOI_CLI_TB",
@@ -214,7 +215,7 @@ void test_inline_cmd_parsing_and_env_roundtrip() {
     }
 
     for (const std::string_view subcommand :
-         {"bench", "speedtest", "nnue", "eval", "options", "compiler", "fen"}) {
+         {"bench", "speedtest", "nnue", "eval", "options", "compiler", "fen", "pgn"}) {
         env.clear_all();
         ScopedStreamCapture err(std::cerr);
         koi::cli::CliOptions conflict_options;
@@ -412,6 +413,27 @@ void test_unquoted_fen_and_inspection_subcommands() {
         koi::test::require(!invoke_parse({}, fen_reexec).has_value() && fen_reexec.fen &&
                                fen_reexec.inspect_fen == "moves e2e4 e7e5",
                            "KOI_CLI_FEN_CMD and KOI_CLI_FEN must roundtrip across empty argv");
+    }
+    {
+        env.clear_all();
+        koi::cli::CliOptions pgn_opts;
+        koi::test::require(!invoke_parse({"pgn", "moves", "e2e4", "e7e5", "g1f3"}, pgn_opts)
+                                .has_value() &&
+                               pgn_opts.pgn && pgn_opts.inspect_fen == "moves e2e4 e7e5 g1f3",
+                           "pgn subcommand must store trailing position spec");
+        koi::cli::CliOptions pgn_reexec;
+        koi::test::require(!invoke_parse({}, pgn_reexec).has_value() && pgn_reexec.pgn &&
+                               pgn_reexec.inspect_fen == "moves e2e4 e7e5 g1f3",
+                           "KOI_CLI_PGN and KOI_CLI_FEN must roundtrip across empty argv");
+        std::array<std::string, 1> storage{{"koi-engine"}};
+        std::array<char*, 1> argv{{storage[0].data()}};
+        ScopedStreamCapture out(std::cout);
+        const auto run_exit = koi::cli::run_zero_network_cli_command(
+            pgn_opts, static_cast<int>(argv.size()), argv.data(), "1.2.0", "testsha");
+        koi::test::require(run_exit == std::optional<int>(0) &&
+                               out.str().find("[Event \"Koi Session\"]\n") != std::string::npos &&
+                               out.str().find("1. e4 e5 2. Nf3 *\n") != std::string::npos,
+                           "zero-network pgn command must emit FIDE PGN; got:\n" + out.str());
     }
 
     for (const std::vector<std::string>& bad : std::vector<std::vector<std::string>>{

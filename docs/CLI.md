@@ -27,12 +27,13 @@ koi-engine nnue [path]
 # Timed perft divide from startpos or custom FEN (depth 1..10; no NNUE network required)
 koi-engine perft <depth> [fen]
 
-# Zero-network board diagram, six-field FEN, Zobrist/Polyglot hash keys, legal moves, flip, book/TB probe, and SEE
+# Zero-network board diagram, six-field FEN, Zobrist/Polyglot hash keys, legal moves, PGN export, flip, book/TB probe, and SEE
 koi-engine d [fen]
 koi-engine --display [fen]
 koi-engine fen [fen]
 koi-engine key [fen]
 koi-engine moves [fen]
+koi-engine pgn [fen]
 koi-engine flip [fen]
 koi-engine book [fen]                  # or --book <path> book [fen]
 koi-engine tb [fen]                    # or --syzygy <dir> tb [fen]
@@ -59,7 +60,7 @@ koi-engine help          # or -h, --help
 ```
 
 !!! note "Zero-network subcommands, unquoted FENs & batch mode"
-    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network; `--book <path>` and `--syzygy <path>` apply to both one-shot `book`/`tb` probes and live UCI, `-c`, or `options` sessions; `--hash` and `--threads` also provide defaults for `bench` and `speedtest` when positional hash/threads arguments are omitted). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci|san>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3`, `koi-engine d moves e4 e5 Nf3`, or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd`/`--hash`/`--threads` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make asan` (ASan+UBSan), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make engine-json`, `make version`, `make compiler`, and `make perft PERFT_DEPTH=5 [FEN=...]`.
+    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `key`, `moves`, `pgn`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network; `--book <path>` and `--syzygy <path>` apply to both one-shot `book`/`tb` probes and live UCI, `-c`, or `options` sessions; `--hash` and `--threads` also provide defaults for `bench` and `speedtest` when positional hash/threads arguments are omitted). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci|san>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3`, `koi-engine d moves e4 e5 Nf3`, or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd`/`--hash`/`--threads` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make asan` (ASan+UBSan), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make engine-json`, `make version`, `make compiler`, and `make perft PERFT_DEPTH=5 [FEN=...]`.
 
 ### Example Outputs
 
@@ -205,7 +206,7 @@ See the [User Guide](USER_GUIDE.md#uci-options-quick-reference) for the complete
 Koi targets standard 8×8 chess across five wire dialects, selectable via `--protocol <name>`, `KOI_PROTOCOL=<name>`, or `setoption name Protocol value <name>`:
 
 - `uci` (default) — Universal Chess Interface (`uciok`, `bestmove <uci>`).
-- `xboard` — XBoard / CECP v2 (`feature ... done=1`, `setboard`, `usermove`, `ping`/`pong`, `level`/`st`/`sd`, `analyze`/`exit`, `undo`/`remove`).
+- `xboard` — XBoard / CECP v2 (`feature ... done=1`, `setboard`, `usermove` supporting coordinate and FIDE SAN moves, `ping`/`pong`, `level`/`st`/`sd`, `analyze`/`exit`, `undo`/`remove`).
 - `usi` — USI compatibility dialect on 8×8 boards (`usiok`, `usinewgame`, `byoyomi`, `bestmove resign`).
 - `ucci` / `ucicyclone` — UCCI compatibility dialects on 8×8 boards (`ucciok`, `uccinewgame`, `time`/`opptime`/`increment`, `nobestmove`).
 

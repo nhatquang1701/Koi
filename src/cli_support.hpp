@@ -26,6 +26,7 @@ struct CliOptions {
     bool fen = false;
     bool key = false;
     bool moves = false;
+    bool pgn = false;
     bool flip = false;
     bool book = false;
     bool tb = false;

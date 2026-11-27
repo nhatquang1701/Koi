@@ -268,6 +268,30 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(see_san.returncode, 0, see_san.stderr)
         self.assertEqual(see_san.stdout.strip(), "SEE e4d5 : +0 cp")
 
+        pgn_open = self._run(["pgn", "moves", "e2e4", "e7e5", "g1f3"], disable_nnue=True)
+        self.assertEqual(pgn_open.returncode, 0, pgn_open.stderr)
+        self.assertIn('[Event "Koi Session"]', pgn_open.stdout)
+        self.assertIn('[Result "*"]', pgn_open.stdout)
+        self.assertIn("1. e4 e5 2. Nf3 *", pgn_open.stdout)
+
+        pgn_mate = self._run(["pgn", "moves", "f3", "e5", "g4", "Qh4#"], disable_nnue=True)
+        self.assertEqual(pgn_mate.returncode, 0, pgn_mate.stderr)
+        self.assertIn('[Result "0-1"]', pgn_mate.stdout)
+        self.assertIn("1. f3 e5 2. g4 Qh4# 0-1", pgn_mate.stdout)
+
+        pgn_custom = self._run(
+            ["pgn", "4k3/4p3/8/8/8/8/4P3/4K3 b - - 0 5 moves e5 e4"],
+            disable_nnue=True,
+        )
+        self.assertEqual(pgn_custom.returncode, 0, pgn_custom.stderr)
+        self.assertIn('[SetUp "1"]', pgn_custom.stdout)
+        self.assertIn('[FEN "4k3/4p3/8/8/8/8/4P3/4K3 b - - 0 5"]', pgn_custom.stdout)
+        self.assertIn("5... e5 6. e4 *", pgn_custom.stdout)
+
+        pgn_bad_fen = self._run(["pgn", "bad fen"], disable_nnue=True)
+        self.assertEqual(pgn_bad_fen.returncode, 2)
+        self.assertIn("invalid FEN", pgn_bad_fen.stderr)
+
     def test_invalid_perft_and_unknown_options(self) -> None:
         bad_depth = self._run(["perft", "99"], disable_nnue=True)
         self.assertEqual(bad_depth.returncode, 2)

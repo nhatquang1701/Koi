@@ -160,6 +160,13 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] std::string format_annotate_summary_line(
     const char* side_name, const PlayerAnnotationSummary& summary);
 [[nodiscard]] std::optional<std::string> flip_position_fen(std::string_view fen);
+struct ParsedCliPosition {
+    GameState origin;
+    std::vector<Move> moves;
+    GameState state;
+};
+[[nodiscard]] std::optional<ParsedCliPosition> parse_cli_position_with_history(
+    std::string_view spec, std::string& error);
 [[nodiscard]] std::optional<GameState> parse_cli_position_spec(
     std::string_view spec, std::string& error);
 [[nodiscard]] std::string format_compiler_info(std::string_view version, std::string_view commit);

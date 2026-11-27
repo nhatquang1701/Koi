@@ -112,6 +112,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  fen [fen]                                Print six-field FEN for startpos, FEN, or moves sequence\n"
               << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
               << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n"
+              << "  pgn [fen]                                Export startpos, FEN, or moves sequence as FIDE PGN\n"
               << "  flip [fen]                               Toggle side to move if legal and print updated FEN\n"
               << "  book [fen]                               Probe Polyglot opening book entries for position\n"
               << "  tb [fen]                                 Probe Syzygy tablebases for root WDL and best moves\n"
@@ -403,6 +404,15 @@ std::optional<int> parse_cli_options(
             }
             continue;
         }
+        if (arg == "pgn") {
+            out.pgn = true;
+            set_environment_value("KOI_CLI_PGN", "1");
+            collect_trailing_fen(index, out.inspect_fen);
+            if (out.inspect_fen.has_value()) {
+                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
+            }
+            continue;
+        }
         if (arg == "flip") {
             out.flip = true;
             set_environment_value("KOI_CLI_FLIP", "1");
@@ -655,7 +665,7 @@ std::optional<int> parse_cli_options(
                      "--hce, --nnue <path>, --book <path>, --syzygy <path>, "
                      "bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], "
                      "compiler, nnue [path], eval [fen], options, perft <depth> [fen], "
-                     "d [fen], fen [fen], key [fen], moves [fen], flip [fen], book [fen], "
+                     "d [fen], fen [fen], key [fen], moves [fen], pgn [fen], flip [fen], book [fen], "
                      "tb [fen], see <move> [fen]).\n";
         return 2;
     }
@@ -723,6 +733,7 @@ std::optional<int> parse_cli_options(
     restore_env_flag(out.fen, "KOI_CLI_FEN_CMD");
     restore_env_flag(out.key, "KOI_CLI_KEY");
     restore_env_flag(out.moves, "KOI_CLI_MOVES");
+    restore_env_flag(out.pgn, "KOI_CLI_PGN");
     restore_env_flag(out.flip, "KOI_CLI_FLIP");
     restore_env_flag(out.book, "KOI_CLI_BOOK");
     restore_env_flag(out.tb, "KOI_CLI_TB");
@@ -766,7 +777,7 @@ std::optional<int> parse_cli_options(
     }
     if (!out.commands.empty() &&
         (out.bench_depth.has_value() || out.speedtest || out.compiler || out.nnue_info ||
-         out.display || out.fen || out.key || out.moves || out.flip || out.book || out.tb ||
+         out.display || out.fen || out.key || out.moves || out.pgn || out.flip || out.book || out.tb ||
          out.see_move.has_value() || out.eval || out.options || out.perft_depth.has_value())) {
         std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
         return 2;
@@ -800,6 +811,21 @@ std::optional<int> run_zero_network_cli_command(
             ? target_path.string()
             : target_path.filename().string();
         std::cout << detail::format_nnue_info(display_name, *loaded) << std::flush;
+        return 0;
+    }
+    if (options.pgn) {
+        detail::ParsedCliPosition parsed{GameState::startpos(), {}, GameState::startpos()};
+        if (options.inspect_fen.has_value()) {
+            std::string error;
+            const auto resolved =
+                detail::parse_cli_position_with_history(*options.inspect_fen, error);
+            if (!resolved.has_value()) {
+                std::cerr << "koi-engine: " << error << '\n';
+                return 2;
+            }
+            parsed = *resolved;
+        }
+        std::cout << detail::format_pgn(parsed.origin, parsed.moves) << std::flush;
         return 0;
     }
     if (options.display || options.fen || options.key || options.moves || options.flip) {
