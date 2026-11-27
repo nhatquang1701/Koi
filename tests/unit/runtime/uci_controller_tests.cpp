@@ -3447,8 +3447,9 @@ void test_uci_support_helpers_direct() {
 
     const auto check_san = [](const std::string_view fen, const std::string_view uci,
                             const std::optional<std::string_view> expected_san) {
-        const auto pos = fen.empty() ? std::optional<koi::GameState>(koi::GameState::startpos())
-                                     : koi::GameState::from_fen(fen);
+        const auto pos = fen.empty()
+            ? decltype(koi::GameState::from_fen(fen))(koi::GameState::startpos())
+            : koi::GameState::from_fen(fen);
         const auto parsed_move = koi::Move::parse_uci(uci);
         require(pos.has_value() && parsed_move.has_value(),
                 "expected valid FEN and UCI move for move_to_san test");
