@@ -5,6 +5,7 @@
 #                                        venv, install the engine, write config
 #   koi-bot.sh start | stop | restart    run or stop the bot
 #   koi-bot.sh status                    version, pid state, recent log
+#   koi-bot.sh reconfigure               rewrite config.yml from current settings
 #   koi-bot.sh update [--force]          install the newest Koi release and
 #                                        restart the bot when it changed
 #   koi-bot.sh logs [N]                  tail the bot log
@@ -45,6 +46,8 @@ AUTOSTART_LOG="$LOG_DIR/autostart.log"
 SPRT_HOLD_FILE="$BOT_HOME/sprt-hold"
 THREADS="${KOI_BOT_THREADS:-4}"
 HASH_MB="${KOI_BOT_HASH:-512}"
+MATCHMAKING="${KOI_BOT_MATCHMAKING:-true}"
+MATCHMAKING_TIMEOUT="${KOI_BOT_MATCHMAKING_TIMEOUT:-5}"
 PYTHON_PIN_FILE="$BOT_HOME/python-bin"
 WORK_TMP=""
 cleanup() { [ -n "$WORK_TMP" ] && rm -rf "$WORK_TMP"; }
@@ -192,7 +195,23 @@ greeting:
   goodbye: "Good game!"
 
 matchmaking:
-  allow_matchmaking: false
+  allow_matchmaking: $MATCHMAKING
+  allow_during_games: false
+  challenge_variant: "random"
+  challenge_timeout: $MATCHMAKING_TIMEOUT
+  challenge_initial_time:
+    - 60
+    - 180
+    - 300
+  challenge_increment:
+    - 0
+    - 1
+    - 2
+  opponent_rating_difference: 400
+  rating_preference: "none"
+  challenge_mode: "rated"
+  challenge_filter: "coarse"
+  include_challenge_block_list: false
 YAML
     chmod 600 "$CONFIG"
 }
@@ -228,7 +247,6 @@ install_engine() {
     url="$(asset_url "macos-arm64.tar.gz" "$json")"
     sidecar="$(asset_url "macos-arm64.tar.gz.sha256" "$json")"
     [ -n "$url" ] || die "release $tag has no macOS arm64 package"
-    [ -n "$sidecar" ] || die "release $tag has no sha256 sidecar"
 
     if [ "$tag" = "$(installed_version)" ] && [ "${FORCE:-0}" != "1" ]; then
         log "engine already at $tag"
@@ -238,12 +256,14 @@ install_engine() {
     tmp="$(mktemp -d)"
     WORK_TMP="$tmp"
     curl -fsSL -o "$tmp/package.tar.gz" "$url"
-    curl -fsSL -o "$tmp/package.tar.gz.sha256" "$sidecar"
-    local expected actual
-    expected="$(awk 'NR==1 {print $1}' "$tmp/package.tar.gz.sha256")"
-    actual="$(shasum -a 256 "$tmp/package.tar.gz" | awk '{print $1}')"
-    [ -n "$expected" ] && [ "$expected" = "$actual" ] ||
-        die "checksum verification failed for $tag (expected $expected, got $actual)"
+    if [ -n "$sidecar" ]; then
+        curl -fsSL -o "$tmp/package.tar.gz.sha256" "$sidecar"
+        local expected actual
+        expected="$(awk 'NR==1 {print $1}' "$tmp/package.tar.gz.sha256")"
+        actual="$(shasum -a 256 "$tmp/package.tar.gz" | awk '{print $1}')"
+        [ -n "$expected" ] && [ "$expected" = "$actual" ] ||
+            die "checksum verification failed for $tag (expected $expected, got $actual)"
+    fi
 
     tar -xzf "$tmp/package.tar.gz" -C "$ENGINE_DIR"
     chmod +x "$ENGINE_DIR"/koi-engine "$ENGINE_DIR"/koi-bench 2>/dev/null || true
@@ -792,6 +812,7 @@ main() {
         autostart) cmd_autostart "$@" ;;
         sprt-mode|sprt) cmd_sprt_mode "$@" ;;
         status) cmd_status "$@" ;;
+        reconfigure) write_config; log "reconfigured $CONFIG" ;;
         logs) cmd_logs "$@" ;;
         run) run_foreground ;;
         install-launchd) cmd_install_launchd "$@" ;;

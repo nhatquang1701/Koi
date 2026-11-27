@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a crash, illegal move, protocol issue, or time-control bug in Koi
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue in Koi. Include a reproducible FEN or UCI transcript whenever possible.
+
+  - type: input
+    id: version
+    attributes:
+      label: Koi version and build commit
+      description: Output of `koi-engine --version` or the `id name` / `info string build` lines from `uci`
+      placeholder: "Koi 1.2.0 (f1e6ca0a...)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows x64
+        - Linux x86-64
+        - macOS arm64 (Apple Silicon)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: gui
+    attributes:
+      label: Chess GUI or tournament manager
+      placeholder: "En Croissant, Pawn Appétit, Cute Chess, Fastchess, Arena, CLI..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the bug and what you expected to happen instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction (FEN, PGN, or UCI transcript)
+      description: Commands, position FEN, UCI options (`Hash`, `Threads`, `SyzygyPath`, `EvalFile`, `Protocol`), and time control.
+      render: text
+    validations:
+      required: false

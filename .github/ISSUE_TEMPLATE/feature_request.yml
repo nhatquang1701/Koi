@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an improvement to search, evaluation, protocols, CLI, or tooling
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Motivation
+      description: What problem does this solve, or what capability is missing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed design
+      description: Describe the expected UCI/CLI behavior, API, or algorithm change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Links to chess programming references, benchmarks, or related issues.
+    validations:
+      required: false

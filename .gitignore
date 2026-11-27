@@ -18,7 +18,9 @@ tools/nnue/bullet_train/target/
 *.dll
 
 .opencode/
+.swarm/
 .dsh-outputs/
+CMakeSettings.json
 book.bin
 *.nnue
 # Tiny text placeholders for the NNUE auto-discovery tests, not networks.

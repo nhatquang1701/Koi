@@ -12,7 +12,7 @@ on:
         required: false
         default: ''
       nnue_url:
-        description: 'URL to the promoted koi.nnue network (e.g. a signed nnue/<name> tag raw URL; defaults to verified v1.1.5 net)'
+        description: 'URL to the promoted koi.nnue network (defaults to the verified official v9 net)'
         required: false
         default: ''
       nnue_sha256:
@@ -29,8 +29,8 @@ permissions:
   contents: read
 
 env:
-  DEFAULT_NNUE_SHA256: '0bb8d25e871fefeede3c1d00c563815510133f1daca9191638ea74d82ebba6b3'
-  DEFAULT_NNUE_ARCHIVE_URL: 'https://github.com/nhatquang1701/Koi/releases/download/1.1.5/koi-engine-v1.1.5-linux-x86_64.tar.gz'
+  DEFAULT_NNUE_SHA256: 'bfb2470c87115af1b689802873608f14f15d087901b4adfca723184e985aec42'
+  DEFAULT_NNUE_URL: 'https://github.com/nhatquang1701/Koi/releases/download/koi-nnues/koi-v9-hm10-h256-official.nnue'
 
 jobs:
   prepare-nnue:
@@ -49,24 +49,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/release-nnue
-          url="${INPUT_URL:-${VAR_URL:-}}"
+          url="${INPUT_URL:-${VAR_URL:-$DEFAULT_NNUE_URL}}"
           expected_sha="${INPUT_SHA:-${VAR_SHA:-$DEFAULT_NNUE_SHA256}}"
-          if [ -n "$url" ]; then
-            curl -fsSL -o artifacts/release-nnue/koi.nnue "$url"
-          else
-            curl -fsSL -o /tmp/v115.tar.gz "$DEFAULT_NNUE_ARCHIVE_URL"
-            rm -rf /tmp/v115-extract
-            mkdir -p /tmp/v115-extract
-            tar -xzf /tmp/v115.tar.gz -C /tmp/v115-extract
-            if [ -f /tmp/v115-extract/nnue/koi.nnue ]; then
-              mv /tmp/v115-extract/nnue/koi.nnue artifacts/release-nnue/koi.nnue
-            elif [ -f /tmp/v115-extract/koi.nnue ]; then
-              mv /tmp/v115-extract/koi.nnue artifacts/release-nnue/koi.nnue
-            else
-              echo "Default NNUE file not found in $DEFAULT_NNUE_ARCHIVE_URL" >&2
-              exit 1
-            fi
-          fi
+          curl -fsSL -o artifacts/release-nnue/koi.nnue "$url"
           actual_sha=$(sha256sum artifacts/release-nnue/koi.nnue | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "NNUE SHA-256 mismatch: expected $expected_sha, got $actual_sha" >&2
@@ -298,5 +283,4 @@ jobs:
           files: |
             artifacts/release/*.zip
             artifacts/release/*.tar.gz
-            artifacts/release/*.package.json
             artifacts/release/koi.nnue
