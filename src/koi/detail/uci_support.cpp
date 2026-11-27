@@ -1225,7 +1225,7 @@ std::optional<GameState> parse_cli_position_spec(const std::string_view spec, st
             error = "invalid FEN '" + std::string(spec) + "'";
             return std::nullopt;
         }
-        const std::optional<GameState> parsed = GameState::from_fen(fen_text);
+        const auto parsed = GameState::from_fen(fen_text);
         if (!parsed.has_value()) {
             error = "invalid FEN '" + fen_text + "'";
             return std::nullopt;
