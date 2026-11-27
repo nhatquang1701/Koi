@@ -96,7 +96,8 @@ RELEVANT_UCI_OPTIONS = {
     "RandomSeed", "Hash", "Threads", "Speed", "OwnBook", "BookFile",
     "BookDepth", "BookRandom", "SyzygyPath", "SyzygyProbeDepth",
     "SyzygyProbeLimit", "SyzygyInteriorDepth", "Syzygy50MoveRule",
-    "EvalFile", "StrengthMode",
+    "EvalFile", "EvalMode", "StrengthMode", "Contempt",
+    "Move Overhead", "Dynamic Overhead", "Slow Mover",
 }
 
 
@@ -109,7 +110,7 @@ def _effective_uci_options(engine: dict[str, Any], label: str, path: Path) -> di
     for line in handshake:
         if not isinstance(line, str):
             continue
-        match = re.match(r"^option name (.+?) type \S+ default (.*?)(?: min \S+| max \S+|$)", line)
+        match = re.match(r"^option name (.+?) type \S+ default (.*?)(?: min \S+| max \S+| var \S+|$)", line)
         if match and match.group(1) in RELEVANT_UCI_OPTIONS:
             effective[match.group(1)] = match.group(2).strip()
     for line in sent_options:

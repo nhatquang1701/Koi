@@ -639,48 +639,35 @@ int UciController::run() {
             std::lock_guard lock(output_mutex_);
             current_protocol = protocol_mode_;
         }
-        if (name == "uci") {
-            if (current_protocol != ProtocolMode::uci) {
+        const auto switch_to_uci_family = [&](const ProtocolMode target,
+                                              const bool preserve_cyclone) {
+            const bool mode_changed = preserve_cyclone
+                ? (current_protocol != ProtocolMode::ucci &&
+                   current_protocol != ProtocolMode::ucicyclone)
+                : (current_protocol != target);
+            if (mode_changed) {
                 stop_and_suppress_active_search();
             }
+            ProtocolMode next_mode = target;
             {
                 std::lock_guard lock(output_mutex_);
-                protocol_mode_ = ProtocolMode::uci;
-                xboard_force_ = false;
-                xboard_analyze_ = false;
-                xboard_pending_move_.reset();
-            }
-            write_handshake(ProtocolMode::uci);
-        } else if (name == "usi") {
-            if (current_protocol != ProtocolMode::usi) {
-                stop_and_suppress_active_search();
-            }
-            {
-                std::lock_guard lock(output_mutex_);
-                protocol_mode_ = ProtocolMode::usi;
-                xboard_force_ = false;
-                xboard_analyze_ = false;
-                xboard_pending_move_.reset();
-            }
-            write_handshake(ProtocolMode::usi);
-        } else if (name == "ucci") {
-            if (current_protocol != ProtocolMode::ucci &&
-                current_protocol != ProtocolMode::ucicyclone) {
-                stop_and_suppress_active_search();
-            }
-            ProtocolMode next_mode = ProtocolMode::ucci;
-            {
-                std::lock_guard lock(output_mutex_);
-                if (protocol_mode_ == ProtocolMode::ucicyclone) {
+                if (preserve_cyclone && protocol_mode_ == ProtocolMode::ucicyclone) {
                     next_mode = ProtocolMode::ucicyclone;
                 } else {
-                    protocol_mode_ = ProtocolMode::ucci;
+                    protocol_mode_ = target;
                 }
                 xboard_force_ = false;
                 xboard_analyze_ = false;
                 xboard_pending_move_.reset();
             }
             write_handshake(next_mode);
+        };
+        if (name == "uci") {
+            switch_to_uci_family(ProtocolMode::uci, false);
+        } else if (name == "usi") {
+            switch_to_uci_family(ProtocolMode::usi, false);
+        } else if (name == "ucci") {
+            switch_to_uci_family(ProtocolMode::ucci, true);
         } else if (name == "xboard" || current_protocol == ProtocolMode::xboard) {
             bool should_quit = false;
             if (handle_xboard_command(name, command, should_quit)) {
@@ -816,11 +803,7 @@ void UciController::handle_position(std::istream& command, std::string_view comm
             return;
         }
 
-        std::string fen = tokens[1];
-        for (std::size_t field = 2; field < 7; ++field) {
-            fen += ' ';
-            fen += tokens[field];
-        }
+        const std::string fen = join_tokens(tokens, 1, 7);
         const auto parsed = GameState::from_fen(fen);
         if (!parsed) {
             write_position_error("invalid FEN");

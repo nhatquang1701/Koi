@@ -267,6 +267,37 @@ class StrengthBoundTests(unittest.TestCase):
         self.assertIn("IID", report["method"])
         self.assertEqual(report["decision"], "inconclusive")
 
+    def test_candidate_and_baseline_eval_mode_and_contempt_must_match(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            white = write_match(root, "white", ["1/2-1/2"])
+            black = write_match(root, "black", ["1/2-1/2"])
+            for path in (white, black):
+                data = json.loads(path.read_text(encoding="utf-8"))
+                for engine in data["engines"]:
+                    engine["handshake"].append(
+                        "option name EvalMode type combo default nnue var nnue var hce"
+                    )
+                data["engines"][0]["options"].append("setoption name EvalMode value nnue")
+                path.write_text(json.dumps(data), encoding="utf-8")
+            matching = invoke(white, black, root / "match-ok.json")
+            self.assertEqual(matching.returncode, 0, matching.stderr)
+
+            black_data = json.loads(black.read_text(encoding="utf-8"))
+            black_data["engines"][1]["options"].append("setoption name EvalMode value hce")
+            black.write_text(json.dumps(black_data), encoding="utf-8")
+            eval_mismatch = invoke(white, black, root / "eval-mismatch.json")
+            self.assertNotEqual(eval_mismatch.returncode, 0)
+            self.assertIn("evalmode", eval_mismatch.stderr.lower())
+
+            black_data["engines"][1]["options"].pop()
+            black_data["engines"][0]["options"].append("setoption name Contempt value 50")
+            black_data["engines"][1]["options"].append("setoption name Contempt value 0")
+            black.write_text(json.dumps(black_data), encoding="utf-8")
+            contempt_mismatch = invoke(white, black, root / "contempt-mismatch.json")
+            self.assertNotEqual(contempt_mismatch.returncode, 0)
+            self.assertIn("contempt", contempt_mismatch.stderr.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

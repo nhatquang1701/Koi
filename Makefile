@@ -25,7 +25,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release profile-build bench speedtest eval nnue options compiler perft d smoke test docs clean help
+.PHONY: all release tools profile-build bench speedtest eval nnue options version compiler perft d smoke test docs clean help
 
 all: release
 
@@ -33,6 +33,10 @@ release:
 	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS)
 	cmake --build "$(BUILD_DIR)" --config Release --target koi_engine -j "$(JOBS)"
 	@if [ -n "$(EXE)" ]; then cp "$(BUILD_DIR)/koi-engine" "$(EXE)" && chmod +x "$(EXE)"; fi
+
+tools:
+	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS)
+	cmake --build "$(BUILD_DIR)" --config Release --target koi_engine koi_bench koi_perft koi_replay koi_eval_features koi_nnue_fixture -j "$(JOBS)"
 
 profile-build:
 	rm -rf "$(PGO_GEN_DIR)" "$(PGO_DATA_DIR)"
@@ -104,6 +108,9 @@ eval: release
 	  fi; \
 	fi
 
+version: release
+	"$(BUILD_DIR)/koi-engine" version
+
 compiler: release
 	"$(BUILD_DIR)/koi-engine" compiler
 
@@ -143,12 +150,14 @@ clean:
 help:
 	@echo "Koi Makefile targets (Linux x86-64 / macOS arm64):"
 	@echo "  make [EXE=<path>]                      Build koi-engine Release (copies binary to EXE for OpenBench)"
+	@echo "  make tools                             Build koi-engine and all companion CLI developer tools"
 	@echo "  make profile-build [EVALFILE=...]      Build PGO-optimized koi-engine Release binary"
 	@echo "  make bench [EVALFILE=...]              Build and run deterministic OpenBench benchmark"
 	@echo "  make speedtest [SPEEDTEST_THREADS=1]   Build and run timed NPS throughput benchmark"
 	@echo "  make eval [EVALFILE=...] [FEN=...]     Evaluate startpos or FEN with NNUE/HCE"
 	@echo "  make nnue [EVALFILE=...]               Inspect NNUE container metadata and payload SHA-256"
 	@echo "  make options [EVALFILE=...]            Print active engine configuration & UCI options"
+	@echo "  make version                           Build and print engine version banner"
 	@echo "  make compiler                          Build and print compiler / ISA metadata"
 	@echo "  make perft [PERFT_DEPTH=5] [FEN=...]   Build and run timed perft divide"
 	@echo "  make d [FEN=...]                       Build and print ASCII board, FEN, key, and FIDE state"
