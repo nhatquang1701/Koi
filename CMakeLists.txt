@@ -613,6 +613,13 @@ target_include_directories(native_rule_state_tests PRIVATE
 )
 koi_add_unit_test(opening_book_tests tests/unit/runtime/opening_book_tests.cpp)
 koi_add_unit_test(uci_controller_tests tests/unit/runtime/uci_controller_tests.cpp koi_material_evaluator_test_support)
+add_executable(cli_support_tests
+    tests/unit/runtime/cli_support_tests.cpp
+    src/cli_support.cpp
+)
+target_include_directories(cli_support_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(cli_support_tests PRIVATE koi_core koi_test_support)
+add_test(NAME cli_support_tests COMMAND cli_support_tests)
 koi_add_unit_test(completion_gate_tests tests/unit/runtime/completion_gate_tests.cpp)
 
 add_executable(koi_search_tests
@@ -979,7 +986,7 @@ set_tests_properties(
 set_tests_properties(transposition_table_tests PROPERTIES LABELS "unit;runtime")
 set_tests_properties(search_service_tests PROPERTIES LABELS "unit;search")
 set_tests_properties(koi_soak_tests PROPERTIES LABELS "unit;runtime")
-set_tests_properties(uci_controller_tests PROPERTIES LABELS "unit;runtime")
+set_tests_properties(cli_support_tests uci_controller_tests PROPERTIES LABELS "unit;runtime")
 set_tests_properties(
     koi_search_tests_1of4 koi_search_tests_2of4 koi_search_tests_3of4 koi_search_tests_4of4
     PROPERTIES LABELS "unit;search;heavy"
