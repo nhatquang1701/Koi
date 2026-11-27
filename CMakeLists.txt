@@ -241,6 +241,10 @@ if(MSVC)
             "$<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>"
         )
     endif()
+    # CMake's MSVC Release default injects /Ob2; strip it so /Ob3 below does not
+    # emit D9025 override warnings on every translation unit.
+    string(REPLACE "/Ob2" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+    string(REPLACE "/Ob2" "" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
     add_compile_options(
         /EHsc
         /permissive-
@@ -549,71 +553,35 @@ function(koi_set_timeout test_name release_seconds)
     set_tests_properties(${test_name} PROPERTIES TIMEOUT ${KOI_SCALED_TIMEOUT})
 endfunction()
 
+function(koi_add_unit_test target_name source_relpath)
+    add_executable(${target_name} "${source_relpath}")
+    target_link_libraries(${target_name} PRIVATE koi_core koi_test_support ${ARGN})
+    add_test(NAME ${target_name} COMMAND ${target_name})
+endfunction()
+
 if(KOI_BUILD_SHADOW_DIFF)
     add_executable(koi_shadow_diff_tests
         tests/integration/rules/native_shadow_diff_tests.cpp
     )
-    target_link_libraries(koi_shadow_diff_tests PRIVATE koi_core)
+    target_link_libraries(koi_shadow_diff_tests PRIVATE koi_core koi_test_support)
     target_include_directories(koi_shadow_diff_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/chess-library
     )
     add_test(NAME koi_shadow_diff_tests COMMAND koi_shadow_diff_tests)
 endif()
 
-add_executable(koi_core_tests
-    tests/unit/core/koi_core_tests.cpp
-)
-
-target_link_libraries(koi_core_tests PRIVATE koi_core)
-
-add_test(NAME koi_core_tests COMMAND koi_core_tests)
-
-add_executable(evaluation_architecture_tests
-    tests/unit/evaluation/evaluation_architecture_tests.cpp
-)
-
-target_link_libraries(evaluation_architecture_tests PRIVATE koi_core)
-
-add_test(NAME evaluation_architecture_tests COMMAND evaluation_architecture_tests)
-
-add_executable(classical_evaluator_tests
-    tests/unit/evaluation/classical_evaluator_tests.cpp
-)
-
-target_link_libraries(classical_evaluator_tests PRIVATE koi_core koi_test_support)
-
-add_test(NAME classical_evaluator_tests COMMAND classical_evaluator_tests)
-
-add_executable(nnue_boundary_tests
-    tests/unit/evaluation/nnue_boundary_tests.cpp
-)
-
-target_link_libraries(nnue_boundary_tests PRIVATE koi_core koi_material_evaluator_test_support)
-
-add_test(NAME nnue_boundary_tests COMMAND nnue_boundary_tests)
-
-add_executable(koi_cpu_features_tests
-    tests/unit/runtime/cpu_features_tests.cpp
-)
-
-target_link_libraries(koi_cpu_features_tests PRIVATE koi_core)
-
-add_test(NAME koi_cpu_features_tests COMMAND koi_cpu_features_tests)
-
-add_executable(koi_cpu_variant_tests
-    tests/unit/runtime/cpu_variant_tests.cpp
-)
-
-target_link_libraries(koi_cpu_variant_tests PRIVATE koi_core)
-
-add_test(NAME koi_cpu_variant_tests COMMAND koi_cpu_variant_tests)
+koi_add_unit_test(koi_core_tests tests/unit/core/koi_core_tests.cpp)
+koi_add_unit_test(evaluation_architecture_tests tests/unit/evaluation/evaluation_architecture_tests.cpp)
+koi_add_unit_test(classical_evaluator_tests tests/unit/evaluation/classical_evaluator_tests.cpp)
+koi_add_unit_test(nnue_boundary_tests tests/unit/evaluation/nnue_boundary_tests.cpp koi_material_evaluator_test_support)
+koi_add_unit_test(koi_cpu_features_tests tests/unit/runtime/cpu_features_tests.cpp)
+koi_add_unit_test(koi_cpu_variant_tests tests/unit/runtime/cpu_variant_tests.cpp)
 
 if(KOI_BUILD_MODULES)
     add_executable(koi_module_tests
         tests/unit/core/koi_module_tests.cpp
     )
-
-    target_link_libraries(koi_module_tests PRIVATE koi_core)
+    target_link_libraries(koi_module_tests PRIVATE koi_core koi_test_support)
     if(KOI_TARGET_X86_64)
         # The default koi_core module BMI is built with AVX2 in Release. Clang
         # rejects imports into a translation unit with a different target feature,
@@ -628,66 +596,23 @@ if(KOI_BUILD_MODULES)
                 "$<$<CONFIG:Release>:-mbmi2>")
         endif()
     endif()
-
     add_test(NAME koi_module_tests COMMAND koi_module_tests)
 endif()
 
-add_executable(syzygy_tablebase_tests
-    tests/unit/runtime/syzygy_tablebase_tests.cpp
-)
-
-target_link_libraries(syzygy_tablebase_tests PRIVATE koi_core)
-
-add_test(NAME syzygy_tablebase_tests COMMAND syzygy_tablebase_tests)
-
-add_executable(koi_rules_tests
-    tests/unit/rules/koi_rules_tests.cpp
-)
-
-target_link_libraries(koi_rules_tests PRIVATE koi_core)
-
-add_test(NAME koi_rules_tests COMMAND koi_rules_tests)
-
-add_executable(native_rule_state_tests
-    tests/unit/rules/native_rule_state_tests.cpp
-)
-
-target_link_libraries(native_rule_state_tests PRIVATE koi_core)
+koi_add_unit_test(syzygy_tablebase_tests tests/unit/runtime/syzygy_tablebase_tests.cpp)
+koi_add_unit_test(koi_rules_tests tests/unit/rules/koi_rules_tests.cpp)
+koi_add_unit_test(native_rule_state_tests tests/unit/rules/native_rule_state_tests.cpp)
 target_include_directories(native_rule_state_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/chess-library
 )
-
-add_test(NAME native_rule_state_tests COMMAND native_rule_state_tests)
-
-add_executable(opening_book_tests
-    tests/unit/runtime/opening_book_tests.cpp
-)
-
-target_link_libraries(opening_book_tests PRIVATE koi_core)
-
-add_test(NAME opening_book_tests COMMAND opening_book_tests)
-
-add_executable(uci_controller_tests
-    tests/unit/runtime/uci_controller_tests.cpp
-)
-
-target_link_libraries(uci_controller_tests PRIVATE koi_core)
-
-add_test(NAME uci_controller_tests COMMAND uci_controller_tests)
-
-add_executable(completion_gate_tests
-    tests/unit/runtime/completion_gate_tests.cpp
-)
-
-target_link_libraries(completion_gate_tests PRIVATE koi_core)
-
-add_test(NAME completion_gate_tests COMMAND completion_gate_tests)
+koi_add_unit_test(opening_book_tests tests/unit/runtime/opening_book_tests.cpp)
+koi_add_unit_test(uci_controller_tests tests/unit/runtime/uci_controller_tests.cpp koi_material_evaluator_test_support)
+koi_add_unit_test(completion_gate_tests tests/unit/runtime/completion_gate_tests.cpp)
 
 add_executable(koi_search_tests
     tests/unit/search/koi_search_tests.cpp
 )
-
-target_link_libraries(koi_search_tests PRIVATE koi_core)
+target_link_libraries(koi_search_tests PRIVATE koi_core koi_test_support)
 
 # The search suite is by far the largest target. Run it as independent shards so
 # a multi-core host finishes it in parallel, and so each shard stays well inside
@@ -700,113 +625,31 @@ foreach(KOI_SEARCH_SHARD_INDEX RANGE 0 3)
     )
 endforeach()
 
-add_executable(search_ordering_tests
-    tests/unit/search/search_ordering_tests.cpp
-)
-
-target_link_libraries(search_ordering_tests PRIVATE koi_core)
-
-add_test(NAME search_ordering_tests COMMAND search_ordering_tests)
-
-add_executable(search_architecture_tests
-    tests/unit/search/search_architecture_tests.cpp
-)
-
-target_link_libraries(search_architecture_tests PRIVATE koi_core)
-
-add_test(NAME search_architecture_tests COMMAND search_architecture_tests)
-
-add_executable(search_policy_tests
-    tests/unit/search/search_policy_tests.cpp
-)
-
-target_link_libraries(search_policy_tests PRIVATE koi_core)
-
-add_test(NAME search_policy_tests COMMAND search_policy_tests)
-
-add_executable(search_runtime_tests
-    tests/unit/search/search_runtime_tests.cpp
-)
-
-target_link_libraries(search_runtime_tests PRIVATE koi_core)
-
-add_test(NAME search_runtime_tests COMMAND search_runtime_tests)
-
-add_executable(static_exchange_tests
-    tests/unit/search/static_exchange_tests.cpp
-)
-
-target_link_libraries(static_exchange_tests PRIVATE koi_core)
-
-add_test(NAME static_exchange_tests COMMAND static_exchange_tests)
-
-add_executable(transposition_table_tests
-    tests/unit/runtime/transposition_table_tests.cpp
-)
-
-target_link_libraries(transposition_table_tests PRIVATE koi_core)
-
-add_test(NAME transposition_table_tests COMMAND transposition_table_tests)
-
-add_executable(search_service_tests
-    tests/unit/runtime/search_service_tests.cpp
-)
-
-target_link_libraries(search_service_tests PRIVATE koi_core)
-
-add_test(NAME search_service_tests COMMAND search_service_tests)
+koi_add_unit_test(search_ordering_tests tests/unit/search/search_ordering_tests.cpp)
+koi_add_unit_test(search_architecture_tests tests/unit/search/search_architecture_tests.cpp)
+koi_add_unit_test(search_policy_tests tests/unit/search/search_policy_tests.cpp)
+koi_add_unit_test(search_runtime_tests tests/unit/search/search_runtime_tests.cpp)
+koi_add_unit_test(static_exchange_tests tests/unit/search/static_exchange_tests.cpp)
+koi_add_unit_test(transposition_table_tests tests/unit/runtime/transposition_table_tests.cpp)
+koi_add_unit_test(search_service_tests tests/unit/runtime/search_service_tests.cpp)
 
 # The soak suite drives the real search lifecycle with real threads and real
 # wall clock (long replays past the snapshot window, hash resizes under a live
 # search, ponder cycles, a thread-count sweep).  It is bounded to a few seconds
 # so the sanitizer and no-retry flake jobs can run it too.
-add_executable(koi_soak_tests
-    tests/unit/runtime/koi_soak_tests.cpp
-)
-
-target_link_libraries(koi_soak_tests PRIVATE koi_core)
-
-add_test(NAME koi_soak_tests COMMAND koi_soak_tests)
+koi_add_unit_test(koi_soak_tests tests/unit/runtime/koi_soak_tests.cpp)
 koi_set_timeout(koi_soak_tests 120)
 
-add_executable(evaluation_features_tests
-    tests/unit/evaluation/evaluation_features_tests.cpp
-)
-
-target_link_libraries(evaluation_features_tests PRIVATE koi_core)
-
-add_test(NAME evaluation_features_tests COMMAND evaluation_features_tests)
-
-add_executable(time_manager_tests
-    tests/unit/search/time_manager_tests.cpp
-)
-
-target_link_libraries(time_manager_tests PRIVATE koi_core)
-
-add_test(NAME time_manager_tests COMMAND time_manager_tests)
-
-add_executable(koi_strength_tests
-    tests/unit/search/koi_strength_tests.cpp
-)
-
-target_link_libraries(koi_strength_tests PRIVATE koi_core koi_strength_suite)
-
-add_test(NAME koi_strength_tests COMMAND koi_strength_tests)
-
-add_executable(perft_tests
-    tests/unit/rules/perft_tests.cpp
-)
-
-target_link_libraries(perft_tests PRIVATE koi_core)
-
-add_test(NAME perft_tests COMMAND perft_tests)
+koi_add_unit_test(evaluation_features_tests tests/unit/evaluation/evaluation_features_tests.cpp)
+koi_add_unit_test(time_manager_tests tests/unit/search/time_manager_tests.cpp)
+koi_add_unit_test(koi_strength_tests tests/unit/search/koi_strength_tests.cpp koi_strength_suite)
+koi_add_unit_test(perft_tests tests/unit/rules/perft_tests.cpp)
 
 add_executable(koi_replay_tests
     tests/integration/tools/koi_replay_tests.cpp
 )
-
+target_link_libraries(koi_replay_tests PRIVATE koi_test_support)
 add_dependencies(koi_replay_tests koi_replay)
-
 add_test(
     NAME koi_replay_tests
     COMMAND koi_replay_tests "$<TARGET_FILE:koi_replay>"
@@ -815,7 +658,7 @@ add_test(
 add_executable(koi_nnue_fixture_tests
     tests/integration/tools/koi_nnue_fixture_tests.cpp
 )
-target_link_libraries(koi_nnue_fixture_tests PRIVATE koi_core)
+target_link_libraries(koi_nnue_fixture_tests PRIVATE koi_core koi_test_support)
 add_test(
     NAME koi_nnue_fixture_tests
     COMMAND koi_nnue_fixture_tests
@@ -927,49 +770,6 @@ if(KOI_TARGET_X86_64)
         koi_engine_avx512 "Koi UCI Chess Engine (AVX-512)" "koi-engine-avx512.exe")
 endif()
 
-# Every C++ test binary shares the assertion/fixture helpers. The optional
-# shadow-diff oracle joins the list only when it is part of the build.
-set(KOI_TEST_SUPPORT_TARGETS
-    koi_core_tests
-    evaluation_architecture_tests
-    nnue_boundary_tests
-    koi_cpu_features_tests
-    koi_cpu_variant_tests
-    syzygy_tablebase_tests
-    koi_rules_tests
-    native_rule_state_tests
-    opening_book_tests
-    uci_controller_tests
-    completion_gate_tests
-    koi_search_tests
-    search_ordering_tests
-    search_architecture_tests
-    search_policy_tests
-    search_runtime_tests
-    static_exchange_tests
-    transposition_table_tests
-    search_service_tests
-    koi_soak_tests
-    evaluation_features_tests
-    time_manager_tests
-    koi_strength_tests
-    perft_tests
-    koi_replay_tests
-    koi_nnue_fixture_tests
-)
-
-if(TARGET koi_module_tests)
-    list(APPEND KOI_TEST_SUPPORT_TARGETS koi_module_tests)
-endif()
-
-if(TARGET koi_shadow_diff_tests)
-    list(APPEND KOI_TEST_SUPPORT_TARGETS koi_shadow_diff_tests)
-endif()
-
-foreach(KOI_TEST_TARGET IN LISTS KOI_TEST_SUPPORT_TARGETS)
-    target_link_libraries(${KOI_TEST_TARGET} PRIVATE koi_test_support)
-endforeach()
-
 # PowerShell drives the process-level integration tests. It ships on Windows and
 # on GitHub's Linux runners, but the C++ and Python suites already cover the
 # engine, so a machine without pwsh still configures and tests the build.
@@ -980,108 +780,44 @@ endif()
 
 if(POWERSHELL_EXECUTABLE)
 
-add_test(
-    NAME koi_engine_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/uci_process_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
+function(koi_add_ps_test test_name script_relpath release_seconds)
+    add_test(
+        NAME ${test_name}
+        COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/${script_relpath}"
+                ${ARGN}
+    )
+    if(release_seconds GREATER 0)
+        koi_set_timeout(${test_name} ${release_seconds})
+    endif()
+endfunction()
 
-koi_set_timeout(koi_engine_process 60)
+function(koi_add_engine_ps_test test_name script_relpath release_seconds)
+    koi_add_ps_test(${test_name} "${script_relpath}" ${release_seconds}
+        -EnginePath "$<TARGET_FILE:koi_engine>" ${ARGN})
+endfunction()
 
-add_test(
-    NAME koi_hce_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/hce_process_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_hce_process 60)
-
-add_test(
-    NAME koi_hce_bench_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tools/hce_bench_process_test.ps1"
-            -BenchPath "$<TARGET_FILE:koi_bench>"
-)
-
-koi_set_timeout(koi_hce_bench_process 240)
-
-add_test(
-    NAME koi_hce_eval_features_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tools/hce_eval_features_process_test.ps1"
-            -ToolPath "$<TARGET_FILE:koi_eval_features>"
-)
-
-koi_set_timeout(koi_hce_eval_features_process 60)
-
-add_test(
-    NAME koi_protocol_fuzz_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/protocol_fuzz_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_protocol_fuzz_process 180)
-
-add_test(
-    NAME koi_protocol_soak_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/protocol_soak_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_protocol_soak_process 300)
-
-add_test(
-    NAME koi_protocol_option_churn_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/protocol_option_churn_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_protocol_option_churn_process 180)
-
-add_test(
-    NAME koi_protocol_broken_pipe_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/protocol_broken_pipe_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_protocol_broken_pipe_process 60)
+koi_add_engine_ps_test(koi_engine_process tests/integration/uci/uci_process_test.ps1 60)
+koi_add_engine_ps_test(koi_hce_process tests/integration/uci/hce_process_test.ps1 60)
+koi_add_ps_test(koi_hce_bench_process tests/integration/tools/hce_bench_process_test.ps1 240
+    -BenchPath "$<TARGET_FILE:koi_bench>")
+koi_add_ps_test(koi_hce_eval_features_process tests/integration/tools/hce_eval_features_process_test.ps1 60
+    -ToolPath "$<TARGET_FILE:koi_eval_features>")
+koi_add_engine_ps_test(koi_protocol_fuzz_process tests/integration/uci/protocol_fuzz_test.ps1 180)
+koi_add_engine_ps_test(koi_protocol_soak_process tests/integration/uci/protocol_soak_test.ps1 300)
+koi_add_engine_ps_test(koi_protocol_option_churn_process tests/integration/uci/protocol_option_churn_test.ps1 180)
+koi_add_engine_ps_test(koi_protocol_broken_pipe_process tests/integration/uci/protocol_broken_pipe_test.ps1 60)
 
 # Architecture-boundary guard for the 1.0.0 baseline (public-header seams,
 # core target purity, test-tree placement, documented contract).  It reads the
 # source/CMake tree only and must stay fast.
-add_test(
-    NAME koi_architecture_boundaries
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/packaging/architecture_boundaries_test.ps1"
-)
-koi_set_timeout(koi_architecture_boundaries 60)
-set_tests_properties(koi_architecture_boundaries
-    PROPERTIES LABELS "packaging;architecture")
+koi_add_ps_test(koi_architecture_boundaries tests/integration/packaging/architecture_boundaries_test.ps1 60)
+set_tests_properties(koi_architecture_boundaries PROPERTIES LABELS "packaging;architecture")
 
-add_test(
-    NAME koi_engine_perft_responsiveness
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/perft_responsiveness_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-)
-
-koi_set_timeout(koi_engine_perft_responsiveness 15)
-
-add_test(
-    NAME run_tests_artifact_path
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tools/run_tests_artifact_path_test.ps1"
-            -RunTestsPath "${CMAKE_CURRENT_SOURCE_DIR}/tools/test/run_tests.ps1"
-            -CMakePath "${CMAKE_COMMAND}"
-)
-
-koi_set_timeout(run_tests_artifact_path 30)
+koi_add_engine_ps_test(koi_engine_perft_responsiveness tests/integration/uci/perft_responsiveness_test.ps1 15)
+koi_add_ps_test(run_tests_artifact_path tests/integration/tools/run_tests_artifact_path_test.ps1 30
+    -RunTestsPath "${CMAKE_CURRENT_SOURCE_DIR}/tools/test/run_tests.ps1"
+    -CMakePath "${CMAKE_COMMAND}")
 set_tests_properties(run_tests_artifact_path PROPERTIES
     LABELS "integration;tools"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -1090,117 +826,49 @@ set_tests_properties(run_tests_artifact_path PROPERTIES
 # The variant selector test needs the x86-64 AVX2/AVX-512 siblings, which are
 # not built on arm64.
 if(KOI_TARGET_X86_64)
-    add_test(
-        NAME koi_engine_variant_process
-        COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/engine_variant_process_test.ps1"
-                -EnginePath "$<TARGET_FILE:koi_engine>"
-                -Avx2EnginePath "$<TARGET_FILE:koi_engine_avx2>"
-                -Avx512EnginePath "$<TARGET_FILE:koi_engine_avx512>"
-    )
-
-    koi_set_timeout(koi_engine_variant_process 60)
+    koi_add_engine_ps_test(koi_engine_variant_process tests/integration/uci/engine_variant_process_test.ps1 60
+        -Avx2EnginePath "$<TARGET_FILE:koi_engine_avx2>"
+        -Avx512EnginePath "$<TARGET_FILE:koi_engine_avx512>")
 endif()
-
-function(koi_add_engine_ps_test test_name script_relpath release_seconds)
-    add_test(
-        NAME ${test_name}
-        COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-                "${CMAKE_CURRENT_SOURCE_DIR}/${script_relpath}"
-                -EnginePath "$<TARGET_FILE:koi_engine>"
-    )
-    koi_set_timeout(${test_name} ${release_seconds})
-endfunction()
 
 koi_add_engine_ps_test(koi_engine_en_croissant_process tests/integration/uci/en_croissant_uci_test.ps1 30)
 koi_add_engine_ps_test(koi_engine_time_safety_process tests/integration/uci/time_safety_test.ps1 180)
-
-add_test(
-    NAME koi_benchmark_process
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tools/koi_bench_process_test.ps1"
-            -BenchPath "$<TARGET_FILE:koi_bench>"
-)
-
-koi_set_timeout(koi_benchmark_process 300)
-
+koi_add_ps_test(koi_benchmark_process tests/integration/tools/koi_bench_process_test.ps1 300
+    -BenchPath "$<TARGET_FILE:koi_bench>")
 koi_add_engine_ps_test(koi_uci_match_process tests/integration/matches/uci_match_process_test.ps1 120)
 koi_add_engine_ps_test(koi_stockfish_strength_option tests/integration/matches/stockfish_strength_test.ps1 60)
 koi_add_engine_ps_test(koi_uci_match_clock tests/integration/matches/uci_match_clock_test.ps1 120)
-
-add_test(
-    NAME koi_sprt_compare_decision
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/matches/sprt_compare_decision_test.ps1"
-)
-
-koi_set_timeout(koi_sprt_compare_decision 30)
+koi_add_ps_test(koi_sprt_compare_decision tests/integration/matches/sprt_compare_decision_test.ps1 30)
 
 # The Windows-only harnesses: Cutechess fake engines are .cmd files, the memory
 # soak reads Windows process counters, and the packaging tests exercise the
 # MSVC-specific release layout.
 if(WIN32)
+    # The diagnostic half of the Cutechess harness uses fabricated engines and runs
+    # everywhere.  The real smoke requires cutechess-cli, so it is only registered
+    # when the executable is actually present instead of reporting a silent SKIP.
+    koi_add_engine_ps_test(cutechess_stability_diagnostics tests/integration/matches/cutechess_stability_test.ps1 120 -DiagnosticsOnly)
 
-# The diagnostic half of the Cutechess harness uses fabricated engines and runs
-# everywhere.  The real smoke requires cutechess-cli, so it is only registered
-# when the executable is actually present instead of reporting a silent SKIP.
-add_test(
-    NAME cutechess_stability_diagnostics
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/matches/cutechess_stability_test.ps1"
-            -EnginePath "$<TARGET_FILE:koi_engine>"
-            -DiagnosticsOnly
-)
-
-koi_set_timeout(cutechess_stability_diagnostics 120)
-
-find_program(
-    CUTECHESS_EXECUTABLE
-    NAMES cutechess-cli.exe
-    HINTS "C:/Program Files (x86)/Cute Chess"
-)
-
-if(CUTECHESS_EXECUTABLE)
-    add_test(
-        NAME cutechess_stability_smoke
-        COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/matches/cutechess_stability_test.ps1"
-                -EnginePath "$<TARGET_FILE:koi_engine>"
-                -CutechessPath "${CUTECHESS_EXECUTABLE}"
+    find_program(
+        CUTECHESS_EXECUTABLE
+        NAMES cutechess-cli.exe
+        HINTS "C:/Program Files (x86)/Cute Chess"
     )
+    if(CUTECHESS_EXECUTABLE)
+        koi_add_engine_ps_test(cutechess_stability_smoke tests/integration/matches/cutechess_stability_test.ps1 180
+            -CutechessPath "${CUTECHESS_EXECUTABLE}")
+    else()
+        message(STATUS "cutechess-cli not found; the real Cutechess smoke test is omitted")
+    endif()
 
-    koi_set_timeout(cutechess_stability_smoke 180)
-else()
-    message(STATUS "cutechess-cli not found; the real Cutechess smoke test is omitted")
-endif()
-
-koi_add_engine_ps_test(hash_memory_stability tests/integration/runtime/hash_memory_stability_test.ps1 60)
-
+    koi_add_engine_ps_test(hash_memory_stability tests/integration/runtime/hash_memory_stability_test.ps1 60)
 endif() # WIN32
 
-add_test(
-    NAME windows_ci_configuration
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/packaging/ci_configuration_test.ps1"
-)
-
-add_test(
-    NAME install_book_script
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/packaging/install_book_test.ps1"
-)
-
-koi_set_timeout(install_book_script 30)
-
-add_test(
-    NAME package_release_layout
-    COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/packaging/package_release_test.ps1"
-            -BuildDirectory "${CMAKE_BINARY_DIR}"
-            -PackageScript "${CMAKE_CURRENT_SOURCE_DIR}/tools/build/package_release.ps1"
-)
-
-koi_set_timeout(package_release_layout 60)
+koi_add_ps_test(windows_ci_configuration tests/integration/packaging/ci_configuration_test.ps1 0)
+koi_add_ps_test(install_book_script tests/integration/packaging/install_book_test.ps1 30)
+koi_add_ps_test(package_release_layout tests/integration/packaging/package_release_test.ps1 60
+    -BuildDirectory "${CMAKE_BINARY_DIR}"
+    -PackageScript "${CMAKE_CURRENT_SOURCE_DIR}/tools/build/package_release.ps1")
 
 endif() # POWERSHELL_EXECUTABLE
 
@@ -1212,147 +880,55 @@ if(APPLE)
 endif()
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
-    add_test(
-        NAME release_candidate_games_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/stability/release_candidate_games_test.py -v
-    )
-    add_test(
-        NAME release_strength_openings_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/stability/release_strength_openings_test.py -v
-    )
-    add_test(
-        NAME strength_bound_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/stability/strength_bound_test.py -v
-    )
-    set_tests_properties(
-        release_candidate_games_python release_strength_openings_python strength_bound_python
-        PROPERTIES
+    function(koi_add_python_unittest test_name script_relpath)
+        add_test(
+            NAME ${test_name}
+            COMMAND "${Python3_EXECUTABLE}" -m unittest "${script_relpath}" -v
+        )
+        set_tests_properties(${test_name} PROPERTIES
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
             ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
+        )
+    endfunction()
+
+    koi_add_python_unittest(release_candidate_games_python tests/python/stability/release_candidate_games_test.py)
+    koi_add_python_unittest(release_strength_openings_python tests/python/stability/release_strength_openings_test.py)
+    koi_add_python_unittest(strength_bound_python tests/python/stability/strength_bound_test.py)
+    koi_add_python_unittest(elo_oracle_python tests/python/measurement/elo_oracle_test.py)
+    koi_add_python_unittest(elo_estimate_python tests/python/measurement/elo_estimate_test.py)
+    koi_add_python_unittest(stockfish_match_python tests/python/measurement/stockfish_match_test.py)
+    koi_add_python_unittest(elo_openings_python tests/python/measurement/elo_openings_test.py)
+    set_property(
+        TEST elo_openings_python
+        APPEND
+        PROPERTY ENVIRONMENT "KOI_REPLAY_PATH=$<TARGET_FILE:koi_replay>"
     )
-    add_test(
-        NAME elo_oracle_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/measurement/elo_oracle_test.py -v
-    )
-    set_tests_properties(
-        elo_oracle_python
-        PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
-    )
-    add_test(
-        NAME elo_estimate_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/measurement/elo_estimate_test.py -v
-    )
-    add_test(
-        NAME stockfish_match_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/measurement/stockfish_match_test.py -v
-    )
-    add_test(
-        NAME elo_openings_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/measurement/elo_openings_test.py -v
-    )
-    set_tests_properties(
-        elo_estimate_python stockfish_match_python
-        PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
-    )
-    set_tests_properties(
-        elo_openings_python
-        PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1;KOI_REPLAY_PATH=$<TARGET_FILE:koi_replay>"
-    )
-    add_test(
-        NAME spsa_search_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/measurement/spsa_search_test.py -v
-    )
-    add_test(
-        NAME nnue_training_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/nnue_training_test.py -v
-    )
-    add_test(
-        NAME nnue_info_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/nnue_info_test.py -v
-    )
-    add_test(
-        NAME nnue_wrapper_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/nnue_wrapper_test.py -v
-    )
-    add_test(
-        NAME koi_dataset_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/koi_dataset_test.py -v
-    )
-    add_test(
-        NAME koi_chess_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/rules/koi_chess_test.py -v
-    )
-    add_test(
-        NAME koi_chess_pgn_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/rules/koi_chess_pgn_test.py -v
-    )
-    add_test(
-        NAME koi_chess_engine_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/rules/koi_chess_engine_test.py -v
-    )
-    add_test(
-        NAME gen_training_data_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/gen_training_data_test.py -v
-    )
-    add_test(
-        NAME measurement_phase_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/measurement/measurement_phase_test.py -v
-    )
-    add_test(
-        NAME measurement_forensics_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/measurement/measurement_forensics_test.py -v
-    )
-    add_test(
-        NAME uci_benchmark_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/measurement/uci_benchmark_test.py -v
-    )
-    add_test(
-        NAME strength_report_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/evaluation/strength_report_test.py -v
-    )
-    add_test(
-        NAME koi_trainer_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/nnue/koi_trainer_test.py -v
-    )
+    koi_add_python_unittest(spsa_search_python tests/python/measurement/spsa_search_test.py)
+    koi_add_python_unittest(nnue_training_python tests/python/evaluation/nnue_training_test.py)
+    koi_add_python_unittest(nnue_info_python tests/python/evaluation/nnue_info_test.py)
+    koi_add_python_unittest(nnue_wrapper_python tests/python/evaluation/nnue_wrapper_test.py)
+    koi_add_python_unittest(koi_dataset_python tests/python/evaluation/koi_dataset_test.py)
+    koi_add_python_unittest(koi_chess_python tests/python/rules/koi_chess_test.py)
+    koi_add_python_unittest(koi_chess_pgn_python tests/python/rules/koi_chess_pgn_test.py)
+    koi_add_python_unittest(koi_chess_engine_python tests/python/rules/koi_chess_engine_test.py)
+    koi_add_python_unittest(gen_training_data_python tests/python/evaluation/gen_training_data_test.py)
+    koi_add_python_unittest(measurement_phase_python tests/python/measurement/measurement_phase_test.py)
+    koi_add_python_unittest(measurement_forensics_python tests/python/measurement/measurement_forensics_test.py)
+    koi_add_python_unittest(uci_benchmark_python tests/python/measurement/uci_benchmark_test.py)
+    koi_add_python_unittest(strength_report_python tests/python/evaluation/strength_report_test.py)
+    koi_add_python_unittest(koi_trainer_python tests/python/nnue/koi_trainer_test.py)
     # Launches several subprocesses importing PyTorch (~100s on Windows CPU).
     koi_set_timeout(koi_trainer_python 240)
-    add_test(
-        NAME bullet_data_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/nnue/bullet_data_test.py -v
-    )
-    add_test(
-        NAME bullet_conversion_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/nnue/bullet_conversion_test.py -v
-    )
-    add_test(
-        NAME build_verified_book_python
-        COMMAND "${Python3_EXECUTABLE}" -m unittest tests/python/book/build_verified_book_test.py -v
-    )
     # The trainer parity test shells out to the built boundary executable to
     # compare the Python encoder and integer reference against C++ scores.
-    set_tests_properties(
-        spsa_search_python nnue_training_python nnue_info_python nnue_wrapper_python koi_dataset_python gen_training_data_python
-        koi_chess_python koi_chess_pgn_python koi_chess_engine_python
-        measurement_phase_python measurement_forensics_python
-        uci_benchmark_python
-        strength_report_python
-        koi_trainer_python
-        bullet_data_python bullet_conversion_python build_verified_book_python release_candidate_games_python release_strength_openings_python strength_bound_python
-        PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"
-    )
     set_property(
         TEST koi_trainer_python
         APPEND
         PROPERTY ENVIRONMENT "KOI_NNUE_BOUNDARY_EXE=$<TARGET_FILE:nnue_boundary_tests>"
     )
+    koi_add_python_unittest(bullet_data_python tests/python/nnue/bullet_data_test.py)
+    koi_add_python_unittest(bullet_conversion_python tests/python/nnue/bullet_conversion_test.py)
+    koi_add_python_unittest(build_verified_book_python tests/python/book/build_verified_book_test.py)
 else()
     message(STATUS
         "Skipping all Python tests: the Python 3 interpreter is unavailable."
@@ -1413,26 +989,20 @@ if(POWERSHELL_EXECUTABLE)
         PROPERTIES LABELS "process;uci;heavy;reliability" RUN_SERIAL TRUE)
     set_tests_properties(koi_protocol_option_churn_process
         PROPERTIES LABELS "process;uci;reliability")
-        # OS-level allocation failure: Linux-only, because it relies on
+    # OS-level allocation failure: Linux-only, because it relies on
     # RLIMIT_AS via `ulimit -v`; the engine must report allocation_failed and
     # keep searching with the previous table.
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        add_test(
-            NAME koi_protocol_memory_limit_process
-            COMMAND ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
-                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/uci/protocol_memory_limit_test.ps1"
-                    -EnginePath "$<TARGET_FILE:koi_engine>"
-        )
-        koi_set_timeout(koi_protocol_memory_limit_process 120)
+        koi_add_engine_ps_test(koi_protocol_memory_limit_process tests/integration/uci/protocol_memory_limit_test.ps1 120)
         set_tests_properties(koi_protocol_memory_limit_process
             PROPERTIES LABELS "process;uci;reliability" SKIP_RETURN_CODE 77)
     endif()
-set_tests_properties(koi_protocol_broken_pipe_process
+    set_tests_properties(koi_protocol_broken_pipe_process
         PROPERTIES LABELS "process;uci;reliability")
     set_tests_properties(koi_hce_process PROPERTIES LABELS "process;uci")
-set_tests_properties(koi_hce_bench_process PROPERTIES LABELS "process;tools;evaluation" PROCESSORS 2)
-set_tests_properties(koi_hce_eval_features_process PROPERTIES LABELS "process;tools;evaluation")
-set_tests_properties(koi_engine_process koi_engine_perft_responsiveness PROPERTIES RUN_SERIAL TRUE)
+    set_tests_properties(koi_hce_bench_process PROPERTIES LABELS "process;tools;evaluation" PROCESSORS 2)
+    set_tests_properties(koi_hce_eval_features_process PROPERTIES LABELS "process;tools;evaluation")
+    set_tests_properties(koi_engine_process koi_engine_perft_responsiveness PROPERTIES RUN_SERIAL TRUE)
     set_tests_properties(koi_engine_time_safety_process
         PROPERTIES LABELS "process;uci;heavy" PROCESSORS 2)
     set_tests_properties(koi_benchmark_process
@@ -1483,25 +1053,25 @@ endif()
 # raw commands, and multi-protocol modes); skipped only when Python 3 is absent.
 if(Python3_Interpreter_FOUND)
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/reliability")
-        set(KOI_RELIABILITY_FUZZ_DIR
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/python/reliability")
-        foreach(KOI_FUZZ_SPEC IN ITEMS "fen:150" "move:150" "option:100" "go:100" "command:150" "protocol_mode:100")
-            string(REPLACE ":" ";" KOI_FUZZ_PARTS "${KOI_FUZZ_SPEC}")
-            list(GET KOI_FUZZ_PARTS 0 KOI_FUZZ_NAME)
-            list(GET KOI_FUZZ_PARTS 1 KOI_FUZZ_CASES)
-            add_test(
-                NAME "koi_${KOI_FUZZ_NAME}_fuzz_process"
-                COMMAND "${Python3_EXECUTABLE}"
-                        "${KOI_RELIABILITY_FUZZ_DIR}/${KOI_FUZZ_NAME}_fuzz.py"
-                        --engine "$<TARGET_FILE:koi_engine>"
-                        --cases "${KOI_FUZZ_CASES}"
-                        --workers 2
-                        --out "${CMAKE_BINARY_DIR}/reliability/${KOI_FUZZ_NAME}-fuzz.json"
-            )
-            koi_set_timeout("koi_${KOI_FUZZ_NAME}_fuzz_process" 300)
-            set_tests_properties("koi_${KOI_FUZZ_NAME}_fuzz_process"
-                PROPERTIES LABELS "process;reliability" PROCESSORS 4)
-        endforeach()
+    set(KOI_RELIABILITY_FUZZ_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/python/reliability")
+    foreach(KOI_FUZZ_SPEC IN ITEMS "fen:150" "move:150" "option:100" "go:100" "command:150" "protocol_mode:100")
+        string(REPLACE ":" ";" KOI_FUZZ_PARTS "${KOI_FUZZ_SPEC}")
+        list(GET KOI_FUZZ_PARTS 0 KOI_FUZZ_NAME)
+        list(GET KOI_FUZZ_PARTS 1 KOI_FUZZ_CASES)
+        add_test(
+            NAME "koi_${KOI_FUZZ_NAME}_fuzz_process"
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${KOI_RELIABILITY_FUZZ_DIR}/${KOI_FUZZ_NAME}_fuzz.py"
+                    --engine "$<TARGET_FILE:koi_engine>"
+                    --cases "${KOI_FUZZ_CASES}"
+                    --workers 2
+                    --out "${CMAKE_BINARY_DIR}/reliability/${KOI_FUZZ_NAME}-fuzz.json"
+        )
+        koi_set_timeout("koi_${KOI_FUZZ_NAME}_fuzz_process" 300)
+        set_tests_properties("koi_${KOI_FUZZ_NAME}_fuzz_process"
+            PROPERTIES LABELS "process;reliability" PROCESSORS 4)
+    endforeach()
 endif()
 
 # Engine-spawning tests need a valid NNUE network for default boot (when
@@ -1524,9 +1094,6 @@ add_custom_target(koi_test_nnue_fixture ALL DEPENDS "${CMAKE_BINARY_DIR}/koi.nnu
 # default bound for everything else.
 get_property(KOI_REGISTERED_TESTS DIRECTORY PROPERTY TESTS)
 
-# Tests that construct a UciController without an explicit evaluator use the
-# test-only material evaluator shim (see tests/support/).
-target_link_libraries(uci_controller_tests PRIVATE koi_material_evaluator_test_support)
 set_property(
     TEST ${KOI_REGISTERED_TESTS}
     APPEND
