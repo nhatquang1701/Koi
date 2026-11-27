@@ -43,7 +43,7 @@ def _is_valid_display_line(line: str) -> bool:
         line == " +---+---+---+---+---+---+---+---+"
         or (line.startswith(" | ") and line.endswith((" 1", " 2", " 3", " 4", " 5", " 6", " 7", " 8")))
         or line == "   a   b   c   d   e   f   g   h"
-        or line.startswith(("Fen   : ", "Key   : ", "Side  : ", "Check : "))
+        or line.startswith(("Fen   : ", "Key   : ", "Side  : ", "Check : ", "Moves : "))
     )
 
 
@@ -69,6 +69,10 @@ def _is_valid_compiler_line(line: str) -> bool:
 
 def _is_valid_see_line(line: str) -> bool:
     return re.fullmatch(r"SEE [a-h][1-8][a-h][1-8][nbrq]? : [+-]\d+ cp", line) is not None
+
+
+def _is_valid_help_line(line: str) -> bool:
+    return line == "Koi interactive commands:" or line.startswith("  ")
 
 
 def random_command(rng: random.Random) -> str:
@@ -129,6 +133,7 @@ def run_case(config: dict) -> dict:
         allow_eval = "eval" in sent_tokens
         allow_see = "see" in sent_tokens
         allow_compiler = "compiler" in sent_tokens
+        allow_help = "help" in sent_tokens
         for line in stdout.splitlines():
             if not line:
                 continue
@@ -142,6 +147,7 @@ def run_case(config: dict) -> dict:
                 or (allow_eval and _is_valid_eval_line(line))
                 or (allow_see and _is_valid_see_line(line))
                 or (allow_compiler and _is_valid_compiler_line(line))
+                or (allow_help and _is_valid_help_line(line))
             ):
                 continue
             result["bad_stdout"].append(f"non-UCI stdout: {line!r}")

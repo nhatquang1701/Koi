@@ -493,8 +493,29 @@ std::string format_ascii_board(const GameState& position) {
            << "Key   : " << std::hex << std::setfill('0') << std::setw(16) << key
            << std::dec << std::setfill(' ') << '\n'
            << "Side  : " << (white_to_move ? "white" : "black") << '\n'
-           << "Check : " << (checked ? "yes" : "no") << '\n';
+           << "Check : " << (checked ? "yes" : "no") << '\n'
+           << "Moves : " << position.legal_moves().size() << '\n';
     return buffer.str();
+}
+
+std::string format_interactive_help() {
+    return
+        "Koi interactive commands:\n"
+        "  uci                                 Enter UCI mode and print options\n"
+        "  isready                             Synchronize with the engine\n"
+        "  position [startpos|fen ...] [moves] Set the board position\n"
+        "  go [depth|movetime|nodes|infinite]  Start searching\n"
+        "  stop                                Stop the active search\n"
+        "  wait                                Wait for a finite search or perft to finish\n"
+        "  d                                   Display ASCII board, FEN, key, and move count\n"
+        "  eval                                Show active evaluator, score, WDL, and phase\n"
+        "  flip                                Flip side to move when legal\n"
+        "  see <move>                          Show static exchange evaluation for a legal move\n"
+        "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"
+        "  bench [depth [hash [threads]]]      Run OpenBench-compatible benchmark\n"
+        "  compiler                            Show compiler, C++ standard, and ISA\n"
+        "  help                                Show this command summary\n"
+        "  quit                                Exit the engine\n";
 }
 
 std::string format_compiler_info(const std::string_view version, const std::string_view commit) {

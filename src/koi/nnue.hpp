@@ -344,6 +344,7 @@ public:
     [[nodiscard]] std::unique_ptr<EvaluatorWorker> create_worker() const override;
     [[nodiscard]] NnueWorker make_worker() const;
     [[nodiscard]] bool enabled() const noexcept { return static_cast<bool>(weights_); }
+    [[nodiscard]] const NnueNetwork* network() const noexcept { return weights_.get(); }
 
 private:
     std::shared_ptr<const NnueNetwork> weights_;

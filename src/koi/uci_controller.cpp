@@ -989,6 +989,8 @@ int UciController::run() {
             handle_bench(command);
         } else if (name == "wait") {
             handle_wait();
+        } else if (name == "help") {
+            handle_help();
         } else if (name == "ponderhit") {
             handle_ponderhit();
         } else if (name == "debug") {
@@ -1685,7 +1687,22 @@ void UciController::handle_eval() {
         SearchInfo eval_info;
         eval_info.score_cp = score_stm;
         const Wdl wdl = score_to_wdl(eval_info);
-        buffer << "Evaluator      : " << (hce_active_ ? "HCE" : "NNUE") << '\n'
+        buffer << "Evaluator      : ";
+        if (hce_active_) {
+            buffer << "HCE (classical tapered)";
+        } else if (const auto* nnue = dynamic_cast<const NnueEvaluator*>(evaluator.get());
+                   nnue != nullptr && nnue->network() != nullptr) {
+            const NnueManifest& m = nnue->network()->manifest;
+            const bool dual =
+                (m.version == kKoiNnueHalfkaHmV9FormatVersion) ||
+                (m.version == kKoiNnueHalfkaKingBucketV1FormatVersion && m.layer_sizes[3] == 2U);
+            buffer << "NNUE (v" << m.version << ' ' << m.feature_set << ", "
+                   << m.layer_sizes[0] << "->" << m.layer_sizes[1]
+                   << (dual ? "x2->" : "->") << m.layer_sizes[2] << ')';
+        } else {
+            buffer << "NNUE";
+        }
+        buffer << '\n'
                << "Side to move   : " << format_score(score_stm) << '\n'
                << "White relative : " << format_score(score_white) << '\n'
                << "WDL (stm)      : " << std::noshowpos << std::fixed << std::setprecision(1)
@@ -1830,6 +1847,12 @@ void UciController::handle_wait() {
     if (state_ != ControllerState::ShuttingDown) {
         state_ = ControllerState::Idle;
     }
+}
+
+void UciController::handle_help() {
+    const std::string text = detail::format_interactive_help();
+    std::lock_guard lock(output_mutex_);
+    output_ << text << std::flush;
 }
 
 int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads) {

@@ -106,5 +106,6 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 
 [[nodiscard]] std::string format_ascii_board(const GameState& position);
 [[nodiscard]] std::string format_compiler_info(std::string_view version, std::string_view commit);
+[[nodiscard]] std::string format_interactive_help();
 
 } // namespace koi::detail

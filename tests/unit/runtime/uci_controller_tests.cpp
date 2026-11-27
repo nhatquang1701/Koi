@@ -18,7 +18,9 @@
 
 #include "koi/position.hpp"
 #include "koi/detail/debug_log.hpp"
+#include "koi/nnue.hpp"
 #include "../../support/material_evaluator.hpp"
+#include "../../support/nnue_synthetic.hpp"
 #include "koi/time_manager.hpp"
 #include "koi/uci_controller.hpp"
 
@@ -2953,6 +2955,7 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
         "position fen 4k3/8/8/8/8/8/4R3/4K3 b - - 0 1\n"
         "flip\n"
         "compiler\n"
+        "help\n"
         "bench 2 16 1\n"
         "quit\n");
     std::ostringstream output;
@@ -2968,8 +2971,9 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                 std::string::npos,
             "d command must print the current position FEN; got:\n" + raw);
     require(raw.find("Key   : ") != std::string::npos &&
-                raw.find("Side  : black") != std::string::npos,
-            "d command must print Zobrist key and side to move");
+                raw.find("Side  : black") != std::string::npos &&
+                raw.find("Moves : 20") != std::string::npos,
+            "d command must print Zobrist key, side to move, and legal move count");
     require(raw.find("Side to move   :") != std::string::npos &&
                 raw.find("White relative :") != std::string::npos &&
                 raw.find("WDL (stm)      :") != std::string::npos &&
@@ -2984,6 +2988,9 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     require(raw.find("Compiled by    :") != std::string::npos &&
                 raw.find("SIMD / ISA     :") != std::string::npos,
             "compiler command must print toolchain and ISA metadata");
+    require(raw.find("Koi interactive commands:") != std::string::npos &&
+                raw.find("see <move>") != std::string::npos,
+            "help command must list interactive commands");
     require(raw.find("Total time (ms) :") != std::string::npos &&
                 raw.find("Nodes searched  :") != std::string::npos &&
                 raw.find("Nodes/second    :") != std::string::npos,
@@ -3058,6 +3065,21 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
             "see must report a quiet move as +0 cp; got:\n" + see_raw);
     require(see_raw.find("see rejected illegal move 'e1e8'") != std::string::npos,
             "see must reject illegal moves cleanly; got:\n" + see_raw);
+
+    std::istringstream nnue_eval_in("position startpos\neval\nquit\n");
+    std::ostringstream nnue_eval_out;
+    std::ostringstream nnue_eval_diag;
+    koi::UciController nnue_eval_ctrl(
+        nnue_eval_in, nnue_eval_out, nnue_eval_diag,
+        koi::SearchService(
+            std::make_shared<koi::NnueEvaluator>(
+                std::make_shared<koi::NnueNetwork>(koi::test::synthetic_network_v4())),
+            {}, 16));
+    require(nnue_eval_ctrl.run() == 0 &&
+                nnue_eval_out.str().find("Evaluator      : NNUE (v4 halfka-king-bucket-v1, ") !=
+                    std::string::npos,
+            "eval with NnueEvaluator must report NNUE version, feature set, and dimensions; got:\n" +
+                nnue_eval_out.str());
 }
 
 } // namespace
