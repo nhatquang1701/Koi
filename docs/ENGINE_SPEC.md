@@ -796,7 +796,7 @@ Rules for `setoption`:
 | `tb` | Probes active Syzygy tablebases for root WDL classification and optimal root moves. |
 | `eval` | Prints active evaluator details (`NNUE` version/feature set/shape or `HCE`), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval [fen]`). |
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check). |
-| `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns. |
+| `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns (also zero-network CLI `see <move> [fen]`). |
 | `perft <depth>` | Runs an interruptible perft divide (`1..10`) from the current position (also CLI `perft <depth> [fen]`). |
 | `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `compiler`, `eval`, `perft`, `--version`, `--help`, `--engine-json`, `--protocol`). |
 | `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |

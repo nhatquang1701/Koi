@@ -8,7 +8,7 @@ Welcome to the **Koi** documentation index. Start with the **[Documentation Home
 | :--- | :--- |
 | **[Repository README](../README.md)** | Project overview, quick start, download links, and platform build commands. |
 | **[User Guide](USER_GUIDE.md)** | Comprehensive manual covering builds, UCI options, time controls, GUI registration (En Croissant, Lucas Chess), optional assets, and measurement workflows. |
-| **[CLI & Interactive Reference](CLI.md)** | Complete reference for `koi-engine` CLI subcommands, interactive terminal commands, multi-protocol modes, developer binaries, and environment variables. |
+| **[CLI & Interactive Reference](CLI.md)** | Complete reference for `koi-engine` CLI subcommands (`bench`, `compiler`, `d`, `key`, `moves`, `see`, `eval`, `perft`), interactive terminal commands, multi-protocol modes, developer binaries, and environment variables. |
 | **[Lichess Bot Guide](lichess-bot.md)** | Installing, running, and auto-updating Koi as an online Lichess bot. |
 
 ## Architecture & Engineering

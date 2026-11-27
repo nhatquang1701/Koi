@@ -44,7 +44,7 @@ cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release && 
 cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release && ctest --preset macos-arm64-release
 ```
 
-On Linux and macOS you can also use the OpenBench-compatible [Makefile](../Makefile) (`make`, `make EXE=koi-engine`, `make bench`, `make test`). Explicit toolchain requirements and manual CMake invocations follow below.
+Available presets in [CMakePresets.json](../CMakePresets.json) include `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](../Makefile) (`make`, `make EXE=koi-engine`, `make bench`, `make compiler`, `make perft`, `make test`, `make docs`). Explicit toolchain requirements and manual CMake invocations follow below.
 
 On Windows:
 

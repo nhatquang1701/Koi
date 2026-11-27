@@ -59,15 +59,19 @@ Koi discovers its assets automatically with zero config files:
 ## Interactive CLI Highlights
 
 ```bash
-koi-engine bench         # OpenBench-compatible deterministic benchmark
-koi-engine compiler      # Print toolchain, C++ standard, and ISA capabilities
-koi-engine eval [fen]    # Inspect active NNUE/HCE evaluation of startpos or FEN
-koi-engine perft 5 [fen] # Run timed perft divide (depth 1..10)
-koi-engine --version     # Print version and git build commit
-koi-engine --engine-json # Print En Croissant / Pawn Appétit JSON profile
+koi-engine bench              # OpenBench-compatible deterministic benchmark
+koi-engine compiler           # Print toolchain, C++ standard, and ISA capabilities
+koi-engine d [fen]            # Print ASCII board, FEN, Zobrist key, and move count
+koi-engine key [fen]          # Print position, pawn, and Polyglot hash keys
+koi-engine moves [fen]        # List sorted legal UCI moves
+koi-engine see <move> [fen]   # Compute static exchange evaluation (SEE) in cp
+koi-engine eval [fen]         # Inspect NNUE or HCE evaluation (with HCE term table)
+koi-engine perft 5 [fen]      # Run timed perft divide (depth 1..10)
+koi-engine --version          # Print version and git build commit
+koi-engine --engine-json      # Print En Croissant / Pawn Appétit JSON profile
 ```
 
-Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `flip`, `see <move>`, `compiler`, `bench [depth [hash [threads]]]`, `perft <depth>`, `wait`, and `help`.
+Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `flip`, `see <move>`, `compiler`, `bench [depth [hash [threads]]]`, `perft <depth>`, `wait`, and `help`. For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
 
 ---
 
@@ -76,7 +80,7 @@ Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`,
 | Section | Contents |
 | :--- | :--- |
 | **[User Guide](docs/USER_GUIDE.md)** | Installation, build presets, UCI options, time controls, GUI registration, opening books, and Syzygy tablebases. |
-| **[CLI & Interactive Reference](docs/CLI.md)** | One-shot subcommands (`bench`, `eval`, `perft`, `compiler`), interactive commands (`d`, `fen`, `key`, `moves`, `book`, `tb`, `see`), protocols, and dev tools. |
+| **[CLI & Interactive Reference](docs/CLI.md)** | One-shot zero-network subcommands (`compiler`, `d`, `key`, `moves`, `see`, `perft`), `eval` (incl. HCE term breakdown), interactive commands, protocols, and dev tools. |
 | **[Lichess Bot](docs/lichess-bot.md)** | Running Koi on Lichess via `tools/bot/koi-bot.sh` with automated matchmaking and release updates. |
 | **[System Architecture](docs/ARCHITECTURE.md)** | Interactive module diagram, translation-unit responsibilities, threading model, and 1.0.0 architecture boundaries. |
 | **[Engine Specification](docs/ENGINE_SPEC.md)** | Complete technical specification of rules, search heuristics, NNUE v2–v9 containers, time formulas, and UCI contracts. |
