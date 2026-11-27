@@ -58,7 +58,7 @@ jobs:
             exit 1
           fi
           echo "sha256=$actual_sha" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-nnue-network
           path: artifacts/release-nnue/koi.nnue
@@ -70,8 +70,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: release-nnue-network
           path: artifacts/release-nnue
@@ -138,7 +138,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not ($smokeOutput -match '^bestmove ')) {
             throw "Packaged koi-engine.exe smoke test failed"
           }
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows-assets
           path: |
@@ -153,8 +153,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: release-nnue-network
           path: artifacts/release-nnue
@@ -188,7 +188,7 @@ jobs:
           done
           printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | timeout 15 "$extracted/koi-engine" | grep -q "bestmove "
           '
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-linux-assets
           path: |
@@ -203,8 +203,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: release-nnue-network
           path: artifacts/release-nnue
@@ -227,7 +227,7 @@ jobs:
           archive=$(find artifacts/release -maxdepth 1 -name "*-macos-arm64.tar.gz" | head -n 1)
           tar -xzf "$archive" -C "$extracted"
           printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | "$extracted/koi-engine" | grep -q "bestmove "
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: release-macos-assets
           path: |
@@ -248,12 +248,12 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*-assets
           path: artifacts/release
           merge-multiple: true
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: release-nnue-network
           path: artifacts/release

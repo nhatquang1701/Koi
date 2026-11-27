@@ -134,9 +134,9 @@ Deny-WorkflowPattern '(?i)python-chess' 'the removed python-chess dependency'
 Deny-WorkflowPattern '(?i)requirements-elo-oracle' 'the removed requirements-elo-oracle.txt file'
 Require-RequirementsPattern '(?i)numpy' 'the numpy dependency'
 Deny-RequirementsPattern '(?i)python-chess' 'the removed python-chess dependency'
-Require-WorkflowPattern '(?i)actions/checkout@v5' 'the current checkout action'
-Require-WorkflowPattern '(?i)actions/setup-python@v6' 'the current Python setup action'
-Require-WorkflowPattern '(?i)actions/upload-artifact@v5' 'test diagnostic artifact upload'
+Require-WorkflowPattern '(?i)actions/checkout@v7' 'the current checkout action'
+Require-WorkflowPattern '(?i)actions/setup-python@v7' 'the current Python setup action'
+Require-WorkflowPattern '(?i)actions/upload-artifact@v7' 'test diagnostic artifact upload'
 Require-WorkflowPattern '(?i)LastTest\.log' 'the LastTest.log diagnostic upload'
 Require-WorkflowPattern '(?i)vswhere\.exe.*-latest.*-property\s+installationPath' 'vswhere Visual Studio discovery'
 Require-WorkflowPattern '(?i)VsDevCmd\.bat' 'a discovered VsDevCmd path'
@@ -242,7 +242,7 @@ foreach ($linuxJobName in @('linux-gcc', 'linux-clang')) {
         }
     }
 }
-Require-LinuxWorkflowPattern '(?i)actions/upload-artifact@v5' 'test diagnostic artifact upload'
+Require-LinuxWorkflowPattern '(?i)actions/upload-artifact@v7' 'test diagnostic artifact upload'
 
 # The macOS arm64 leg: Homebrew LLVM, the modules-off/CPU-only fallback build,
 # the Linux label groups minus the x86-only AVX variant checks, and diagnostics.
@@ -264,7 +264,7 @@ Require-MacOSWorkflowPattern '(?i)koi_nnue_fixture_tests' 'the NNUE fixture bina
 Require-MacOSWorkflowPattern '(?i)-L\s+python' 'the Python label selection'
 Require-MacOSWorkflowPattern '(?i)--output-on-failure' 'CTest failure output'
 Require-MacOSWorkflowPattern '(?i)KOI_TEST_RETRIES:\s*"3"' 'the shared-runner retry setting'
-Require-MacOSWorkflowPattern '(?i)actions/upload-artifact@v5' 'test diagnostic artifact upload'
+Require-MacOSWorkflowPattern '(?i)actions/upload-artifact@v7' 'test diagnostic artifact upload'
 Require-MacOSWorkflowPattern '(?i)LastTest\.log' 'the LastTest.log diagnostic upload'
 
 # The macOS packaging job builds the arm64 tarball with the shared release

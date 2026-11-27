@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -218,7 +218,7 @@ jobs:
         run: tail -n 150 build/ci-release/Testing/Temporary/LastTest.log || true
       - name: Upload GCC test diagnostics
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: linux-gcc-test-diagnostics
           path: |
@@ -231,8 +231,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -413,7 +413,7 @@ jobs:
         run: tail -n 150 build/ci-release/Testing/Temporary/LastTest.log || true
       - name: Upload Clang test diagnostics
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: linux-clang-test-diagnostics
           path: |
@@ -426,8 +426,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -455,7 +455,7 @@ jobs:
             --repeat until-pass:2 --output-on-failure
       - name: Upload modules-off test diagnostics
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: linux-modules-off-test-diagnostics
           path: build/ci-release/Testing/Temporary/LastTest.log
@@ -466,8 +466,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -513,7 +513,7 @@ jobs:
           exit "${status}"
       - name: Upload flake diagnostics
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: linux-flake-test-diagnostics
           path: |
@@ -526,7 +526,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # The release tarball must run on older distributions, so it is built in
       # an Ubuntu 22.04 container (glibc 2.35 floor) with GCC 14 from the
       # toolchain PPA and a statically linked libstdc++/libgcc.
@@ -624,7 +624,7 @@ jobs:
           '
       - name: Upload the portable tarball
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: koi-engine-linux-tarball
           path: |
@@ -643,8 +643,8 @@ jobs:
     # the ultra-short timed search test); cycle 3 passed all eight suites with
     # no race reports.
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -700,7 +700,7 @@ jobs:
         run: tail -n 150 build/ci-tsan/Testing/Temporary/LastTest.log || true
       - name: Upload TSan diagnostics
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: linux-tsan-test-diagnostics
           path: |
