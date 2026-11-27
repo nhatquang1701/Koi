@@ -541,6 +541,7 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Origin  : startpos", makemove_undo.stdout)
         self.assertIn("Plies   : 2", makemove_undo.stdout)
         self.assertIn("Moves   : e2e4 e7e5", makemove_undo.stdout)
+        self.assertIn("SAN     : 1. e4 e5", makemove_undo.stdout)
         self.assertIn("Command : position startpos moves e2e4 e7e5", makemove_undo.stdout)
         self.assertIn(
             "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",

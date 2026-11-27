@@ -3,6 +3,7 @@
 
 UNAME_S := $(shell uname -s)
 BUILD_DIR ?= build/make-release
+ASAN_DIR := $(BUILD_DIR)-asan
 PGO_GEN_DIR := $(BUILD_DIR)-pgo-gen
 PGO_DATA_DIR := $(BUILD_DIR)-pgo-data
 JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -27,7 +28,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release tools profile-build bench speedtest eval nnue options engine-json version compiler perft d smoke test docs clean help
+.PHONY: all release tools profile-build bench speedtest eval nnue options engine-json version compiler perft d smoke test asan docs clean help
 
 all: release
 
@@ -148,12 +149,17 @@ test:
 	cmake --build "$(BUILD_DIR)" --config Release -j "$(JOBS)"
 	ctest --test-dir "$(BUILD_DIR)" -C Release -j "$(JOBS)" --output-on-failure
 
+asan:
+	cmake -S . -B "$(ASAN_DIR)" $(GENERATOR) -DCMAKE_BUILD_TYPE=Debug -DKOI_SANITIZE=ON -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
+	cmake --build "$(ASAN_DIR)" --config Debug -j "$(JOBS)"
+	ctest --test-dir "$(ASAN_DIR)" -C Debug -L unit -LE heavy -j "$(JOBS)" --output-on-failure
+
 docs:
 	python3 tools/docs/prepare_pages.py
 	mkdocs build --strict
 
 clean:
-	rm -rf "$(BUILD_DIR)" "$(PGO_GEN_DIR)" "$(PGO_DATA_DIR)"
+	rm -rf "$(BUILD_DIR)" "$(ASAN_DIR)" "$(PGO_GEN_DIR)" "$(PGO_DATA_DIR)"
 
 help:
 	@echo "Koi Makefile targets (Linux x86-64 / macOS arm64):"
@@ -172,5 +178,6 @@ help:
 	@echo "  make d [FEN=...]                       Build and print ASCII board, FEN, key, and FIDE state"
 	@echo "  make smoke [EVALFILE=...]              Run one-shot UCI handshake + depth-2 search smoke check"
 	@echo "  make test                              Build full suite and run CTest"
+	@echo "  make asan                              Build Debug ASan+UBSan and run fast unit tests"
 	@echo "  make docs                              Build MkDocs Material site strictly"
-	@echo "  make clean                             Remove $(BUILD_DIR) and PGO artifacts"
+	@echo "  make clean                             Remove $(BUILD_DIR), ASan, and PGO artifacts"

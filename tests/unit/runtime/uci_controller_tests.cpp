@@ -3445,10 +3445,43 @@ void test_uci_support_helpers_direct() {
                 std::string("format_interactive_help missing command: ") + cmd);
     }
 
+    const auto check_san = [](const std::string_view fen, const std::string_view uci,
+                            const std::optional<std::string_view> expected_san) {
+        const auto pos = fen.empty() ? std::optional<koi::GameState>(koi::GameState::startpos())
+                                     : koi::GameState::from_fen(fen);
+        const auto parsed_move = koi::Move::parse_uci(uci);
+        require(pos.has_value() && parsed_move.has_value(),
+                "expected valid FEN and UCI move for move_to_san test");
+        const auto actual = move_to_san(*pos, *parsed_move);
+        if (!expected_san.has_value()) {
+            require(!actual.has_value(),
+                    "expected nullopt SAN for illegal move " + std::string(uci));
+        } else {
+            require(actual.has_value() && *actual == *expected_san,
+                    "move_to_san mismatch for " + std::string(uci) + ": expected '" +
+                        std::string(*expected_san) + "', got '" + actual.value_or("<null>") + "'");
+        }
+    };
+    check_san("", "e2e4", "e4");
+    check_san("", "g1f3", "Nf3");
+    check_san("", "e2e5", std::nullopt);
+    check_san("rnbqkbnr/pppp1ppp/8/3Pp3/8/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 2", "d5e6", "dxe6");
+    check_san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "e1g1", "O-O");
+    check_san("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "e1c1", "O-O-O");
+    check_san("4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1", "b1d2", "Nbd2");
+    check_san("4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1", "f1d2", "Nfd2");
+    check_san("4k3/8/8/8/8/R7/8/R3K3 w - - 0 1", "a1a2", "R1a2");
+    check_san("4k3/8/8/8/8/R7/8/R3K3 w - - 0 1", "a3a2", "R3a2");
+    check_san("7k/8/8/8/Q3Q3/8/Q7/4K3 w - - 0 1", "a4c2", "Qa4c2");
+    check_san("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a7a8q", "a8=Q+");
+    check_san("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a7a8n", "a8=N");
+    check_san("7k/5Q2/6K1/8/8/8/8/8 w - - 0 1", "f7g7", "Qg7#");
+
     const std::string history_empty = format_move_history(startpos, {});
     require(history_empty.find("Origin  : startpos\n") != std::string::npos &&
                 history_empty.find("Plies   : 0\n") != std::string::npos &&
                 history_empty.find("Moves   : (none)\n") != std::string::npos &&
+                history_empty.find("SAN     : (none)\n") != std::string::npos &&
                 history_empty.find("Command : position startpos\n") != std::string::npos &&
                 history_empty.find("info string") == std::string::npos,
             "format_move_history empty mismatch; got:\n" + history_empty);
@@ -3459,6 +3492,7 @@ void test_uci_support_helpers_direct() {
     require(history_moves.find("Origin  : startpos\n") != std::string::npos &&
                 history_moves.find("Plies   : 2\n") != std::string::npos &&
                 history_moves.find("Moves   : e2e4 e7e5\n") != std::string::npos &&
+                history_moves.find("SAN     : 1. e4 e5\n") != std::string::npos &&
                 history_moves.find("Command : position startpos moves e2e4 e7e5\n") !=
                     std::string::npos,
             "format_move_history moves mismatch; got:\n" + history_moves);
@@ -3469,9 +3503,17 @@ void test_uci_support_helpers_direct() {
     const std::string history_fen = format_move_history(*custom_pos, {*e2e4});
     require(history_fen.find("Origin  : " + custom_fen + "\n") != std::string::npos &&
                 history_fen.find("Plies   : 1\n") != std::string::npos &&
+                history_fen.find("SAN     : 1. e4\n") != std::string::npos &&
                 history_fen.find("Command : position fen " + custom_fen + " moves e2e4\n") !=
                     std::string::npos,
             "format_move_history custom FEN mismatch; got:\n" + history_fen);
+
+    const std::string black_fen = "4k3/4p3/8/8/8/8/4P3/4K3 b - - 0 5";
+    const auto black_pos = koi::GameState::from_fen(black_fen);
+    require(black_pos.has_value(), "black-to-move history FEN must parse");
+    const std::string history_black = format_move_history(*black_pos, {*e7e5, *e2e4});
+    require(history_black.find("SAN     : 5... e5 6. e4\n") != std::string::npos,
+            "format_move_history black-to-move SAN mismatch; got:\n" + history_black);
 
     const koi::PositionConsistencySnapshot snap = startpos.consistency_snapshot();
     const std::string pos_json = format_position_debug_json(

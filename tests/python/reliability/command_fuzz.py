@@ -150,7 +150,7 @@ def _is_valid_options_line(line: str) -> bool:
 
 
 def _is_valid_history_line(line: str) -> bool:
-    return line.startswith(("Origin  : ", "Plies   : ", "Moves   : ", "Command : "))
+    return line.startswith(("Origin  : ", "Plies   : ", "Moves   : ", "SAN     : ", "Command : "))
 
 
 def random_command(rng: random.Random) -> str:

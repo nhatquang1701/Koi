@@ -42,7 +42,7 @@ Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gc
 On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engine-avx512` or `koi-engine-avx2` when the host CPU supports them (with fast `PEXT`), or runs the baseline build in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary.
 
 ```bash
-# Deterministic OpenBench-compatible node benchmark & timed NPS throughput check (plus Makefile targets: `make tools`, `make smoke`, `make speedtest`, `make profile-build`, `make engine-json`, `make nnue`, `make options`, `make eval`, `make d`, `make version`, `make compiler`, `make perft`)
+# Deterministic OpenBench-compatible node benchmark & timed NPS throughput check (plus Makefile targets: `make tools`, `make smoke`, `make speedtest`, `make profile-build`, `make asan`, `make engine-json`, `make nnue`, `make options`, `make eval`, `make d`, `make version`, `make compiler`, `make perft`)
 ./build/windows-release/koi-engine.exe bench
 ./build/windows-release/koi-engine.exe speedtest 1 128 3
 

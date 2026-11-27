@@ -1563,6 +1563,101 @@ std::string format_see_result(const std::string_view move_uci, const int gain_cp
     return out.str();
 }
 
+std::optional<std::string> move_to_san(const GameState& state, const Move move) {
+    if (move.is_no_move() || !state.is_legal(move)) {
+        return std::nullopt;
+    }
+    const Piece piece = state.piece_at(move.from());
+    if (piece.empty()) {
+        return std::nullopt;
+    }
+
+    auto piece_letter = [](const PieceType type) noexcept -> char {
+        switch (type) {
+        case PieceType::knight: return 'N';
+        case PieceType::bishop: return 'B';
+        case PieceType::rook:   return 'R';
+        case PieceType::queen:  return 'Q';
+        case PieceType::king:   return 'K';
+        default:                return '\0';
+        }
+    };
+    auto promotion_letter = [](const Promotion promotion) noexcept -> char {
+        switch (promotion) {
+        case Promotion::knight: return 'N';
+        case Promotion::bishop: return 'B';
+        case Promotion::rook:   return 'R';
+        case Promotion::queen:  return 'Q';
+        case Promotion::none:   return '\0';
+        }
+        return '\0';
+    };
+
+    std::string san;
+    san.reserve(8);
+    const int file_delta =
+        static_cast<int>(move.to().index() % 8) - static_cast<int>(move.from().index() % 8);
+    if (piece.type == PieceType::king && std::abs(file_delta) == 2) {
+        san = file_delta > 0 ? "O-O" : "O-O-O";
+    } else {
+        const bool capture = state.is_capture(move);
+        if (piece.type == PieceType::pawn) {
+            if (capture) {
+                san.push_back(move.from().file());
+                san.push_back('x');
+            }
+        } else {
+            san.push_back(piece_letter(piece.type));
+            if (piece.type != PieceType::king) {
+                std::array<Move, kMaximumLegalMoves> legal{};
+                const std::size_t legal_count =
+                    std::min(state.legal_moves_into(legal), legal.size());
+                bool any_other = false;
+                bool same_file = false;
+                bool same_rank = false;
+                for (std::size_t index = 0; index < legal_count; ++index) {
+                    const Move other = legal[index];
+                    if (other.to() != move.to() || other.from() == move.from()) {
+                        continue;
+                    }
+                    if (state.piece_at(other.from()).type == piece.type) {
+                        any_other = true;
+                        if (other.from().file() == move.from().file()) {
+                            same_file = true;
+                        }
+                        if (other.from().rank() == move.from().rank()) {
+                            same_rank = true;
+                        }
+                    }
+                }
+                if (any_other) {
+                    if (!same_file || same_rank) {
+                        san.push_back(move.from().file());
+                    }
+                    if (same_file) {
+                        san.push_back(move.from().rank());
+                    }
+                }
+            }
+            if (capture) {
+                san.push_back('x');
+            }
+        }
+        san += move.to().uci();
+        if (const char promo = promotion_letter(move.promotion()); promo != '\0') {
+            san.push_back('=');
+            san.push_back(promo);
+        }
+    }
+
+    GameState after = state;
+    after.detach_mirror();
+    if (after.make_move(move) && after.in_check()) {
+        san.push_back(after.has_legal_move() ? '+' : '#');
+    }
+    return san;
+}
+
 std::string format_move_history(const GameState& origin, const std::vector<Move>& moves) {
     const std::string origin_fen = origin.fen();
     const bool is_startpos = (origin_fen == GameState::startpos().fen());
@@ -1571,10 +1666,27 @@ std::string format_move_history(const GameState& origin, const std::vector<Move>
         << "Plies   : " << moves.size() << '\n'
         << "Moves   :";
     if (moves.empty()) {
-        out << " (none)";
+        out << " (none)\nSAN     : (none)";
     } else {
         for (const Move& move : moves) {
             out << ' ' << move.uci();
+        }
+        out << "\nSAN     :";
+        GameState current = origin;
+        current.detach_mirror();
+        for (std::size_t index = 0; index < moves.size(); ++index) {
+            const Move& move = moves[index];
+            const std::string token = move_to_san(current, move).value_or(move.uci());
+            if (current.side_to_move() == Color::white) {
+                out << ' ' << current.fullmove_number() << ". " << token;
+            } else if (index == 0) {
+                out << ' ' << current.fullmove_number() << "... " << token;
+            } else {
+                out << ' ' << token;
+            }
+            if (!current.make_move(move)) {
+                break;
+            }
         }
     }
     out << "\nCommand : position " << (is_startpos ? "startpos" : ("fen " + origin_fen));
