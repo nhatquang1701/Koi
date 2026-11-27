@@ -9,6 +9,7 @@ EVALFILE ?= $(wildcard artifacts/networks/koi-v9-hm10-h256-official.nnue)
 BENCH_DEPTH ?= 10
 BENCH_HASH ?= 16
 BENCH_THREADS ?= 1
+PERFT_DEPTH ?= 5
 GENERATOR := $(if $(shell command -v ninja 2>/dev/null),-G Ninja,)
 
 ifeq ($(UNAME_S),Darwin)
@@ -17,7 +18,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release bench test docs clean help
+.PHONY: all release bench compiler perft test docs clean help
 
 all: release
 
@@ -32,6 +33,12 @@ bench: release
 	else \
 	  "$(BUILD_DIR)/koi-engine" bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
 	fi
+
+compiler: release
+	"$(BUILD_DIR)/koi-engine" compiler
+
+perft: release
+	"$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)"
 
 test:
 	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS)
@@ -49,6 +56,8 @@ help:
 	@echo "Koi Makefile targets (Linux x86-64 / macOS arm64):"
 	@echo "  make [EXE=<path>]                      Build koi-engine Release (copies binary to EXE for OpenBench)"
 	@echo "  make bench [EVALFILE=...]              Build and run deterministic OpenBench benchmark"
+	@echo "  make compiler                          Build and print compiler / ISA metadata"
+	@echo "  make perft [PERFT_DEPTH=5]             Build and run timed startpos perft divide"
 	@echo "  make test                              Build full suite and run CTest"
 	@echo "  make docs                              Build MkDocs Material site strictly"
 	@echo "  make clean                             Remove $(BUILD_DIR)"
