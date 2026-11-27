@@ -975,6 +975,12 @@ int UciController::run() {
             handle_annotate(command);
         } else if (name == "d") {
             handle_display();
+        } else if (name == "fen") {
+            handle_fen();
+        } else if (name == "key") {
+            handle_key();
+        } else if (name == "moves") {
+            handle_moves();
         } else if (name == "eval") {
             handle_eval();
         } else if (name == "see") {
@@ -1669,6 +1675,42 @@ void UciController::handle_display() {
     output_ << board << std::flush;
 }
 
+void UciController::handle_fen() {
+    const std::string fen = position_.fen();
+    std::lock_guard lock(output_mutex_);
+    output_ << fen << '\n' << std::flush;
+}
+
+void UciController::handle_key() {
+    std::ostringstream buffer;
+    buffer << "Position key : " << detail::debug_hex(position_.position_key()) << '\n'
+           << "Pawn key     : " << detail::debug_hex(position_.pawn_key()) << '\n';
+    std::lock_guard lock(output_mutex_);
+    output_ << buffer.str() << std::flush;
+}
+
+void UciController::handle_moves() {
+    const std::vector<Move> raw_moves = position_.legal_moves();
+    std::vector<std::string> moves;
+    moves.reserve(raw_moves.size());
+    for (const Move& move : raw_moves) {
+        moves.push_back(move.uci());
+    }
+    std::sort(moves.begin(), moves.end());
+    std::ostringstream buffer;
+    buffer << "Legal moves (" << moves.size() << "):";
+    if (moves.empty()) {
+        buffer << " (none)";
+    } else {
+        for (const std::string& move : moves) {
+            buffer << ' ' << move;
+        }
+    }
+    buffer << '\n';
+    std::lock_guard lock(output_mutex_);
+    output_ << buffer.str() << std::flush;
+}
+
 void UciController::handle_eval() {
     const std::shared_ptr<const Evaluator> evaluator = search_service_.evaluator();
     std::ostringstream buffer;
@@ -1908,7 +1950,18 @@ int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads
     return 0;
 }
 
-int UciController::run_eval() {
+int UciController::run_eval(const std::optional<std::string_view> fen) {
+    if (fen.has_value()) {
+        const auto parsed = GameState::from_fen(*fen);
+        if (!parsed.has_value()) {
+            diagnostics_ << "koi-engine: invalid FEN '" << *fen << "'\n" << std::flush;
+            return 2;
+        }
+        stop_and_suppress_active_search();
+        position_ = *parsed;
+        position_origin_ = *parsed;
+        position_moves_.clear();
+    }
     handle_eval();
     return 0;
 }

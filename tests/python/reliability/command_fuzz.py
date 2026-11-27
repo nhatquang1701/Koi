@@ -30,7 +30,7 @@ from unittest_progress import format_progress_eta  # noqa: E402
 
 FRAGMENTS = [
     "uci", "isready", "ucinewgame", "stop", "ponderhit", "go", "position",
-    "setoption", "debug", "register", "d", "eval", "flip", "see", "compiler", "wait", "board",
+    "setoption", "debug", "register", "d", "fen", "key", "moves", "eval", "flip", "see", "compiler", "wait", "board",
     "help", "quitx", "setoption name", "position startpos", "go depth",
     "setoption name Hash value",
 ]
@@ -73,6 +73,19 @@ def _is_valid_see_line(line: str) -> bool:
 
 def _is_valid_help_line(line: str) -> bool:
     return line == "Koi interactive commands:" or line.startswith("  ")
+
+
+def _is_valid_fen_line(line: str) -> bool:
+    fields = line.split()
+    return len(fields) == 6 and fields[1] in ("w", "b") and fields[0].count("/") == 7
+
+
+def _is_valid_key_line(line: str) -> bool:
+    return line.startswith(("Position key : ", "Pawn key     : "))
+
+
+def _is_valid_moves_line(line: str) -> bool:
+    return re.match(r"Legal moves \(\d+\):", line) is not None
 
 
 def random_command(rng: random.Random) -> str:
@@ -130,6 +143,9 @@ def run_case(config: dict) -> dict:
             parts[0] for raw_line in lines if (parts := raw_line.split())
         }
         allow_display = "d" in sent_tokens
+        allow_fen = "fen" in sent_tokens
+        allow_key = "key" in sent_tokens
+        allow_moves = "moves" in sent_tokens
         allow_eval = "eval" in sent_tokens
         allow_see = "see" in sent_tokens
         allow_compiler = "compiler" in sent_tokens
@@ -144,6 +160,9 @@ def run_case(config: dict) -> dict:
                 or line in ("uciok", "readyok")
                 or line.startswith("bestmove ")
                 or (allow_display and _is_valid_display_line(line))
+                or (allow_fen and _is_valid_fen_line(line))
+                or (allow_key and _is_valid_key_line(line))
+                or (allow_moves and _is_valid_moves_line(line))
                 or (allow_eval and _is_valid_eval_line(line))
                 or (allow_see and _is_valid_see_line(line))
                 or (allow_compiler and _is_valid_compiler_line(line))

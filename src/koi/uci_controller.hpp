@@ -83,11 +83,11 @@ public:
     bool set_protocol(std::string_view name);
     [[nodiscard]] static bool is_valid_protocol(std::string_view name) noexcept;
 
-    int run();
+        int run();
     int run_bench(int depth = kDefaultBenchDepth,
                   std::size_t hash_mb = kDefaultBenchHashMb,
                   std::size_t threads = kDefaultBenchThreads);
-    int run_eval();
+    int run_eval(std::optional<std::string_view> fen = std::nullopt);
 
 private:
     enum class ControllerState : std::uint8_t {
@@ -104,6 +104,9 @@ private:
     void handle_ponderhit();
     void handle_annotate(std::istream& command);
     void handle_display();
+    void handle_fen();
+    void handle_key();
+    void handle_moves();
     void handle_eval();
     void handle_see(std::istream& command);
     void handle_flip();

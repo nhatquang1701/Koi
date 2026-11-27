@@ -3066,7 +3066,7 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     require(see_raw.find("see rejected illegal move 'e1e8'") != std::string::npos,
             "see must reject illegal moves cleanly; got:\n" + see_raw);
 
-    std::istringstream nnue_eval_in("position startpos\neval\nquit\n");
+    std::istringstream nnue_eval_in("position startpos\nfen\nkey\nmoves\neval\nposition fen 8/8/8/8/8/6K1/5Q2/7k b - - 0 1\nmoves\nquit\n");
     std::ostringstream nnue_eval_out;
     std::ostringstream nnue_eval_diag;
     koi::UciController nnue_eval_ctrl(
@@ -3075,11 +3075,34 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
             std::make_shared<koi::NnueEvaluator>(
                 std::make_shared<koi::NnueNetwork>(koi::test::synthetic_network_v4())),
             {}, 16));
-    require(nnue_eval_ctrl.run() == 0 &&
-                nnue_eval_out.str().find("Evaluator      : NNUE (v4 halfka-king-bucket-v1, ") !=
+    const int nnue_eval_exit = nnue_eval_ctrl.run();
+    const std::string nnue_eval_raw = nnue_eval_out.str();
+    require(nnue_eval_exit == 0 &&
+                nnue_eval_raw.find("Evaluator      : NNUE (v4 halfka-king-bucket-v1, ") !=
                     std::string::npos,
             "eval with NnueEvaluator must report NNUE version, feature set, and dimensions; got:\n" +
-                nnue_eval_out.str());
+                nnue_eval_raw);
+    require(nnue_eval_raw.find("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\n") !=
+                std::string::npos,
+            "fen must print exact six-field FEN; got:\n" + nnue_eval_raw);
+    require(nnue_eval_raw.find("Position key : ") != std::string::npos &&
+                nnue_eval_raw.find("Pawn key     : ") != std::string::npos,
+            "key must print hex Zobrist position and pawn keys; got:\n" + nnue_eval_raw);
+    require(nnue_eval_raw.find("Legal moves (20): a2a3 ") != std::string::npos &&
+                nnue_eval_raw.find("Legal moves (0): (none)\n") != std::string::npos,
+            "moves must print sorted legal moves count and (none) at checkmate; got:\n" +
+                nnue_eval_raw);
+
+    std::istringstream cli_eval_in;
+    std::ostringstream cli_eval_out;
+    std::ostringstream cli_eval_diag;
+    auto cli_eval_ctrl = koi::test::make_uci_controller(cli_eval_in, cli_eval_out, cli_eval_diag);
+    require(cli_eval_ctrl->run_eval("4k3/8/8/8/8/8/4Q3/4K3 w - - 0 1") == 0 &&
+                cli_eval_out.str().find("Evaluator      : ") != std::string::npos,
+            "run_eval with custom FEN must evaluate cleanly; got:\n" + cli_eval_out.str());
+    require(cli_eval_ctrl->run_eval("not-a-valid-fen") == 2 &&
+                cli_eval_diag.str().find("invalid FEN") != std::string::npos,
+            "run_eval with malformed FEN must return exit code 2 and diagnostic");
 }
 
 } // namespace
