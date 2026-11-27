@@ -12,13 +12,14 @@
 
 namespace {
 
-constexpr std::array<const char*, 28> kCliEnvVars = {
+constexpr std::array<const char*, 29> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_EVALUATOR",
     "KOI_NNUE_PATH",
     "KOI_CLI_COMMANDS",
     "KOI_CLI_COMPILER",
     "KOI_CLI_DISPLAY",
+    "KOI_CLI_FEN_CMD",
     "KOI_CLI_KEY",
     "KOI_CLI_MOVES",
     "KOI_CLI_FLIP",
@@ -185,7 +186,7 @@ void test_inline_cmd_parsing_and_env_roundtrip() {
                            "missing or empty --cmd error must explain why it failed");
     }
 
-    for (const std::string_view subcommand : {"bench", "speedtest", "nnue", "eval", "compiler"}) {
+    for (const std::string_view subcommand : {"bench", "speedtest", "nnue", "eval", "compiler", "fen"}) {
         env.clear_all();
         ScopedStreamCapture err(std::cerr);
         koi::cli::CliOptions conflict_options;
@@ -285,13 +286,25 @@ void test_unquoted_fen_and_inspection_subcommands() {
                                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
                        "see must preserve move and trailing unquoted FEN");
 
-    for (const std::string_view cmd : {"d", "--display", "key", "moves", "flip", "book", "tb"}) {
+    for (const std::string_view cmd : {"d", "--display", "fen", "key", "moves", "flip", "book", "tb"}) {
         env.clear_all();
         koi::cli::CliOptions inspect_opts;
         const auto exit_code = invoke_parse({std::string(cmd), "8/8/8/8/8/8/4K3/4k3", "w", "-", "-", "0", "1"}, inspect_opts);
         koi::test::require(!exit_code.has_value() &&
                                inspect_opts.inspect_fen == "8/8/8/8/8/8/4K3/4k3 w - - 0 1",
                            "zero-network inspection subcommands must parse unquoted FENs");
+    }
+
+    {
+        env.clear_all();
+        koi::cli::CliOptions fen_opts;
+        koi::test::require(!invoke_parse({"fen", "moves", "e2e4", "e7e5"}, fen_opts).has_value() &&
+                               fen_opts.fen && fen_opts.inspect_fen == "moves e2e4 e7e5",
+                           "fen subcommand must store trailing position spec");
+        koi::cli::CliOptions fen_reexec;
+        koi::test::require(!invoke_parse({}, fen_reexec).has_value() && fen_reexec.fen &&
+                               fen_reexec.inspect_fen == "moves e2e4 e7e5",
+                           "KOI_CLI_FEN_CMD and KOI_CLI_FEN must roundtrip across empty argv");
     }
 
     for (const std::vector<std::string>& bad : std::vector<std::vector<std::string>>{

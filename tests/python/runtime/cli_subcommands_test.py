@@ -141,10 +141,24 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(mate_moves.returncode, 0, mate_moves.stderr)
         self.assertEqual(mate_moves.stdout.strip(), "Legal moves (0): (none)")
 
-        for cmd in ("d", "key", "moves", "flip"):
+        for cmd in ("d", "fen", "key", "moves", "flip"):
             bad = self._run([cmd, "bad fen"], disable_nnue=True)
             self.assertEqual(bad.returncode, 2)
             self.assertIn("invalid FEN", bad.stderr)
+
+        fen_start = self._run(["fen"], disable_nnue=True)
+        self.assertEqual(fen_start.returncode, 0, fen_start.stderr)
+        self.assertEqual(
+            fen_start.stdout.strip(),
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        )
+
+        fen_moves = self._run(["fen", "moves", "e2e4", "e7e5"], disable_nnue=True)
+        self.assertEqual(fen_moves.returncode, 0, fen_moves.stderr)
+        self.assertEqual(
+            fen_moves.stdout.strip(),
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
+        )
 
         flip_start = self._run(["flip"], disable_nnue=True)
         self.assertEqual(flip_start.returncode, 0, flip_start.stderr)
@@ -415,7 +429,7 @@ class CliSubcommandsTest(unittest.TestCase):
             "Expected an NNUE network fixture for --cmd NNUE test",
         )
         nnue_eval = self._run(
-            ["--nnue", str(nnue_path), "--cmd=position startpos", "--cmd=eval"],
+            ["--nnue", str(nnue_path), "--cmd=position startpos", "--cmd=eval", "--cmd=nnue"],
             disable_nnue=True,
             extra_env={"KOI_EVALUATOR": "hce"},
         )
@@ -423,6 +437,14 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(nnue_eval.stderr, "")
         self.assertIn("Evaluator      : NNUE", nnue_eval.stdout)
         self.assertIn("Network SHA256 :", nnue_eval.stdout)
+        self.assertIn("Format version : v", nnue_eval.stdout)
+        self.assertIn("Payload SHA256 :", nnue_eval.stdout)
+        self.assertIn("Status         : valid (checksum verified)", nnue_eval.stdout)
+
+        hce_nnue = self._run(["--hce", "-c", "nnue"], disable_nnue=True)
+        self.assertEqual(hce_nnue.returncode, 0, hce_nnue.stderr)
+        self.assertEqual(hce_nnue.stderr, "")
+        self.assertIn("NNUE : inactive (EvalMode=hce)", hce_nnue.stdout)
 
         xboard = self._run(
             ["--protocol", "xboard", "--hce", "-c", "protover 2", "-c", "sd 2", "-c", "go"],

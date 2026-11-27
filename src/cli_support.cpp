@@ -104,13 +104,14 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
               << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n"
               << "  d, --display [fen]                       Display ASCII board, FEN, Zobrist key, and move count\n"
+              << "  fen [fen]                                Print six-field FEN for startpos, FEN, or moves sequence\n"
               << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
               << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n"
               << "  flip [fen]                               Toggle side to move if legal and print updated FEN\n"
               << "  book [fen]                               Probe Polyglot opening book entries for position\n"
               << "  tb [fen]                                 Probe Syzygy tablebases for root WDL and best moves\n"
               << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
-              << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait, help\n";
+              << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, nnue, flip, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
 }
 
 std::optional<GameState> resolve_cli_position(const std::optional<std::string>& fen) {
@@ -256,6 +257,15 @@ std::optional<int> parse_cli_options(
         if (arg == "d" || arg == "--display") {
             out.display = true;
             set_environment_value("KOI_CLI_DISPLAY", "1");
+            collect_trailing_fen(index, out.inspect_fen);
+            if (out.inspect_fen.has_value()) {
+                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
+            }
+            continue;
+        }
+        if (arg == "fen") {
+            out.fen = true;
+            set_environment_value("KOI_CLI_FEN_CMD", "1");
             collect_trailing_fen(index, out.inspect_fen);
             if (out.inspect_fen.has_value()) {
                 set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
@@ -536,7 +546,7 @@ std::optional<int> parse_cli_options(
                          "-c/--cmd <command>, --hce, --nnue <path>, --book <path>, "
                          "--syzygy <path>, bench [depth [hash [threads]]], "
                          "speedtest [threads [hash [seconds]]], compiler, nnue [path], eval [fen], "
-                         "perft <depth> [fen], d [fen], key [fen], moves [fen], flip [fen], "
+                         "perft <depth> [fen], d [fen], fen [fen], key [fen], moves [fen], flip [fen], "
                          "book [fen], tb [fen], see <move> [fen]).\n";
             return 2;
         }
@@ -591,6 +601,12 @@ std::optional<int> parse_cli_options(
         if (const char* env_display = std::getenv("KOI_CLI_DISPLAY");
             env_display != nullptr && std::string_view(env_display) == "1") {
             out.display = true;
+        }
+    }
+    if (!out.fen) {
+        if (const char* env_fen_cmd = std::getenv("KOI_CLI_FEN_CMD");
+            env_fen_cmd != nullptr && std::string_view(env_fen_cmd) == "1") {
+            out.fen = true;
         }
     }
     if (!out.key) {
@@ -738,7 +754,7 @@ std::optional<int> parse_cli_options(
     }
     if (!out.commands.empty() &&
         (out.bench_depth.has_value() || out.speedtest || out.compiler || out.nnue_info ||
-         out.display || out.key || out.moves || out.flip || out.book || out.tb ||
+         out.display || out.fen || out.key || out.moves || out.flip || out.book || out.tb ||
          out.see_move.has_value() || out.eval || out.perft_depth.has_value())) {
         std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
         return 2;
@@ -792,7 +808,7 @@ std::optional<int> run_zero_network_cli_command(
         std::cout << detail::format_nnue_info(display_name, *loaded) << std::flush;
         return 0;
     }
-    if (options.display || options.key || options.moves || options.flip) {
+    if (options.display || options.fen || options.key || options.moves || options.flip) {
         const std::optional<GameState> root = resolve_cli_position(options.inspect_fen);
         if (!root.has_value()) {
             return 2;
@@ -812,6 +828,8 @@ std::optional<int> run_zero_network_cli_command(
         }
         if (options.display) {
             std::cout << detail::format_ascii_board(*root) << std::flush;
+        } else if (options.fen) {
+            std::cout << root->fen() << '\n' << std::flush;
         } else if (options.key) {
             std::cout << detail::format_key_info(*root) << std::flush;
         } else {

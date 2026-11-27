@@ -21,6 +21,7 @@ struct CliOptions {
     int speedtest_seconds = 3;
     bool compiler = false;
     bool display = false;
+    bool fen = false;
     bool key = false;
     bool moves = false;
     bool flip = false;

@@ -724,6 +724,7 @@ std::string format_interactive_help() {
         "  book                                Probe active Polyglot opening book entries\n"
         "  tb                                  Probe active Syzygy tablebases for root WDL/moves\n"
         "  eval                                Show active evaluator, score, WDL, and phase\n"
+        "  nnue                                Show active loaded NNUE metadata and SHA-256\n"
         "  flip                                Flip side to move when legal\n"
         "  see <move>                          Show static exchange evaluation for a legal move\n"
         "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"

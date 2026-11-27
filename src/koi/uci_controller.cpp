@@ -721,6 +721,8 @@ int UciController::run() {
             handle_tb();
         } else if (name == "eval") {
             handle_eval();
+        } else if (name == "nnue") {
+            handle_nnue();
         } else if (name == "see") {
             handle_see(command);
         } else if (name == "flip") {
@@ -1460,6 +1462,28 @@ void UciController::handle_tb() {
 void UciController::handle_eval() {
     const std::shared_ptr<const Evaluator> evaluator = search_service_.evaluator();
     const std::string text = detail::format_eval_summary(position_, evaluator.get(), hce_active_);
+    std::lock_guard lock(output_mutex_);
+    output_ << text << std::flush;
+}
+
+void UciController::handle_nnue() {
+    const std::shared_ptr<const Evaluator> evaluator = search_service_.evaluator();
+    std::string text;
+    if (hce_active_) {
+        text = "NNUE : inactive (EvalMode=hce)\n";
+    } else if (const auto* nnue = dynamic_cast<const NnueEvaluator*>(evaluator.get());
+               nnue != nullptr && nnue->network() != nullptr) {
+        std::string display_name;
+        if (!eval_file_.empty()) {
+            display_name = eval_file_.filename().empty() ? eval_file_.string()
+                                                         : eval_file_.filename().string();
+        } else {
+            display_name = nnue_autodiscovered_ ? "<autodiscovery>" : "<loaded>";
+        }
+        text = detail::format_nnue_info(display_name, *nnue->network());
+    } else {
+        text = "NNUE : unavailable\n";
+    }
     std::lock_guard lock(output_mutex_);
     output_ << text << std::flush;
 }

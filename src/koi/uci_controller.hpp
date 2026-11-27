@@ -115,6 +115,7 @@ private:
     void handle_book();
     void handle_tb();
     void handle_eval();
+    void handle_nnue();
     void handle_see(std::istream& command);
     void handle_flip();
     void handle_perft_command(std::istream& command);

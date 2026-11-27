@@ -3115,7 +3115,10 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     require(see_raw.find("see rejected illegal move 'e1e8'") != std::string::npos,
             "see must reject illegal moves cleanly; got:\n" + see_raw);
 
-    std::istringstream nnue_eval_in("position startpos\nfen\nkey\nmoves\nbook\ntb\neval\nposition fen 8/8/8/8/8/6K1/5Q2/7k b - - 0 1\nmoves\nquit\n");
+    std::istringstream nnue_eval_in(
+        "position startpos\nfen\nkey\nmoves\nbook\ntb\neval\nnnue\n"
+        "setoption name EvalMode value hce\nnnue\n"
+        "position fen 8/8/8/8/8/6K1/5Q2/7k b - - 0 1\nmoves\nquit\n");
     std::ostringstream nnue_eval_out;
     std::ostringstream nnue_eval_diag;
     koi::UciController nnue_eval_ctrl(
@@ -3131,8 +3134,13 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                     std::string::npos &&
                 nnue_eval_raw.find("Network SHA256 : ") != std::string::npos &&
                 nnue_eval_raw.find("Output bucket  : 0 (of 8)") != std::string::npos &&
-                nnue_eval_raw.find("Quantization   : int16/int8") != std::string::npos,
-            "eval with NnueEvaluator must report NNUE version, SHA256, output bucket, and quantization; got:\n" +
+                nnue_eval_raw.find("Quantization   : int16/int8") != std::string::npos &&
+                nnue_eval_raw.find("Format version : v4") != std::string::npos &&
+                nnue_eval_raw.find("Payload SHA256 : ") != std::string::npos &&
+                nnue_eval_raw.find("Status         : valid (checksum verified)") !=
+                    std::string::npos &&
+                nnue_eval_raw.find("NNUE : inactive (EvalMode=hce)") != std::string::npos,
+            "eval and nnue commands must report NNUE metadata, SHA256, and HCE inactive state; got:\n" +
                 nnue_eval_raw);
     require(nnue_eval_raw.find("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\n") !=
                 std::string::npos,
@@ -3360,7 +3368,8 @@ void test_uci_support_helpers_direct() {
 
     const std::string help_text = format_interactive_help();
     for (const char* cmd : {"bench", "speedtest", "options", "d", "fen", "key", "moves", "book",
-                            "tb", "eval", "flip", "see", "perft", "wait", "compiler", "help"}) {
+                            "tb", "eval", "nnue", "flip", "see", "perft", "wait", "compiler",
+                            "help"}) {
         require(help_text.find(cmd) != std::string::npos,
                 std::string("format_interactive_help missing command: ") + cmd);
     }
