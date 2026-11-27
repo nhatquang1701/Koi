@@ -134,7 +134,11 @@ jobs:
           if (($files -join ',') -cne ($expected -join ',')) {
             throw "Unexpected archive files: $($files -join ', ')"
           }
-          $smokeOutput = @("uci`nisready`nposition startpos`ngo depth 2`nstop`nquit" | & (Join-Path $pkgDir 'koi-engine.exe'))
+          $nnueOutput = (& (Join-Path $pkgDir 'koi-engine.exe') nnue)
+          if ($LASTEXITCODE -ne 0 -or -not ($nnueOutput -match 'valid \(checksum verified\)')) {
+            throw "Packaged koi-engine.exe nnue verification failed"
+          }
+          $smokeOutput = (& (Join-Path $pkgDir 'koi-engine.exe') -c "uci" -c "isready" -c "position startpos" -c "go depth 2")
           if ($LASTEXITCODE -ne 0 -or -not ($smokeOutput -match '^bestmove ')) {
             throw "Packaged koi-engine.exe smoke test failed"
           }
@@ -186,7 +190,8 @@ jobs:
               exit 1
             fi
           done
-          printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | timeout 15 "$extracted/koi-engine" | grep -q "bestmove "
+          "$extracted/koi-engine" nnue | grep -q "valid (checksum verified)"
+          timeout 15 "$extracted/koi-engine" -c "uci" -c "isready" -c "position startpos" -c "go depth 2" | grep -q "^bestmove "
           '
       - uses: actions/upload-artifact@v7
         with:
@@ -226,7 +231,8 @@ jobs:
           mkdir -p "$extracted"
           archive=$(find artifacts/release -maxdepth 1 -name "*-macos-arm64.tar.gz" | head -n 1)
           tar -xzf "$archive" -C "$extracted"
-          printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | "$extracted/koi-engine" | grep -q "bestmove "
+          "$extracted/koi-engine" nnue | grep -q "valid (checksum verified)"
+          "$extracted/koi-engine" -c "uci" -c "isready" -c "position startpos" -c "go depth 2" | grep -q "^bestmove "
       - uses: actions/upload-artifact@v7
         with:
           name: release-macos-assets

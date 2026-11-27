@@ -158,6 +158,16 @@
       "output": { "outputOnFailure": true }
     },
     {
+      "name": "windows-asan",
+      "configurePreset": "windows-asan",
+      "configuration": "Debug",
+      "filter": {
+        "include": { "label": "unit" },
+        "exclude": { "label": "heavy" }
+      },
+      "output": { "outputOnFailure": true }
+    },
+    {
       "name": "linux-gcc-release",
       "configurePreset": "linux-gcc-release",
       "configuration": "Release",
@@ -167,6 +177,16 @@
       "name": "linux-clang-release",
       "configurePreset": "linux-clang-release",
       "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-gcc-tsan",
+      "configurePreset": "linux-gcc-tsan",
+      "configuration": "Debug",
+      "filter": {
+        "include": { "label": "unit" },
+        "exclude": { "label": "heavy" }
+      },
       "output": { "outputOnFailure": true }
     },
     {

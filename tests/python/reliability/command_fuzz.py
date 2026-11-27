@@ -44,7 +44,7 @@ def _is_valid_display_line(line: str) -> bool:
         line == " +---+---+---+---+---+---+---+---+"
         or (line.startswith(" | ") and line.endswith((" 1", " 2", " 3", " 4", " 5", " 6", " 7", " 8")))
         or line == "   a   b   c   d   e   f   g   h"
-        or line.startswith(("Fen   : ", "Key   : ", "Side  : ", "Check : ", "Moves : "))
+        or line.startswith(("Fen   : ", "Key   : ", "Side  : ", "Check : ", "Moves : ", "State : "))
     )
 
 

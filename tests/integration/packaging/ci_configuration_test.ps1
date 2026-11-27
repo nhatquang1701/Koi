@@ -284,6 +284,9 @@ if ($releaseContent -notmatch '(?i)actions/attest-build-provenance@v2') {
 if ($releaseContent -notmatch '(?i)softprops/action-gh-release@v2') {
     throw 'Release workflow must publish artifacts via softprops/action-gh-release.'
 }
+if ($releaseContent -notmatch 'valid \\\(checksum verified\\\)') {
+    throw 'Release workflow must verify packaged koi-engine nnue checksum.'
+}
 foreach ($workflowPair in @(
     @{ Name = 'linux.yml'; Content = $linuxContent },
     @{ Name = 'release.yml'; Content = $releaseContent },

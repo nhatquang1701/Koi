@@ -3343,6 +3343,20 @@ void test_uci_support_helpers_direct() {
                 format_legal_moves(*mate_pos) == "Legal moves (0): (none)\n",
             "format_legal_moves mismatch");
 
+    const auto stale_pos =
+        koi::GameState::from_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
+    const auto dead_pos =
+        koi::GameState::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+    require(stale_pos.has_value() && dead_pos.has_value(),
+            "expected valid stalemate and dead-material FENs");
+    require(format_ascii_board(startpos).find("State : ongoing\n") != std::string::npos &&
+                format_ascii_board(*mate_pos).find("State : checkmate (white wins)\n") !=
+                    std::string::npos &&
+                format_ascii_board(*stale_pos).find("State : stalemate\n") != std::string::npos &&
+                format_ascii_board(*dead_pos).find("State : draw (insufficient material)\n") !=
+                    std::string::npos,
+            "format_ascii_board State readout mismatch");
+
     require(translate_ucci_go_arguments("depth 4 time 1500 opptime 1200 increment 50 oppincrement 25",
                                         koi::Color::white) ==
                 "depth 4 wtime 1500 btime 1200 winc 50 binc 25",

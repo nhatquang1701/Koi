@@ -120,6 +120,12 @@ class CliSubcommandsTest(unittest.TestCase):
         disp = self._run(["d"], disable_nnue=True)
         self.assertEqual(disp.returncode, 0, disp.stderr)
         self.assertIn("Moves : 20", disp.stdout)
+        self.assertIn("State : ongoing", disp.stdout)
+
+        mate_disp = self._run(["d", "8/8/8/8/8/6K1/5Q2/7k b - - 0 1"], disable_nnue=True)
+        self.assertEqual(mate_disp.returncode, 0, mate_disp.stderr)
+        self.assertIn("Moves : 0", mate_disp.stdout)
+        self.assertIn("State : checkmate (white wins)", mate_disp.stdout)
 
         kiwipete = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
         disp_unquoted = self._run(["d", *kiwipete.split()], disable_nnue=True)

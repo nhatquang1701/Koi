@@ -493,13 +493,42 @@ std::string format_ascii_board(const GameState& position) {
         }
         buffer << ' ' << (rank + 1) << "\n +---+---+---+---+---+---+---+---+\n";
     }
+    const std::size_t legal_count = position.legal_moves().size();
+    std::string_view state_label = "ongoing";
+    if (legal_count == 0) {
+        state_label = checked
+            ? (white_to_move ? "checkmate (black wins)" : "checkmate (white wins)")
+            : "stalemate";
+    } else {
+        switch (position.draw_status()) {
+        case DrawStatus::automatic_fivefold:
+            state_label = "draw (fivefold repetition)";
+            break;
+        case DrawStatus::claimable_threefold:
+            state_label = "draw (threefold repetition)";
+            break;
+        case DrawStatus::automatic_seventy_five_move:
+            state_label = "draw (75-move rule)";
+            break;
+        case DrawStatus::claimable_fifty_move:
+            state_label = "draw (50-move rule)";
+            break;
+        case DrawStatus::dead_position:
+            state_label = "draw (insufficient material)";
+            break;
+        case DrawStatus::none:
+            state_label = "ongoing";
+            break;
+        }
+    }
     buffer << "   a   b   c   d   e   f   g   h\n\n"
            << "Fen   : " << fen << '\n'
            << "Key   : " << std::hex << std::setfill('0') << std::setw(16) << key
            << std::dec << std::setfill(' ') << '\n'
            << "Side  : " << (white_to_move ? "white" : "black") << '\n'
            << "Check : " << (checked ? "yes" : "no") << '\n'
-           << "Moves : " << position.legal_moves().size() << '\n';
+           << "Moves : " << legal_count << '\n'
+           << "State : " << state_label << '\n';
     return buffer.str();
 }
 
