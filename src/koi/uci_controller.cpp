@@ -1,6 +1,7 @@
 #include "koi/uci_controller.hpp"
 
 #include "koi/detail/debug_log.hpp"
+#include "koi/detail/static_exchange.hpp"
 #include "koi/detail/uci_option_table.hpp"
 #include "koi/detail/uci_support.hpp"
 #include "koi/syzygy_tablebase.hpp"
@@ -976,6 +977,8 @@ int UciController::run() {
             handle_display();
         } else if (name == "eval") {
             handle_eval();
+        } else if (name == "see") {
+            handle_see(command);
         } else if (name == "flip") {
             handle_flip();
         } else if (name == "perft") {
@@ -1694,6 +1697,24 @@ void UciController::handle_eval() {
     }
     std::lock_guard lock(output_mutex_);
     output_ << buffer.str() << std::flush;
+}
+
+void UciController::handle_see(std::istream& command) {
+    std::string token;
+    if (!(command >> token)) {
+        write_uci_info_string("see requires a legal UCI move (e.g. see e4d5)");
+        return;
+    }
+    const std::optional<Move> move = Move::parse_uci(token);
+    if (!move.has_value() || !position_.is_legal(*move)) {
+        write_uci_info_string("see rejected illegal move '" + token + "'");
+        return;
+    }
+    const int gain = detail::static_exchange_gain(position_, *move);
+    std::ostringstream line;
+    line << "SEE " << move->uci() << " : " << std::showpos << gain << " cp\n";
+    std::lock_guard lock(output_mutex_);
+    output_ << line.str() << std::flush;
 }
 
 void UciController::handle_flip() {

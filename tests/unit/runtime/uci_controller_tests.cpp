@@ -3038,6 +3038,26 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     require(wait_bestmove_count == 2,
             "wait after finite search plus stop after infinite search must emit two bestmoves; got:\n" +
                 wait_raw);
+
+    std::istringstream see_input(
+        "position fen 4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1\n"
+        "see e4d5\n"
+        "see e1e2\n"
+        "see e1e8\n"
+        "quit\n");
+    std::ostringstream see_output;
+    std::ostringstream see_diag;
+    auto see_holder = koi::test::make_uci_controller(see_input, see_output, see_diag);
+    const int see_exit = see_holder->run();
+    const std::string see_raw = see_output.str();
+    require(see_exit == 0 && see_diag.str().empty(),
+            "see command sequence must shut down cleanly");
+    require(see_raw.find("SEE e4d5 : +100 cp") != std::string::npos,
+            "see must report capturing a pawn as +100 cp; got:\n" + see_raw);
+    require(see_raw.find("SEE e1e2 : +0 cp") != std::string::npos,
+            "see must report a quiet move as +0 cp; got:\n" + see_raw);
+    require(see_raw.find("see rejected illegal move 'e1e8'") != std::string::npos,
+            "see must reject illegal moves cleanly; got:\n" + see_raw);
 }
 
 } // namespace

@@ -30,7 +30,7 @@ from unittest_progress import format_progress_eta  # noqa: E402
 
 FRAGMENTS = [
     "uci", "isready", "ucinewgame", "stop", "ponderhit", "go", "position",
-    "setoption", "debug", "register", "d", "eval", "flip", "compiler", "wait", "board",
+    "setoption", "debug", "register", "d", "eval", "flip", "see", "compiler", "wait", "board",
     "help", "quitx", "setoption name", "position startpos", "go depth",
     "setoption name Hash value",
 ]
@@ -65,6 +65,10 @@ def _is_valid_compiler_line(line: str) -> bool:
         "Architecture   : ",
         "SIMD / ISA     : ",
     ))
+
+
+def _is_valid_see_line(line: str) -> bool:
+    return re.fullmatch(r"SEE [a-h][1-8][a-h][1-8][nbrq]? : [+-]\d+ cp", line) is not None
 
 
 def random_command(rng: random.Random) -> str:
@@ -123,6 +127,7 @@ def run_case(config: dict) -> dict:
         }
         allow_display = "d" in sent_tokens
         allow_eval = "eval" in sent_tokens
+        allow_see = "see" in sent_tokens
         allow_compiler = "compiler" in sent_tokens
         for line in stdout.splitlines():
             if not line:
@@ -135,6 +140,7 @@ def run_case(config: dict) -> dict:
                 or line.startswith("bestmove ")
                 or (allow_display and _is_valid_display_line(line))
                 or (allow_eval and _is_valid_eval_line(line))
+                or (allow_see and _is_valid_see_line(line))
                 or (allow_compiler and _is_valid_compiler_line(line))
             ):
                 continue

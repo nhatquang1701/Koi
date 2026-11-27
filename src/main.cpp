@@ -160,7 +160,7 @@ void write_help() {
               << "  --engine-json                         Print En Croissant / Pawn Appetit JSON profile\n"
               << "  --protocol <name>                     Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
               << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n\n"
-              << "Interactive UCI commands also include: d, eval, flip, compiler, bench [depth [hash [threads]]], perft <depth>, wait\n";
+              << "Interactive UCI commands also include: d, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait\n";
 }
 
 void set_environment_value(const char* name, std::string_view value) noexcept {

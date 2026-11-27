@@ -104,6 +104,7 @@ private:
     void handle_annotate(std::istream& command);
     void handle_display();
     void handle_eval();
+    void handle_see(std::istream& command);
     void handle_flip();
     void handle_perft_command(std::istream& command);
     void handle_compiler();

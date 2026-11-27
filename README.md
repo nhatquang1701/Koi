@@ -94,6 +94,7 @@ Inside an interactive session (`koi-engine`):
 | `d` | Displays an ASCII board of the current position, FEN, Zobrist key, and checkers |
 | `eval` | Prints static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
 | `flip` | Flips the side to move (when legal) for static evaluation comparison |
+| `see <move>` | Computes the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns |
 | `compiler` | Prints version, git commit, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`) |
 | `perft <depth>` / `go perft <depth>` | Runs an interruptible perft divide (`depth 1..10`) from the current position |
 | `wait` | Blocks until any finite active search or `perft` finishes (useful in piped scripts) |
