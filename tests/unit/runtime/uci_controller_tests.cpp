@@ -3337,7 +3337,7 @@ void test_uci_support_helpers_direct() {
             "format_key_info missing hash keys");
 
     const auto mate_pos =
-        koi::GameState::from_fen("8/8/8/8/8/6K1/5Q2/7k b - - 0 1");
+        koi::GameState::from_fen("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1");
     require(mate_pos.has_value() &&
                 format_legal_moves(startpos).find("Legal moves (20):") == 0 &&
                 format_legal_moves(*mate_pos) == "Legal moves (0): (none)\n",

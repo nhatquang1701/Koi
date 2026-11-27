@@ -122,7 +122,7 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Moves : 20", disp.stdout)
         self.assertIn("State : ongoing", disp.stdout)
 
-        mate_disp = self._run(["d", "8/8/8/8/8/6K1/5Q2/7k b - - 0 1"], disable_nnue=True)
+        mate_disp = self._run(["d", "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"], disable_nnue=True)
         self.assertEqual(mate_disp.returncode, 0, mate_disp.stderr)
         self.assertIn("Moves : 0", mate_disp.stdout)
         self.assertIn("State : checkmate (white wins)", mate_disp.stdout)
