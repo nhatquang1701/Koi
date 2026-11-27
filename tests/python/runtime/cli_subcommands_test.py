@@ -329,6 +329,65 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(missing.returncode, 2)
             self.assertIn("missing path", missing.stderr)
 
+    def test_inline_cmd_batch_execution(self) -> None:
+        handshake = self._run(["--hce", "-c", "uci", "-c", "isready"], disable_nnue=True)
+        self.assertEqual(handshake.returncode, 0, handshake.stderr)
+        self.assertEqual(handshake.stderr, "")
+        self.assertIn("id name Koi ", handshake.stdout)
+        self.assertIn("uciok", handshake.stdout)
+        self.assertIn("readyok", handshake.stdout)
+
+        search = self._run(
+            ["--hce", "-c", "position startpos moves e2e4 e7e5", "-c", "go depth 3"],
+            disable_nnue=True,
+        )
+        self.assertEqual(search.returncode, 0, search.stderr)
+        self.assertEqual(search.stderr, "")
+        self.assertIn("info depth 3", search.stdout)
+        self.assertIn("bestmove ", search.stdout)
+
+        nnue_path = os.environ.get("KOI_NNUE_PATH")
+        if not nnue_path or not pathlib.Path(nnue_path).is_file():
+            for candidate in (
+                self.engine.parent / "koi.nnue",
+                self.engine.parent / "nnue" / "koi.nnue",
+                ROOT / "artifacts" / "networks" / "koi-v9-hm10-h256-official.nnue",
+            ):
+                if candidate.is_file():
+                    nnue_path = str(candidate)
+                    break
+        self.assertTrue(
+            nnue_path and pathlib.Path(nnue_path).is_file(),
+            "Expected an NNUE network fixture for --cmd NNUE test",
+        )
+        nnue_eval = self._run(
+            ["--nnue", str(nnue_path), "--cmd=position startpos", "--cmd=eval"],
+            disable_nnue=True,
+            extra_env={"KOI_EVALUATOR": "hce"},
+        )
+        self.assertEqual(nnue_eval.returncode, 0, nnue_eval.stderr)
+        self.assertEqual(nnue_eval.stderr, "")
+        self.assertIn("Evaluator      : NNUE", nnue_eval.stdout)
+        self.assertIn("Network SHA256 :", nnue_eval.stdout)
+
+        xboard = self._run(
+            ["--protocol", "xboard", "--hce", "-c", "protover 2", "-c", "sd 2", "-c", "go"],
+            disable_nnue=True,
+        )
+        self.assertEqual(xboard.returncode, 0, xboard.stderr)
+        self.assertEqual(xboard.stderr, "")
+        self.assertIn("feature ", xboard.stdout)
+        self.assertIn("move ", xboard.stdout)
+
+        for bad_args, expected_err in (
+            (["-c"], "missing command for --cmd"),
+            (["--cmd="], "missing command for --cmd"),
+            (["--hce", "-c", "uci", "bench"], "cannot be combined"),
+        ):
+            bad = self._run(bad_args, disable_nnue=True)
+            self.assertEqual(bad.returncode, 2, bad.stdout)
+            self.assertIn(expected_err, bad.stderr)
+
     def test_developer_tool_cli_subcommands(self) -> None:
         perft_exe = _resolve_tool("KOI_PERFT_EXE", "koi-perft", self.engine)
         replay_exe = _resolve_tool("KOI_REPLAY_EXE", "koi-replay", self.engine)

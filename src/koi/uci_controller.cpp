@@ -361,6 +361,10 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
         }
         return true;
     }
+    if (name == "wait") {
+        handle_wait();
+        return true;
+    }
     if (name == "quit") {
         {
             std::lock_guard lock(output_mutex_);

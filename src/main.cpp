@@ -4,6 +4,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -166,9 +167,14 @@ int main(int argc, char* argv[]) {
         return 4;
     }
     koi::SearchService search_service(selection.evaluator, {}, 1);
-    koi::UciController controller(std::cin, std::cout, std::cerr, std::move(search_service),
-                                  engine_directory,
-                                  autodiscovered_network && selection.nnue_enabled);
+    std::optional<std::istringstream> batch_input;
+    if (!cli_options.commands.empty()) {
+        batch_input.emplace(koi::cli::build_command_batch_script(cli_options.commands));
+    }
+    koi::UciController controller(
+        batch_input.has_value() ? static_cast<std::istream&>(*batch_input) : std::cin,
+        std::cout, std::cerr, std::move(search_service), engine_directory,
+        autodiscovered_network && selection.nnue_enabled);
     if (cli_options.bench_depth.has_value()) {
         return controller.run_bench(*cli_options.bench_depth, cli_options.bench_hash_mb,
                                     cli_options.bench_threads);

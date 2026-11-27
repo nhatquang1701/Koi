@@ -91,6 +91,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  -h, --help                               Show this help message\n"
               << "  --engine-json                            Print En Croissant / Pawn Appetit JSON profile\n"
               << "  --protocol <name>                        Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
+              << "  -c, --cmd <command>                      Execute UCI/protocol command(s) in batch mode and exit (repeatable)\n"
               << "  --hce                                    Use built-in classical evaluation without a network\n"
               << "  --nnue <path>                            Load NNUE weights from path (overrides KOI_EVALUATOR)\n"
               << "  --book <path>                            Specify Polyglot book path for one-shot book\n"
@@ -435,6 +436,39 @@ std::optional<int> parse_cli_options(
             set_environment_value("KOI_CLI_SYZYGY_PATH", *out.syzygy_path);
             continue;
         }
+        if (arg == "-c" || arg == "--cmd") {
+            if (index + 1 >= argc || *argv[index + 1] == '\0') {
+                std::cerr << "koi-engine: missing command for --cmd.\n";
+                return 2;
+            }
+            out.commands.emplace_back(argv[++index]);
+            std::string joined;
+            for (const std::string& command : out.commands) {
+                if (!joined.empty()) {
+                    joined.push_back('\n');
+                }
+                joined.append(command);
+            }
+            set_environment_value("KOI_CLI_COMMANDS", joined);
+            continue;
+        }
+        if (arg.starts_with("--cmd=")) {
+            const std::string_view cmd_arg = arg.substr(std::string_view("--cmd=").size());
+            if (cmd_arg.empty()) {
+                std::cerr << "koi-engine: missing command for --cmd.\n";
+                return 2;
+            }
+            out.commands.emplace_back(cmd_arg);
+            std::string joined;
+            for (const std::string& command : out.commands) {
+                if (!joined.empty()) {
+                    joined.push_back('\n');
+                }
+                joined.append(command);
+            }
+            set_environment_value("KOI_CLI_COMMANDS", joined);
+            continue;
+        }
         std::optional<std::string_view> parsed_protocol;
         if (arg == "--protocol") {
             if (index + 1 >= argc) {
@@ -448,8 +482,8 @@ std::optional<int> parse_cli_options(
         } else {
             std::cerr << "koi-engine: unknown option '" << arg
                       << "' (supported: --version, --help, --engine-json, --protocol <name>, "
-                         "--hce, --nnue <path>, --book <path>, --syzygy <path>, "
-                         "bench [depth [hash [threads]]], compiler, eval [fen], "
+                         "-c/--cmd <command>, --hce, --nnue <path>, --book <path>, "
+                         "--syzygy <path>, bench [depth [hash [threads]]], compiler, eval [fen], "
                          "perft <depth> [fen], d [fen], key [fen], moves [fen], flip [fen], "
                          "book [fen], tb [fen], see <move> [fen]).\n";
             return 2;
@@ -475,6 +509,24 @@ std::optional<int> parse_cli_options(
             env_protocol != nullptr && *env_protocol != '\0' &&
             is_valid_protocol(env_protocol)) {
             out.initial_protocol = env_protocol;
+        }
+    }
+    if (out.commands.empty()) {
+        if (const char* env_commands = std::getenv("KOI_CLI_COMMANDS");
+            env_commands != nullptr && *env_commands != '\0') {
+            std::string_view remaining(env_commands);
+            while (!remaining.empty()) {
+                const std::size_t newline = remaining.find('\n');
+                const std::string_view segment =
+                    newline == std::string_view::npos ? remaining : remaining.substr(0, newline);
+                if (!segment.empty()) {
+                    out.commands.emplace_back(segment);
+                }
+                if (newline == std::string_view::npos) {
+                    break;
+                }
+                remaining.remove_prefix(newline + 1);
+            }
         }
     }
     if (!out.compiler) {
@@ -592,6 +644,13 @@ std::optional<int> parse_cli_options(
                 out.bench_threads = parsed;
             }
         }
+    }
+    if (!out.commands.empty() &&
+        (out.bench_depth.has_value() || out.compiler || out.display || out.key || out.moves ||
+         out.flip || out.book || out.tb || out.see_move.has_value() || out.eval ||
+         out.perft_depth.has_value())) {
+        std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
+        return 2;
     }
     return std::nullopt;
 }
@@ -718,6 +777,47 @@ std::optional<int> run_zero_network_cli_command(
         return 0;
     }
     return std::nullopt;
+}
+
+std::string build_command_batch_script(const std::vector<std::string>& commands) {
+    const auto is_space = [](const char ch) noexcept {
+        return std::isspace(static_cast<unsigned char>(ch)) != 0;
+    };
+    std::string script;
+    std::string_view last_line;
+    for (const std::string& command : commands) {
+        std::string_view remaining(command);
+        while (!remaining.empty()) {
+            const std::size_t newline = remaining.find('\n');
+            std::string_view line =
+                newline == std::string_view::npos ? remaining : remaining.substr(0, newline);
+            if (!line.empty() && line.back() == '\r') {
+                line.remove_suffix(1);
+            }
+            std::string_view trimmed = line;
+            while (!trimmed.empty() && is_space(trimmed.front())) {
+                trimmed.remove_prefix(1);
+            }
+            if (!trimmed.empty()) {
+                script.append(line);
+                script.push_back('\n');
+                last_line = trimmed;
+            }
+            if (newline == std::string_view::npos) {
+                break;
+            }
+            remaining.remove_prefix(newline + 1);
+        }
+    }
+    std::size_t token_end = 0;
+    while (token_end < last_line.size() && !is_space(last_line[token_end])) {
+        ++token_end;
+    }
+    const std::string_view last_token = last_line.substr(0, token_end);
+    if (last_token != "quit" && last_token != "bye") {
+        script += "wait\nquit\n";
+    }
+    return script;
 }
 
 } // namespace koi::cli

@@ -5,11 +5,13 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace koi::cli {
 
 struct CliOptions {
     std::optional<std::string> initial_protocol;
+    std::vector<std::string> commands;
     std::optional<int> bench_depth;
     std::size_t bench_hash_mb = 16;
     std::size_t bench_threads = 1;
@@ -43,5 +45,7 @@ struct CliOptions {
 [[nodiscard]] std::optional<int> run_zero_network_cli_command(
     const CliOptions& options, int argc, char* argv[], std::string_view version,
     std::string_view commit);
+
+[[nodiscard]] std::string build_command_batch_script(const std::vector<std::string>& commands);
 
 } // namespace koi::cli
