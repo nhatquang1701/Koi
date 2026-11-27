@@ -2,6 +2,7 @@
 
 #include "koi/detail/debug_log.hpp"
 #include "koi/detail/uci_option_table.hpp"
+#include "koi/detail/uci_support.hpp"
 #include "koi/syzygy_tablebase.hpp"
 
 #include <algorithm>
@@ -41,159 +42,55 @@ namespace {
 using detail::UciOptionDescriptor;
 using detail::UciOptionId;
 using detail::UciOptionKind;
+using detail::BoundedLineRead;
+using detail::ParsedOption;
+using detail::Wdl;
+using detail::cecp_mate_score;
+using detail::debug_castling;
+using detail::debug_hex;
+using detail::debug_limits;
+using detail::debug_quoted;
+using detail::debug_square;
+using detail::disposition_name;
+using detail::equals_ignore_case;
 using detail::find_uci_option;
+using detail::format_eval_tokens;
+using detail::hash_reason_name;
+using detail::hash_status_name;
+using detail::join_tokens;
+using detail::kBenchFens;
 using detail::kMaximumMoveOverheadMs;
 using detail::kMaximumRandomSeed;
 using detail::kUciOptions;
-
-enum class BoundedLineRead : std::uint8_t {
-    eof,
-    line,
-};
-
-[[nodiscard]] const char* disposition_name(const CompletionDisposition disposition) noexcept {
-    switch (disposition) {
-    case CompletionDisposition::emit: return "emit";
-    case CompletionDisposition::suppress_stale: return "suppress_stale";
-    case CompletionDisposition::fallback: return "fallback";
-    case CompletionDisposition::quarantine: return "quarantine";
-    }
-    return "unknown";
-}
-
-// Reads one protocol line while capping the retained size at `limit` bytes.
-// The rest of an oversized line is consumed (so the next command still starts
-// at a line boundary) and `truncated` reports that it must be rejected.
-BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& line,
-                                           const std::size_t limit, bool& truncated) {
-    line.clear();
-    truncated = false;
-    bool any = false;
-    const int eof = std::char_traits<char>::eof();
-    for (int character = input.get(); character != eof; character = input.get()) {
-        any = true;
-        if (character == '\n') {
-            return BoundedLineRead::line;
-        }
-        if (line.size() < limit) {
-            line.push_back(static_cast<char>(character));
-        } else {
-            truncated = true;
-        }
-    }
-    return any ? BoundedLineRead::line : BoundedLineRead::eof;
-}
+using detail::legal_move_digest;
+using detail::legal_pv_prefix;
+using detail::parse_annotate_limits;
+using detail::parse_boolean;
+using detail::parse_int64_token;
+using detail::parse_milliseconds;
+using detail::parse_random_seed;
+using detail::parse_setoption_for_protocol;
+using detail::parse_uint64;
+using detail::parse_xboard_level_time;
+using detail::parse_xboard_seconds;
+using detail::read_bounded_protocol_line;
+using detail::remaining_tokens;
+using detail::root_ply;
+using detail::score_to_wdl;
+using detail::xboard_terminal_result_line;
 
 // The UCI surface no longer exposes a Speed option; internal time management
 // keeps the neutral 100 % factor so the time-manager semantics and the
 // koi-bench `--speed` API stay unchanged.
 constexpr std::uint8_t kFixedSpeedPercent = 100;
-constexpr int kWdlScoreLimit = 1'000;
 // Bounded fallback for a bare `go` and for malformed or asymmetric clock
 // commands. A UCI `go` always has to be answered, so a missing usable limit
 // must never leave the engine searching indefinitely.
 constexpr std::chrono::milliseconds kBareGoFallback{250};
 
-const char* hash_status_name(HashResizeStatus status) noexcept {
-    switch (status) {
-    case HashResizeStatus::applied:
-        return "applied";
-    case HashResizeStatus::reduced:
-        return "reduced";
-    case HashResizeStatus::unchanged:
-        return "unchanged";
-    case HashResizeStatus::disabled:
-        return "disabled";
-    }
-    return "unknown";
-}
-
-const char* hash_reason_name(HashResizeReason reason) noexcept {
-    switch (reason) {
-    case HashResizeReason::none:
-        return "none";
-    case HashResizeReason::request_clamped:
-        return "request_clamped";
-    case HashResizeReason::physical_memory_cap:
-        return "physical_memory_cap";
-    case HashResizeReason::commit_cap:
-        return "commit_cap";
-    case HashResizeReason::allocation_failed:
-        return "allocation_failed";
-    case HashResizeReason::startup_unavailable:
-        return "startup_unavailable";
-    }
-    return "unknown";
-}
-
-std::vector<std::string> remaining_tokens(std::istream& command) {
-    std::vector<std::string> tokens;
-    for (std::string token; command >> token;) {
-        tokens.push_back(std::move(token));
-    }
-    return tokens;
-}
-
-std::string join_tokens(const std::vector<std::string>& tokens, std::size_t first,
-                        std::size_t last) {
-    std::string result;
-    for (std::size_t index = first; index < last; ++index) {
-        if (!result.empty()) {
-            result += ' ';
-        }
-        result += tokens[index];
-    }
-    return result;
-}
-
-struct ParsedOption {
-    std::string name;
-    std::string value;
-};
-
-bool equals_ignore_case(std::string_view left, std::string_view right) {
-    if (left.size() != right.size()) {
-        return false;
-    }
-    for (std::size_t index = 0; index < left.size(); ++index) {
-        const auto left_character = static_cast<unsigned char>(left[index]);
-        const auto right_character = static_cast<unsigned char>(right[index]);
-        if (std::tolower(left_character) != std::tolower(right_character)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 std::uint64_t option_maximum(const UciOptionDescriptor& option) {
     return option.dynamic_maximum ? static_cast<std::uint64_t>(maximum_search_threads())
                                   : option.maximum;
-}
-
-std::optional<ParsedOption> parse_setoption(const std::vector<std::string>& tokens) {
-    if (tokens.size() < 2 || tokens[0] != "name") {
-        return std::nullopt;
-    }
-    const auto value = std::find(tokens.begin() + 1, tokens.end(), "value");
-    const std::size_t value_index = static_cast<std::size_t>(value - tokens.begin());
-    if (value == tokens.end() || value_index == 1) {
-        return ParsedOption{join_tokens(tokens, 1, tokens.size()), {}};
-    }
-    return ParsedOption{join_tokens(tokens, 1, value_index),
-                        join_tokens(tokens, value_index + 1, tokens.size())};
-}
-
-// UCCI allows `setoption <option> <value>` without `name`/`value` keywords in
-// addition to standard `setoption name <option> value <value>`.
-std::optional<ParsedOption> parse_setoption_for_protocol(const std::vector<std::string>& tokens,
-                                                         const bool allow_ucci_shorthand) {
-    if (std::optional<ParsedOption> standard = parse_setoption(tokens); standard.has_value()) {
-        return standard;
-    }
-    if (!allow_ucci_shorthand || tokens.size() < 2) {
-        return std::nullopt;
-    }
-    return ParsedOption{tokens[0], join_tokens(tokens, 1, tokens.size())};
 }
 
 std::optional<UciController::ProtocolMode> parse_protocol_mode(std::string_view value) noexcept {
@@ -229,85 +126,6 @@ std::string_view protocol_mode_name(UciController::ProtocolMode mode) noexcept {
         return "xboard";
     }
     return "uci";
-}
-
-bool parse_int64_token(std::string_view value, std::int64_t& parsed) noexcept {
-    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
-    return error == std::errc{} && end == value.data() + value.size();
-}
-
-bool parse_xboard_seconds(std::string_view value, std::chrono::milliseconds& duration) {
-    if (value.empty()) {
-        return false;
-    }
-    char* end = nullptr;
-    const std::string buffer(value);
-    const double seconds = std::strtod(buffer.c_str(), &end);
-    if (end == buffer.c_str() || *end != '\0' || !std::isfinite(seconds) ||
-        seconds < 0.0 || seconds > 86'400'000.0) {
-        return false;
-    }
-    duration = std::chrono::milliseconds{static_cast<std::int64_t>(seconds * 1000.0 + 0.5)};
-    return true;
-}
-
-bool parse_xboard_level_time(std::string_view value, std::chrono::milliseconds& duration) {
-    const std::size_t colon = value.find(':');
-    if (colon == std::string_view::npos) {
-        std::uint64_t minutes = 0;
-        const auto [end, error] =
-            std::from_chars(value.data(), value.data() + value.size(), minutes);
-        if (error != std::errc{} || end != value.data() + value.size() || minutes > 1440) {
-            return false;
-        }
-        duration = std::chrono::minutes{static_cast<std::int64_t>(minutes)};
-        return true;
-    }
-    std::uint64_t minutes = 0;
-    std::uint64_t seconds = 0;
-    const std::string_view min_part = value.substr(0, colon);
-    const std::string_view sec_part = value.substr(colon + 1);
-    const auto [mend, merr] =
-        std::from_chars(min_part.data(), min_part.data() + min_part.size(), minutes);
-    const auto [send, serr] =
-        std::from_chars(sec_part.data(), sec_part.data() + sec_part.size(), seconds);
-    if (merr != std::errc{} || mend != min_part.data() + min_part.size() ||
-        serr != std::errc{} || send != sec_part.data() + sec_part.size() ||
-        minutes > 1440 || seconds >= 60) {
-        return false;
-    }
-    duration = std::chrono::minutes{static_cast<std::int64_t>(minutes)} +
-               std::chrono::seconds{static_cast<std::int64_t>(seconds)};
-    return true;
-}
-
-int cecp_mate_score(const int mate_in_moves) noexcept {
-    if (mate_in_moves > 0) {
-        return 100'000 - (2 * mate_in_moves - 1);
-    }
-    return -100'000 + (-2 * mate_in_moves);
-}
-
-std::string xboard_terminal_result_line(const GameState& state) {
-    if (state.legal_moves().empty()) {
-        if (state.in_check()) {
-            return state.side_to_move() == Color::white ? "0-1 {Black mates}" : "1-0 {White mates}";
-        }
-        return "1/2-1/2 {Stalemate}";
-    }
-    switch (state.draw_status()) {
-    case DrawStatus::automatic_fivefold:
-    case DrawStatus::claimable_threefold:
-        return "1/2-1/2 {Draw by repetition}";
-    case DrawStatus::automatic_seventy_five_move:
-    case DrawStatus::claimable_fifty_move:
-        return "1/2-1/2 {50-move rule}";
-    case DrawStatus::dead_position:
-        return "1/2-1/2 {Insufficient material}";
-    case DrawStatus::none:
-        return "1/2-1/2 {Draw}";
-    }
-    return "1/2-1/2 {Draw}";
 }
 
 // Emits the terminal/no-move reply matching the active wire protocol.
@@ -417,61 +235,6 @@ SearchLimits parse_protocol_go_limits(const UciController::ProtocolMode mode,
     return uci::parse_go_limits(translated.str());
 }
 
-bool parse_uint64(const std::string& value, std::uint64_t& parsed) {
-    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
-    return error == std::errc{} && end == value.data() + value.size();
-}
-
-bool parse_boolean(const std::string& value, bool& parsed) {
-    std::string normalized;
-    normalized.reserve(value.size());
-    for (const unsigned char character : value) {
-        normalized.push_back(static_cast<char>(std::tolower(character)));
-    }
-
-    if (normalized == "true") {
-        parsed = true;
-        return true;
-    }
-    if (normalized == "false") {
-        parsed = false;
-        return true;
-    }
-    return false;
-}
-
-bool parse_random_seed(const std::string& value, std::uint32_t& seed) {
-    std::uint64_t parsed = 0;
-    if (!parse_uint64(value, parsed) || parsed > kMaximumRandomSeed) {
-        return false;
-    }
-    seed = static_cast<std::uint32_t>(parsed);
-    return true;
-}
-
-bool parse_milliseconds(const std::string& value, std::chrono::milliseconds& duration) {
-    std::uint64_t parsed = 0;
-    using Rep = std::chrono::milliseconds::rep;
-    if (!parse_uint64(value, parsed) ||
-        parsed > static_cast<std::uint64_t>(std::numeric_limits<Rep>::max())) {
-        return false;
-    }
-    duration = std::chrono::milliseconds{static_cast<Rep>(parsed)};
-    return true;
-}
-
-std::uint32_t root_ply(const GameState& state) {
-    const std::uint32_t completed_fullmoves = static_cast<std::uint32_t>(state.fullmove_number() - 1);
-    return completed_fullmoves * 2 + (state.side_to_move() == Color::black ? 1U : 0U);
-}
-
-std::string format_eval_tokens(const MoveScoreEval& eval) {
-    if (eval.mate.has_value()) {
-        return "mate " + std::to_string(*eval.mate);
-    }
-    return "cp " + std::to_string(eval.score_cp);
-}
-
 std::string format_annotate_move_line(const MoveAnnotationResult& result) {
     std::ostringstream line;
     line << std::fixed;
@@ -522,193 +285,6 @@ std::string format_annotate_summary_line(const char* side_name,
          << " miss " << summary.miss
          << " blunder " << summary.blunder;
     return line.str();
-}
-
-struct Wdl {
-    int win = 0;
-    int draw = 0;
-    int loss = 0;
-};
-
-std::string debug_quoted(std::string_view value) {
-    std::string result;
-    result.reserve(value.size() + 2);
-    result.push_back('"');
-    for (const char character : value) {
-        switch (character) {
-        case '\\':
-        case '"':
-            result.push_back('\\');
-            result.push_back(character);
-            break;
-        case '\b':
-            result += "\\b";
-            break;
-        case '\f':
-            result += "\\f";
-            break;
-        case '\n':
-            result += "\\n";
-            break;
-        case '\r':
-            result += "\\r";
-            break;
-        case '\t':
-            result += "\\t";
-            break;
-        default:
-            if (static_cast<unsigned char>(character) < 0x20U) {
-                std::ostringstream escaped;
-                escaped << "\\u" << std::hex << std::setw(4) << std::setfill('0')
-                        << static_cast<unsigned int>(static_cast<unsigned char>(character));
-                result += escaped.str();
-            } else {
-                result.push_back(character);
-            }
-            break;
-        }
-    }
-    result.push_back('"');
-    return result;
-}
-
-std::string debug_square(Square square) {
-    return square.index() < Square::kInvalid ? square.uci() : "-";
-}
-
-std::string debug_castling(std::uint8_t rights) {
-    std::string result;
-    if ((rights & kWhiteKingSideCastling) != 0) result += 'K';
-    if ((rights & kWhiteQueenSideCastling) != 0) result += 'Q';
-    if ((rights & kBlackKingSideCastling) != 0) result += 'k';
-    if ((rights & kBlackQueenSideCastling) != 0) result += 'q';
-    return result.empty() ? "-" : result;
-}
-
-std::string debug_hex(std::uint64_t value) {
-    std::ostringstream stream;
-    stream << std::hex << std::setw(16) << std::setfill('0') << value;
-    return stream.str();
-}
-
-std::uint64_t legal_move_digest(const std::vector<Move>& legal_moves) {
-    std::vector<std::string> coordinates;
-    coordinates.reserve(legal_moves.size());
-    for (const Move& move : legal_moves) {
-        coordinates.push_back(move.uci());
-    }
-    std::sort(coordinates.begin(), coordinates.end());
-
-    std::uint64_t digest = 1469598103934665603ULL;
-    for (const std::string& coordinate : coordinates) {
-        for (const unsigned char character : coordinate) {
-            digest ^= character;
-            digest *= 1099511628211ULL;
-        }
-        digest ^= static_cast<unsigned char>('\n');
-        digest *= 1099511628211ULL;
-    }
-    return digest;
-}
-
-template <typename T>
-std::string debug_optional(const std::optional<T>& value) {
-    return value.has_value() ? std::to_string(*value) : "-";
-}
-
-std::string debug_limits(const SearchLimits& limits) {
-    std::ostringstream stream;
-    stream << "depth=" << debug_optional(limits.depth)
-           << ",nodes=" << debug_optional(limits.nodes)
-           << ",movetime_ms=" <<
-        (limits.movetime.has_value() ? std::to_string(limits.movetime->count()) : "-")
-           << ",wtime_ms=" <<
-        (limits.white_clock.has_value() ? std::to_string(limits.white_clock->remaining.count()) : "-")
-           << ",btime_ms=" <<
-        (limits.black_clock.has_value() ? std::to_string(limits.black_clock->remaining.count()) : "-")
-           << ",winc_ms=" <<
-        (limits.white_clock.has_value() ? std::to_string(limits.white_clock->increment.count()) : "-")
-           << ",binc_ms=" <<
-        (limits.black_clock.has_value() ? std::to_string(limits.black_clock->increment.count()) : "-")
-           << ",movestogo=" << debug_optional(limits.moves_to_go)
-           << ",infinite=" << (limits.infinite ? "true" : "false")
-           << ",ponder=" << (limits.ponder ? "true" : "false")
-           << ",searchmoves=" << (limits.search_moves_specified ? "true" : "false");
-    if (limits.search_moves_specified) {
-        stream << ",searchmove_list=";
-        for (std::size_t index = 0; index < limits.search_moves.size(); ++index) {
-            if (index != 0) stream << ',';
-            stream << limits.search_moves[index].uci();
-        }
-    }
-    return stream.str();
-}
-
-Wdl score_to_wdl(const SearchInfo& info) noexcept {
-    if (info.exact_wdl.has_value()) {
-        const std::array<int, 3>& triplet = *info.exact_wdl;
-        return Wdl{triplet[0], triplet[1], triplet[2]};
-    }
-    if (info.mate.has_value()) {
-        return *info.mate > 0 ? Wdl{1'000, 0, 0} : Wdl{0, 0, 1'000};
-    }
-    const int score = std::clamp(info.score_cp, -kWdlScoreLimit, kWdlScoreLimit);
-    const int draw = std::max(0, 300 - std::abs(score) / 4);
-    const int decisive = 1'000 - draw;
-    const int win = decisive * (score + kWdlScoreLimit) / (2 * kWdlScoreLimit);
-    return Wdl{win, draw, decisive - win};
-}
-
-std::vector<Move> legal_pv_prefix(const GameState& root, const std::vector<Move>& pv) {
-    GameState position = root;
-    std::vector<Move> prefix;
-    prefix.reserve(pv.size());
-    for (const Move& move : pv) {
-        if (!position.is_legal(move) || !position.make_move(move)) {
-            break;
-        }
-        prefix.push_back(move);
-    }
-    return prefix;
-}
-
-bool parse_annotate_limits(const std::vector<std::string>& tokens, const std::size_t first_index,
-                           SearchLimits& limits, std::string& error) {
-    for (std::size_t index = first_index; index < tokens.size();) {
-        const std::string& token = tokens[index];
-        if (token == "depth") {
-            std::uint64_t parsed = 0;
-            if (index + 1 >= tokens.size() || !parse_uint64(tokens[index + 1], parsed) ||
-                parsed == 0 ||
-                parsed > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
-                error = "annotation depth must be positive";
-                return false;
-            }
-            limits.depth = static_cast<int>(parsed);
-            index += 2;
-        } else if (token == "movetime") {
-            std::chrono::milliseconds parsed{};
-            if (index + 1 >= tokens.size() || !parse_milliseconds(tokens[index + 1], parsed)) {
-                error = "annotation movetime must be non-negative";
-                return false;
-            }
-            limits.movetime = parsed;
-            index += 2;
-        } else if (token == "nodes") {
-            std::uint64_t parsed = 0;
-            if (index + 1 >= tokens.size() || !parse_uint64(tokens[index + 1], parsed) ||
-                parsed == 0) {
-                error = "annotation nodes must be positive";
-                return false;
-            }
-            limits.nodes = parsed;
-            index += 2;
-        } else {
-            error = "unsupported annotation limit: " + token;
-            return false;
-        }
-    }
-    return true;
 }
 
 } // namespace
@@ -2083,46 +1659,9 @@ void UciController::handle_annotate(std::istream& command) {
 }
 
 void UciController::handle_display() {
-    std::array<Piece, 64> board{};
-    position_.copy_board_to(board);
-    const std::string fen = position_.fen();
-    const std::uint64_t key = position_.position_key();
-    const bool white_to_move = (position_.side_to_move() == Color::white);
-    const bool checked = position_.in_check();
-
-    auto piece_symbol = [](const Piece piece) noexcept -> char {
-        char symbol = ' ';
-        switch (piece.type) {
-        case PieceType::pawn:   symbol = 'P'; break;
-        case PieceType::knight: symbol = 'N'; break;
-        case PieceType::bishop: symbol = 'B'; break;
-        case PieceType::rook:   symbol = 'R'; break;
-        case PieceType::queen:  symbol = 'Q'; break;
-        case PieceType::king:   symbol = 'K'; break;
-        case PieceType::none:   return ' ';
-        }
-        return piece.color == Color::white ? symbol : static_cast<char>(symbol - 'A' + 'a');
-    };
-
-    std::ostringstream buffer;
-    buffer << "\n +---+---+---+---+---+---+---+---+\n";
-    for (int rank = 7; rank >= 0; --rank) {
-        buffer << " |";
-        for (int file = 0; file < 8; ++file) {
-            const Piece piece = board[static_cast<std::size_t>(rank * 8 + file)];
-            buffer << ' ' << piece_symbol(piece) << " |";
-        }
-        buffer << ' ' << (rank + 1) << "\n +---+---+---+---+---+---+---+---+\n";
-    }
-    buffer << "   a   b   c   d   e   f   g   h\n\n"
-           << "Fen   : " << fen << '\n'
-           << "Key   : " << std::hex << std::setfill('0') << std::setw(16) << key
-           << std::dec << std::setfill(' ') << '\n'
-           << "Side  : " << (white_to_move ? "white" : "black") << '\n'
-           << "Check : " << (checked ? "yes" : "no") << '\n';
-
+    const std::string board = detail::format_ascii_board(position_);
     std::lock_guard lock(output_mutex_);
-    output_ << buffer.str() << std::flush;
+    output_ << board << std::flush;
 }
 
 void UciController::handle_eval() {
@@ -2200,47 +1739,10 @@ void UciController::handle_perft_command(std::istream& command) {
 }
 
 void UciController::handle_compiler() {
-    std::ostringstream buffer;
-    buffer << "Koi " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT << ")\n";
-    buffer << "Compiled by    : ";
-#if defined(_MSC_VER)
-    buffer << "MSVC " << _MSC_VER;
-#elif defined(__apple_build_version__)
-    buffer << "AppleClang " << __clang_major__ << '.' << __clang_minor__ << '.'
-           << __clang_patchlevel__;
-#elif defined(__clang__)
-    buffer << "Clang " << __clang_major__ << '.' << __clang_minor__ << '.'
-           << __clang_patchlevel__;
-#elif defined(__GNUC__)
-    buffer << "GCC " << __GNUC__ << '.' << __GNUC_MINOR__ << '.' << __GNUC_PATCHLEVEL__;
-#else
-    buffer << "Unknown";
-#endif
-    buffer << "\nC++ standard   : C++26\nArchitecture   : ";
-#if defined(__x86_64__) || defined(_M_X64)
-    buffer << "x86_64";
-#elif defined(__aarch64__) || defined(_M_ARM64)
-    buffer << "arm64";
-#else
-    buffer << "64-bit";
-#endif
-    buffer << "\nSIMD / ISA     : ";
-#if defined(KOI_CPU_REQUIRES_AVX512) || defined(__AVX512F__)
-    buffer << "AVX-512";
-#elif defined(KOI_CPU_REQUIRES_AVX2) || defined(__AVX2__)
-    buffer << "AVX2";
-#elif defined(__ARM_NEON)
-    buffer << "NEON";
-#else
-    buffer << "baseline";
-#endif
-#if defined(KOI_PEXT_ATTACKS) || defined(__BMI2__)
-    buffer << " + BMI2 PEXT";
-#endif
-    buffer << '\n';
-
+    const std::string info =
+        detail::format_compiler_info(KOI_ENGINE_BUILD_VERSION, KOI_ENGINE_BUILD_COMMIT);
     std::lock_guard lock(output_mutex_);
-    output_ << buffer.str() << std::flush;
+    output_ << info << std::flush;
 }
 
 void UciController::handle_bench(std::istream& command) {
@@ -2261,25 +1763,6 @@ void UciController::handle_bench(std::istream& command) {
 int UciController::run_bench(int depth) {
     depth = std::clamp(depth, 1, 64);
     stop_and_suppress_active_search();
-
-    static constexpr std::array<std::string_view, 16> kBenchFens{{
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
-        "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
-        "r1bqkb1r/1p2pppp/p1np1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6",
-        "r1bq1rk1/2p1bppp/p1np1n2/1p2p3/4P3/1BP2N2/PP1P1PPP/RNBQR1K1 w - - 0 9",
-        "r2q1rk1/pp2bppp/2n1bn2/3pp3/8/1BP2NP1/PP1P1PBP/RNBQ1RK1 b - - 0 8",
-        "r2qkb1r/pp1n1ppp/2p1pn2/3p4/2PP4/2N2NP1/PP2PPBP/R1BQK2R b KQkq - 0 6",
-        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
-        "2r3k1/1q1nbppp/r3p3/3pP3/pPpP4/P1Q2N2/2RN1PPP/2R4K b - b3 0 23",
-        "r1b1k2r/pp2qppp/2n2n2/2b5/3pP3/2N2N2/PP2BPPP/R1BQ1RK1 w kq - 0 10",
-        "r2q1rk1/pb1nbppp/1p2pn2/2pp4/2PP4/1PN1PN2/PB2BPPP/R2Q1RK1 w - - 0 10",
-        "3r2k1/p4ppp/1q2p3/2n5/4P3/1P3P2/P2Q2PP/3R2K1 w - - 0 24",
-        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
-        "8/5pk1/7p/3p4/3P4/5PP1/5K2/8 w - - 0 40",
-        "4k3/2p2pp1/1p5p/8/3B4/1P3P2/2P2KPP/4b3 w - - 0 30",
-        "8/1P3k2/8/8/8/5K2/6p1/8 w - - 0 55",
-    }};
 
     const std::size_t saved_hash_mb = search_service_.hash_size_mb();
     (void)search_service_.set_hash_size_mb(16);
