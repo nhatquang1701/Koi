@@ -22,6 +22,10 @@ param(
     [string]$Label = 'compare',
     [string]$CandidateOptionsJsonPath = '',
     [string]$BaselineOptionsJsonPath = '',
+    [string]$NnuePath = '',
+    [string]$CandidateNnuePath = '',
+    [string]$BaselineNnuePath = '',
+    [switch]$Hce,
     [ValidateRange(1, 512)]
     [int]$MaxPlies = 512
 )
@@ -109,6 +113,19 @@ Assert-FileExists $OpeningFile 'opening file'
 if (-not [string]::IsNullOrWhiteSpace($TimeControl) -and $MovetimeMs -gt 0) {
     throw 'Choose -TimeControl or -MovetimeMs, not both.'
 }
+if ($Hce -and (-not [string]::IsNullOrWhiteSpace($NnuePath) -or
+               -not [string]::IsNullOrWhiteSpace($CandidateNnuePath) -or
+               -not [string]::IsNullOrWhiteSpace($BaselineNnuePath))) {
+    throw 'Choose -Hce or -NnuePath/-CandidateNnuePath/-BaselineNnuePath, not both.'
+}
+$effectiveCandidateNnue = if (-not [string]::IsNullOrWhiteSpace($CandidateNnuePath)) { $CandidateNnuePath } else { $NnuePath }
+$effectiveBaselineNnue = if (-not [string]::IsNullOrWhiteSpace($BaselineNnuePath)) { $BaselineNnuePath } else { $NnuePath }
+if (-not [string]::IsNullOrWhiteSpace($effectiveCandidateNnue)) {
+    Assert-FileExists $effectiveCandidateNnue 'candidate NNUE network'
+}
+if (-not [string]::IsNullOrWhiteSpace($effectiveBaselineNnue)) {
+    Assert-FileExists $effectiveBaselineNnue 'baseline NNUE network'
+}
 $openingCount = @(Get-Content -LiteralPath $OpeningFile |
     Where-Object { $_ -match '\S' -and $_ -notmatch '^\s*#' }).Count
 if ($openingCount -le 0) {
@@ -145,21 +162,53 @@ if (-not [string]::IsNullOrWhiteSpace($BaselineOptionsJsonPath)) {
 $matchScript = Join-Path $PSScriptRoot 'uci_match.ps1'
 Assert-FileExists $matchScript 'match harness'
 
+function Write-SideOptionsJson {
+    param(
+        [string]$SourceJsonPath,
+        [string]$NnueFilePath,
+        [string]$DestinationPath,
+        [string]$RoleLabel
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SourceJsonPath) -and [string]::IsNullOrWhiteSpace($NnueFilePath)) {
+        return ''
+    }
+    $optionsMap = [ordered]@{}
+    if (-not [string]::IsNullOrWhiteSpace($SourceJsonPath)) {
+        $loaded = Get-Content -LiteralPath (Resolve-Path -LiteralPath $SourceJsonPath).Path -Raw | ConvertFrom-Json
+        foreach ($prop in $loaded.PSObject.Properties) {
+            $optionsMap[$prop.Name] = $prop.Value
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($NnueFilePath)) {
+        $resolvedNnue = (Resolve-Path -LiteralPath $NnueFilePath).Path
+        $existingEvalKey = @($optionsMap.Keys | Where-Object { $_ -ieq 'EvalFile' } | Select-Object -First 1)
+        if ($existingEvalKey.Count -gt 0) {
+            $existingValue = [string]$optionsMap[$existingEvalKey[0]]
+            if (-not [string]::IsNullOrWhiteSpace($existingValue) -and $existingValue -ne $resolvedNnue) {
+                throw "${RoleLabel} options JSON already specifies EvalFile='$existingValue', conflicting with '$resolvedNnue'."
+            }
+            $optionsMap.Remove($existingEvalKey[0])
+        }
+        $optionsMap['EvalFile'] = $resolvedNnue
+    }
+    ($optionsMap | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $DestinationPath -Encoding UTF8
+    return $DestinationPath
+}
+
 $root = [System.IO.Path]::GetFullPath(
     (Join-Path $OutputDirectory ("{0}-{1}" -f $Label, (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))))
 New-Item -ItemType Directory -Path $root -Force | Out-Null
-$candidateOptionsCopy = ''
-$baselineOptionsCopy = ''
-if (-not [string]::IsNullOrWhiteSpace($CandidateOptionsJsonPath)) {
-    $candidateOptionsCopy = Join-Path $root 'candidate-options.json'
-    Copy-Item -LiteralPath (Resolve-Path -LiteralPath $CandidateOptionsJsonPath).Path `
-        -Destination $candidateOptionsCopy
-}
-if (-not [string]::IsNullOrWhiteSpace($BaselineOptionsJsonPath)) {
-    $baselineOptionsCopy = Join-Path $root 'baseline-options.json'
-    Copy-Item -LiteralPath (Resolve-Path -LiteralPath $BaselineOptionsJsonPath).Path `
-        -Destination $baselineOptionsCopy
-}
+$candidateOptionsCopy = Write-SideOptionsJson `
+    -SourceJsonPath $CandidateOptionsJsonPath `
+    -NnueFilePath $effectiveCandidateNnue `
+    -DestinationPath (Join-Path $root 'candidate-options.json') `
+    -RoleLabel 'candidate'
+$baselineOptionsCopy = Write-SideOptionsJson `
+    -SourceJsonPath $BaselineOptionsJsonPath `
+    -NnueFilePath $effectiveBaselineNnue `
+    -DestinationPath (Join-Path $root 'baseline-options.json') `
+    -RoleLabel 'baseline'
 
 function Start-ColorRun([string]$Color) {
     $colorDirectory = Join-Path $root $Color
@@ -272,7 +321,12 @@ if ($TimeControl -ne '') {
 }
 $whiteProcess = $null
 $blackProcess = $null
+$hadPreviousEvaluator = Test-Path Env:\KOI_EVALUATOR
+$previousEvaluator = $env:KOI_EVALUATOR
 try {
+    if ($Hce) {
+        $env:KOI_EVALUATOR = 'hce'
+    }
     $whiteProcess = Start-ColorRun 'white'
     $blackProcess = Start-ColorRun 'black'
     Write-Output "sprt-compare: white pid $($whiteProcess.Id), black pid $($blackProcess.Id)"
@@ -320,6 +374,13 @@ try {
                 }
             } catch {}
             $proc.Dispose()
+        }
+    }
+    if ($Hce) {
+        if ($hadPreviousEvaluator) {
+            $env:KOI_EVALUATOR = $previousEvaluator
+        } else {
+            Remove-Item Env:\KOI_EVALUATOR -ErrorAction SilentlyContinue
         }
     }
 }

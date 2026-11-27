@@ -298,6 +298,12 @@ std::optional<int> parse_cli_options(
     bool cli_hce = false;
     bool cli_nnue = false;
     bool emit_engine_json = false;
+    bool bench_from_cli = false;
+    bool bench_hash_explicit = false;
+    bool bench_threads_explicit = false;
+    bool speedtest_from_cli = false;
+    bool speedtest_threads_explicit = false;
+    bool speedtest_hash_explicit = false;
     constexpr std::size_t kMaximumBenchHashMb = 4'096;
     const std::size_t max_bench_threads = maximum_search_threads();
     const auto collect_trailing_fen = [argc, argv](int& idx,
@@ -471,6 +477,7 @@ std::optional<int> parse_cli_options(
             continue;
         }
         if (arg == "bench" || arg == "--bench") {
+            bench_from_cli = true;
             std::size_t depth = static_cast<std::size_t>(default_bench_depth);
             std::size_t hash_mb = default_bench_hash_mb;
             std::size_t threads = default_bench_threads;
@@ -489,6 +496,7 @@ std::optional<int> parse_cli_options(
                               << "' (expected integer 1.." << kMaximumBenchHashMb << ").\n";
                     return 2;
                 }
+                bench_hash_explicit = true;
             }
             if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
                 const std::string_view next_arg(argv[++index]);
@@ -497,6 +505,7 @@ std::optional<int> parse_cli_options(
                               << "' (expected integer 1.." << max_bench_threads << ").\n";
                     return 2;
                 }
+                bench_threads_explicit = true;
             }
             out.bench_depth = static_cast<int>(depth);
             out.bench_hash_mb = hash_mb;
@@ -507,6 +516,7 @@ std::optional<int> parse_cli_options(
             continue;
         }
         if (arg == "speedtest" || arg == "--speedtest") {
+            speedtest_from_cli = true;
             std::size_t threads = out.speedtest_threads;
             std::size_t hash_mb = out.speedtest_hash_mb;
             std::size_t seconds = static_cast<std::size_t>(out.speedtest_seconds);
@@ -517,6 +527,7 @@ std::optional<int> parse_cli_options(
                               << "' (expected integer 1.." << max_bench_threads << ").\n";
                     return 2;
                 }
+                speedtest_threads_explicit = true;
             }
             if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
                 const std::string_view next_arg(argv[++index]);
@@ -525,6 +536,7 @@ std::optional<int> parse_cli_options(
                               << "' (expected integer 1.." << kMaximumBenchHashMb << ").\n";
                     return 2;
                 }
+                speedtest_hash_explicit = true;
             }
             if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
                 const std::string_view next_arg(argv[++index]);
@@ -665,6 +677,27 @@ std::optional<int> parse_cli_options(
         write_engine_json(argc, argv, version, out.initial_threads.value_or(1),
                           out.initial_hash_mb.value_or(512));
         return 0;
+    }
+    if (bench_from_cli) {
+        if (!bench_hash_explicit && out.initial_hash_mb.has_value()) {
+            out.bench_hash_mb = *out.initial_hash_mb;
+            set_environment_value("KOI_BENCH_HASH", std::to_string(out.bench_hash_mb));
+        }
+        if (!bench_threads_explicit && out.initial_threads.has_value()) {
+            out.bench_threads = *out.initial_threads;
+            set_environment_value("KOI_BENCH_THREADS", std::to_string(out.bench_threads));
+        }
+    }
+    if (speedtest_from_cli) {
+        if (!speedtest_threads_explicit && out.initial_threads.has_value()) {
+            out.speedtest_threads = *out.initial_threads;
+            set_environment_value("KOI_SPEEDTEST_THREADS",
+                                  std::to_string(out.speedtest_threads));
+        }
+        if (!speedtest_hash_explicit && out.initial_hash_mb.has_value()) {
+            out.speedtest_hash_mb = *out.initial_hash_mb;
+            set_environment_value("KOI_SPEEDTEST_HASH", std::to_string(out.speedtest_hash_mb));
+        }
     }
     if (out.commands.empty()) {
         if (const char* env_commands = std::getenv("KOI_CLI_COMMANDS");

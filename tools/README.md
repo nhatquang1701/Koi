@@ -376,7 +376,11 @@ Use `--depth`, `--movetime-ms`, or `--nodes` for fixed limits,
 `--koi-eval-file` / `--koi-evaluator-mode` to pin and attest Koi's evaluator,
 `--paired-colors` to alternate Koi's color across game pairs, and use
 `--fen-file name | six-field FEN` through the existing harness for named FEN
-positions. Run balanced conditions with Koi White and Koi Black, and record the
+positions. For paired two-color SPRT gates (`sprt_compare.ps1`), pass `-NnuePath`
+(or `-CandidateNnuePath` / `-BaselineNnuePath`) or `-Hce` alongside `-TimeControl`,
+`-MovetimeMs`, or `-Nodes`. For end-to-end release candidate verification (`tools/build/release_verify.ps1`),
+`-NnuePath` is validated upfront, exported as `KOI_NNUE_PATH`, and forwarded as
+`-KoiEvalFile` (with macOS arm64 CMake flags applied automatically). Run balanced conditions with Koi White and Koi Black, and record the
 exact engine paths, options, time control, opening/FEN input, and generated JSON
 and PGN together in the repository-local `artifacts/matches` directory.
 

@@ -456,6 +456,59 @@ void test_bench_and_protocol_bounds() {
                        "KOI_SPEEDTEST* variables must roundtrip across empty argv");
 
     env.clear_all();
+    koi::cli::CliOptions flag_bench_opts;
+    koi::test::require(
+        !invoke_parse({"--hash", "64", "--threads", "1", "bench", "4"}, flag_bench_opts)
+             .has_value() &&
+            flag_bench_opts.bench_depth == 4 && flag_bench_opts.bench_hash_mb == 64 &&
+            flag_bench_opts.bench_threads == 1,
+        "--hash and --threads must populate omitted bench positional arguments");
+    koi::cli::CliOptions flag_bench_reexec;
+    koi::test::require(!invoke_parse({}, flag_bench_reexec).has_value() &&
+                           flag_bench_reexec.bench_depth == 4 &&
+                           flag_bench_reexec.bench_hash_mb == 64 &&
+                           flag_bench_reexec.bench_threads == 1,
+                       "--hash/--threads fallback for bench must roundtrip across empty argv");
+
+    env.clear_all();
+    koi::cli::CliOptions pos_bench_opts;
+    koi::test::require(
+        !invoke_parse({"--hash", "64", "bench", "4", "32", "1"}, pos_bench_opts).has_value() &&
+            pos_bench_opts.bench_depth == 4 && pos_bench_opts.bench_hash_mb == 32 &&
+            pos_bench_opts.bench_threads == 1,
+        "explicit positional bench hash must override --hash");
+    koi::cli::CliOptions pos_bench_reexec;
+    koi::test::require(!invoke_parse({}, pos_bench_reexec).has_value() &&
+                           pos_bench_reexec.bench_hash_mb == 32,
+                       "positional bench hash override must survive empty-argv re-exec");
+
+    env.clear_all();
+    koi::cli::CliOptions flag_speed_opts;
+    koi::test::require(
+        !invoke_parse({"--hash=32", "--threads=1", "speedtest"}, flag_speed_opts).has_value() &&
+            flag_speed_opts.speedtest && flag_speed_opts.speedtest_hash_mb == 32 &&
+            flag_speed_opts.speedtest_threads == 1,
+        "--hash= and --threads= must populate omitted speedtest positional arguments");
+    koi::cli::CliOptions flag_speed_reexec;
+    koi::test::require(!invoke_parse({}, flag_speed_reexec).has_value() &&
+                           flag_speed_reexec.speedtest &&
+                           flag_speed_reexec.speedtest_hash_mb == 32 &&
+                           flag_speed_reexec.speedtest_threads == 1,
+                       "--hash/--threads fallback for speedtest must roundtrip across empty argv");
+
+    env.clear_all();
+    koi::cli::CliOptions pos_speed_opts;
+    koi::test::require(
+        !invoke_parse({"--hash=64", "speedtest", "1", "16", "2"}, pos_speed_opts).has_value() &&
+            pos_speed_opts.speedtest && pos_speed_opts.speedtest_hash_mb == 16 &&
+            pos_speed_opts.speedtest_threads == 1 && pos_speed_opts.speedtest_seconds == 2,
+        "explicit positional speedtest hash must override --hash=");
+    koi::cli::CliOptions pos_speed_reexec;
+    koi::test::require(!invoke_parse({}, pos_speed_reexec).has_value() &&
+                           pos_speed_reexec.speedtest_hash_mb == 16,
+                       "positional speedtest hash override must survive empty-argv re-exec");
+
+    env.clear_all();
     koi::cli::CliOptions opt_flags;
     koi::test::require(!invoke_parse({"--options"}, opt_flags).has_value() && opt_flags.options,
                        "--options must enable options readout");

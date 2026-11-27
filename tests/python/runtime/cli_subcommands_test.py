@@ -322,6 +322,18 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Nodes searched  :", speedtest.stdout)
         self.assertIn("Nodes/second    :", speedtest.stdout)
 
+        speedtest_hash_flag = self._run(["--hce", "--hash", "24", "speedtest", "1"], disable_nnue=True)
+        self.assertEqual(speedtest_hash_flag.returncode, 0, speedtest_hash_flag.stderr)
+        self.assertEqual(speedtest_hash_flag.stderr, "")
+        self.assertIn("Hash (MB)       : 24", speedtest_hash_flag.stdout)
+
+        speedtest_pos_wins = self._run(
+            ["--hce", "--hash", "64", "speedtest", "1", "16", "1"], disable_nnue=True
+        )
+        self.assertEqual(speedtest_pos_wins.returncode, 0, speedtest_pos_wins.stderr)
+        self.assertEqual(speedtest_pos_wins.stderr, "")
+        self.assertIn("Hash (MB)       : 16", speedtest_pos_wins.stdout)
+
         bad_speedtest = self._run(["--hce", "speedtest", "0"], disable_nnue=True)
         self.assertEqual(bad_speedtest.returncode, 2, bad_speedtest.stdout)
         self.assertIn("invalid speedtest threads", bad_speedtest.stderr)

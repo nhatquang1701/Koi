@@ -9,6 +9,8 @@ JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 EXE ?=
 EVALFILE ?= $(wildcard artifacts/networks/koi-v9-hm10-h256-official.nnue)
 FEN ?=
+HASH ?=
+THREADS ?=
 BENCH_DEPTH ?= 10
 PGO_BENCH_DEPTH ?= 10
 BENCH_HASH ?= 16
@@ -25,7 +27,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release tools profile-build bench speedtest eval nnue options version compiler perft d smoke test docs clean help
+.PHONY: all release tools profile-build bench speedtest eval nnue options engine-json version compiler perft d smoke test docs clean help
 
 all: release
 
@@ -111,6 +113,12 @@ eval: release
 version: release
 	"$(BUILD_DIR)/koi-engine" version
 
+engine-json: release
+	@ARGS="--engine-json"; \
+	if [ -n "$(THREADS)" ]; then ARGS="--threads $(THREADS) $$ARGS"; fi; \
+	if [ -n "$(HASH)" ]; then ARGS="--hash $(HASH) $$ARGS"; fi; \
+	"$(BUILD_DIR)/koi-engine" $$ARGS
+
 compiler: release
 	"$(BUILD_DIR)/koi-engine" compiler
 
@@ -157,6 +165,7 @@ help:
 	@echo "  make eval [EVALFILE=...] [FEN=...]     Evaluate startpos or FEN with NNUE/HCE"
 	@echo "  make nnue [EVALFILE=...]               Inspect NNUE container metadata and payload SHA-256"
 	@echo "  make options [EVALFILE=...]            Print active engine configuration & UCI options"
+	@echo "  make engine-json [THREADS=N] [HASH=MB] Print En Croissant / Pawn Appetit JSON profile"
 	@echo "  make version                           Build and print engine version banner"
 	@echo "  make compiler                          Build and print compiler / ISA metadata"
 	@echo "  make perft [PERFT_DEPTH=5] [FEN=...]   Build and run timed perft divide"

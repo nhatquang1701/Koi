@@ -74,12 +74,29 @@ function Start-Process {
           [string]$RedirectStandardError)
     return [pscustomobject]@{ arguments = @($ArgumentList) }
 }
+$candidateOptionsCopy = ''
+$baselineOptionsCopy = ''
 $invocation = Start-ColorRun 'white'
 $arguments = @($invocation.arguments)
 if (($arguments -join ' ') -notmatch '(?:^| )-KoiRandomSeed 0(?: |$)' -or
     ($arguments -join ' ') -notmatch '(?:^| )-OpponentOwnBook false(?: |$)') {
     throw 'Baseline comparison must use equal deterministic seed and disabled-book settings.'
 }
+foreach ($paramName in @('NnuePath', 'CandidateNnuePath', 'BaselineNnuePath', 'Hce')) {
+    $foundParam = @($ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq $paramName })
+    if ($foundParam.Count -ne 1) {
+        throw "sprt_compare.ps1 must declare parameter -$paramName."
+    }
+}
+$candidateOptionsCopy = 'cand-opts.json'
+$baselineOptionsCopy = 'base-opts.json'
+$withOptionsArgs = @((Start-ColorRun 'white').arguments) -join ' '
+if ($withOptionsArgs -notmatch '(?:^| )-KoiOptionsJsonPath "cand-opts\.json"(?: |$)' -or
+    $withOptionsArgs -notmatch '(?:^| )-OpponentOptionsJsonPath "base-opts\.json"(?: |$)') {
+    throw "Start-ColorRun must forward -KoiOptionsJsonPath and -OpponentOptionsJsonPath; got: $withOptionsArgs"
+}
+$candidateOptionsCopy = ''
+$baselineOptionsCopy = ''
 
 Write-Output '[3/5] verify default Games=1 and Get-MoveSequenceHash'
 # Default Games=1: repeated games per opening and color are exactly what the
