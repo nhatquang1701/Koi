@@ -3426,7 +3426,8 @@ void test_uci_support_helpers_direct() {
 
     const koi::PositionConsistencySnapshot snap = startpos.consistency_snapshot();
     const std::string pos_json = format_position_debug_json(
-        7, "position startpos", snap, koi::Square::none(), legal_move_digest(snap.native_legal_moves));
+        7, "position startpos", snap, startpos.en_passant_square(),
+        legal_move_digest(startpos.legal_moves()));
     require(pos_json.find("\"generation\":7") != std::string::npos &&
                 pos_json.find("\"legal_move_count\":20") != std::string::npos &&
                 pos_json.find("info string") == std::string::npos,
