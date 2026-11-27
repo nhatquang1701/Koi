@@ -62,6 +62,7 @@ Koi discovers its assets automatically with zero config files:
 koi-engine bench                  # OpenBench-compatible deterministic benchmark
 koi-engine speedtest 1 128 3      # Timed multi-position NPS throughput check
 koi-engine compiler               # Print toolchain, C++ standard, and ISA capabilities
+koi-engine nnue [path]            # Inspect NNUE container version, shape, and SHA-256 checksum
 koi-engine d [fen]                # Print ASCII board, FEN, Zobrist key, and move count
 koi-engine key [fen]              # Print position, pawn, and Polyglot hash keys
 koi-engine moves [fen]            # List sorted legal UCI moves

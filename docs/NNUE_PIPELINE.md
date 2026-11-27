@@ -34,7 +34,7 @@ flowchart TD
 | Bullet packing | `tools/nnue/to_bullet.py` | Binary Bullet dataset (with WDL outcome blend) |
 | GPU training (primary) | `tools/nnue/run_bullet.py` (`tools/nnue/bullet_train/`) | HalfKA-HM v9 SCReLU checkpoint & quantized `.nnue` |
 | CPU training (fallback) | `tools/measurement/koi_dataset.py` + `train_nnue_koi.py` | Float `.pt` checkpoint + quantized `.nnue` |
-| Unit & throughput check | `nnue_boundary_tests`, `koi-bench --nnue` | Scalar/AVX2/NEON parity and NPS validation |
+| Unit & throughput check | `nnue_boundary_tests`, `koi-engine nnue`, `koi-bench --nnue` | Scalar/AVX2/NEON parity, checksum verification, and NPS validation |
 | Equal-time SPRT gate | `tools/nnue/net_match.ps1` / `uci_match.ps1` | Paired color-reversed match & pentanomial LLR |
 | Absolute Elo check | `tools/measurement/elo_estimate.py --koi-eval-file` | Stockfish `UCI_Elo` anchor ladder report |
 

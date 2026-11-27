@@ -21,6 +21,9 @@ koi-engine --speedtest [threads [hash [seconds]]]
 koi-engine compiler
 koi-engine --compiler
 
+# Native NNUE container metadata & SHA-256 payload checksum verifier
+koi-engine nnue [path]
+
 # Timed perft divide from startpos or custom FEN (depth 1..10; no NNUE network required)
 koi-engine perft <depth> [fen]
 
@@ -51,7 +54,7 @@ koi-engine --help         # or -h
 ```
 
 !!! note "Zero-network subcommands, unquoted FENs & batch mode"
-    `compiler`, `perft`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before NNUE network discovery and work without a `koi.nnue` file. Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci>...]` sequences (for example `koi-engine d moves e2e4 e7e5 g1f3` or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make smoke`, `make speedtest`, `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
+    `compiler`, `nnue`, `perft`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci>...]` sequences (for example `koi-engine d moves e2e4 e7e5 g1f3` or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make smoke`, `make speedtest`, `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
 
 ### Example Outputs
 

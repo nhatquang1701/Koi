@@ -82,6 +82,7 @@ koi-engine speedtest [threads [hash [seconds]]]
 
 # One-shot diagnostics: compiler/ISA, board/keys/moves/flip/book/TB/SEE (zero-network), eval, and timed perft divide
 koi-engine compiler
+koi-engine nnue [path]                 # verify container metadata & payload SHA-256
 koi-engine d [fen]                     # also accepts [startpos|fen] [moves <uci>...] (e.g. d moves e2e4 e7e5)
 koi-engine key [fen]
 koi-engine moves [fen]
