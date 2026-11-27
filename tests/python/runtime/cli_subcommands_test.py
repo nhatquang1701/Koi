@@ -164,6 +164,31 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(moves_out.returncode, 0, moves_out.stderr)
         self.assertIn("Legal moves (20): a2a3 ", moves_out.stdout)
 
+        moves_san = self._run(["moves", "--san"], disable_nnue=True)
+        self.assertEqual(moves_san.returncode, 0, moves_san.stderr)
+        self.assertEqual(
+            moves_san.stdout.strip(),
+            "Legal moves (20): Na3 Nc3 Nf3 Nh3 a3 a4 b3 b4 c3 c4 d3 d4 e3 e4 f3 f4 g3 g4 h3 h4",
+        )
+
+        mate_moves_san = self._run(
+            ["moves", "--san", "moves", "f3", "e5", "g4", "Qh4#"],
+            disable_nnue=True,
+        )
+        self.assertEqual(mate_moves_san.returncode, 0, mate_moves_san.stderr)
+        self.assertEqual(mate_moves_san.stdout.strip(), "Legal moves (0): (none)")
+
+        interactive_san_annot = self._run(
+            ["--hce", "-c", "moves san", "-c", "makemove e4 e5 Nf3", "-c", "annotate game depth 1"],
+            disable_nnue=True,
+        )
+        self.assertEqual(interactive_san_annot.returncode, 0, interactive_san_annot.stderr)
+        self.assertEqual(interactive_san_annot.stderr, "")
+        self.assertIn("Legal moves (20): Na3 Nc3 Nf3 Nh3 ", interactive_san_annot.stdout)
+        self.assertIn("info string annotate move e2e4 ", interactive_san_annot.stdout)
+        self.assertIn("info string annotate summary white ", interactive_san_annot.stdout)
+        self.assertIn("info string annotate summary black ", interactive_san_annot.stdout)
+
         mate_moves = self._run(["moves", "8/8/8/8/8/6K1/5Q2/7k b - - 0 1"], disable_nnue=True)
         self.assertEqual(mate_moves.returncode, 0, mate_moves.stderr)
         self.assertEqual(mate_moves.stdout.strip(), "Legal moves (0): (none)")

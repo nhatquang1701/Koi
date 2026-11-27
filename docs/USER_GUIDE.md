@@ -116,10 +116,7 @@ clear message instead of executing an unsupported instruction. Set
 unknown values keep the automatic behavior). On Windows the selector launches
 the sibling as a child process, forwards its exit code, and a job object kills
 the child if the parent disappears; on Linux it `execv`s the sibling so the
-process image is replaced. On macOS arm64 there are no AVX siblings, so the
-baseline `koi-engine` runs directly. All other developer tools (`koi-bench`,
-`koi-replay`, `koi-perft`, `koi-eval-features`) are built with AVX2 on Windows
-and Linux x86-64 and as baseline binaries on macOS arm64.
+process image is replaced. On macOS arm64 there are no AVX siblings, so the baseline `koi-engine` runs directly. All other developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`, `koi-nnue-fixture`) are built with AVX2 on Windows and Linux x86-64 and as baseline binaries on macOS arm64.
 
 For an independently reproducible release gate, run the checked-in harness from
 an x64 Visual Studio developer shell. It configures and builds fresh canonical
@@ -148,27 +145,29 @@ From the configured build directory:
 
     ```powershell
     .\build\release\koi-perft.exe 4
+    .\build\release\koi-perft.exe --suite
     .\build\release\koi-perft.exe --divide 3 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
     .\build\release\koi-bench.exe --nnue .\artifacts\networks\koi-v9-hm10-h256-official.nnue --threads 4 --speed 100 --timed
     .\build\release\koi-bench.exe --nnue .\artifacts\networks\koi-v9-hm10-h256-official.nnue --optional --profile-json .\artifacts\verification\optional-strength.json
     .\build\release\koi-bench.exe --nnue .\artifacts\networks\koi-v9-hm10-h256-official.nnue --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json .\artifacts\verification\steady-state.json
-    .\build\release\koi-replay.exe startpos moves e2e4 e7e5 g1f3
+    .\build\release\koi-replay.exe --pgn startpos moves e4 e5 Nf3
     ```
 
 === "Linux / macOS (Bash)"
 
     ```bash
     ./build/release/koi-perft 4
+    ./build/release/koi-perft --suite
     ./build/release/koi-perft --divide 3 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
     ./build/release/koi-bench --nnue ./artifacts/networks/koi-v9-hm10-h256-official.nnue --threads 4 --speed 100 --timed
     ./build/release/koi-bench --nnue ./artifacts/networks/koi-v9-hm10-h256-official.nnue --optional --profile-json ./artifacts/verification/optional-strength.json
     ./build/release/koi-bench --nnue ./artifacts/networks/koi-v9-hm10-h256-official.nnue --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json ./artifacts/verification/steady-state.json
-    ./build/release/koi-replay startpos moves e2e4 e7e5 g1f3
+    ./build/release/koi-replay --pgn startpos moves e4 e5 Nf3
     ```
 
-`koi-perft` counts legal nodes from `startpos` (or `[startpos|fen [moves <uci>...]]`) at
+`koi-perft` counts legal nodes from `startpos` (or `[startpos|fen [moves <uci|san>...]]`) at
 the given non-negative depth using bulk counting and mirror-detached root traversal (`--divide` prints per-move counts, elapsed time,
-and NPS; pass `--help` on `koi-perft`, `koi-replay`, or `koi-bench` for full
+and NPS; `--suite` verifies all 6 CPW depth-4 positions; pass `--help` on `koi-perft`, `koi-replay`, `koi-bench`, `koi-eval-features`, or `koi-nnue-fixture` for full
 usage). `koi-bench` runs the 64-position fixed-depth tactical hard gate and
 writes only its deterministic benchmark report to stdout by default (`--nnue <path>`
 selects the NNUE weights or `--hce` selects the built-in classical evaluator).

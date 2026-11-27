@@ -87,7 +87,7 @@ koi-engine d [fen]                     # also accepts [startpos|fen] [moves <uci
 koi-engine fen [fen]                   # print six-field FEN after optional move sequence
 koi-engine epd [fen]                   # print standard EPD (hmvc/fmvn) for startpos, FEN, or moves sequence
 koi-engine key [fen]
-koi-engine moves [fen]
+koi-engine moves [--san] [fen]         # sorted legal moves in UCI or FIDE SAN notation
 koi-engine pgn [fen]                   # export position/moves as FIDE PGN
 koi-engine flip [fen]
 koi-engine book [fen]                  # optional --book <path>
@@ -118,7 +118,7 @@ Inside an interactive session (`koi-engine`):
 | `fen` | Prints the six-field FEN of the current position |
 | `epd` | Prints standard EPD (`hmvc`/`fmvn`) of the current position |
 | `key` | Prints the hexadecimal Zobrist position, pawn, and Polyglot book keys |
-| `moves` | Lists all sorted legal moves in UCI coordinate notation |
+| `moves [san]` | Lists all sorted legal moves in UCI coordinate notation (or FIDE SAN with `san`) |
 | `book` | Probes active Polyglot opening book weights and percentages for the position |
 | `tb` | Probes active Syzygy tablebases for root WDL outcome and best moves |
 | `eval` | Prints active NNUE/HCE metadata, static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
@@ -128,6 +128,7 @@ Inside an interactive session (`koi-engine`):
 | `undo [plies]` | Steps back `N` plies (default `1`) in the current position's move history |
 | `history` | Prints the position origin (`startpos` or FEN), ply count, UCI moves, FIDE SAN movetext, and full `position ...` command |
 | `pgn` | Exports the current position and move history as FIDE PGN (Seven Tag Roster, SAN movetext, result) |
+| `annotate <move|game>` | Classifies a UCI/SAN move or current game history with accuracy %, centipawn loss, and NAG glyphs |
 | `see <move>` | Computes the bitboard static exchange evaluation (SEE) of a legal UCI or FIDE SAN move in centipawns |
 | `compiler` | Prints version, git commit, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`) |
 | `perft <depth>` / `go perft <depth>` | Runs an interruptible perft divide (`depth 1..10`) from the current position |

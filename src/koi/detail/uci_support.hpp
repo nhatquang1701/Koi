@@ -151,6 +151,7 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] std::string format_ascii_board(const GameState& position);
 [[nodiscard]] std::string format_key_info(const GameState& position);
 [[nodiscard]] std::string format_legal_moves(const GameState& position);
+[[nodiscard]] std::string format_legal_moves_san(const GameState& position);
 [[nodiscard]] std::string format_book_entries(
     std::string_view book_name, const std::vector<BookChoice>& entries);
 [[nodiscard]] std::string format_syzygy_probe(

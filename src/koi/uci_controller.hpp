@@ -118,7 +118,7 @@ private:
     void handle_fen();
     void handle_epd();
     void handle_key();
-    void handle_moves();
+    void handle_moves(std::istream& command);
     void handle_book();
     void handle_tb();
     void handle_eval();

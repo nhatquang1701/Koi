@@ -837,29 +837,43 @@ std::optional<std::string_view> syzygy_table_extension(const std::filesystem::pa
     return std::nullopt;
 }
 
-bool table_magic_matches(const std::filesystem::path& file) {
+SyzygyDirectoryStatus validate_table_file_header(const std::filesystem::path& file,
+                                                 const std::string_view extension) {
     static constexpr std::array<unsigned char, 4> kWdlMagic{0x71, 0xE8, 0x23, 0x5D};
     static constexpr std::array<unsigned char, 4> kDtzMagic{0xD7, 0x66, 0x0C, 0xA5};
-    const std::optional<std::string_view> extension = syzygy_table_extension(file);
     const auto* expected = [&]() -> const std::array<unsigned char, 4>* {
-        if (!extension.has_value()) {
-            return nullptr;
-        }
-        if (*extension == ".rtbw") {
+        if (extension == ".rtbw") {
             return &kWdlMagic;
         }
-        if (*extension == ".rtbz") {
+        if (extension == ".rtbz") {
             return &kDtzMagic;
         }
         return nullptr;
     }();
     if (expected == nullptr) {
-        return false;
+        return SyzygyDirectoryStatus::corrupt;
     }
     std::ifstream stream(file, std::ios::binary);
-    std::array<unsigned char, 4> magic{};
-    stream.read(reinterpret_cast<char*>(magic.data()), magic.size());
-    return stream.gcount() == static_cast<std::streamsize>(magic.size()) && magic == *expected;
+    if (!stream) {
+        return SyzygyDirectoryStatus::unreadable;
+    }
+    // Fathom can hang on truncated/corrupt headers or all-zero payloads after
+    // matching magic; validate the 4-byte magic plus non-zero header bytes in
+    // one read pass before handing a directory to tb_init.
+    std::array<unsigned char, 64> header{};
+    stream.read(reinterpret_cast<char*>(header.data()),
+                static_cast<std::streamsize>(header.size()));
+    const std::streamsize count = stream.gcount();
+    if (count <= 4 ||
+        !std::equal(expected->begin(), expected->end(), header.begin())) {
+        return SyzygyDirectoryStatus::corrupt;
+    }
+    for (std::streamsize i = 4; i < count; ++i) {
+        if (header[static_cast<std::size_t>(i)] != 0) {
+            return SyzygyDirectoryStatus::usable;
+        }
+    }
+    return SyzygyDirectoryStatus::corrupt;
 }
 
 } // namespace
@@ -890,17 +904,18 @@ SyzygyDirectoryStatus syzygy_directory_status(const std::filesystem::path& direc
         if (!entry.is_regular_file(entry_error) || entry_error) {
             continue;
         }
-        if (!syzygy_table_extension(entry.path()).has_value()) {
+        const std::optional<std::string_view> extension = syzygy_table_extension(entry.path());
+        if (!extension.has_value()) {
             continue;
         }
         has_table = true;
-        if (!table_magic_matches(entry.path())) {
-            std::ifstream probe(entry.path(), std::ios::binary);
-            return probe ? SyzygyDirectoryStatus::corrupt
-                         : SyzygyDirectoryStatus::unreadable;
+        const SyzygyDirectoryStatus file_status =
+            validate_table_file_header(entry.path(), *extension);
+        if (file_status != SyzygyDirectoryStatus::usable) {
+            return file_status;
         }
         std::error_code size_error;
-        const std::uintmax_t file_size = std::filesystem::file_size(entry.path(), size_error);
+        const std::uintmax_t file_size = entry.file_size(size_error);
         if (!size_error) {
             if (const std::optional<std::string> filename = ascii_path_text(entry.path().filename());
                 filename.has_value()) {
@@ -910,28 +925,6 @@ SyzygyDirectoryStatus syzygy_directory_status(const std::filesystem::path& direc
                     return SyzygyDirectoryStatus::corrupt;
                 }
             }
-        }
-        // A zero-filled payload that happens to match the canonical size used
-        // to be handed to Fathom, where it could hang a probe.  Every real
-        // Syzygy table has non-zero header/data bytes immediately after the
-        // 4-byte magic; reject the all-zero body before mapping the file.
-        std::ifstream payload(entry.path(), std::ios::binary);
-        std::array<unsigned char, 64> payload_bytes{};
-        payload.read(reinterpret_cast<char*>(payload_bytes.data()),
-                     static_cast<std::streamsize>(payload_bytes.size()));
-        const std::streamsize payload_count = payload.gcount();
-        if (payload_count <= 4) {
-            return SyzygyDirectoryStatus::corrupt;
-        }
-        bool payload_nonzero = false;
-        for (std::streamsize i = 4; i < payload_count; ++i) {
-            if (payload_bytes[static_cast<std::size_t>(i)] != 0) {
-                payload_nonzero = true;
-                break;
-            }
-        }
-        if (!payload_nonzero) {
-            return SyzygyDirectoryStatus::corrupt;
         }
     }
     if (error) {

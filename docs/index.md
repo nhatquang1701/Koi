@@ -67,7 +67,7 @@ koi-engine d [fen]                # Print ASCII board, FEN, Zobrist key, move co
 koi-engine fen [fen]              # Print resulting 6-field FEN (e.g. fen moves e4 e5 Nf3)
 koi-engine epd [fen]              # Print standard EPD (hmvc/fmvn) for startpos/FEN/moves
 koi-engine key [fen]              # Print position, pawn, and Polyglot hash keys
-koi-engine moves [fen]            # List sorted legal UCI moves
+koi-engine moves [--san] [fen]    # List sorted legal moves (UCI or FIDE SAN)
 koi-engine pgn [fen]              # Export startpos/FEN/moves as FIDE PGN
 koi-engine flip [fen]             # Toggle side to move when legal (updated FEN)
 koi-engine book [fen]             # Probe active or --book <path> Polyglot weights
@@ -83,7 +83,7 @@ koi-engine --version              # Print version and git build commit
 koi-engine --engine-json          # Print En Croissant / Pawn Appétit JSON profile
 ```
 
-Inside a UCI session, Koi also accepts `d`, `fen`, `epd`, `key`, `moves`, `book`, `tb`, `eval`, `nnue`, `flip`, `makemove <move...>`, `undo [plies]`, `history`, `pgn`, `see <move>`, `options`, `compiler`, `bench [depth [hash [threads]]]`, `speedtest [threads [hash [seconds]]]`, `perft <depth>`, `wait`, and `help` (and one-shot CLI position arguments accept `startpos`, a FEN, or `moves <uci|san>...`). For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
+Inside a UCI session, Koi also accepts `d`, `fen`, `epd`, `key`, `moves [san]`, `book`, `tb`, `eval`, `nnue`, `flip`, `makemove <move...>`, `undo [plies]`, `history`, `pgn`, `annotate <move|game>`, `see <move>`, `options`, `compiler`, `bench [depth [hash [threads]]]`, `speedtest [threads [hash [seconds]]]`, `perft <depth>`, `wait`, and `help` (and one-shot CLI position arguments accept `startpos`, a FEN, or `moves <uci|san>...`). For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
 
 ---
 

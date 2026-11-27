@@ -571,14 +571,21 @@ std::string format_key_info(const GameState& position) {
     return buffer.str();
 }
 
-std::string format_legal_moves(const GameState& position) {
+namespace {
+
+std::string format_legal_moves_impl(const GameState& position, const bool san) {
     std::array<Move, kMaximumLegalMoves> raw_moves{};
     const std::size_t move_count =
         std::min(position.legal_moves_into(raw_moves), raw_moves.size());
     std::vector<std::string> moves;
     moves.reserve(move_count);
     for (std::size_t index = 0; index < move_count; ++index) {
-        moves.push_back(raw_moves[index].uci());
+        if (san) {
+            const std::optional<std::string> text = move_to_san(position, raw_moves[index]);
+            moves.push_back(text.has_value() ? *text : raw_moves[index].uci());
+        } else {
+            moves.push_back(raw_moves[index].uci());
+        }
     }
     std::sort(moves.begin(), moves.end());
     std::ostringstream buffer;
@@ -592,6 +599,16 @@ std::string format_legal_moves(const GameState& position) {
     }
     buffer << '\n';
     return buffer.str();
+}
+
+} // namespace
+
+std::string format_legal_moves(const GameState& position) {
+    return format_legal_moves_impl(position, false);
+}
+
+std::string format_legal_moves_san(const GameState& position) {
+    return format_legal_moves_impl(position, true);
 }
 
 std::string format_book_entries(const std::string_view book_name,
@@ -777,7 +794,7 @@ std::string format_interactive_help() {
         "  fen                                 Print the current position FEN\n"
         "  epd                                 Print standard EPD (with hmvc and fmvn) of the current position\n"
         "  key                                 Print Zobrist position, pawn, and Polyglot hash keys\n"
-        "  moves                               List sorted legal UCI moves from current position\n"
+        "  moves [san]                         List sorted legal UCI (or FIDE SAN) moves from current position\n"
         "  book                                Probe active Polyglot opening book entries\n"
         "  tb                                  Probe active Syzygy tablebases for root WDL/moves\n"
         "  eval                                Show active evaluator, score, WDL, and phase\n"
@@ -787,6 +804,7 @@ std::string format_interactive_help() {
         "  undo [plies]                        Step back N plies (default 1) in position history\n"
         "  history                             Show position origin, move history, and UCI command\n"
         "  pgn                                 Export current position and move history as FIDE PGN\n"
+        "  annotate <move|game> [limits]       Classify a UCI/SAN move or game history with accuracy & CPL\n"
         "  see <move>                          Show static exchange evaluation for a legal UCI/SAN move\n"
         "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"
         "  bench [depth [hash [threads]]]      Run OpenBench-compatible benchmark\n"

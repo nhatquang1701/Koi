@@ -3292,6 +3292,7 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
         "position startpos moves e2e4 e7e5 g1f3\n"
         "epd\n"
         "position startpos\n"
+        "moves san\n"
         "annotate e4 depth 1\n"
         "quit\n");
     std::ostringstream pgn_out;
@@ -3307,9 +3308,10 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                 pgn_raw.find(
                     "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - hmvc 1; fmvn 2;\n") !=
                     std::string::npos &&
+                pgn_raw.find("Legal moves (20): Na3 Nc3 Nf3 Nh3 ") != std::string::npos &&
                 pgn_raw.find("info string annotate move e2e4 ply 0 side white ") !=
                     std::string::npos,
-            "interactive pgn/epd and SAN annotate output mismatch; got:\n" + pgn_raw);
+            "interactive pgn/epd/moves san and SAN annotate output mismatch; got:\n" + pgn_raw);
 }
 
 void test_uci_support_helpers_direct() {
@@ -3431,8 +3433,11 @@ void test_uci_support_helpers_direct() {
         koi::GameState::from_fen("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1");
     require(mate_pos.has_value() &&
                 format_legal_moves(startpos).find("Legal moves (20):") == 0 &&
-                format_legal_moves(*mate_pos) == "Legal moves (0): (none)\n",
-            "format_legal_moves mismatch");
+                format_legal_moves(*mate_pos) == "Legal moves (0): (none)\n" &&
+                format_legal_moves_san(startpos) ==
+                    "Legal moves (20): Na3 Nc3 Nf3 Nh3 a3 a4 b3 b4 c3 c4 d3 d4 e3 e4 f3 f4 g3 g4 h3 h4\n" &&
+                format_legal_moves_san(*mate_pos) == "Legal moves (0): (none)\n",
+            "format_legal_moves / format_legal_moves_san mismatch");
 
     const auto stale_pos =
         koi::GameState::from_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
@@ -3531,7 +3536,7 @@ void test_uci_support_helpers_direct() {
     const std::string help_text = format_interactive_help();
     for (const char* cmd : {"bench", "speedtest", "options", "d", "fen", "epd", "key", "moves",
                             "book", "tb", "eval", "nnue", "flip", "makemove", "undo", "history",
-                            "pgn", "see", "perft", "wait", "compiler", "help"}) {
+                            "pgn", "annotate", "see", "perft", "wait", "compiler", "help"}) {
         require(help_text.find(cmd) != std::string::npos,
                 std::string("format_interactive_help missing command: ") + cmd);
     }

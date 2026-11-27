@@ -112,13 +112,13 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  fen [fen]                                Print six-field FEN for startpos, FEN, or moves sequence\n"
               << "  epd [fen]                                Print standard EPD (hmvc/fmvn) for startpos, FEN, or moves sequence\n"
               << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
-              << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n"
+              << "  moves [--san] [fen]                      List sorted legal UCI (or FIDE SAN) moves from startpos or FEN\n"
               << "  pgn [fen]                                Export startpos, FEN, or moves sequence as FIDE PGN\n"
               << "  flip [fen]                               Toggle side to move if legal and print updated FEN\n"
               << "  book [fen]                               Probe Polyglot opening book entries for position\n"
               << "  tb [fen]                                 Probe Syzygy tablebases for root WDL and best moves\n"
               << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
-              << "Interactive UCI commands also include: d, fen, epd, key, moves, book, tb, eval, nnue, flip, makemove <move...>, undo [plies], history, pgn, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
+              << "Interactive UCI commands also include: d, fen, epd, key, moves [san], book, tb, eval, nnue, flip, makemove <move...>, undo [plies], history, pgn, annotate <move|game>, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
 }
 
 std::optional<GameState> resolve_cli_position(const std::optional<std::string>& fen) {
@@ -394,6 +394,11 @@ std::optional<int> parse_cli_options(
             continue;
         }
         if (arg == "moves") {
+            if (index + 1 < argc && std::string_view(argv[index + 1]) == "--san") {
+                out.moves_san = true;
+                set_environment_value("KOI_CLI_MOVES_SAN", "1");
+                ++index;
+            }
             set_inspect_command(index, out.moves, "KOI_CLI_MOVES");
             continue;
         }
@@ -707,6 +712,7 @@ std::optional<int> parse_cli_options(
     restore_env_flag(out.epd, "KOI_CLI_EPD");
     restore_env_flag(out.key, "KOI_CLI_KEY");
     restore_env_flag(out.moves, "KOI_CLI_MOVES");
+    restore_env_flag(out.moves_san, "KOI_CLI_MOVES_SAN");
     restore_env_flag(out.pgn, "KOI_CLI_PGN");
     restore_env_flag(out.flip, "KOI_CLI_FLIP");
     restore_env_flag(out.book, "KOI_CLI_BOOK");
@@ -831,7 +837,9 @@ std::optional<int> run_zero_network_cli_command(
         } else if (options.key) {
             std::cout << detail::format_key_info(*root) << std::flush;
         } else {
-            std::cout << detail::format_legal_moves(*root) << std::flush;
+            std::cout << (options.moves_san ? detail::format_legal_moves_san(*root)
+                                            : detail::format_legal_moves(*root))
+                      << std::flush;
         }
         return 0;
     }

@@ -217,6 +217,33 @@ bool safe_book_move(const GameState& state, const Move& move, std::uint8_t safet
     return complete && worst_forcing_line >= before - kBookSafetyLossThreshold;
 }
 
+std::vector<BookChoice> collect_book_choices(const GameState& state,
+                                             const std::vector<Record>& records,
+                                             std::uint64_t* total_weight_out = nullptr) {
+    std::vector<BookChoice> choices;
+    choices.reserve(records.size());
+    std::uint64_t total_weight = 0;
+    for (const Record& entry : records) {
+        if (entry.weight == 0) {
+            continue;
+        }
+        const std::optional<Move> move = decode_move(entry.move, state);
+        if (!move.has_value()) {
+            continue;
+        }
+        if (total_weight_out != nullptr &&
+            total_weight > std::numeric_limits<std::uint64_t>::max() - entry.weight) {
+            continue;
+        }
+        choices.push_back(BookChoice{*move, entry.weight, entry.learn});
+        total_weight += entry.weight;
+    }
+    if (total_weight_out != nullptr) {
+        *total_weight_out = total_weight;
+    }
+    return choices;
+}
+
 } // namespace
 
 class OpeningBook::Impl {
@@ -253,9 +280,8 @@ public:
                 return cache;
             }
 
-            std::error_code error;
-            const std::uintmax_t size = std::filesystem::file_size(signature->path, error);
-            if (error || size == 0 || size % 16 != 0 || size > kMaximumBookFileSize) {
+            const std::uintmax_t size = signature->size;
+            if (size == 0 || size % 16 != 0 || size > kMaximumBookFileSize) {
                 return {};
             }
 
@@ -348,19 +374,8 @@ std::optional<BookChoice> OpeningBook::choose(
         return std::nullopt;
     }
 
-    std::vector<BookChoice> choices;
     std::uint64_t total_weight = 0;
-    for (const Record& entry : entries->second) {
-        if (entry.weight == 0) {
-            continue;
-        }
-        const std::optional<Move> move = decode_move(entry.move, state);
-        if (!move || total_weight > std::numeric_limits<std::uint64_t>::max() - entry.weight) {
-            continue;
-        }
-        choices.push_back(BookChoice{*move, entry.weight, entry.learn});
-        total_weight += entry.weight;
-    }
+    std::vector<BookChoice> choices = collect_book_choices(state, entries->second, &total_weight);
     if (choices.empty() || total_weight == 0) {
         return std::nullopt;
     }
@@ -413,18 +428,7 @@ std::vector<BookChoice> OpeningBook::probe_all(const GameState& state) const {
     if (entries == cache->records.end()) {
         return {};
     }
-    std::vector<BookChoice> choices;
-    choices.reserve(entries->second.size());
-    for (const Record& entry : entries->second) {
-        if (entry.weight == 0) {
-            continue;
-        }
-        const std::optional<Move> move = decode_move(entry.move, state);
-        if (!move.has_value()) {
-            continue;
-        }
-        choices.push_back(BookChoice{*move, entry.weight, entry.learn});
-    }
+    std::vector<BookChoice> choices = collect_book_choices(state, entries->second);
     std::sort(choices.begin(), choices.end(), [](const BookChoice& left, const BookChoice& right) {
         if (left.weight != right.weight) {
             return left.weight > right.weight;

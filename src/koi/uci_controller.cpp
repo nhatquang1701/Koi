@@ -762,7 +762,7 @@ int UciController::run() {
         } else if (name == "key") {
             handle_key();
         } else if (name == "moves") {
-            handle_moves();
+            handle_moves(command);
         } else if (name == "book") {
             handle_book();
         } else if (name == "tb") {
@@ -1448,8 +1448,11 @@ void UciController::handle_key() {
     output_ << text << std::flush;
 }
 
-void UciController::handle_moves() {
-    const std::string text = detail::format_legal_moves(position_);
+void UciController::handle_moves(std::istream& command) {
+    std::string mode;
+    const bool san = (command >> mode) && equals_ignore_case(mode, "san");
+    const std::string text =
+        san ? detail::format_legal_moves_san(position_) : detail::format_legal_moves(position_);
     std::lock_guard lock(output_mutex_);
     output_ << text << std::flush;
 }

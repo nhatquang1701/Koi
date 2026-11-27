@@ -14,7 +14,7 @@
 
 namespace {
 
-constexpr std::array<const char*, 35> kCliEnvVars = {
+constexpr std::array<const char*, 36> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_CLI_HASH",
     "KOI_CLI_THREADS",
@@ -28,6 +28,7 @@ constexpr std::array<const char*, 35> kCliEnvVars = {
     "KOI_CLI_EPD",
     "KOI_CLI_KEY",
     "KOI_CLI_MOVES",
+    "KOI_CLI_MOVES_SAN",
     "KOI_CLI_PGN",
     "KOI_CLI_FLIP",
     "KOI_CLI_BOOK",
@@ -444,6 +445,30 @@ void test_unquoted_fen_and_inspection_subcommands() {
             invoke_parse({"-c", "uci", "epd"}, conflict_opts) == std::optional<int>(2) &&
                 !err.str().empty(),
             "--cmd combined with epd must exit 2");
+    }
+    {
+        env.clear_all();
+        koi::cli::CliOptions san_moves_opts;
+        koi::test::require(
+            !invoke_parse({"moves", "--san", "moves", "e4", "e5"}, san_moves_opts).has_value() &&
+                san_moves_opts.moves && san_moves_opts.moves_san &&
+                san_moves_opts.inspect_fen == "moves e4 e5",
+            "moves --san must set moves_san and preserve trailing position spec");
+        koi::cli::CliOptions san_moves_reexec;
+        koi::test::require(
+            !invoke_parse({}, san_moves_reexec).has_value() && san_moves_reexec.moves &&
+                san_moves_reexec.moves_san && san_moves_reexec.inspect_fen == "moves e4 e5",
+            "KOI_CLI_MOVES_SAN must roundtrip across empty argv");
+        std::array<std::string, 1> storage{{"koi-engine"}};
+        std::array<char*, 1> argv{{storage[0].data()}};
+        ScopedStreamCapture out(std::cout);
+        const auto run_exit = koi::cli::run_zero_network_cli_command(
+            san_moves_opts, static_cast<int>(argv.size()), argv.data(), "1.2.0", "testsha");
+        koi::test::require(run_exit == std::optional<int>(0) &&
+                               out.str().find("Legal moves (29):") != std::string::npos &&
+                               out.str().find(" Nf3 ") != std::string::npos &&
+                               out.str().find(" Qh5 ") != std::string::npos,
+                           "zero-network moves --san must list SAN moves; got:\n" + out.str());
     }
     {
         env.clear_all();

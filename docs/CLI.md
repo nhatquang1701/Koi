@@ -33,7 +33,7 @@ koi-engine --display [fen]
 koi-engine fen [fen]
 koi-engine epd [fen]
 koi-engine key [fen]
-koi-engine moves [fen]
+koi-engine moves [--san] [fen]
 koi-engine pgn [fen]
 koi-engine flip [fen]
 koi-engine book [fen]                  # or --book <path> book [fen]
@@ -166,7 +166,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `fen` | — | Print the six-field FEN of the current board |
 | `epd` | — | Print standard EPD (`hmvc`/`fmvn`) of the current board |
 | `key` | — | Print hexadecimal 64-bit Zobrist position, pawn hash, and Polyglot book keys |
-| `moves` | — | List all legal moves sorted lexicographically in UCI coordinate notation |
+| `moves [san]` | — | List all legal moves sorted lexicographically in UCI coordinate notation (or FIDE SAN with `san`) |
 | `book` | — | Probe the active Polyglot book for all legal weighted entries and selection percentages |
 | `tb` | — | Probe loaded Syzygy tablebases for root WDL classification and optimal moves |
 | `eval` | — | Print active evaluator architecture (`NNUE` or `HCE`), score (stm & White), WDL, and phase |
@@ -176,6 +176,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `undo` | `[plies]` | Step back `N` plies (default `1`) in the current position's move history |
 | `history` | — | Print the position origin (`startpos` or FEN), ply count, UCI moves, FIDE SAN movetext (`SAN :`), and full `position ...` command |
 | `pgn` | — | Export the current position and move history as FIDE PGN (Seven Tag Roster, `[SetUp]`/`[FEN]` when custom, SAN movetext, and result) |
+| `annotate` | `<move\|game> [limits]` | Classify a UCI/SAN move or current game history with win-probability accuracy, centipawn loss, and NAG glyphs |
 | `see` | `<move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal UCI or SAN move in centipawns |
 | `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
 | `bench` | `[depth [hash [threads]]]` | Run the 16-position deterministic benchmark inside the active session |
