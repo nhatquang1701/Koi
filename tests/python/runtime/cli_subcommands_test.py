@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import struct
 import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -288,6 +290,44 @@ class CliSubcommandsTest(unittest.TestCase):
         missing_nnue = self._run(["--nnue"], disable_nnue=True)
         self.assertEqual(missing_nnue.returncode, 2)
         self.assertIn("missing path for --nnue", missing_nnue.stderr)
+
+    def test_book_and_tb_cli_subcommands_without_network(self) -> None:
+        key_proc = self._run(["key"], disable_nnue=True)
+        self.assertEqual(key_proc.returncode, 0, key_proc.stderr)
+        polyglot_key = None
+        for line in key_proc.stdout.splitlines():
+            if line.startswith("Polyglot key : "):
+                polyglot_key = int(line.split(":", 1)[1].strip(), 16)
+                break
+        self.assertIsNotNone(polyglot_key, key_proc.stdout)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = pathlib.Path(tmp_dir)
+            book_file = tmp_path / "book.bin"
+            # Polyglot move encoding: (from << 6) | to; e2=12, e4=28.
+            book_file.write_bytes(struct.pack(">QHHI", polyglot_key, (12 << 6) | 28, 100, 0))
+            book_ok = self._run(["--book", str(book_file), "book"], disable_nnue=True)
+            self.assertEqual(book_ok.returncode, 0, book_ok.stderr)
+            self.assertIn("Opening book : book.bin", book_ok.stdout)
+            self.assertIn("e2e4  weight=100 (100.0%)", book_ok.stdout)
+
+            missing_book = self._run(["--book", str(tmp_path / "missing.bin"), "book"], disable_nnue=True)
+            self.assertEqual(missing_book.returncode, 0, missing_book.stderr)
+            self.assertEqual(missing_book.stdout.strip(), "Opening book : unavailable")
+
+            tb_empty = self._run(["--syzygy", str(tmp_path), "tb"], disable_nnue=True)
+            self.assertEqual(tb_empty.returncode, 0, tb_empty.stderr)
+            self.assertEqual(tb_empty.stdout.strip(), "Syzygy : unavailable")
+
+        for cmd in ("book", "tb"):
+            bad_fen = self._run([cmd, "bad fen"], disable_nnue=True)
+            self.assertEqual(bad_fen.returncode, 2)
+            self.assertIn("invalid FEN", bad_fen.stderr)
+
+        for flag in ("--book", "--syzygy"):
+            missing = self._run([flag], disable_nnue=True)
+            self.assertEqual(missing.returncode, 2)
+            self.assertIn("missing path", missing.stderr)
 
     def test_developer_tool_cli_subcommands(self) -> None:
         perft_exe = _resolve_tool("KOI_PERFT_EXE", "koi-perft", self.engine)

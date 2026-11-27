@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -29,8 +30,10 @@
 #include "koi/executable_path.hpp"
 #include "koi/game_state.hpp"
 #include "koi/nnue.hpp"
+#include "koi/opening_book.hpp"
 #include "koi/perft.hpp"
 #include "koi/search_service.hpp"
+#include "koi/syzygy_tablebase.hpp"
 #include "koi/uci_controller.hpp"
 
 namespace {
@@ -168,6 +171,8 @@ void write_help() {
               << "  --protocol <name>                        Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
               << "  --hce                                    Use built-in classical evaluation without a network\n"
               << "  --nnue <path>                            Load NNUE weights from path (overrides KOI_EVALUATOR)\n"
+              << "  --book <path>                            Specify Polyglot book path for one-shot book\n"
+              << "  --syzygy <path>                          Specify Syzygy directory for one-shot tb\n"
               << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n"
               << "  compiler, --compiler                     Print compiler, C++26 standard, and dispatched ISA\n"
               << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
@@ -176,6 +181,8 @@ void write_help() {
               << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
               << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n"
               << "  flip [fen]                               Toggle side to move if legal and print updated FEN\n"
+              << "  book [fen]                               Probe Polyglot opening book entries for position\n"
+              << "  tb [fen]                                 Probe Syzygy tablebases for root WDL and best moves\n"
               << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
               << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait, help\n";
 }
@@ -254,7 +261,11 @@ int main(int argc, char* argv[]) {
     bool cli_key = false;
     bool cli_moves = false;
     bool cli_flip = false;
+    bool cli_book = false;
+    bool cli_tb = false;
     std::optional<std::string> cli_see_move;
+    std::optional<std::string> cli_book_path;
+    std::optional<std::string> cli_syzygy_path;
     std::optional<std::string> cli_eval_fen;
     std::optional<int> cli_perft_depth;
     std::optional<std::string> cli_perft_fen;
@@ -330,6 +341,24 @@ int main(int argc, char* argv[]) {
         if (arg == "flip") {
             cli_flip = true;
             set_environment_value("KOI_CLI_FLIP", "1");
+            collect_trailing_fen(index, cli_inspect_fen);
+            if (cli_inspect_fen.has_value()) {
+                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
+            }
+            continue;
+        }
+        if (arg == "book") {
+            cli_book = true;
+            set_environment_value("KOI_CLI_BOOK", "1");
+            collect_trailing_fen(index, cli_inspect_fen);
+            if (cli_inspect_fen.has_value()) {
+                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
+            }
+            continue;
+        }
+        if (arg == "tb") {
+            cli_tb = true;
+            set_environment_value("KOI_CLI_TB", "1");
             collect_trailing_fen(index, cli_inspect_fen);
             if (cli_inspect_fen.has_value()) {
                 set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
@@ -440,6 +469,44 @@ int main(int argc, char* argv[]) {
             set_environment_value("KOI_EVALUATOR", "nnue");
             continue;
         }
+        if (arg == "--book") {
+            if (index + 1 >= argc || *argv[index + 1] == '\0') {
+                std::cerr << "koi-engine: missing path for --book.\n";
+                return 2;
+            }
+            cli_book_path = argv[++index];
+            set_environment_value("KOI_CLI_BOOK_PATH", *cli_book_path);
+            continue;
+        }
+        if (arg.starts_with("--book=")) {
+            const std::string_view book_arg = arg.substr(std::string_view("--book=").size());
+            if (book_arg.empty()) {
+                std::cerr << "koi-engine: missing path for --book.\n";
+                return 2;
+            }
+            cli_book_path = std::string(book_arg);
+            set_environment_value("KOI_CLI_BOOK_PATH", *cli_book_path);
+            continue;
+        }
+        if (arg == "--syzygy") {
+            if (index + 1 >= argc || *argv[index + 1] == '\0') {
+                std::cerr << "koi-engine: missing path for --syzygy.\n";
+                return 2;
+            }
+            cli_syzygy_path = argv[++index];
+            set_environment_value("KOI_CLI_SYZYGY_PATH", *cli_syzygy_path);
+            continue;
+        }
+        if (arg.starts_with("--syzygy=")) {
+            const std::string_view syzygy_arg = arg.substr(std::string_view("--syzygy=").size());
+            if (syzygy_arg.empty()) {
+                std::cerr << "koi-engine: missing path for --syzygy.\n";
+                return 2;
+            }
+            cli_syzygy_path = std::string(syzygy_arg);
+            set_environment_value("KOI_CLI_SYZYGY_PATH", *cli_syzygy_path);
+            continue;
+        }
         if (arg == "--protocol") {
             if (index + 1 >= argc) {
                 std::cerr << "koi-engine: missing argument for --protocol (expected uci, usi, "
@@ -452,9 +519,10 @@ int main(int argc, char* argv[]) {
         } else {
             std::cerr << "koi-engine: unknown option '" << arg
                       << "' (supported: --version, --help, --engine-json, --protocol <name>, "
-                         "--hce, --nnue <path>, bench [depth [hash [threads]]], compiler, "
-                         "eval [fen], perft <depth> [fen], d [fen], key [fen], moves [fen], "
-                         "flip [fen], see <move> [fen]).\n";
+                         "--hce, --nnue <path>, --book <path>, --syzygy <path>, "
+                         "bench [depth [hash [threads]]], compiler, eval [fen], "
+                         "perft <depth> [fen], d [fen], key [fen], moves [fen], flip [fen], "
+                         "book [fen], tb [fen], see <move> [fen]).\n";
             return 2;
         }
         if (initial_protocol.has_value()) {
@@ -505,6 +573,30 @@ int main(int argc, char* argv[]) {
         if (const char* env_flip = std::getenv("KOI_CLI_FLIP");
             env_flip != nullptr && std::string_view(env_flip) == "1") {
             cli_flip = true;
+        }
+    }
+    if (!cli_book) {
+        if (const char* env_book = std::getenv("KOI_CLI_BOOK");
+            env_book != nullptr && std::string_view(env_book) == "1") {
+            cli_book = true;
+        }
+    }
+    if (!cli_tb) {
+        if (const char* env_tb = std::getenv("KOI_CLI_TB");
+            env_tb != nullptr && std::string_view(env_tb) == "1") {
+            cli_tb = true;
+        }
+    }
+    if (!cli_book_path.has_value()) {
+        if (const char* env_book_path = std::getenv("KOI_CLI_BOOK_PATH");
+            env_book_path != nullptr && *env_book_path != '\0') {
+            cli_book_path = env_book_path;
+        }
+    }
+    if (!cli_syzygy_path.has_value()) {
+        if (const char* env_syzygy_path = std::getenv("KOI_CLI_SYZYGY_PATH");
+            env_syzygy_path != nullptr && *env_syzygy_path != '\0') {
+            cli_syzygy_path = env_syzygy_path;
         }
     }
     if (!cli_see_move.has_value()) {
@@ -629,6 +721,49 @@ int main(int argc, char* argv[]) {
         const int gain = koi::detail::static_exchange_gain(*root, *move);
         std::cout << "SEE " << move->uci() << " : " << std::showpos << gain << " cp\n"
                   << std::noshowpos << std::flush;
+        return 0;
+    }
+    if (cli_book) {
+        const std::optional<koi::GameState> root = resolve_cli_position(cli_inspect_fen);
+        if (!root.has_value()) {
+            return 2;
+        }
+        const std::filesystem::path engine_directory = executable_directory(argc, argv);
+        std::filesystem::path book_path;
+        if (cli_book_path.has_value()) {
+            book_path = std::filesystem::path(*cli_book_path);
+        } else {
+            const std::filesystem::path primary = engine_directory / "book.bin";
+            const std::filesystem::path packaged = engine_directory / "book" / "book.bin";
+            book_path = koi::OpeningBook::is_usable_file(primary) ? primary : packaged;
+        }
+        if (koi::OpeningBook::is_usable_file(book_path) &&
+            static_cast<bool>(std::ifstream(book_path, std::ios::binary))) {
+            koi::OpeningBook book(engine_directory);
+            book.set_file(book_path);
+            std::cout << koi::detail::format_book_entries(
+                             book_path.filename().string(), book.probe_all(*root))
+                      << std::flush;
+        } else {
+            std::cout << "Opening book : unavailable\n" << std::flush;
+        }
+        return 0;
+    }
+    if (cli_tb) {
+        const std::optional<koi::GameState> root = resolve_cli_position(cli_inspect_fen);
+        if (!root.has_value()) {
+            return 2;
+        }
+        const std::filesystem::path engine_directory = executable_directory(argc, argv);
+        const std::filesystem::path tb_path = cli_syzygy_path.has_value()
+            ? std::filesystem::path(*cli_syzygy_path)
+            : koi::discover_syzygy_directory(engine_directory).value_or(std::filesystem::path{});
+        if (!tb_path.empty() && koi::is_usable_syzygy_directory(tb_path)) {
+            koi::SyzygyTablebase tb(tb_path);
+            std::cout << koi::detail::format_syzygy_probe(&tb, *root) << std::flush;
+        } else {
+            std::cout << koi::detail::format_syzygy_probe(nullptr, *root) << std::flush;
+        }
         return 0;
     }
     if (cli_perft_depth.has_value()) {
