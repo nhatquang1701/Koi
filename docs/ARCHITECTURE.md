@@ -29,8 +29,8 @@ flowchart TD
 
 | File | Responsibility |
 | --- | --- |
-| `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output. |
-| `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, `go` limit parser, network overhead estimator, WDL conversion, ASCII board and compiler formatters, and benchmark FEN suite. |
+| `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output (`detail/uci_support.*` never emits `"info string` literals). |
+| `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, `go` limit parser, network overhead estimator, WDL conversion, FEN flip helper, ASCII board/key/moves/book/tb/eval/annotate/compiler formatters, and benchmark FEN suite. |
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |
 | `detail/search_session.cpp` | One immutable request, worker ownership, cancellation/ponderhit timer, completion claim. |
 | `detail/root_fallback.*` | Bounded root-fallback policy: emergency static/one-ply scanners used when a short search cannot complete an authoritative iteration. |

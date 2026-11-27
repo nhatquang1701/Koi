@@ -18,7 +18,8 @@ Directory map:
 | `tools/build/` | build, package, book-install, and verification scripts |
 | `tools/book/` | `build_verified_book.py` & `polyglot.py` (compact Stockfish-verified CC0 opening book producing `assets/book/koi.bin` for releases without external deps) |
 | `tools/bot/` | Lichess bot control script (install, start, stop, auto-update) |
-| `tools/engine/` | small C++ command-line tools built with Koi |
+| `tools/docs/` | `prepare_pages.py` (stages the MkDocs Material documentation tree from tracked Markdown files) |
+| `tools/engine/` | standalone C++ developer CLI tools built with Koi (see [CLI & Interactive Reference](../docs/CLI.md)) |
 | `tools/measurement/` | PGN, oracle, corpus, tuning, and NNUE tooling |
 | `tools/nnue/` | NNUE A/B match tools and the bullet/Rust crate and wrapper |
 | `tools/stability/` | UCI, Stockfish, and Cutechess process harnesses |
@@ -37,9 +38,22 @@ no suffix on Linux and macOS).
 `tools/build/package_release.ps1` writes the Windows `.zip` or, on Linux and
 macOS arm64, the portable `koi-engine-v1.2.0-linux-x86_64.tar.gz` or
 `koi-engine-v1.2.0-macos-arm64.tar.gz` tarball; CI builds and verifies each
-archive on its own platform. Each package includes a file
-manifest with SHA-256 hashes and source provenance; the archive has a matching
-`.sha256` sidecar.
+archive on its own platform. Each build generates a `.package.json` manifest
+with SHA-256 hashes and source provenance plus a `.sha256` checksum sidecar for
+local and CI verification; published GitHub Release Assets attach only the clean
+platform archives (`.zip` / `.tar.gz`) for end users.
+
+## Engine CLI utilities (`tools/engine/`)
+
+Besides `koi-engine` itself, five standalone developer CLI executables are built
+alongside the engine. Every tool supports `-h` / `--help`; full flag tables and
+examples live in [CLI & Interactive Reference](../docs/CLI.md):
+
+- `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
+- `koi-perft` — fast standalone perft runner supporting `--divide`, custom `[fen]`, and `--threads`.
+- `koi-replay` — deterministic UCI game replay driver.
+- `koi-eval-features` — exports NNUE or HCE static evaluations for a FEN corpus to CSV.
+- `koi-nnue-fixture` — generates valid synthetic `.nnue` test fixtures for CI and local testing.
 
 ## Generated-tree organization
 
@@ -278,6 +292,10 @@ python .\tools\measurement\pgn_forensics.py `
 The default `koi-pgn-forensics-v1` report is written below
 `artifacts/verification/`. Use `--output` when a stable report name is needed.
 
+`tools/measurement/annotate_pgn.py` drives Koi's native UCI `annotate` analyzer
+over PGN files to score and classify each move (`best`, `excellent`, `good`,
+`inaccuracy`, `mistake`, `blunder`) and compute accuracy/CPL summaries.
+
 ## Read-only GigaBase sampling
 
 `gigabase_extract.py` accepts a SQLite-backed GigaBase export, opens it with
@@ -398,6 +416,10 @@ The campaign produces no Elo or rating report; it is a reliability gate.
 All three tools fail with an actionable stderr message and nonzero exit code for
 missing inputs or engine/configuration errors. The C++ engine remains independent
 of Python; the measurement tooling uses the in-tree `koi_chess` package.
+
+`tools/stability/sample_release_openings.py` deterministically samples curated
+roots plus legal one-ply continuations (`--count`, `--seed`) before color-reversed
+release-candidate strength matches.
 
 ## Rough local Elo estimation
 
