@@ -8,8 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 - **Official NNUE v9 (`halfka-hm-v2`, 10-bucket horizontal-mirror 256×2 SCReLU)** with 20-slot Finny king-bucket cache, AVX-512 / AVX2 / NEON fused kernels, and multi-stage Bullet training (`+180+ Elo` over v7 `h128`).
-- **Interactive chess-engine CLI & UCI commands:** `bench, --bench [depth [hash [threads]]]` (OpenBench-compatible benchmark), `d` (ASCII board, FEN, Zobrist hash, checkers), `eval` (static score, WDL probabilities, game phase), `flip` (legal side-to-move flip), `see <move>` (bitboard static exchange inspection), `perft <depth>` (bare interruptible perft), `wait` (script synchronization for active search/`perft`), `compiler` (toolchain, C++26, ISA diagnostics), and `--help` / `-h`.
-- **Profile-Guided Optimization (PGO)** & build ergonomics: `-DKOI_PGO=generate|use` across MSVC, GCC, and Clang/AppleClang, `CMakePresets.json`, and a root OpenBench-compatible `Makefile`.
+- **Interactive chess-engine CLI & UCI commands:** `bench, --bench [depth [hash [threads]]]` (OpenBench-compatible benchmark), `d` (ASCII board, FEN, Zobrist hash, checkers, legal move count), `eval` (active NNUE/HCE architecture readout, static score, WDL probabilities, game phase), `flip` (legal side-to-move flip), `see <move>` (bitboard static exchange inspection), `perft <depth>` (bare interruptible perft), `wait` (script synchronization for active search/`perft`), `compiler` (toolchain, C++26, ISA diagnostics), `help`, and CLI `--help` / `-h`.
+- **Profile-Guided Optimization (PGO)** & build ergonomics: `-DKOI_PGO=generate|use` across MSVC, GCC, and Clang/AppleClang, `CMakePresets.json`, and an OpenBench-compatible `Makefile` (`EVALFILE`, `BENCH_DEPTH`/`HASH`/`THREADS`, `docs`).
+- **Architecture regression checks (`architecture_boundaries_test.ps1`):** Froze the new `detail/uci_support.*` and `detail/nnue_io.cpp` / `detail/nnue_manifest.hpp` module boundaries.
 - **Open-source repository infrastructure:** GitHub issue forms, pull request template, Dependabot config, `SECURITY.md`, `CHANGELOG.md`, `.editorconfig`, and `.clang-format`.
 
 ### Changed

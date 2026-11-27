@@ -513,14 +513,15 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
 
 - **CLI flags:** `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, `koi-engine --help` (`-h`), and `koi-engine bench [depth [hash [threads]]]` (or `--bench`, runs an OpenBench-compatible deterministic benchmark and exits).
 - **Interactive commands (inside a UCI session):**
-  - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, and check status.
-  - `eval` — prints the active evaluator's static score (side-to-move and White perspectives), heuristic WDL triplet, and game phase / piece count.
+  - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, check status, and legal move count.
+  - `eval` — prints the active evaluator architecture (`NNUE` container version/feature set/layer shape or `HCE`), static score (side-to-move and White perspectives), heuristic WDL triplet, and game phase / piece count.
   - `flip` — toggles the side to move (when legal; rejects positions that would leave the non-moving king in check).
   - `see <move>` — prints the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns.
   - `compiler` — prints build version, commit hash, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`).
   - `bench [depth [hash [threads]]]` — runs the deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread) and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second`.
   - `perft <depth>` / `go perft <depth>` — runs an interruptible perft divide (`depth 1..10`) from the current position.
   - `wait` — blocks until any finite active search or `perft` completes before executing the next command.
+  - `help` — prints a concise interactive command reference.
 
 ## UCI smoke test
 

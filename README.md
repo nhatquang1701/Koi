@@ -91,13 +91,14 @@ Inside an interactive session (`koi-engine`):
 | Command | Description |
 | :--- | :--- |
 | `bench [depth [hash [threads]]]` | Runs the deterministic benchmark suite and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second` |
-| `d` | Displays an ASCII board of the current position, FEN, Zobrist key, and checkers |
-| `eval` | Prints static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
+| `d` | Displays an ASCII board of the current position, FEN, Zobrist key, checkers, and legal move count |
+| `eval` | Prints active NNUE/HCE metadata, static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
 | `flip` | Flips the side to move (when legal) for static evaluation comparison |
 | `see <move>` | Computes the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns |
 | `compiler` | Prints version, git commit, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`) |
 | `perft <depth>` / `go perft <depth>` | Runs an interruptible perft divide (`depth 1..10`) from the current position |
 | `wait` | Blocks until any finite active search or `perft` finishes (useful in piped scripts) |
+| `help` | Displays a summary of all interactive commands |
 
 ---
 
@@ -118,7 +119,7 @@ cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release && 
 cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release && ctest --preset macos-arm64-release
 ```
 
-Available presets in [CMakePresets.json](CMakePresets.json): `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, and `macos-arm64-release`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](Makefile) (`make`, `make EXE=koi-engine`, `make bench`, `make test`). See the [User Guide](docs/USER_GUIDE.md#build-prerequisites) for Profile-Guided Optimization (`-DKOI_PGO=generate|use`), CPU variant selection (`KOI_CPU_VARIANT`), and developer tools (`koi-bench`, `koi-perft`, `koi-replay`).
+Available presets in [CMakePresets.json](CMakePresets.json): `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, and `macos-arm64-release`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](Makefile) (`make`, `make EXE=koi-engine`, `make bench EVALFILE=...`, `make test`, `make docs`). See the [User Guide](docs/USER_GUIDE.md#build-prerequisites) for Profile-Guided Optimization (`-DKOI_PGO=generate|use`), CPU variant selection (`KOI_CPU_VARIANT`), and developer tools (`koi-bench`, `koi-perft`, `koi-replay`).
 
 ---
 

@@ -128,6 +128,7 @@ Other environment variables relevant to operation:
 | --- | --- | --- |
 | Process entry point | `src/main.cpp` | Resolves the executable directory, boot-time NNUE path, evaluator, and starts the UCI controller. A boot without a usable network exits 4 with a diagnostic; selection never silently substitutes. |
 | UCI controller | `src/koi/uci_controller.{hpp,cpp}` | Owns the current `GameState`, the worker/search handle, option state, book and Syzygy instances. It is the only layer that writes UCI protocol output. |
+| UCI support | `src/koi/detail/uci_support.{hpp,cpp}` | Protocol-literal-free UCI/XBoard/annotation parsers, WDL conversion, ASCII board and compiler formatters, interactive help text, and benchmark FENs. |
 | Public search boundary | `SearchService`, `SearchHandle` in `src/koi/search_service.{hpp,cpp}` | `SearchService` owns the shared evaluator, transposition table, and search lifecycle. `SearchHandle` exposes `stop()`, `wait()`, `running()`, and `request_ponderhit()`. |
 | Request session | `detail::SearchSession` in `src/koi/detail/search_session.hpp` | Owns one immutable request snapshot (root, limits, options), identity (generation + root key + root FEN), cancellation flag, worker thread, and the exactly-once completion claim (`CompletionOnce`). |
 | Search orchestration | `detail::SearchRunner` in `src/koi/detail/search_runner.cpp` | Backend dispatch, timing setup, root tablebase probe, iterative deepening, aspiration, serial/Lazy SMP/root-parallel drivers, short-search fallbacks, and result publication. |
@@ -137,7 +138,8 @@ Other environment variables relevant to operation:
 | Compatibility facade | `GameState` in `src/koi/game_state.{hpp,cpp}` | The stable API used by evaluator, search, and UCI. It keeps a private `CompatibilityMirror` (vendored chess-library board plus reversible shadow history) transactionally synchronized for Polyglot, legacy adapters, completion validation, and explicit differential diagnostics. |
 | Feature cache | `detail::FeatureState` in `src/koi/detail/feature_state.{hpp,cpp}` | Caches `PositionFeatures` derived from native `Position`; invalidated by make/unmake and keyed by native history depth. |
 | Evaluator execution | `detail::EvaluationContext` in `src/koi/detail/evaluation_context.{hpp,cpp}` | Selects a per-worker `EvaluatorWorker` (used by NNUE) or the evaluator-plus-mutex fallback. |
-| NNUE | `src/koi/nnue.{hpp,cpp}` | Versioned container loader/serializer, integer inference, incremental accumulators, AVX2/NEON/scalar paths, discovery, and evaluator selection. |
+| NNUE | `src/koi/nnue.{hpp,cpp}` | Integer NNUE inference, Finny incremental accumulators, and AVX2/NEON/scalar kernels. |
+| NNUE I/O & manifest | `src/koi/detail/nnue_io.cpp`, `src/koi/detail/nnue_manifest.hpp` | Versioned container loader/serializer, SHA-256 verification, manifest validation, boot discovery, and evaluator selection. |
 | Time | `TimeManager` in `src/koi/time_manager.{hpp,cpp}` | Deadline, node limit, budgets, pacing, and ponderhit reconfiguration. |
 | Optional assets | `OpeningBook`, `SyzygyTablebase` | Polyglot and Syzygy; both optional and inert without files. |
 | Modules | `src/koi/modules/*.ixx` | Aggregate `koi` module with `types`, `position`, `eval`, `tablebase`, `search`, and `runtime` partitions exporting stable value contracts. Implementation headers are private and establish no ABI. |
@@ -342,7 +344,7 @@ with this evaluator; the unit suite lives in `classical_evaluator_tests`.
 
 The loader accepts Koi NNUE containers with magic `KOI-NNUE`, quantization
 `int16/int8`, a SHA-256 payload digest, and a 256 MiB maximum file size
-(`src/koi/nnue.cpp`). Supported versions are 2, 3, 4, 5, 6, 8, and 9; version 1 is
+(`src/koi/detail/nnue_io.cpp`). Supported versions are 2, 3, 4, 5, 6, 8, and 9; version 1 is
 not accepted by `validate_manifest` (v2 uses the `"piece-square-v1"` feature
 set name and is the earliest container version defined in `src/koi/nnue.hpp`).
 **There is no version 7 container:** no v7 constant or parser branch
@@ -435,7 +437,7 @@ multi-threaded CPU NNUE path.
 
 ### 4.4 Automatic discovery and `EvalFile`
 
-`discover_nnue_network(directory)` (`src/koi/nnue.cpp`) uses this order:
+`discover_nnue_network(directory)` (`src/koi/detail/nnue_io.cpp`) uses this order:
 
 1. `<dir>/koi.nnue`
 2. `<dir>/nnue/koi.nnue` (packaged layout)
@@ -785,6 +787,15 @@ Rules for `setoption`:
 | `ponderhit` | Converts a running ponder search in place and re-arms timing; if no ponder search is running, the command is ignored (no search starts). |
 | `quit` | Sets shutting-down, cancels/joins, and returns 0 without late protocol output. EOF follows the same cancellation path. |
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
+| `d` | Displays the ASCII board, FEN, Zobrist key, side, check state, and legal move count. |
+| `eval` | Prints active evaluator details (`NNUE` version/feature set/shape or `HCE`), static score, heuristic WDL triplet, and game phase. |
+| `flip` | Toggles side to move when legal (rejects positions with the moving king in check). |
+| `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns. |
+| `perft <depth>` | Runs an interruptible perft divide (`1..10`) from the current position. |
+| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `--version`, `--help`, `--engine-json`, `--protocol`). |
+| `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |
+| `compiler` | Prints engine version, commit, compiler, C++26 standard, architecture, and ISA. |
+| `help` | Prints the interactive command summary. |
 | Unknown command | Ignored. An exception during command handling is converted to `info string command failed: ...` and the loop continues. A protocol line longer than 1 MiB is consumed and rejected with `info string command rejected: line exceeds 1048576 bytes`; the session continues. |
 
 Behaviour details:
@@ -1003,6 +1014,7 @@ empty for the 1.2.0 gate.
 | `tools/stability/uci_match.ps1` | Color-aware match harness; writes `koi-uci-match-v2` JSON + PGN with per-ply provenance |
 | `tools/stability/sprt_compare.ps1` | Candidate-vs-baseline SPRT wrapper; exit 0 accept, 1 reject, 2 more games |
 | `tools/measurement/elo_estimate.py` | Local anchor-ladder estimate with provenance checks |
+| `tools/measurement/nnue_info.py` | Offline container inspector and payload SHA-256 verifier for `v4`/`v5`/`v6`/`v8`/`v9` `.nnue` files |
 | `tools/build/package_release.ps1` | Builds the package, manifest, archive, and checksums |
 
 `koi-bench` default output is deterministic and CI-shaped; `--timed` adds
