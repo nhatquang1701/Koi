@@ -150,7 +150,10 @@ if ($achievablePerColor -ge 2) {
     Write-Warning ("The opening corpus supplies only $achievablePerColor game(s) per colour; " +
         "the SPRT bounds ($MinGames/$MaxGames) are unreachable and the run can only be inconclusive.")
 }
-if ($MinGames -lt 1) { $MinGames = 1 }
+if ($MinGames -lt 2) {
+    Write-Warning "MinGames $MinGames is below uci_match.ps1's SprtMinGames minimum (2); clamping to 2."
+    $MinGames = 2
+}
 if ($MaxGames -lt $MinGames) { $MaxGames = $MinGames }
 if (-not [string]::IsNullOrWhiteSpace($CandidateOptionsJsonPath)) {
     Assert-FileExists $CandidateOptionsJsonPath 'candidate UCI options JSON'

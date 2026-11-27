@@ -88,6 +88,10 @@ foreach ($paramName in @('NnuePath', 'CandidateNnuePath', 'BaselineNnuePath', 'H
         throw "sprt_compare.ps1 must declare parameter -$paramName."
     }
 }
+$sprtRaw = Get-Content -LiteralPath $scriptPath -Raw
+if ($sprtRaw -notmatch '(?m)if\s*\(\$MinGames\s*-lt\s*2\)\s*\{') {
+    throw 'sprt_compare.ps1 must clamp $MinGames < 2 to satisfy uci_match.ps1 -SprtMinGames.'
+}
 $candidateOptionsCopy = 'cand-opts.json'
 $baselineOptionsCopy = 'base-opts.json'
 $withOptionsArgs = @((Start-ColorRun 'white').arguments) -join ' '

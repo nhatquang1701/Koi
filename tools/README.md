@@ -49,7 +49,7 @@ Besides `koi-engine` itself, five standalone developer CLI executables are built
 alongside the engine. Every tool supports `-h` / `--help` and `-v` / `--version`; full flag tables and
 examples live in [CLI & Interactive Reference](../docs/CLI.md):
 
-- `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
+- `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), `--hash MB`, timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
 - `koi-perft` — fast standalone perft runner supporting `--divide` and `[startpos|fen [moves <uci>...]]`.
 - `koi-replay` — deterministic UCI game replay driver.
 - `koi-eval-features` — exports NNUE or HCE static evaluations for a FEN corpus to CSV.
@@ -66,7 +66,7 @@ NPS regresses past `-MaxRowNpsRegressionPercent`. Rows whose baseline median
 elapsed is below `-MinRowElapsedMs` (default 20 ms) are timer-quantized -- one
 millisecond tick is a >5% NPS step there -- so they are still reported with
 `noise=true` but excluded from the row verdict; the total keeps every row. Pass
-`-NnuePath <path.nnue>` or `-Hce` to select the evaluator. The run artifacts
+`-NnuePath <path.nnue>` or `-Hce` to select the evaluator (and `-Hash <mb>` to override the 512 MB default hash). The run artifacts
 and a `speed-gate.json` summary land under `artifacts/verification/`; like the
 fixed-depth gate this is a standalone measurement command, never a CTest
 threshold:

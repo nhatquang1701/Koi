@@ -9,6 +9,8 @@ param(
     [int]$Runs = 5,
     [ValidateRange(1, 64)]
     [int]$Threads = 1,
+    [ValidateRange(1, 4096)]
+    [int]$Hash = 512,
     [ValidateRange(1, 100)]
     [int]$Speed = 100,
     [string]$NnuePath = '',
@@ -80,6 +82,9 @@ function Get-VisitedNps($Totals) {
 function Invoke-BenchRun([string]$Label, [string]$Executable, [string]$ReportPath,
                          [string]$StdoutPath, [string]$StderrPath) {
     $arguments = @('--threads', "$Threads", '--speed', "$Speed", '--timed')
+    if ($Hash -ne 512) {
+        $arguments += @('--hash', "$Hash")
+    }
     if ($Hce) {
         $arguments += '--hce'
     } else {

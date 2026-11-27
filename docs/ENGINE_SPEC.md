@@ -999,7 +999,7 @@ empty for the 1.2.0 gate.
 
 | Tool | Purpose |
 | --- | --- |
-| `koi-bench` | 64-position fixed-depth tactical hard gate by default; `--optional` selects the 128-position positional corpus; `--threads`, `--speed`, `--timed`, `--warm-hash`, `--nodes`, `--warmup`, `--repeat`, `--depth`, `--depth-sweep`, `--fen-file`, `--nnue`, `--profile-json`, `--report` |
+| `koi-bench` | 64-position fixed-depth tactical hard gate by default; `--optional` selects the 128-position positional corpus; `--hash`, `--threads`, `--speed`, `--timed`, `--warm-hash`, `--nodes`, `--warmup`, `--repeat`, `--depth`, `--depth-sweep`, `--fen-file`, `--nnue`, `--profile-json`, `--report` |
 | `koi-perft` | Legal-node count from `startpos` or an optional FEN at a non-negative depth (`--divide` for per-move totals and NPS; `--help` for usage) |
 | `koi-replay` | Replays coordinate moves from `startpos`/`fen` without exposing the vendored library; reports `legal`, `result`, `termination`, final FEN |
 | `koi-eval-features` | Dump NNUE (`--nnue NET`) or clean-HCE (`--hce`) evaluations for a position corpus |

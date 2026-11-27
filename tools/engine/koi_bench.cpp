@@ -33,6 +33,7 @@
 namespace {
 
 struct BenchmarkConfig {
+    std::size_t hash_mb = 512;
     std::size_t threads = 1;
     std::uint8_t speed_percent = 100;
     bool timed = false;
@@ -246,7 +247,7 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
             }
             continue;
         }
-        if (argument != "--threads" && argument != "--speed") {
+        if (argument != "--hash" && argument != "--threads" && argument != "--speed") {
             return std::nullopt;
         }
         if (index + 1 >= argc) {
@@ -257,7 +258,12 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
         if (!parse_uint64(argv[++index], value)) {
             return std::nullopt;
         }
-        if (argument == "--threads") {
+        if (argument == "--hash") {
+            if (value < 1 || value > 4'096) {
+                return std::nullopt;
+            }
+            config.hash_mb = static_cast<std::size_t>(value);
+        } else if (argument == "--threads") {
             if (value == 0) {
                 return std::nullopt;
             }
@@ -624,7 +630,7 @@ void write_profile_json(const std::string& path, const BenchmarkConfig& config,
            << "  \"warmup\": " << config.warmup << ",\n"
            << "  \"repeat\": " << config.repeat << ",\n"
            << "  \"node_limit\": " << config.node_limit << ",\n"
-           << "  \"hash_mb\": 512,\n"
+           << "  \"hash_mb\": " << config.hash_mb << ",\n"
            << "  \"threads\": " << config.threads << ",\n"
            << "  \"speed\": " << static_cast<unsigned>(config.speed_percent) << ",\n"
            << "  \"evaluator\": ";
@@ -675,7 +681,7 @@ void write_profile_json(const std::string& path, const BenchmarkConfig& config,
         }
         output << "], \"category\": ";
         write_json_string(output, position.category);
-        output << ", \"hash_mb\": 512, \"hash_state\": \""
+        output << ", \"hash_mb\": " << config.hash_mb << ", \"hash_state\": \""
                << (config.warm_hash ? "warm" : "cold") << "\", \"threads\": " << config.threads
                << ", \"speed\": " << static_cast<unsigned>(config.speed_percent) << ", ";
         write_run_metrics(output, run, config.timed);
@@ -708,7 +714,7 @@ void write_iteration_profile_json(const std::string& path,
            << "  \"build\": \"Koi " KOI_ENGINE_BUILD_VERSION "\",\n"
            << "  \"threads\": " << config.threads << ",\n"
            << "  \"speed\": " << static_cast<unsigned>(config.speed_percent) << ",\n"
-           << "  \"hash_mb\": 512,\n"
+           << "  \"hash_mb\": " << config.hash_mb << ",\n"
            << "  \"node_limit\": " << config.node_limit << ",\n"
            << "  \"evaluator\": ";
     write_json_string(output, config.evaluator);
@@ -859,7 +865,7 @@ void write_speed_json(const std::string& path, const BenchmarkConfig& config,
     output << ",\n"
            << "  \"threads\": " << config.threads << ",\n"
            << "  \"speed\": " << static_cast<unsigned>(config.speed_percent) << ",\n"
-           << "  \"hash_mb\": 512,\n"
+           << "  \"hash_mb\": " << config.hash_mb << ",\n"
            << "  \"hash_state\": \"" << (config.warm_hash ? "warm" : "cold") << "\",\n"
            << "  \"timed\": " << (config.timed ? "true" : "false") << ",\n"
            << "  \"warmup\": " << config.warmup << ",\n"
@@ -910,7 +916,7 @@ void write_speed_json(const std::string& path, const BenchmarkConfig& config,
 }
 
 constexpr std::string_view kBenchUsage =
-    "usage: koi-bench [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path | --hce] [--profile-json path] [--iteration-profile-json path] [--report path]\n";
+    "usage: koi-bench [--hash MB] [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file path] [--nnue path | --hce] [--profile-json path] [--iteration-profile-json path] [--report path]\n";
 
 } // namespace
 
@@ -1007,7 +1013,7 @@ int main(int argc, char** argv) {
             }
             return 2;
         }
-        koi::SearchService service(std::move(selection.evaluator));
+        koi::SearchService service(std::move(selection.evaluator), {}, config->hash_mb);
         const bool sweep = config->depth_sweep.has_value();
         const auto run_suite = [&](const bool record) {
             std::vector<PositionProfile> collected;
@@ -1017,7 +1023,7 @@ int main(int argc, char** argv) {
             }
             for (const BenchPosition& benchmark : positions) {
                 if (!config->warm_hash) {
-                    // Reuse the 512 MB allocation while keeping every cold
+                    // Reuse the configured hash allocation while keeping every cold
                     // position independent of entries produced by its predecessor.
                     service.clear_hash();
                 }
