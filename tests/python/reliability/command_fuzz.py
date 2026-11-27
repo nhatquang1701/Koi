@@ -54,6 +54,19 @@ def _is_valid_eval_line(line: str) -> bool:
         "White relative : ",
         "WDL (stm)      : ",
         "Game phase     : ",
+        "Term           |",
+        "---------------+",
+        "Material       |",
+        "PST            |",
+        "Mobility       |",
+        "Pawns          |",
+        "King safety    |",
+        "Threats        |",
+        "Pieces         |",
+        "Space & dev    |",
+        "Tempo          |",
+        "Total (White)  |",
+        "Note           : ",
     ))
 
 
