@@ -128,6 +128,25 @@ class NnueInfoTest(unittest.TestCase):
             with self.assertRaises(self.info.NnueInfoError):
                 self.info.read_container(trailing)
 
+    def test_verify_flag_exits_nonzero_on_checksum_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            valid = _build_container(
+                9,
+                (7680, 256, 8, 1),
+                struct.pack("<BBH", 255, 64, 400),
+                b"halfka-hm-v2",
+                b"12345678",
+            )
+            good_path = pathlib.Path(directory) / "good.nnue"
+            good_path.write_bytes(valid)
+            bad_bytes = bytearray(valid)
+            bad_bytes[-1] ^= 0x55
+            bad_path = pathlib.Path(directory) / "bad.nnue"
+            bad_path.write_bytes(bytes(bad_bytes))
+
+            self.assertEqual(self.info.main(["--verify", str(good_path)]), 0)
+            self.assertEqual(self.info.main(["--verify", str(bad_path)]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

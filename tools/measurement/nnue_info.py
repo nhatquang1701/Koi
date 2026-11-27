@@ -1,7 +1,7 @@
 """Print Koi NNUE container provenance without loading an engine.
 
 Usage:
-    python tools/measurement/nnue_info.py artifacts/networks/koi-v9-hm10-h256-official.nnue [--json]
+    python tools/measurement/nnue_info.py artifacts/networks/koi-v9-hm10-h256-official.nnue [--json] [--verify]
 
 Supports the v4/v5/v6/v8/v9 container layouts (magic, version, four layer sizes,
 quantization/scale metadata, quantization/feature-set strings, payload SHA-256
@@ -96,6 +96,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("container", type=pathlib.Path)
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="exit nonzero unless the embedded payload SHA-256 checksum is valid",
+    )
     arguments = parser.parse_args(argv)
     try:
         info = read_container(arguments.container)
@@ -107,6 +112,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         for key, value in info.items():
             print(f"{key}: {value}")
+    if arguments.verify and info.get("checksum_valid") is not True:
+        print("nnue_info: payload SHA-256 checksum verification failed", file=sys.stderr)
+        return 1
     return 0
 
 
