@@ -772,7 +772,7 @@ Rules for `setoption`:
 | `ponderhit` | Converts a running ponder search in place and re-arms timing; if no ponder search is running, the command is ignored (no search starts). |
 | `quit` | Sets shutting-down, cancels/joins, and returns 0 without late protocol output. EOF follows the same cancellation path. |
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
-| `d` | Displays the ASCII board, FEN, Zobrist key, side, check state, and legal move count (also zero-network CLI `d`/`--display [fen]`). |
+| `d` | Displays the ASCII board, FEN, Zobrist key, side, check state, legal move count, and FIDE game state (`ongoing`, `checkmate`, `stalemate`, or draw reason; also zero-network CLI `d`/`--display [fen]`). |
 | `fen` | Prints the six-field FEN of the current position (also zero-network CLI `fen [fen]` / `fen moves ...`). |
 | `key` | Prints the hexadecimal 64-bit Zobrist position key, pawn hash key, and Polyglot book key (also zero-network CLI `key [fen]`). |
 | `moves` | Lists all legal moves sorted lexicographically in UCI coordinate notation (also zero-network CLI `moves [fen]`). |

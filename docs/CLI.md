@@ -136,7 +136,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 
 | Command | Arguments | Purpose |
 | :--- | :--- | :--- |
-| `d` | — | Display ASCII chessboard, FEN, 64-bit Zobrist key, side, check state, and legal move count |
+| `d` | — | Display ASCII chessboard, FEN, 64-bit Zobrist key, side, check state, legal move count, and FIDE game state |
 | `fen` | — | Print the six-field FEN of the current board |
 | `key` | — | Print hexadecimal 64-bit Zobrist position, pawn hash, and Polyglot book keys |
 | `moves` | — | List all legal moves sorted lexicographically in UCI coordinate notation |
