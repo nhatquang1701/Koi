@@ -283,6 +283,29 @@ if ($nnueImpl -match 'class Sha256|NnueLoader::serialize\(|accumulate_hidden_sca
     Fail 'nnue.cpp must not redefine extracted detail/nnue_io container I/O or detail/nnue_kernels math kernels'
 }
 
+# 3j. Pre-boot CLI parsing and zero-network command handlers stay isolated from
+# controller internals and wire protocol emission literals.
+foreach ($required in @('src/cli_support.hpp', 'src/cli_support.cpp')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
+        Fail "$required is missing"
+    }
+}
+$cmakeCli = Read-RepositoryFile 'CMakeLists.txt'
+if ($cmakeCli -notmatch [regex]::Escape('src/cli_support.cpp')) {
+    Fail 'CMakeLists.txt must register src/cli_support.cpp'
+}
+foreach ($cliFile in @('src/cli_support.hpp', 'src/cli_support.cpp')) {
+    $cliContent = Read-RepositoryFile $cliFile
+    if ($cliContent.Contains('koi/uci_controller.hpp')) {
+        Fail "$cliFile must not include koi/uci_controller.hpp"
+    }
+    foreach ($forbiddenLiteral in @('"uciok', '"readyok', '"bestmove ')) {
+        if ($cliContent.Contains($forbiddenLiteral)) {
+            Fail "$cliFile must not emit protocol literal $forbiddenLiteral"
+        }
+    }
+}
+
 # 4. Engine core sources must not contain dead/tooling translation units.
 Write-Output '[4/4] check CMake core sources, reliability fuzzer location, and architecture docs'
 $cmake = Read-RepositoryFile 'CMakeLists.txt'
