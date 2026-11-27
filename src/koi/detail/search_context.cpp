@@ -27,6 +27,19 @@ namespace {
     return -1 - qdepth;
 }
 
+[[nodiscard]] constexpr bool is_claimable_draw_status(
+    const DrawStatus status) noexcept {
+    return status == DrawStatus::claimable_threefold ||
+        status == DrawStatus::claimable_fifty_move;
+}
+
+[[nodiscard]] constexpr bool is_forced_draw_status(
+    const DrawStatus status) noexcept {
+    return status == DrawStatus::dead_position ||
+        status == DrawStatus::automatic_fivefold ||
+        status == DrawStatus::automatic_seventy_five_move;
+}
+
 #if defined(__clang__) || defined(__GNUC__)
 #define KOI_CTX_NOINLINE __attribute__((noinline))
 #elif defined(_MSC_VER)

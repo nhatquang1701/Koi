@@ -38,14 +38,9 @@ namespace {
     return ++paired_hits >= 2;
 }
 
-} // namespace
-
-int piece_value(const PieceType type) noexcept {
-    return piece_material_value(type);
-}
-
-bool piece_attacks_square(const PositionFeatures& features, const std::uint8_t source,
-                          const std::uint8_t target) noexcept {
+[[nodiscard]] bool piece_attacks_square(const PositionFeatures& features,
+                                        const std::uint8_t source,
+                                        const std::uint8_t target) noexcept {
     if (source >= 64 || target >= 64 || source == target) {
         return false;
     }
@@ -96,6 +91,20 @@ bool piece_attacks_square(const PositionFeatures& features, const std::uint8_t s
         }
     }
     return true;
+}
+
+[[nodiscard]] bool deep_quiet_check_candidate(const MoveMetadata& metadata) noexcept {
+    return metadata.gives_check && !metadata.is_capture() &&
+        metadata.move.promotion() == Promotion::none &&
+        (metadata.moving_piece == PieceType::pawn ||
+         metadata.moving_piece == PieceType::knight ||
+         metadata.moving_piece == PieceType::bishop);
+}
+
+} // namespace
+
+int piece_value(const PieceType type) noexcept {
+    return piece_material_value(type);
 }
 
 bool quiet_move_is_forcing(const PositionFeatures& before,
@@ -568,14 +577,6 @@ bool null_move_is_safe(const GameState& state, const int phase) noexcept {
         return false;
     }
     return true;
-}
-
-bool deep_quiet_check_candidate(const MoveMetadata& metadata) noexcept {
-    return metadata.gives_check && !metadata.is_capture() &&
-        metadata.move.promotion() == Promotion::none &&
-        (metadata.moving_piece == PieceType::pawn ||
-         metadata.moving_piece == PieceType::knight ||
-         metadata.moving_piece == PieceType::bishop);
 }
 
 bool narrow_deep_quiet_check_candidate(GameState& state, const MoveMetadata& metadata) {

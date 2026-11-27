@@ -102,7 +102,6 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] BoundedLineRead read_bounded_protocol_line(
     std::istream& input, std::string& line, std::size_t limit, bool& truncated);
 
-[[nodiscard]] const char* disposition_name(CompletionDisposition disposition) noexcept;
 [[nodiscard]] const char* hash_status_name(HashResizeStatus status) noexcept;
 [[nodiscard]] const char* hash_reason_name(HashResizeReason reason) noexcept;
 
@@ -129,7 +128,6 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] Wdl score_to_wdl(const SearchInfo& info) noexcept;
 
 [[nodiscard]] std::string debug_quoted(std::string_view value);
-[[nodiscard]] std::string debug_hex(std::uint64_t value);
 [[nodiscard]] std::uint64_t legal_move_digest(const std::vector<Move>& legal_moves);
 
 [[nodiscard]] std::vector<Move> legal_pv_prefix(

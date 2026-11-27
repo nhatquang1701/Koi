@@ -370,6 +370,20 @@ $mkdocsConfig = Read-RepositoryFile 'mkdocs.yml'
 if ($mkdocsConfig -notmatch 'CLI\.md') {
     Fail 'mkdocs.yml must include CLI.md in site navigation'
 }
+$markdownFiles = Get-ChildItem -LiteralPath $repositoryRoot -Recurse -File -Filter '*.md' |
+    Where-Object {
+        $rel = $_.FullName.Substring($repositoryRoot.Length + 1).Replace('\', '/')
+        -not $rel.StartsWith('build/') -and -not $rel.StartsWith('artifacts/') -and
+        -not $rel.StartsWith('third_party/') -and -not $rel.StartsWith('.git/') -and
+        -not $rel.StartsWith('.superpowers/')
+    }
+foreach ($mdFile in $markdownFiles) {
+    $mdContent = Get-Content -LiteralPath $mdFile.FullName -Raw
+    if ($mdContent -match 'github\.(com|io)/nhatquang1701/Koi-engine') {
+        $rel = $mdFile.FullName.Substring($repositoryRoot.Length + 1).Replace('\', '/')
+        Fail "$rel contains stale Koi-engine repository/site URL"
+    }
+}
 
 if ($failures.Count -ne 0) {
     $failures | ForEach-Object { Write-Output "FAIL: $_" }

@@ -8,10 +8,6 @@ namespace koi::detail {
 
 [[nodiscard]] int piece_value(PieceType type) noexcept;
 
-[[nodiscard]] bool piece_attacks_square(const PositionFeatures& features,
-                                        std::uint8_t source,
-                                        std::uint8_t target) noexcept;
-
 [[nodiscard]] bool quiet_move_is_forcing(const PositionFeatures& before,
                                          const PositionFeatures& after_features,
                                          const MoveMetadata& metadata);
@@ -65,8 +61,6 @@ void build_quiet_forcing_after_view(const GameState& after, Color mover,
 // `phase` is GameState::game_phase(); passing the scalar keeps this gate from
 // forcing a full feature snapshot.
 [[nodiscard]] bool null_move_is_safe(const GameState& state, int phase) noexcept;
-
-[[nodiscard]] bool deep_quiet_check_candidate(const MoveMetadata& metadata) noexcept;
 
 [[nodiscard]] bool narrow_deep_quiet_check_candidate(
     GameState& state, const MoveMetadata& metadata);

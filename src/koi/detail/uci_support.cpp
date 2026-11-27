@@ -106,6 +106,22 @@ std::string debug_limits(const SearchLimits& limits) {
     return stream.str();
 }
 
+const char* disposition_name(const CompletionDisposition disposition) noexcept {
+    switch (disposition) {
+    case CompletionDisposition::emit: return "emit";
+    case CompletionDisposition::suppress_stale: return "suppress_stale";
+    case CompletionDisposition::fallback: return "fallback";
+    case CompletionDisposition::quarantine: return "quarantine";
+    }
+    return "unknown";
+}
+
+std::string debug_hex(const std::uint64_t value) {
+    std::ostringstream stream;
+    stream << std::hex << std::setw(16) << std::setfill('0') << value;
+    return stream.str();
+}
+
 } // namespace
 
 BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& line,
@@ -126,16 +142,6 @@ BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& lin
         }
     }
     return any ? BoundedLineRead::line : BoundedLineRead::eof;
-}
-
-const char* disposition_name(const CompletionDisposition disposition) noexcept {
-    switch (disposition) {
-    case CompletionDisposition::emit: return "emit";
-    case CompletionDisposition::suppress_stale: return "suppress_stale";
-    case CompletionDisposition::fallback: return "fallback";
-    case CompletionDisposition::quarantine: return "quarantine";
-    }
-    return "unknown";
 }
 
 const char* hash_status_name(const HashResizeStatus status) noexcept {
@@ -381,12 +387,6 @@ std::string debug_quoted(const std::string_view value) {
     }
     result.push_back('"');
     return result;
-}
-
-std::string debug_hex(const std::uint64_t value) {
-    std::ostringstream stream;
-    stream << std::hex << std::setw(16) << std::setfill('0') << value;
-    return stream.str();
 }
 
 std::uint64_t legal_move_digest(const std::vector<Move>& legal_moves) {
