@@ -35,7 +35,7 @@ cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release
 cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release
 ```
 
-Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, and `macos-arm64-release`. Equivalent explicit `cmake -S . -B build/release -G Ninja ...` commands remain documented in the [User Guide](docs/USER_GUIDE.md#build-prerequisites).
+Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. Equivalent explicit `cmake -S . -B build/release -G Ninja ...` commands remain documented in the [User Guide](docs/USER_GUIDE.md#build-prerequisites).
 
 ### CPU Dispatch & Quick Smoke Check
 
