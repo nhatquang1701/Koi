@@ -7,7 +7,7 @@ direction, and every node names a real translation unit or header.
 ```mermaid
 flowchart TD
     GUI["UCI / XBoard GUI · Arena<br/>Cute Chess · lichess-bot"] -- "UCI / XBoard" --> UCI
-    UCI["uci_controller.cpp<br/>options · protocol output<br/>d · fen · key · moves · book · tb<br/>bench · speedtest · options · eval · nnue · flip · see · perft · wait"]
+    UCI["uci_controller.cpp<br/>options · protocol output<br/>d · fen · key · moves · book · tb<br/>bench · speedtest · options · eval · nnue<br/>flip · makemove · undo · see · perft · wait"]
     UCI --> UCISUPPORT["detail/uci_support.*<br/>parsers · go limits · formatters"]
     UCI --> TIME["time_manager.cpp<br/>soft/hard budgets<br/>move overhead"]
     UCI --> SERVICE["search_service.cpp<br/>request snapshot<br/>cancellation · exactly-once"]

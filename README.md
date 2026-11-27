@@ -120,6 +120,8 @@ Inside an interactive session (`koi-engine`):
 | `eval` | Prints active NNUE/HCE metadata, static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
 | `nnue` | Prints active loaded NNUE container metadata and payload SHA-256 checksum (or inactive HCE status) |
 | `flip` | Flips the side to move (when legal) for static evaluation comparison |
+| `makemove <uci...>` | Plays one or more legal UCI moves transactionally on the current board |
+| `undo [plies]` | Steps back `N` plies (default `1`) in the current position's move history |
 | `see <move>` | Computes the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns |
 | `compiler` | Prints version, git commit, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`) |
 | `perft <depth>` / `go perft <depth>` | Runs an interruptible perft divide (`depth 1..10`) from the current position |

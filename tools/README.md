@@ -50,7 +50,7 @@ alongside the engine. Every tool supports `-h` / `--help`; full flag tables and
 examples live in [CLI & Interactive Reference](../docs/CLI.md):
 
 - `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
-- `koi-perft` — fast standalone perft runner supporting `--divide`, custom `[fen]`, and `--threads`.
+- `koi-perft` — fast standalone perft runner supporting `--divide` and `[startpos|fen [moves <uci>...]]`.
 - `koi-replay` — deterministic UCI game replay driver.
 - `koi-eval-features` — exports NNUE or HCE static evaluations for a FEN corpus to CSV.
 - `koi-nnue-fixture` — generates valid synthetic `.nnue` test fixtures for CI and local testing.

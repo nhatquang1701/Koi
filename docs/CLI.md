@@ -145,6 +145,8 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `eval` | — | Print active evaluator architecture (`NNUE` or `HCE`), score (stm & White), WDL, and phase |
 | `nnue` | — | Print active loaded NNUE container metadata and payload SHA-256 checksum (or inactive HCE status) |
 | `flip` | — | Toggle side to move when legal (clears en passant; rejects positions in check) |
+| `makemove` | `<uci...>` | Play one or more legal UCI moves transactionally on the current board |
+| `undo` | `[plies]` | Step back `N` plies (default `1`) in the current position's move history |
 | `see` | `<uci-move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal move in centipawns |
 | `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
 | `bench` | `[depth [hash [threads]]]` | Run the 16-position deterministic benchmark inside the active session |
@@ -190,7 +192,7 @@ Built from source via CMake presets (not shipped in user-facing release archives
 | Binary / Script | Role | Usage |
 | :--- | :--- | :--- |
 | `koi-bench` | 64-position tactical & 128-position positional strength suite | `koi-bench --nnue NET [--optional] [--timed] [--depth-sweep a..b] [--report PATH]` |
-| `koi-perft` | Fast legal move-generator perft & `--divide` counter | `koi-perft [--divide] <depth> [fen]` |
+| `koi-perft` | Fast legal move-generator perft & `--divide` counter | `koi-perft [--divide] <depth> [startpos\|fen [moves <uci>...]]` |
 | `koi-replay` | Coordinate move replayer (`legal`, `result`, `termination`, `fen`) | `koi-replay <startpos\|fen 6-field-fen> [moves <uci>...]` |
 | `koi-eval-features` | Bulk CSV evaluator dumper for FEN corpora | `koi-eval-features (--nnue NET \| --hce) [--input FILE] [--output FILE]` |
 | `koi-nnue-fixture` | Synthetic v4/v5 `.nnue` generator for C++ & Python boundary tests | `koi-nnue-fixture --arch v4\|v5 --output <path>` |

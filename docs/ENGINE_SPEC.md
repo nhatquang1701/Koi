@@ -797,6 +797,8 @@ Rules for `setoption`:
 | `eval` | Prints active evaluator details (`NNUE` version/feature set/shape, payload SHA-256 prefix, output bucket, quantization parameters, or `HCE` term breakdown), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval [fen]`). |
 | `nnue` | Prints active loaded NNUE container metadata and payload SHA-256 checksum, or `NNUE : inactive (EvalMode=hce)` when running classical evaluation (also CLI `nnue [path]`). |
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check; also zero-network CLI `flip [fen]`). |
+| `makemove <uci...>` | Applies one or more legal UCI moves transactionally to the current board and move history (rejects invalid sequences without mutating state). |
+| `undo [plies]` | Reverts `N` plies (default `1`) from `position_moves_` when sufficient move history is available. |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns (also zero-network CLI `see <move> [fen]`). |
 | `perft <depth>` | Runs an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position (also CLI `perft <depth> [fen]`). |
 | `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `speedtest`, `-c`/`--cmd`, `compiler`, `eval`, `perft`, `--hce`, `--nnue <path>`, `--version`, `--help`, `--engine-json`, `--protocol`). |
