@@ -1707,7 +1707,7 @@ int UciController::run_speedtest(std::size_t threads, std::size_t hash_mb, int r
     options.interim_report_interval = std::chrono::milliseconds{0};
 
     SearchLimits limits;
-    limits.move_time = per_position_budget;
+    limits.movetime = per_position_budget;
 
     std::uint64_t total_nodes = 0;
     const auto started = std::chrono::steady_clock::now();
