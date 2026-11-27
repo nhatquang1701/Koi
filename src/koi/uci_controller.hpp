@@ -87,6 +87,7 @@ public:
     int run_bench(int depth = kDefaultBenchDepth,
                   std::size_t hash_mb = kDefaultBenchHashMb,
                   std::size_t threads = kDefaultBenchThreads);
+    int run_eval();
 
 private:
     enum class ControllerState : std::uint8_t {

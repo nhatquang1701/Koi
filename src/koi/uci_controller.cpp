@@ -1908,6 +1908,11 @@ int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads
     return 0;
 }
 
+int UciController::run_eval() {
+    handle_eval();
+    return 0;
+}
+
 void UciController::handle_ponderhit() {
     SearchLimits base_limits;
     {

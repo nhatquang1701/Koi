@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <chrono>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -9,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #if defined(__linux__)
 #include <pthread.h>
@@ -21,8 +24,11 @@
 #include "koi/classical_evaluator.hpp"
 #include "koi/cpu_features.hpp"
 #include "koi/cpu_variant.hpp"
+#include "koi/detail/uci_support.hpp"
 #include "koi/executable_path.hpp"
+#include "koi/game_state.hpp"
 #include "koi/nnue.hpp"
+#include "koi/perft.hpp"
 #include "koi/search_service.hpp"
 #include "koi/uci_controller.hpp"
 
@@ -153,13 +159,16 @@ void write_engine_json(int argc, char* argv[]) {
 void write_help() {
     std::cout << "Koi " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT
               << ") - C++26 UCI chess engine\n\n"
-              << "Usage: koi-engine [options] [bench [depth [hash_mb [threads]]]]\n\n"
-              << "Options:\n"
-              << "  -v, --version                         Print engine version and git commit\n"
-              << "  -h, --help                            Show this help message\n"
-              << "  --engine-json                         Print En Croissant / Pawn Appetit JSON profile\n"
-              << "  --protocol <name>                     Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
-              << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n\n"
+              << "Usage: koi-engine [options] [command]\n\n"
+              << "Options & commands:\n"
+              << "  -v, --version                            Print engine version and git commit\n"
+              << "  -h, --help                               Show this help message\n"
+              << "  --engine-json                            Print En Croissant / Pawn Appetit JSON profile\n"
+              << "  --protocol <name>                        Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
+              << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n"
+              << "  compiler, --compiler                     Print compiler, C++26 standard, and dispatched ISA\n"
+              << "  eval, --eval                             Evaluate startpos with the active NNUE/HCE evaluator\n"
+              << "  perft <depth>                            Run timed perft divide from startpos (depth 1..10)\n\n"
               << "Interactive UCI commands also include: d, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait, help\n";
 }
 
@@ -217,6 +226,9 @@ int main(int argc, char* argv[]) {
     std::optional<int> bench_depth;
     std::size_t bench_hash_mb = koi::UciController::kDefaultBenchHashMb;
     std::size_t bench_threads = koi::UciController::kDefaultBenchThreads;
+    bool cli_compiler = false;
+    bool cli_eval = false;
+    std::optional<int> cli_perft_depth;
     constexpr std::size_t kMaximumBenchHashMb = 4'096;
     const std::size_t max_bench_threads = koi::maximum_search_threads();
     for (int index = 1; index < argc; ++index) {
@@ -233,6 +245,32 @@ int main(int argc, char* argv[]) {
         if (arg == "--engine-json") {
             write_engine_json(argc, argv);
             return 0;
+        }
+        if (arg == "compiler" || arg == "--compiler") {
+            cli_compiler = true;
+            set_environment_value("KOI_CLI_COMPILER", "1");
+            continue;
+        }
+        if (arg == "eval" || arg == "--eval") {
+            cli_eval = true;
+            set_environment_value("KOI_CLI_EVAL", "1");
+            continue;
+        }
+        if (arg == "perft") {
+            if (index + 1 >= argc) {
+                std::cerr << "koi-engine: missing depth for perft (expected integer 1..10).\n";
+                return 2;
+            }
+            const std::string_view depth_arg(argv[++index]);
+            std::size_t depth = 0;
+            if (!parse_bounded_uint(depth_arg, 1, 10, depth)) {
+                std::cerr << "koi-engine: invalid perft depth '" << depth_arg
+                          << "' (expected integer 1..10).\n";
+                return 2;
+            }
+            cli_perft_depth = static_cast<int>(depth);
+            set_environment_value("KOI_CLI_PERFT", std::to_string(depth));
+            continue;
         }
         if (arg == "bench" || arg == "--bench") {
             std::size_t depth = static_cast<std::size_t>(koi::UciController::kDefaultBenchDepth);
@@ -282,7 +320,7 @@ int main(int argc, char* argv[]) {
         } else {
             std::cerr << "koi-engine: unknown option '" << arg
                       << "' (supported: --version, --help, --engine-json, --protocol <name>, "
-                         "bench [depth [hash [threads]]]).\n";
+                         "bench [depth [hash [threads]]], compiler, eval, perft <depth>).\n";
             return 2;
         }
         if (initial_protocol.has_value()) {
@@ -299,6 +337,27 @@ int main(int argc, char* argv[]) {
             env_protocol != nullptr && *env_protocol != '\0' &&
             koi::UciController::is_valid_protocol(env_protocol)) {
             initial_protocol = std::string_view(env_protocol);
+        }
+    }
+    if (!cli_compiler) {
+        if (const char* env_compiler = std::getenv("KOI_CLI_COMPILER");
+            env_compiler != nullptr && std::string_view(env_compiler) == "1") {
+            cli_compiler = true;
+        }
+    }
+    if (!cli_eval) {
+        if (const char* env_eval = std::getenv("KOI_CLI_EVAL");
+            env_eval != nullptr && std::string_view(env_eval) == "1") {
+            cli_eval = true;
+        }
+    }
+    if (!cli_perft_depth.has_value()) {
+        if (const char* env_perft = std::getenv("KOI_CLI_PERFT");
+            env_perft != nullptr && *env_perft != '\0') {
+            std::size_t parsed = 0;
+            if (parse_bounded_uint(env_perft, 1, 10, parsed)) {
+                cli_perft_depth = static_cast<int>(parsed);
+            }
         }
     }
     if (!bench_depth.has_value()) {
@@ -338,6 +397,36 @@ int main(int argc, char* argv[]) {
         return selector_exit;
     }
 #endif
+    if (cli_compiler) {
+        std::cout << koi::detail::format_compiler_info(
+            KOI_ENGINE_BUILD_VERSION, KOI_ENGINE_BUILD_COMMIT) << std::flush;
+        return 0;
+    }
+    if (cli_perft_depth.has_value()) {
+        const koi::GameState root = koi::GameState::startpos();
+        const std::vector<koi::Move> legal_moves = root.legal_moves();
+        const auto started = std::chrono::steady_clock::now();
+        std::uint64_t total = 0;
+        for (const koi::Move& move : legal_moves) {
+            koi::GameState child = root;
+            if (!child.make_move(move)) {
+                continue;
+            }
+            const std::uint64_t nodes = koi::perft(child, *cli_perft_depth - 1);
+            total += nodes;
+            std::cout << move.uci() << ": " << nodes << '\n';
+        }
+        const auto elapsed_ms = std::max<std::int64_t>(
+            1, std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - started)
+                   .count());
+        const std::uint64_t nps = (total * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
+        std::cout << "\nNodes searched: " << total << '\n'
+                  << "Time (ms)     : " << elapsed_ms << '\n'
+                  << "Nodes/second  : " << nps << '\n'
+                  << std::flush;
+        return 0;
+    }
     // Bootstrap with a tiny table so a GUI/tournament can deliver its Hash
     // option before a large default allocation is charged to the first clock.
     // UciController materializes the configured 512 MB default at isready.
@@ -405,6 +494,9 @@ int main(int argc, char* argv[]) {
                                   autodiscovered_network && selection.nnue_enabled);
     if (bench_depth.has_value()) {
         return controller.run_bench(*bench_depth, bench_hash_mb, bench_threads);
+    }
+    if (cli_eval) {
+        return controller.run_eval();
     }
     if (initial_protocol.has_value()) {
         (void)controller.set_protocol(*initial_protocol);
