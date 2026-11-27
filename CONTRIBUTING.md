@@ -42,16 +42,21 @@ Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gc
 On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engine-avx512` or `koi-engine-avx2` when the host CPU supports them (with fast `PEXT`), or runs the baseline build in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary.
 
 ```bash
-# Deterministic OpenBench-compatible node benchmark
+# Deterministic OpenBench-compatible node benchmark (plus PGO via Makefile: `make profile-build` / `make eval`)
 ./build/windows-release/koi-engine.exe bench
 
-# Compiler/ISA readout, eval, & fast perft check (`compiler`/`perft` require no NNUE network)
+# Zero-network position & asset inspection, compiler/ISA readout, eval (--hce / --nnue <path>), & fast perft
 ./build/windows-release/koi-engine.exe compiler
+./build/windows-release/koi-engine.exe --hce eval
+./build/windows-release/koi-engine.exe d
+./build/windows-release/koi-engine.exe see e2e4
 ./build/windows-release/koi-engine.exe perft 4 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 
 # Interactive UCI smoke check
 printf "uci\nisready\nposition startpos\ngo depth 4\nquit\n" | ./build/linux-gcc-release/koi-engine
 ```
+
+Supported zero-network CLI inspection subcommands also include `key`, `moves`, `flip`, `book [fen]` (optional `--book <path>`), and `tb [fen]` (optional `--syzygy <path>`).
 
 ---
 

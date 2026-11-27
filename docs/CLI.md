@@ -20,12 +20,14 @@ koi-engine --compiler
 # Timed perft divide from startpos or custom FEN (depth 1..10; no NNUE network required)
 koi-engine perft <depth> [fen]
 
-# Zero-network board diagram, Zobrist/Polyglot hash keys, legal moves, flip, and SEE inspection
+# Zero-network board diagram, Zobrist/Polyglot hash keys, legal moves, flip, book/TB probe, and SEE
 koi-engine d [fen]
 koi-engine --display [fen]
 koi-engine key [fen]
 koi-engine moves [fen]
 koi-engine flip [fen]
+koi-engine book [fen]                  # or --book <path> book [fen]
+koi-engine tb [fen]                    # or --syzygy <dir> tb [fen]
 koi-engine see <move> [fen]
 
 # Static NNUE/HCE evaluation readout for startpos or custom FEN
@@ -44,7 +46,7 @@ koi-engine --help         # or -h
 ```
 
 !!! note "Zero-network subcommands & unquoted FENs"
-    `compiler`, `perft`, `d`, `key`, `moves`, `flip`, `see`, `--version`, `--help`, and `--engine-json` execute before NNUE network discovery and work without a `koi.nnue` file. Both quoted (`koi-engine perft 2 "..."`) and unquoted 6-field FEN arguments are supported. Invalid perft depths, illegal `see` or `flip` inputs, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
+    `compiler`, `perft`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before NNUE network discovery and work without a `koi.nnue` file. Both quoted (`koi-engine perft 2 "..."`) and unquoted 6-field FEN arguments are supported. Invalid perft depths, illegal `see` or `flip` inputs, missing `--book`/`--syzygy`/`--nnue` paths, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
 
 ### Example Outputs
 

@@ -79,12 +79,14 @@ In addition to standard UCI and XBoard/CECP v2 commands, Koi supports standard c
 # OpenBench-compatible deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread)
 koi-engine bench [depth [hash [threads]]]
 
-# One-shot diagnostics: compiler/ISA, board/keys/moves/SEE (zero-network), eval, and timed perft divide
+# One-shot diagnostics: compiler/ISA, board/keys/moves/flip/book/TB/SEE (zero-network), eval, and timed perft divide
 koi-engine compiler
 koi-engine d [fen]
 koi-engine key [fen]
 koi-engine moves [fen]
 koi-engine flip [fen]
+koi-engine book [fen]                  # optional --book <path>
+koi-engine tb [fen]                    # optional --syzygy <dir>
 koi-engine see <move> [fen]
 koi-engine eval [fen]
 koi-engine perft 5 [fen]

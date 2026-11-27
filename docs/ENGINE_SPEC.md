@@ -792,8 +792,8 @@ Rules for `setoption`:
 | `fen` | Prints the six-field FEN of the current position. |
 | `key` | Prints the hexadecimal 64-bit Zobrist position key, pawn hash key, and Polyglot book key (also zero-network CLI `key [fen]`). |
 | `moves` | Lists all legal moves sorted lexicographically in UCI coordinate notation (also zero-network CLI `moves [fen]`). |
-| `book` | Lists all legal Polyglot book entries with weights and selection percentages for the current position. |
-| `tb` | Probes active Syzygy tablebases for root WDL classification and optimal root moves. |
+| `book` | Lists all legal Polyglot book entries with weights and selection percentages for the current position (also zero-network CLI `book [fen]` with optional `--book <path>`). |
+| `tb` | Probes active Syzygy tablebases for root WDL classification and optimal root moves (also zero-network CLI `tb [fen]` with optional `--syzygy <path>`). |
 | `eval` | Prints active evaluator details (`NNUE` version/feature set/shape, payload SHA-256 prefix, output bucket, quantization parameters, or `HCE` term breakdown), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval [fen]`). |
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check; also zero-network CLI `flip [fen]`). |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns (also zero-network CLI `see <move> [fen]`). |

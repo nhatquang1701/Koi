@@ -50,7 +50,7 @@ It combines Fancy Magic / BMI2 PEXT bitboards, iterative-deepening Principal Var
 
 Koi discovers its assets automatically with zero config files:
 
-- **NNUE Network:** Loads `koi.nnue` beside the executable automatically at boot (`EvalMode=hce` or `KOI_EVALUATOR=hce` switches to the built-in classical evaluator).
+- **NNUE Network:** Loads `koi.nnue` beside the executable automatically at boot (`--hce`, `EvalMode=hce`, or `KOI_EVALUATOR=hce` switches to the built-in classical evaluator; `--nnue <path>` loads an explicit network).
 - **Opening Book:** Ships a compact Stockfish-verified CC0 Polyglot `book.bin` beside the executable (auto-detected unless `OwnBook=false` is explicitly set).
 - **Syzygy Tablebases:** Drop 3–7 man `.rtbw`/`.rtbz` files into `syzygy/` beside the executable (or set `SyzygyPath`) for automatic root and interior probing.
 
@@ -59,16 +59,21 @@ Koi discovers its assets automatically with zero config files:
 ## Interactive CLI Highlights
 
 ```bash
-koi-engine bench              # OpenBench-compatible deterministic benchmark
-koi-engine compiler           # Print toolchain, C++ standard, and ISA capabilities
-koi-engine d [fen]            # Print ASCII board, FEN, Zobrist key, and move count
-koi-engine key [fen]          # Print position, pawn, and Polyglot hash keys
-koi-engine moves [fen]        # List sorted legal UCI moves
-koi-engine see <move> [fen]   # Compute static exchange evaluation (SEE) in cp
-koi-engine eval [fen]         # Inspect NNUE or HCE evaluation (with HCE term table)
-koi-engine perft 5 [fen]      # Run timed perft divide (depth 1..10)
-koi-engine --version          # Print version and git build commit
-koi-engine --engine-json      # Print En Croissant / Pawn Appétit JSON profile
+koi-engine bench                  # OpenBench-compatible deterministic benchmark
+koi-engine compiler               # Print toolchain, C++ standard, and ISA capabilities
+koi-engine d [fen]                # Print ASCII board, FEN, Zobrist key, and move count
+koi-engine key [fen]              # Print position, pawn, and Polyglot hash keys
+koi-engine moves [fen]            # List sorted legal UCI moves
+koi-engine flip [fen]             # Toggle side to move when legal (updated FEN)
+koi-engine book [fen]             # Probe active or --book <path> Polyglot weights
+koi-engine tb [fen]               # Probe active or --syzygy <dir> Syzygy tablebases
+koi-engine see <move> [fen]       # Compute static exchange evaluation (SEE) in cp
+koi-engine eval [fen]             # Inspect NNUE metadata or HCE term breakdown table
+koi-engine --hce eval [fen]       # Evaluate directly with classical HCE (no network)
+koi-engine --nnue <path> bench    # Benchmark an explicit NNUE weight file
+koi-engine perft 5 [fen]          # Run timed perft divide (depth 1..10)
+koi-engine --version              # Print version and git build commit
+koi-engine --engine-json          # Print En Croissant / Pawn Appétit JSON profile
 ```
 
 Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `flip`, `see <move>`, `compiler`, `bench [depth [hash [threads]]]`, `perft <depth>`, `wait`, and `help`. For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
@@ -80,7 +85,7 @@ Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`,
 | Section | Contents |
 | :--- | :--- |
 | **[User Guide](docs/USER_GUIDE.md)** | Installation, build presets, UCI options, time controls, GUI registration, opening books, and Syzygy tablebases. |
-| **[CLI & Interactive Reference](docs/CLI.md)** | One-shot zero-network subcommands (`compiler`, `d`, `key`, `moves`, `see`, `perft`), `eval` (incl. HCE term breakdown), interactive commands, protocols, and dev tools. |
+| **[CLI & Interactive Reference](docs/CLI.md)** | Zero-network subcommands (`compiler`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`), `--hce`/`--nnue`/`--book`/`--syzygy` flags, `eval`, interactive commands, protocols, and dev tools. |
 | **[Lichess Bot](docs/lichess-bot.md)** | Running Koi on Lichess via `tools/bot/koi-bot.sh` with automated matchmaking and release updates. |
 | **[System Architecture](docs/ARCHITECTURE.md)** | Interactive module diagram, translation-unit responsibilities, threading model, and 1.0.0 architecture boundaries. |
 | **[Engine Specification](docs/ENGINE_SPEC.md)** | Complete technical specification of rules, search heuristics, NNUE v2–v9 containers, time formulas, and UCI contracts. |
