@@ -50,7 +50,8 @@ flowchart TD
 | `transposition_table.cpp` | Physical storage, locking, generations, clearing, resizing, and mate-score normalization. |
 | `static_exchange.cpp` | Bitboard static-exchange evaluation used by pruning and ordering. |
 | `search_ordering.cpp` | History, killers, and continuation counters for move ordering. |
-| `nnue.cpp` | Default/production evaluator inference and Finny incremental accumulators (AVX-512, AVX2, ARM NEON, and scalar kernels). |
+| `nnue.cpp` | Default/production evaluator orchestration, `NnueWorker`, and Finny incremental accumulator caches. |
+| `detail/nnue_kernels.hpp` | Stateless AVX-512, AVX2, ARM NEON, and scalar NNUE inference and delta kernels. |
 | `detail/nnue_io.cpp`, `detail/nnue_manifest.hpp` | NNUE container serialization/deserialization, SHA-256 verification, manifest validation, and boot-time network discovery. |
 | `classical_evaluator.*` | Clean hand-crafted evaluator (HCE rewrite): stateless, tapered, selectable with `EvalMode=hce`/`KOI_EVALUATOR=hce`. |
 | `opening_book.cpp` | Optional Polyglot opening book; release packages bundle a CC0 book, the repository commits none. |

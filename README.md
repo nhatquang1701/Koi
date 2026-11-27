@@ -79,6 +79,11 @@ In addition to standard UCI and XBoard/CECP v2 commands, Koi supports standard c
 # OpenBench-compatible deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread)
 koi-engine bench [depth [hash [threads]]]
 
+# One-shot diagnostics: compiler/ISA info, startpos eval, and timed perft divide
+koi-engine compiler
+koi-engine eval
+koi-engine perft 5
+
 # Version, GUI profile JSON, protocol selection, and CLI help
 koi-engine --version
 koi-engine --engine-json

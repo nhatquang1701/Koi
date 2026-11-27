@@ -138,7 +138,8 @@ Other environment variables relevant to operation:
 | Compatibility facade | `GameState` in `src/koi/game_state.{hpp,cpp}` | The stable API used by evaluator, search, and UCI. It keeps a private `CompatibilityMirror` (vendored chess-library board plus reversible shadow history) transactionally synchronized for Polyglot, legacy adapters, completion validation, and explicit differential diagnostics. |
 | Feature cache | `detail::FeatureState` in `src/koi/detail/feature_state.{hpp,cpp}` | Caches `PositionFeatures` derived from native `Position`; invalidated by make/unmake and keyed by native history depth. |
 | Evaluator execution | `detail::EvaluationContext` in `src/koi/detail/evaluation_context.{hpp,cpp}` | Selects a per-worker `EvaluatorWorker` (used by NNUE) or the evaluator-plus-mutex fallback. |
-| NNUE | `src/koi/nnue.{hpp,cpp}` | Integer NNUE inference, Finny incremental accumulators, and AVX2/NEON/scalar kernels. |
+| NNUE | `src/koi/nnue.{hpp,cpp}` | `NnueEvaluator`, `NnueWorker` state, and Finny incremental accumulator caches. |
+| NNUE kernels | `src/koi/detail/nnue_kernels.hpp` | Stateless AVX-512, AVX2, ARM NEON, and scalar NNUE inference and delta kernels. |
 | NNUE I/O & manifest | `src/koi/detail/nnue_io.cpp`, `src/koi/detail/nnue_manifest.hpp` | Versioned container loader/serializer, SHA-256 verification, manifest validation, boot discovery, and evaluator selection. |
 | Time | `TimeManager` in `src/koi/time_manager.{hpp,cpp}` | Deadline, node limit, budgets, pacing, and ponderhit reconfiguration. |
 | Optional assets | `OpeningBook`, `SyzygyTablebase` | Polyglot and Syzygy; both optional and inert without files. |
@@ -788,13 +789,13 @@ Rules for `setoption`:
 | `quit` | Sets shutting-down, cancels/joins, and returns 0 without late protocol output. EOF follows the same cancellation path. |
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
 | `d` | Displays the ASCII board, FEN, Zobrist key, side, check state, and legal move count. |
-| `eval` | Prints active evaluator details (`NNUE` version/feature set/shape or `HCE`), static score, heuristic WDL triplet, and game phase. |
+| `eval` | Prints active evaluator details (`NNUE` version/feature set/shape or `HCE`), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval`). |
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check). |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns. |
-| `perft <depth>` | Runs an interruptible perft divide (`1..10`) from the current position. |
-| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `--version`, `--help`, `--engine-json`, `--protocol`). |
+| `perft <depth>` | Runs an interruptible perft divide (`1..10`) from the current position (also CLI `perft <depth>`). |
+| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `compiler`, `eval`, `perft`, `--version`, `--help`, `--engine-json`, `--protocol`). |
 | `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |
-| `compiler` | Prints engine version, commit, compiler, C++26 standard, architecture, and ISA. |
+| `compiler` | Prints engine version, commit, compiler, C++26 standard, architecture, and ISA (also CLI `compiler`/`--compiler`). |
 | `help` | Prints the interactive command summary. |
 | Unknown command | Ignored. An exception during command handling is converted to `info string command failed: ...` and the loop continues. A protocol line longer than 1 MiB is consumed and rejected with `info string command rejected: line exceeds 1048576 bytes`; the session continues. |
 

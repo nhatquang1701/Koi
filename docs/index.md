@@ -59,12 +59,15 @@ Koi discovers its assets automatically with zero config files:
 ## Interactive CLI Highlights
 
 ```bash
-koi-engine bench        # OpenBench-compatible deterministic benchmark
-koi-engine --version    # Print version and git build commit
+koi-engine bench         # OpenBench-compatible deterministic benchmark
+koi-engine compiler      # Print toolchain, C++ standard, and ISA capabilities
+koi-engine eval          # Inspect active NNUE/HCE evaluation of startpos
+koi-engine perft 5       # Run timed perft divide from startpos (depth 1..10)
+koi-engine --version     # Print version and git build commit
 koi-engine --engine-json # Print En Croissant / Pawn Appétit JSON profile
 ```
 
-Inside a UCI session, Koi also accepts `d` (ASCII board + FEN + Zobrist key), `eval` (static evaluation), `compiler` (toolchain & SIMD capabilities), `bench [depth]`, and `go perft <depth>`.
+Inside a UCI session, Koi also accepts `d` (ASCII board + FEN + Zobrist key), `eval`, `flip`, `see <move>`, `compiler`, `bench [depth [hash [threads]]]`, `perft <depth>`, `wait`, and `help`.
 
 ---
 
