@@ -3084,8 +3084,11 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     const std::string nnue_eval_raw = nnue_eval_out.str();
     require(nnue_eval_exit == 0 &&
                 nnue_eval_raw.find("Evaluator      : NNUE (v4 halfka-king-bucket-v1, ") !=
-                    std::string::npos,
-            "eval with NnueEvaluator must report NNUE version, feature set, and dimensions; got:\n" +
+                    std::string::npos &&
+                nnue_eval_raw.find("Network SHA256 : ") != std::string::npos &&
+                nnue_eval_raw.find("Output bucket  : 0 (of 8)") != std::string::npos &&
+                nnue_eval_raw.find("Quantization   : int16/int8") != std::string::npos,
+            "eval with NnueEvaluator must report NNUE version, SHA256, output bucket, and quantization; got:\n" +
                 nnue_eval_raw);
     require(nnue_eval_raw.find("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\n") !=
                 std::string::npos,

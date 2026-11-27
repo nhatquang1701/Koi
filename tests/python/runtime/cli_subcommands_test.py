@@ -204,6 +204,13 @@ class CliSubcommandsTest(unittest.TestCase):
                 "Game phase     :",
             ):
                 self.assertIn(label, proc.stdout)
+            if extra != {"KOI_EVALUATOR": "hce"}:
+                for nnue_label in (
+                    "Network SHA256 :",
+                    "Output bucket  :",
+                    "Quantization   :",
+                ):
+                    self.assertIn(nnue_label, proc.stdout)
 
         bad_eval = self._run(["eval", "bad fen"], extra_env=extra)
         self.assertEqual(bad_eval.returncode, 2)

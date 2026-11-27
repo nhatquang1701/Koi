@@ -645,6 +645,31 @@ std::string format_eval_summary(const GameState& position,
            << (static_cast<double>(wdl.loss) / 10.0) << "% L\n"
            << "Game phase     : " << position.game_phase() << "/24 (pieces: "
            << position.piece_count() << ")\n";
+    if (!hce_active) {
+        if (const auto* nnue = dynamic_cast<const NnueEvaluator*>(evaluator);
+            nnue != nullptr && nnue->network() != nullptr) {
+            const NnueNetwork& net = *nnue->network();
+            const NnueManifest& m = net.manifest;
+            buffer << "Network SHA256 : " << std::hex << std::nouppercase << std::setfill('0');
+            for (std::size_t i = 0; i < 6; ++i) {
+                buffer << std::setw(2) << static_cast<unsigned>(m.network_sha256[i]);
+            }
+            buffer << std::dec << std::setfill(' ') << '\n';
+            if (m.layer_sizes[2] == kKoiNnueOutputBucketCount) {
+                const std::size_t missing =
+                    32U - std::min<std::size_t>(32U, position.piece_count());
+                const std::size_t bucket = std::min<std::size_t>(7U, missing / 4U);
+                buffer << "Output bucket  : " << bucket << " (of 8)\n";
+            }
+            buffer << "Quantization   : " << m.quantization;
+            if (m.version == kKoiNnueHalfkaHmV9FormatVersion) {
+                buffer << " (QA=" << static_cast<unsigned>(net.qa)
+                       << ", QB=" << static_cast<unsigned>(net.qb)
+                       << ", scale=" << net.eval_scale << ')';
+            }
+            buffer << '\n';
+        }
+    }
     if (const auto* hce = dynamic_cast<const ClassicalEvaluator*>(evaluator); hce != nullptr) {
         const ClassicalEvalTrace tr = hce->trace(position);
         const int phase = std::clamp(tr.phase, 0, 24);
