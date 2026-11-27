@@ -130,10 +130,8 @@ perft: release
 	  "$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)"; \
 	fi
 
-perft-suite:
-	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS)
-	cmake --build "$(BUILD_DIR)" --config Release --target koi_perft -j "$(JOBS)"
-	"$(BUILD_DIR)/koi-perft" --suite
+perft-suite: release
+	"$(BUILD_DIR)/koi-engine" perft --suite
 
 d: release
 	@if [ -n "$(FEN)" ]; then \
@@ -194,7 +192,7 @@ help:
 	@echo "  make version                           Build and print engine version banner"
 	@echo "  make compiler                          Build and print compiler / ISA metadata"
 	@echo "  make perft [PERFT_DEPTH=5] [FEN=...]   Build and run timed perft divide"
-	@echo "  make perft-suite                       Build koi-perft and run 6-position CPW suite"
+	@echo "  make perft-suite                       Build koi-engine and run 6-position CPW suite"
 	@echo "  make d [FEN=...]                       Build and print ASCII board, FEN, key, and FIDE state"
 	@echo "  make epd [FEN=...]                     Build and print standard EPD (hmvc/fmvn) for position"
 	@echo "  make pgn [FEN=...]                     Build and export position/moves as FIDE PGN"

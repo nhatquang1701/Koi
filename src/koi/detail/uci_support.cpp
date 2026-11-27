@@ -1347,14 +1347,18 @@ std::optional<ParsedCliPosition> parse_cli_position_with_history(
         while (moves_index < tokens.size() && tokens[moves_index] != "moves") {
             ++moves_index;
         }
-        const std::string fen_text = join_tokens(tokens, fen_start, moves_index);
+        std::string fen_text = join_tokens(tokens, fen_start, moves_index);
         if (fen_text.empty()) {
             error = "invalid FEN '" + std::string(spec) + "'";
             return std::nullopt;
         }
+        const std::string original_fen = fen_text;
+        if (moves_index - fen_start == 4) {
+            fen_text += " 0 1";
+        }
         const auto parsed = GameState::from_fen(fen_text);
         if (!parsed.has_value()) {
-            error = "invalid FEN '" + fen_text + "'";
+            error = "invalid FEN '" + original_fen + "'";
             return std::nullopt;
         }
         state = *parsed;

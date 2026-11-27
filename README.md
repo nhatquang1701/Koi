@@ -95,7 +95,7 @@ koi-engine tb [fen]                    # optional --syzygy <dir>
 koi-engine see <move> [fen]
 koi-engine eval [fen]
 koi-engine options                     # print live active protocol, evaluator, book, and Syzygy options
-koi-engine perft 5 [fen]
+koi-engine perft 5 [fen]               # or `koi-engine perft --suite` (6 CPW positions)
 
 # Evaluator selection, initial hash/threads, batch commands, version, GUI JSON, protocol, and help
 koi-engine --hce eval [fen]

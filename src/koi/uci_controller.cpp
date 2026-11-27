@@ -620,11 +620,7 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
         apply_pending_xboard_move();
         const std::size_t pop_count = (name == "remove") ? 2U : 1U;
         if (position_moves_.size() >= pop_count) {
-            position_moves_.resize(position_moves_.size() - pop_count);
-            position_ = position_origin_;
-            for (const Move& m : position_moves_) {
-                (void)position_.make_move(m);
-            }
+            rewind_position_history(pop_count);
         }
         if (xboard_analyze_) {
             start_xboard_search(true);
@@ -1203,11 +1199,7 @@ void UciController::handle_setoption(std::istream& command) {
         break;
 
     case UciOptionId::eval_mode: {
-        std::string mode = value;
-        for (char& character : mode) {
-            character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-        }
-        if (mode == "hce") {
+        if (equals_ignore_case(value, "hce")) {
             if (!hce_active_) {
                 stop_and_suppress_active_search();
                 search_service_.set_evaluator(std::make_shared<ClassicalEvaluator>());
@@ -1216,7 +1208,7 @@ void UciController::handle_setoption(std::istream& command) {
             write_uci_info_string("evaluator hce");
             break;
         }
-        if (mode != "nnue") {
+        if (!equals_ignore_case(value, "nnue")) {
             break;
         }
         if (!hce_active_) {
@@ -1572,6 +1564,14 @@ void UciController::handle_makemove(std::istream& command) {
                           (applied.size() == 1 ? " move" : " moves"));
 }
 
+void UciController::rewind_position_history(const std::size_t plies) {
+    position_moves_.resize(position_moves_.size() - plies);
+    position_ = position_origin_;
+    for (const Move& move : position_moves_) {
+        (void)position_.make_move(move);
+    }
+}
+
 void UciController::handle_undo(std::istream& command) {
     const std::vector<std::string> tokens = remaining_tokens(command);
     if (tokens.size() > 1) {
@@ -1597,11 +1597,7 @@ void UciController::handle_undo(std::istream& command) {
         return;
     }
     stop_and_suppress_active_search();
-    position_moves_.resize(position_moves_.size() - count);
-    position_ = position_origin_;
-    for (const Move& move : position_moves_) {
-        (void)position_.make_move(move);
-    }
+    rewind_position_history(count);
     write_uci_info_string("undid " + std::to_string(count) +
                           (count == 1 ? " ply" : " plies"));
 }

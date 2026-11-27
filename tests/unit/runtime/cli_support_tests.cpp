@@ -14,7 +14,7 @@
 
 namespace {
 
-constexpr std::array<const char*, 36> kCliEnvVars = {
+constexpr std::array<const char*, 37> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_CLI_HASH",
     "KOI_CLI_THREADS",
@@ -43,6 +43,7 @@ constexpr std::array<const char*, 36> kCliEnvVars = {
     "KOI_CLI_OPTIONS",
     "KOI_CLI_EVAL_FEN",
     "KOI_CLI_PERFT",
+    "KOI_CLI_PERFT_SUITE",
     "KOI_CLI_PERFT_FEN",
     "KOI_BENCH_DEPTH",
     "KOI_BENCH_HASH",
@@ -496,6 +497,8 @@ void test_unquoted_fen_and_inspection_subcommands() {
              {"perft"},
              {"perft", "0"},
              {"perft", "11"},
+             {"perft", "--suite", "startpos"},
+             {"-c", "uci", "perft", "--suite"},
              {"see"},
          }) {
         env.clear_all();
@@ -503,6 +506,23 @@ void test_unquoted_fen_and_inspection_subcommands() {
         koi::cli::CliOptions bad_opts;
         koi::test::require(invoke_parse(bad, bad_opts) == std::optional<int>(2) && !err.str().empty(),
                            "invalid perft or incomplete see command must exit 2 with diagnostic");
+    }
+
+    {
+        env.clear_all();
+        koi::cli::CliOptions suite_opts;
+        koi::test::require(!invoke_parse({"perft", "--suite"}, suite_opts).has_value() &&
+                               suite_opts.perft_suite && !suite_opts.perft_depth.has_value(),
+                           "perft --suite must set perft_suite without perft_depth");
+        koi::cli::CliOptions suite_reexec;
+        koi::test::require(!invoke_parse({}, suite_reexec).has_value() &&
+                               suite_reexec.perft_suite,
+                           "KOI_CLI_PERFT_SUITE must roundtrip across empty argv");
+        env.clear_all();
+        koi::cli::CliOptions suite_alias;
+        koi::test::require(!invoke_parse({"perft", "suite"}, suite_alias).has_value() &&
+                               suite_alias.perft_suite,
+                           "perft suite alias must set perft_suite");
     }
 }
 

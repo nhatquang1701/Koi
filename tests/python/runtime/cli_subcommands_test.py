@@ -317,6 +317,25 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(pgn_bad_fen.returncode, 2)
         self.assertIn("invalid FEN", pgn_bad_fen.stderr)
 
+        fen_4field = self._run(["fen", "6k1/5ppp/8/8/8/8/8/3R2K1 w - -"], disable_nnue=True)
+        self.assertEqual(fen_4field.returncode, 0, fen_4field.stderr)
+        self.assertEqual(fen_4field.stdout.strip(), "6k1/5ppp/8/8/8/8/8/3R2K1 w - - 0 1")
+
+        epd_4field = self._run(["epd", "6k1/5ppp/8/8/8/8/8/3R2K1 w - -"], disable_nnue=True)
+        self.assertEqual(epd_4field.returncode, 0, epd_4field.stderr)
+        self.assertEqual(epd_4field.stdout.strip(), "6k1/5ppp/8/8/8/8/8/3R2K1 w - - hmvc 0; fmvn 1;")
+
+        engine_perft_suite = self._run(["perft", "--suite"], disable_nnue=True, timeout=60)
+        self.assertEqual(engine_perft_suite.returncode, 0, engine_perft_suite.stderr)
+        self.assertEqual(engine_perft_suite.stderr, "")
+        self.assertIn("PASS startpos depth 4 nodes 197281", engine_perft_suite.stdout)
+        self.assertIn("PASS position-6 depth 4 nodes 3894594", engine_perft_suite.stdout)
+        self.assertIn("suite 6/6 passed | nodes 10746536 |", engine_perft_suite.stdout)
+
+        bad_engine_suite = self._run(["perft", "--suite", "startpos"], disable_nnue=True)
+        self.assertEqual(bad_engine_suite.returncode, 2)
+        self.assertIn("does not accept", bad_engine_suite.stderr)
+
         epd_start = self._run(["epd"], disable_nnue=True)
         self.assertEqual(epd_start.returncode, 0, epd_start.stderr)
         self.assertEqual(
@@ -784,6 +803,15 @@ class CliSubcommandsTest(unittest.TestCase):
         perft_san = subprocess.run([str(perft_exe), "1", "moves", "e4"], capture_output=True, text=True, timeout=15)
         self.assertEqual(perft_san.returncode, 0, perft_san.stderr)
         self.assertEqual(perft_san.stdout.strip(), "nodes 20")
+
+        perft_4field = subprocess.run(
+            [str(perft_exe), "1", "r3k2r/8/8/8/8/8/8/R3K2R w KQkq -"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(perft_4field.returncode, 0, perft_4field.stderr)
+        self.assertEqual(perft_4field.stdout.strip(), "nodes 26")
 
         perft_suite = subprocess.run([str(perft_exe), "--suite"], capture_output=True, text=True, timeout=60)
         self.assertEqual(perft_suite.returncode, 0, perft_suite.stderr)

@@ -42,6 +42,7 @@ struct CliOptions {
     std::optional<std::string> inspect_fen;
     std::optional<std::string> eval_fen;
     std::optional<int> perft_depth;
+    bool perft_suite = false;
     std::optional<std::string> perft_fen;
 };
 

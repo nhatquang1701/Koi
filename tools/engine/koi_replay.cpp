@@ -17,14 +17,14 @@
 namespace {
 
 constexpr std::string_view kUsage =
-    "usage: koi-replay [--pgn] <startpos|fen six-field-fen> [moves <uci|san>...]\n";
+    "usage: koi-replay [--pgn] <startpos|fen 4-or-6-field-fen> [moves <uci|san>...]\n";
 
 struct ReplayResult {
     std::string result = "*";
     std::string termination = "ongoing";
 };
 
-bool has_six_fen_fields(std::string_view fen) noexcept {
+int fen_field_count(std::string_view fen) noexcept {
     int count = 0;
     bool in_token = false;
     for (const unsigned char ch : fen) {
@@ -35,7 +35,7 @@ bool has_six_fen_fields(std::string_view fen) noexcept {
             in_token = true;
         }
     }
-    return count == 6;
+    return count;
 }
 
 std::string join_arguments(int begin, int end, char* arguments[]) {
@@ -120,9 +120,13 @@ int main(int argument_count, char* arguments[]) {
         if (fen_start >= move_start) {
             return usage();
         }
-        const std::string fen = join_arguments(fen_start, move_start, arguments);
-        if (!has_six_fen_fields(fen)) {
+        std::string fen = join_arguments(fen_start, move_start, arguments);
+        const int field_count = fen_field_count(fen);
+        if (field_count != 4 && field_count != 6) {
             return usage();
+        }
+        if (field_count == 4) {
+            fen += " 0 1";
         }
         const auto parsed = koi::GameState::from_fen(fen);
         if (!parsed) {

@@ -24,8 +24,9 @@ koi-engine --compiler
 # Native NNUE container metadata & SHA-256 payload checksum verifier
 koi-engine nnue [path]
 
-# Timed perft divide from startpos or custom FEN (depth 1..10; no NNUE network required)
+# Timed perft divide from startpos/custom FEN (1..10) or 6-position CPW verification suite (no NNUE required)
 koi-engine perft <depth> [fen]
+koi-engine perft --suite
 
 # Zero-network board diagram, six-field FEN, EPD, Zobrist/Polyglot hash keys, legal moves, PGN export, flip, book/TB probe, and SEE
 koi-engine d [fen]
@@ -61,7 +62,7 @@ koi-engine help          # or -h, --help
 ```
 
 !!! note "Zero-network subcommands, unquoted FENs & batch mode"
-    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `epd`, `key`, `moves`, `pgn`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network; `--book <path>` and `--syzygy <path>` apply to both one-shot `book`/`tb` probes and live UCI, `-c`, or `options` sessions; `--hash` and `--threads` also provide defaults for `bench` and `speedtest` when positional hash/threads arguments are omitted). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci|san>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3`, `koi-engine d moves e4 e5 Nf3`, or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd`/`--hash`/`--threads` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make asan` (ASan+UBSan), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make epd`, `make pgn`, `make engine-json`, `make version`, `make compiler`, `make perft PERFT_DEPTH=5 [FEN=...]`, and `make perft-suite`.
+    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `epd`, `key`, `moves`, `pgn`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network; `--book <path>` and `--syzygy <path>` apply to both one-shot `book`/`tb` probes and live UCI, `-c`, or `options` sessions; `--hash` and `--threads` also provide defaults for `bench` and `speedtest` when positional hash/threads arguments are omitted). Both quoted (`koi-engine perft 2 "..."`), unquoted 4- or 6-field FEN arguments, and `[startpos|fen] [moves <uci|san>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3`, `koi-engine d moves e4 e5 Nf3`, or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd`/`--hash`/`--threads` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make asan` (ASan+UBSan), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make epd`, `make pgn`, `make engine-json`, `make version`, `make compiler`, `make perft PERFT_DEPTH=5 [FEN=...]`, and `make perft-suite`.
 
 ### Example Outputs
 
@@ -223,7 +224,7 @@ Built from source via CMake presets (not shipped in user-facing release archives
 | :--- | :--- | :--- |
 | `koi-bench` | 64-position tactical & 128-position positional strength suite | `koi-bench (--nnue NET \| --hce) [--hash MB] [--optional] [--timed] [--depth-sweep a..b] [--fen-file\|--epd PATH] [--report PATH]` (`bm`/`am`/`id`/`hmvc`/`fmvn`, `--flag=value` supported) |
 | `koi-perft` | Bulk-counting legal move-generator perft, `--divide`, and CPW `--suite` | `koi-perft [--divide] <depth> [startpos\|fen [moves <move>...]]` · `koi-perft --suite` |
-| `koi-replay` | UCI/SAN game replayer (`legal`, `result`, `termination`, `fen`) & PGN exporter | `koi-replay [--pgn] <startpos\|fen 6-field-fen> [moves <uci\|san>...]` |
+| `koi-replay` | UCI/SAN game replayer (`legal`, `result`, `termination`, `fen`) & PGN exporter | `koi-replay [--pgn] <startpos\|fen 4-or-6-field-fen> [moves <uci\|san>...]` |
 | `koi-eval-features` | Bulk CSV evaluator dumper for FEN and EPD corpora | `koi-eval-features (--nnue NET \| --hce) [--input FILE] [--output FILE]` (`--flag=value` supported) |
 | `koi-nnue-fixture` | Synthetic v4/v5/v9 `.nnue` generator for C++ & Python boundary tests | `koi-nnue-fixture --arch v4\|v5\|v9 --output <path>` (`--flag=value` supported) |
 | `tools/measurement/nnue_info.py` | Offline NNUE container inspector & SHA-256 payload verifier | `python tools/measurement/nnue_info.py <network.nnue> [--json] [--verify]` |

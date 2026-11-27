@@ -77,7 +77,7 @@ koi-engine eval [fen]             # Inspect NNUE metadata or HCE term breakdown 
 koi-engine options                # Print live active protocol, evaluator, book, and Syzygy options
 koi-engine --hce eval [fen]       # Evaluate directly with classical HCE (no network)
 koi-engine --nnue <path> bench    # Benchmark an explicit NNUE weight file
-koi-engine perft 5 [fen]          # Run timed perft divide (depth 1..10)
+koi-engine perft 5 [fen]          # Run timed perft divide (depth 1..10) or `--suite` (6 CPW positions)
 koi-engine --hash 64 --threads 4 -c "uci" -c "go depth 6"  # Initial Hash/Threads + batch commands
 koi-engine --version              # Print version and git build commit
 koi-engine --engine-json          # Print En Croissant / Pawn Appétit JSON profile

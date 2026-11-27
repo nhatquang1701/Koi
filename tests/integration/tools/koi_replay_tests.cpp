@@ -177,6 +177,11 @@ void test_san_moves_replay() {
     require_field(fools, "legal", "1");
     require_field(fools, "result", "0-1");
     require_field(fools, "termination", "checkmate");
+
+    const auto four_field = run_replay(
+        replay_path, "fen \"r3k2r/8/8/8/8/8/8/R3K2R w KQkq -\" moves O-O");
+    require_field(four_field, "legal", "1");
+    require_field(four_field, "fen", "r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
 }
 
 void test_pgn_output_and_illegal_pgn_exit() {

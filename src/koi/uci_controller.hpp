@@ -137,6 +137,7 @@ private:
     void handle_wait();
     void handle_help();
     void reset_new_game();
+    void rewind_position_history(std::size_t plies);
     bool handle_xboard_command(std::string_view name, std::istream& command, bool& should_quit);
     void start_xboard_search(bool analyze_mode);
     void apply_pending_xboard_move();

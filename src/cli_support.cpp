@@ -107,7 +107,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  nnue [path]                              Inspect NNUE container metadata and verify payload SHA-256\n"
               << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
               << "  options, --options                       Print live active protocol, evaluator, book, and Syzygy options\n"
-              << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n"
+              << "  perft <depth|--suite> [fen]              Run timed perft divide (1..10) or 6-position CPW verification suite\n"
               << "  d, --display [fen]                       Display ASCII board, FEN, Zobrist key, and move count\n"
               << "  fen [fen]                                Print six-field FEN for startpos, FEN, or moves sequence\n"
               << "  epd [fen]                                Print standard EPD (hmvc/fmvn) for startpos, FEN, or moves sequence\n"
@@ -447,10 +447,19 @@ std::optional<int> parse_cli_options(
         }
         if (arg == "perft") {
             if (index + 1 >= argc) {
-                std::cerr << "koi-engine: missing depth for perft (expected integer 1..10).\n";
+                std::cerr << "koi-engine: missing depth for perft (expected integer 1..10 or --suite).\n";
                 return 2;
             }
             const std::string_view depth_arg(argv[++index]);
+            if (depth_arg == "--suite" || depth_arg == "suite") {
+                if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
+                    std::cerr << "koi-engine: perft --suite does not accept a position argument.\n";
+                    return 2;
+                }
+                out.perft_suite = true;
+                set_environment_value("KOI_CLI_PERFT_SUITE", "1");
+                continue;
+            }
             std::size_t depth = 0;
             if (!parse_bounded_uint(depth_arg, 1, 10, depth)) {
                 std::cerr << "koi-engine: invalid perft depth '" << depth_arg
@@ -733,6 +742,7 @@ std::optional<int> parse_cli_options(
             out.perft_depth = static_cast<int>(*parsed);
         }
     }
+    restore_env_flag(out.perft_suite, "KOI_CLI_PERFT_SUITE");
     restore_env_string(out.perft_fen, "KOI_CLI_PERFT_FEN");
     if (!out.bench_depth.has_value()) {
         std::optional<std::size_t> parsed_depth;
@@ -759,7 +769,7 @@ std::optional<int> parse_cli_options(
         (out.bench_depth.has_value() || out.speedtest || out.compiler || out.nnue_info ||
          out.display || out.fen || out.epd || out.key || out.moves || out.pgn || out.flip ||
          out.book || out.tb || out.see_move.has_value() || out.eval || out.options ||
-         out.perft_depth.has_value())) {
+         out.perft_depth.has_value() || out.perft_suite)) {
         std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
         return 2;
     }
@@ -906,6 +916,40 @@ std::optional<int> run_zero_network_cli_command(
             std::cout << detail::format_syzygy_probe(nullptr, *root) << std::flush;
         }
         return 0;
+    }
+    if (options.perft_suite) {
+        const auto started = std::chrono::steady_clock::now();
+        std::size_t passed = 0;
+        std::uint64_t total_nodes = 0;
+        for (const detail::PerftSuiteCase& entry : detail::kPerftSuite) {
+            const auto parsed = GameState::from_fen(entry.fen);
+            if (!parsed.has_value()) {
+                std::cout << "FAIL " << entry.name << " depth " << entry.depth
+                          << " expected " << entry.expected_nodes << " got 0\n";
+                continue;
+            }
+            GameState state = *parsed;
+            const std::uint64_t actual = perft(state, entry.depth);
+            total_nodes += actual;
+            if (actual == entry.expected_nodes) {
+                ++passed;
+                std::cout << "PASS " << entry.name << " depth " << entry.depth
+                          << " nodes " << actual << '\n';
+            } else {
+                std::cout << "FAIL " << entry.name << " depth " << entry.depth
+                          << " expected " << entry.expected_nodes << " got " << actual << '\n';
+            }
+        }
+        const auto elapsed_ms = std::max<std::int64_t>(
+            1, std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - started)
+                   .count());
+        const std::uint64_t nps = (total_nodes * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
+        std::cout << "suite " << passed << '/' << detail::kPerftSuite.size()
+                  << " passed | nodes " << total_nodes
+                  << " | time_ms " << elapsed_ms
+                  << " | nps " << nps << '\n' << std::flush;
+        return passed == detail::kPerftSuite.size() ? 0 : 1;
     }
     if (options.perft_depth.has_value()) {
         const std::optional<GameState> resolved = resolve_cli_position(options.perft_fen);
