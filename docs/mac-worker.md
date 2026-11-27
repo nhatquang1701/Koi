@@ -70,9 +70,9 @@ ctest --test-dir build/release -j 8 --output-on-failure
   `--warmup` and `--repeat` default to 0/1; `--depth` and `--depth-sweep` are
   mutually exclusive. The fen-file line format is `[name|]<FEN or move list>`.
 
-- Self-play A/B (node-limited, engine vs engine): `tools/stability/uci_match.ps1`
-  with `-KoiPath` / `-OpponentPath`; install PowerShell 7 on macOS with
-  `brew install --cask powershell`.
+- Self-play A/B (equal-time or node-limited, engine vs engine): `tools/stability/uci_match.ps1`,
+  `tools/stability/sprt_compare.ps1`, and `tools/nnue/net_match.ps1`;
+  install PowerShell 7 on macOS with `brew install --cask powershell`.
 
 - Reference throughput (Apple Silicon M4, `Threads=1`, Official NNUE v9 `h256` with PGO+LTO): ~3.4–4.2M NPS in `1+0` self-play and ~12–14M NPS at `Threads=4`. Use `build/release/koi-engine bench` for a quick single-threaded deterministic node-count and NPS check.
 

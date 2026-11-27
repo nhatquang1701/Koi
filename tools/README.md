@@ -65,15 +65,17 @@ regresses past `-MaxNpsRegressionPercent` (default 2%) or when the median row
 NPS regresses past `-MaxRowNpsRegressionPercent`. Rows whose baseline median
 elapsed is below `-MinRowElapsedMs` (default 20 ms) are timer-quantized -- one
 millisecond tick is a >5% NPS step there -- so they are still reported with
-`noise=true` but excluded from the row verdict; the total keeps every row. The
-run artifacts and a `speed-gate.json` summary land under `artifacts/verification/`;
-like the fixed-depth gate this is a standalone measurement command, never a
-CTest threshold:
+`noise=true` but excluded from the row verdict; the total keeps every row. Pass
+`-NnuePath <path.nnue>` or `-Hce` to select the evaluator. The run artifacts
+and a `speed-gate.json` summary land under `artifacts/verification/`; like the
+fixed-depth gate this is a standalone measurement command, never a CTest
+threshold:
 
 ```powershell
 pwsh -NoProfile -File .\tools\build\speed_gate.ps1 `
   -BaselineExecutable .\artifacts\verification\speed-program\phase-0\koi-bench-phase0.exe `
   -CandidateExecutable .\build\release\koi-bench.exe `
+  -NnuePath .\artifacts\networks\koi-v9-hm10-h256-official.nnue `
   -Runs 5 -Threads 1 -DepthSweep 2..7 `
   -FenFile .\tests\data\positions\evaluation-positions.txt `
   -OutputDirectory .\artifacts\verification\speed-program\speed-gate\phase-1
@@ -314,11 +316,12 @@ Install the pinned CC0 opening book beside a specific engine executable with
 the one-time installer:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build\install_book.ps1 `
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\build\install_book.ps1 `
   -EnginePath .\build\release\koi-engine.exe
 ```
 
-`-EnginePath` is mandatory and must identify an existing local `.exe` file.
+`-EnginePath` is mandatory and must identify an existing local engine
+executable (`.exe` on Windows, or `koi-engine` on Linux/macOS).
 The installer downloads the pinned `lichess_1900_rapid_2026-05.bin` asset from
 the `books-2026-05-v1` release, verifies SHA-256
 `56abc70e5291b4338356009d380e565fd85eab8067f6bf34927b5807ff231370`, and

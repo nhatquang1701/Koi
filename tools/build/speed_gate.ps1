@@ -11,8 +11,8 @@ param(
     [int]$Threads = 1,
     [ValidateRange(1, 100)]
     [int]$Speed = 100,
-    [Parameter(Mandatory = $true)]
-    [string]$NnuePath,
+    [string]$NnuePath = '',
+    [switch]$Hce,
     [string]$FenFile = '',
     [ValidateRange(0, 255)]
     [int]$Depth = 0,
@@ -79,8 +79,13 @@ function Get-VisitedNps($Totals) {
 
 function Invoke-BenchRun([string]$Label, [string]$Executable, [string]$ReportPath,
                          [string]$StdoutPath, [string]$StderrPath) {
-    $arguments = @('--threads', "$Threads", '--speed', "$Speed", '--timed', '--nnue', $NnuePath,
-        '--report', $ReportPath)
+    $arguments = @('--threads', "$Threads", '--speed', "$Speed", '--timed')
+    if ($Hce) {
+        $arguments += '--hce'
+    } else {
+        $arguments += @('--nnue', $resolvedNnuePath)
+    }
+    $arguments += @('--report', $ReportPath)
     if ($FenFile -ne '') {
         $arguments += @('--fen-file', $resolvedFenFile)
     }
@@ -169,6 +174,13 @@ function Assert-ReportParity($BaselineReport, $CandidateReport, [int]$Run) {
     }
 }
 
+if ($Hce -and -not [string]::IsNullOrWhiteSpace($NnuePath)) {
+    throw 'Specify either -NnuePath or -Hce, not both.'
+}
+if (-not $Hce -and [string]::IsNullOrWhiteSpace($NnuePath)) {
+    throw 'Specify -NnuePath <path> or -Hce.'
+}
+$resolvedNnuePath = if ($Hce) { '' } else { Resolve-RepoPath $NnuePath 'NNUE network' }
 if ($Depth -gt 0 -and $DepthSweep -ne '') {
     throw 'Specify either -Depth or -DepthSweep, not both.'
 }

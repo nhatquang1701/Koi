@@ -6,6 +6,7 @@
 #   tools/build/launch_gate_macos.sh \
 #     -BaselineExecutable build/<name>-baseline-release/koi-bench \
 #     -CandidateExecutable build/release/koi-bench \
+#     -NnuePath artifacts/networks/koi-v9-hm10-h256-official.nnue \
 #     -OutputDirectory artifacts/verification/speed-gate/<name> \
 #     -Runs 5 -Threads 1 -DepthSweep 2..5 \
 #     -FenFile artifacts/verification/speed-gate/<name>/sparse-qsearch-fens.txt
@@ -20,8 +21,21 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 gate_script="$script_dir/speed_gate.ps1"
 
+for arg in "$@"; do
+    case "$arg" in
+        -h | --help)
+            cat <<'USAGE'
+usage: launch_gate_macos.sh -BaselineExecutable <path> -CandidateExecutable <path> \
+         -OutputDirectory <dir> (-NnuePath <net.nnue> | -Hce) [speed_gate.ps1 flags...]
+Launches tools/build/speed_gate.ps1 detached under caffeinate -i + nohup.
+USAGE
+            exit 0
+            ;;
+    esac
+done
+
 if ! command -v pwsh >/dev/null 2>&1; then
-    echo "error: pwsh (PowerShell 7) is required; install with: brew install powershell" >&2
+    echo "error: pwsh (PowerShell 7) is required; install with: brew install --cask powershell" >&2
     exit 2
 fi
 if ! command -v caffeinate >/dev/null 2>&1; then

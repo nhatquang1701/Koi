@@ -3,6 +3,8 @@ param(
     [string]$EnginePath = '',
     [string]$HashValues = '512,2048,3072,4096',
     [int]$Cycles = 1,
+    [string]$NnuePath = '',
+    [switch]$Hce,
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../../artifacts/stability/hash-memory')
 )
 
@@ -23,6 +25,16 @@ $parsedHashValues = @($HashValues -split '[,;\s]+' | Where-Object { $_ -ne '' } 
 $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot 'artifacts'))
 $artifactPrefix = $artifactRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
 
+if ($Hce -and -not [string]::IsNullOrWhiteSpace($NnuePath)) {
+    throw 'Specify either -NnuePath or -Hce, not both.'
+}
+$resolvedNnuePath = ''
+if (-not [string]::IsNullOrWhiteSpace($NnuePath)) {
+    $resolvedNnuePath = [System.IO.Path]::GetFullPath($NnuePath)
+    if (-not (Test-Path -LiteralPath $resolvedNnuePath -PathType Leaf)) {
+        throw "NNUE network was not found: $resolvedNnuePath"
+    }
+}
 if (-not (Test-Path -LiteralPath $resolvedEnginePath -PathType Leaf)) {
     throw "Engine executable was not found: $resolvedEnginePath"
 }
@@ -52,6 +64,14 @@ function Invoke-HashProbe {
     $processInfo.RedirectStandardInput = $true
     $processInfo.RedirectStandardOutput = $true
     $processInfo.RedirectStandardError = $true
+    if ($Hce) {
+        $processInfo.Environment['KOI_EVALUATOR'] = 'hce'
+        $processInfo.Environment['KOI_NNUE_AUTODETECT'] = '0'
+        [void]$processInfo.Environment.Remove('KOI_NNUE_PATH')
+    } elseif (-not [string]::IsNullOrWhiteSpace($resolvedNnuePath)) {
+        $processInfo.Environment['KOI_NNUE_PATH'] = $resolvedNnuePath
+        [void]$processInfo.Environment.Remove('KOI_EVALUATOR')
+    }
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $processInfo
@@ -236,6 +256,7 @@ $manifest = [ordered]@{
     repository_root = $repositoryRoot
     engine_path = $resolvedEnginePath
     engine_sha256 = (Get-FileHash -LiteralPath $resolvedEnginePath -Algorithm SHA256).Hash
+    evaluator = if ($Hce) { 'hce' } elseif (-not [string]::IsNullOrWhiteSpace($resolvedNnuePath)) { 'nnue' } else { 'default' }
     hash_values_mb = @($parsedHashValues)
     cycles = $Cycles
     records = @($records)
