@@ -1,6 +1,5 @@
 #include <array>
 #include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <map>

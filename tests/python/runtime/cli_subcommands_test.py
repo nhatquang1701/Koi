@@ -139,10 +139,31 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(mate_moves.returncode, 0, mate_moves.stderr)
         self.assertEqual(mate_moves.stdout.strip(), "Legal moves (0): (none)")
 
-        for cmd in ("d", "key", "moves"):
+        for cmd in ("d", "key", "moves", "flip"):
             bad = self._run([cmd, "bad fen"], disable_nnue=True)
             self.assertEqual(bad.returncode, 2)
             self.assertIn("invalid FEN", bad.stderr)
+
+        flip_start = self._run(["flip"], disable_nnue=True)
+        self.assertEqual(flip_start.returncode, 0, flip_start.stderr)
+        self.assertEqual(
+            flip_start.stdout.strip(),
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
+        )
+
+        flip_ep = self._run(
+            ["flip", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"],
+            disable_nnue=True,
+        )
+        self.assertEqual(flip_ep.returncode, 0, flip_ep.stderr)
+        self.assertEqual(
+            flip_ep.stdout.strip(),
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1",
+        )
+
+        flip_check = self._run(["flip", "4k3/8/8/8/8/8/4R3/4K3 b - - 0 1"], disable_nnue=True)
+        self.assertEqual(flip_check.returncode, 2)
+        self.assertIn("flip rejected", flip_check.stderr)
 
         see_quiet = self._run(["see", "e2e4"], disable_nnue=True)
         self.assertEqual(see_quiet.returncode, 0, see_quiet.stderr)

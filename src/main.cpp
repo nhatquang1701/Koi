@@ -175,6 +175,7 @@ void write_help() {
               << "  d, --display [fen]                       Display ASCII board, FEN, Zobrist key, and move count\n"
               << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
               << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n"
+              << "  flip [fen]                               Toggle side to move if legal and print updated FEN\n"
               << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
               << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait, help\n";
 }
@@ -252,6 +253,7 @@ int main(int argc, char* argv[]) {
     bool cli_display = false;
     bool cli_key = false;
     bool cli_moves = false;
+    bool cli_flip = false;
     std::optional<std::string> cli_see_move;
     std::optional<std::string> cli_eval_fen;
     std::optional<int> cli_perft_depth;
@@ -319,6 +321,15 @@ int main(int argc, char* argv[]) {
         if (arg == "moves") {
             cli_moves = true;
             set_environment_value("KOI_CLI_MOVES", "1");
+            collect_trailing_fen(index, cli_inspect_fen);
+            if (cli_inspect_fen.has_value()) {
+                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
+            }
+            continue;
+        }
+        if (arg == "flip") {
+            cli_flip = true;
+            set_environment_value("KOI_CLI_FLIP", "1");
             collect_trailing_fen(index, cli_inspect_fen);
             if (cli_inspect_fen.has_value()) {
                 set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
@@ -443,7 +454,7 @@ int main(int argc, char* argv[]) {
                       << "' (supported: --version, --help, --engine-json, --protocol <name>, "
                          "--hce, --nnue <path>, bench [depth [hash [threads]]], compiler, "
                          "eval [fen], perft <depth> [fen], d [fen], key [fen], moves [fen], "
-                         "see <move> [fen]).\n";
+                         "flip [fen], see <move> [fen]).\n";
             return 2;
         }
         if (initial_protocol.has_value()) {
@@ -488,6 +499,12 @@ int main(int argc, char* argv[]) {
         if (const char* env_moves = std::getenv("KOI_CLI_MOVES");
             env_moves != nullptr && std::string_view(env_moves) == "1") {
             cli_moves = true;
+        }
+    }
+    if (!cli_flip) {
+        if (const char* env_flip = std::getenv("KOI_CLI_FLIP");
+            env_flip != nullptr && std::string_view(env_flip) == "1") {
+            cli_flip = true;
         }
     }
     if (!cli_see_move.has_value()) {
@@ -571,10 +588,24 @@ int main(int argc, char* argv[]) {
             KOI_ENGINE_BUILD_VERSION, KOI_ENGINE_BUILD_COMMIT) << std::flush;
         return 0;
     }
-    if (cli_display || cli_key || cli_moves) {
+    if (cli_display || cli_key || cli_moves || cli_flip) {
         const std::optional<koi::GameState> root = resolve_cli_position(cli_inspect_fen);
         if (!root.has_value()) {
             return 2;
+        }
+        if (cli_flip) {
+            if (root->in_check()) {
+                std::cerr << "koi-engine: flip rejected: position cannot legally switch sides.\n";
+                return 2;
+            }
+            const std::optional<std::string> flipped =
+                koi::detail::flip_position_fen(root->fen());
+            if (!flipped.has_value() || !koi::GameState::from_fen(*flipped).has_value()) {
+                std::cerr << "koi-engine: flip rejected: position cannot legally switch sides.\n";
+                return 2;
+            }
+            std::cout << *flipped << '\n' << std::flush;
+            return 0;
         }
         if (cli_display) {
             std::cout << koi::detail::format_ascii_board(*root) << std::flush;
