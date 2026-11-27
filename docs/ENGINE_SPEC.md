@@ -43,7 +43,7 @@ instead comes from the external package manifest written by
 archive): schema `koi-engine-package-v1`, hard-coded
 `version = '1.2.0'`, archive hash, per-file SHA-256 hashes, and a `provenance`
 object with `source_commit`, `source_dirty`, `source_ref`, and `created_utc`. A
-package archive also gets a local `.sha256` sidecar for CI verification, while public GitHub Releases publish the platform archives, external `.package.json` manifests, and standalone `koi.nnue` (relying on GitHub's built-in asset SHA-256 digests).
+package archive also gets a local `.sha256` sidecar and `.package.json` manifest for CI/developer verification, while public GitHub Releases publish strictly the platform archives and standalone `koi.nnue` (relying on GitHub's built-in asset SHA-256 digests and SLSA attestations).
 
 The v1.2.0 release is cut at this commit: the version pins, the packaging
 script, and the documentation read `1.2.0`, so the compiled build identity is
@@ -424,8 +424,8 @@ SIMD paths (`src/koi/nnue.cpp`):
 | Scalar | Always compiled | Reference path and fallback; every vector path must agree exactly |
 
 The AVX2 code is only compiled on x86-64; arm64 builds use NEON kernels for v4
-incremental accumulator deltas, CReLU clamp/pack, and hidden-layer inference,
-falling back to the scalar path for non-v4 formats. An AVX2 result that would overflow is rejected and
+and v9 incremental accumulator deltas, CReLU/SCReLU clamp/pack, and hidden-layer
+inference, falling back to the scalar path for older formats. An AVX2 result that would overflow is rejected and
 recomputed scalar in the bucket-dot path so the vector path stays bit-identical.
 
 The experimental GPU NNUE path was completely removed on 2026-11-02: no `GpuNnue`
@@ -526,7 +526,7 @@ unless another file is named.
 | PVS | Full-window first move, null-window scouts for the rest, full re-search on fail-high |
 | Null-move pruning | Eligible at non-PV cut nodes (ply > 0, `ply >= null_verification_min_ply`) when depth ≥ 4, not checked, `beta` finite, `beta - alpha <= 1`, not repetition-sensitive, both sides have non-pawn material, `halfmove_clock < 90` (`kNullMoveRuleSafetyHalfmoves`), and static eval ≥ `beta` (active across all phases including low-phase `phase < 8` and sparse ≤ 8-piece endgames); `R = min(depth - 1, 3 + depth/3 + min((eval - beta)/200, 3))` (retaining ≥ 1 regular reply ply) |
 | Null-move verification | When `depth >= 16` (and `R >= 3`) OR in low-phase (`phase < 8`) / sparse (`piece_count <= 8`) endgames (provided `null_verification_min_ply == 0`), a no-null confirmation search (TT enabled, blocking nested null moves until `ply + 3*null_depth/4`) must reproduce the fail-high; otherwise the reduced null probe's cutoff applies directly (`SearchPolicy::dynamic_null_move`, `SearchContext::negamax`) |
-| Reverse futility | Depth 1..18, non-PV, not checked, static eval ≥ beta; margin `80 + 60*depth - 32*improving + 24*opponent_worsening` |
+| Reverse futility | Depth 1..18, non-PV, not checked, static eval ≥ beta (including quiet TT-move nodes); margin `80 + 60*depth - 32*improving + 24*opponent_worsening` |
 | Razoring | Depth 1 only, static eval + `120 * depth^2 <= alpha`; a qsearch upper bound is used and may return a selective score |
 | ProbCut | Depth ≥ 3, non-PV cut node, static eval ≥ `beta - 160 - 16*depth`; margin `241 - 64*improving`; reduced depth `max(0, depth - (improving ? 5 : 3))`; qsearch then reduced regular confirmation without `!selective_bound` discard; TT ProbCut additionally needs depth ≥ 4, a lower TT bound at `depth - 4`, and score ≥ `beta + 428` |
 | Internal iterative reduction (IIR) | Non-PV, not checked, not claimable-draw/excluded/repetition-sensitive, ply > 0: depth is reduced by 1 either when no TT move is present at depth ≥ 4 (depth ≥ 6 on TT-PV nodes, pawn endgames, or sparse ≤ 8-piece positions), or on non-TT-PV, non-pawn-endgame, > 8-piece cut nodes at depth ≥ 4 when the TT entry depth is ≤ depth - 4 |
@@ -538,7 +538,7 @@ unless another file is named.
 | Quiet-forcing extension | A quiet non-checking move with a direct forcing target gets +1 ply (`quiet_move_is_forcing`); root forcing extensions are limited to depth-1/short-fallback diagnostics |
 | LMR | Candidate: move number ≥ 2, depth ≥ 3, not checked, not giving check, no promotion, not TT, not killer, and (not capture or capture history > -8192). Base reduction 0 for captures, 1 for quiets, plus depth/move-number bands at (7,7), (11,14), (16,24), plus cut node, minus TT-PV, plus non-improving, minus PV, plus no TT move, plus next-cutoff-count >1/>2, minus prior fail-high, plus history/continuation < -512, plus capture history < -512. Clamped to `[0, full child depth]`; high history ≥ 128 is excluded; quiets that are quiet-forcing are not reduced. A reduced fail-high is re-searched at full depth |
 | Quiet futility | Phase-rich non-PV quiet node, `static_eval + 80 + 60*depth <= alpha` |
-| Child futility | Non-PV, not checked, not tactical, move number > 0, quiet, reduced depth < 12, `static_eval + 96 + 71*lmr_depth + (54 if eval > alpha) <= alpha` |
+| Child futility | Non-PV, not checked, not tactical, move number > 0, quiet, reduced depth < 12, `static_eval + 96 + 71*lmr_depth <= alpha` |
 | Capture futility | Non-PV, not checked, non-repetition, capture, not TT, `lmr_depth < 8`, `static_eval + 234 + 247*lmr_depth + captured_value + 134*capture_history/1024 <= alpha` |
 | SEE pruning | Capture with `alpha >= 0` and `see_score < -(177*depth + 34*capture_history/1024)`; qsearch removes captures below SEE `-74` and applies delta pruning (`best + captured_value + 100 < alpha`) |
 | Killer moves | Two killers per ply (`kMaximumKillerPly = 128`); ordered after TT and good captures |
@@ -1036,10 +1036,11 @@ measurement commands, never CTest thresholds.
    (`koi-engine-package-v1` with archive hash, per-file size/SHA-256,
    NNUE inclusion flags, and provenance: `GITHUB_SHA` or `git rev-parse HEAD`,
    dirty flag computed with `core.autocrlf=false`). Public GitHub Releases
-   published by `release.yml` omit standalone `.sha256` and `SHA256SUMS.txt`
-   files and rely on GitHub's built-in asset SHA-256 digests; early-access
-   `nnue/<name>` tags pair a signed orphan tag with a GitHub Pre-release
-   attaching `<name>.nnue` and `<name>.metadata.json`.
+   published by `release.yml` attach only the platform archives and standalone
+   `koi.nnue` (omitting `.sha256`, `SHA256SUMS.txt`, and `.package.json` from
+   the Releases UI, relying on GitHub's built-in asset SHA-256 digests and SLSA
+   attestations); standalone networks on the `koi-nnues` pre-release likewise
+   attach `.nnue` files only.
 
 No tablebase data is packaged. Version strings in the packaging script and
 manifest are `1.2.0` on this tree. Release titles use a readable product
@@ -1075,16 +1076,17 @@ name and version while the tag is the version alone.
   `SearchPolicy::dynamic_late_move`; any documentation that describes a "LMR
   table" is inaccurate for this tree.
 - **Platform feature gaps:** macOS arm64 ships no AVX2/AVX-512 siblings, uses
-  vectorized NEON fused inference for v4 and scalar NNUE otherwise, disables
-  named modules in the documented build, cannot use the static-runtime option,
-  and has no CUDA path. Windows requires MSVC; Linux requires x86-64.
+  vectorized NEON fused inference for v4 and v9 and scalar NNUE for legacy
+  formats, disables named modules in the documented build, cannot use the
+  static-runtime option, and has no CUDA path. Windows requires MSVC; Linux
+  requires x86-64.
 - **Sanitizer coverage is partial:** ASan is MSVC-only and runs the fast subset;
   TSan exists only on Linux; macOS has no sanitizer leg.
 - **Version readability.** `uci` reports `id name Koi <version>` (CMake pin) and
   `info string build <commit>`; commit-level build identity also lives in
   `--version`, benchmark JSON, and package provenance.
 - **NNUE v1 containers are not accepted** by the current loader (versions 2, 3,
-  4, 5, 6, and 8 are).
+  4, 5, 6, 8, and 9 are).
 - **Test count depends on optional features:** `tests/README.md`,
   `docs/USER_GUIDE.md`, and §9.1 document 86 registered tests in the reference
   Windows Release + Python + Cute Chess configuration (`85` without

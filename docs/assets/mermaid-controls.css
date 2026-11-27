@@ -1,0 +1,38 @@
+.mermaid-viewport {
+  overflow: auto;
+  max-height: 78vh;
+  padding: 12px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 8px;
+  background: var(--md-code-bg-color);
+}
+
+.mermaid-viewport svg {
+  max-width: none !important;
+  height: auto;
+  display: block;
+}
+
+.mermaid-controls {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+
+.mermaid-controls button {
+  cursor: pointer;
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.mermaid-controls button:hover {
+  border-color: var(--md-accent-fg-color);
+  color: var(--md-accent-fg-color);
+}

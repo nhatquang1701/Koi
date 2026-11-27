@@ -1,214 +1,67 @@
 # NNUE Training and Promotion Pipeline
 
-NNUE is Koi's default and production evaluator (a clean hand-crafted classical evaluator is also available via `EvalMode=hce` or `KOI_EVALUATOR=hce` for development and measurement). This guide documents the end-to-end pipeline that turns Stockfish self-play positions into a quantized, SPRT-gated `.nnue` network shipped in Koi release packages.
+NNUE is Koi's default and production evaluator (a clean hand-crafted classical evaluator is also available via `EvalMode=hce` or `KOI_EVALUATOR=hce` for development and measurement). This guide documents the end-to-end pipeline that turns self-play corpora into a quantized, SPRT-gated `.nnue` network shipped in Koi releases.
 
 ```mermaid
 flowchart TD
-    DATA["tools/measurement/gen_training_data.py<br/>Stockfish self-play + fixed-depth labels"]
-    TEXT["text corpus<br/>FEN;cp;best_move"]
-    ENCODE["tools/measurement/koi_dataset.py encode<br/>sparse koi-dataset-v2<br/>halfka-king-bucket (+ optional threat pairs)"]
-    TRAIN["tools/measurement/train_nnue_koi.py<br/>PyTorch · v4/v5/v6/v8<br/>early stop · output-shift grid"]
-    FLOAT["float checkpoint<br/>.pt"]
-    EXPORT["tools/measurement/export_nnue.py<br/>int16/int8 quantization<br/>metadata + sha256"]
-    NET["quantized network<br/>.nnue + .metadata.json"]
-    UNIT["unit validation<br/>nnue_training / nnue_wrapper tests<br/>koi-bench --nnue nodes/sec"]
-    AB["tools/nnue/net_match.ps1<br/>distinct-game SPRT<br/>candidate vs official"]
-    ABS["tools/measurement/elo_estimate.py<br/>--koi-eval-file anchor ladder"]
-    GATE{"promotion gate<br/>SPRT target met AND<br/>equal-time Elo >= classical"}
-    OFFICIAL["artifacts/networks/<br/>koi-vX-official/<br/>.nnue + .metadata.json + .sha256"]
-    TAG["signed Git tag nnue/name<br/>+ GitHub Pre-release .nnue + .metadata.json"]
-    RELEASE["engine release package<br/>archives + standalone koi.nnue"]
+    DATA["Self-play corpus<br/>tools/measurement/gen_training_data.py<br/>or Koi self-play datagen"]
+    TEXT["Labeled positions<br/>FEN;cp;best_move;result"]
+    BULLET["GPU training (primary)<br/>tools/nnue/to_bullet.py → run_bullet.py<br/>HalfKA-HM v9 (10 buckets, 256×2 SCReLU)"]
+    TORCH["CPU training (fallback)<br/>koi_dataset.py → train_nnue_koi.py<br/>PyTorch v4/v8"]
+    EXPORT["Quantization & export<br/>int16/int8 weights + SHA-256 payload"]
+    UNIT["Unit & parity checks<br/>nnue_boundary_tests · koi-bench --nnue"]
+    AB["Equal-time SPRT gate<br/>tools/nnue/net_match.ps1<br/>candidate vs incumbent official net"]
+    ABS["Absolute anchor check<br/>tools/measurement/elo_estimate.py"]
+    GATE{"Promotion gate<br/>Equal-time SPRT accepted"}
+    HUB["GitHub Pre-release: koi-nnues<br/>.nnue network files"]
+    RELEASE["Official release packages<br/>platform archives + standalone koi.nnue"]
 
-    DATA --> TEXT --> ENCODE --> TRAIN --> FLOAT --> EXPORT --> NET
-    NET --> UNIT --> AB --> GATE
-    NET --> ABS --> GATE
-    GATE -- "accepted" --> OFFICIAL --> TAG --> RELEASE
+    DATA --> TEXT
+    TEXT --> BULLET --> EXPORT
+    TEXT --> TORCH --> EXPORT
+    EXPORT --> UNIT --> AB --> GATE
+    EXPORT --> ABS --> GATE
+    GATE -- "accepted" --> HUB --> RELEASE
     GATE -- "rejected" --> DATA
-    GATE -- "rejected" --> TRAIN
+    GATE -- "rejected" --> BULLET
 ```
-
-<style>
-  .mermaid-viewport {
-    overflow: auto;
-    max-height: 78vh;
-    padding: 8px;
-    border: 1px solid var(--md-default-fg-color--lightest);
-    border-radius: 6px;
-  }
-  .mermaid-viewport svg {
-    max-width: none !important;
-    height: auto;
-    display: block;
-  }
-  .mermaid-controls {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin: 6px 0 14px;
-  }
-  .mermaid-controls button {
-    cursor: pointer;
-    padding: 4px 12px;
-    border-radius: 4px;
-    border: 1px solid var(--md-default-fg-color--light);
-    background: var(--md-default-bg-color);
-    color: var(--md-default-fg-color);
-  }
-  .mermaid-controls button:hover {
-    border-color: var(--md-accent-fg-color);
-    color: var(--md-accent-fg-color);
-  }
-</style>
-<script>
-(function () {
-  if (window.__koiMermaidControls) { return; }
-  window.__koiMermaidControls = true;
-
-  function makeButton(label, title, action) {
-    var button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = label;
-    button.title = title;
-    button.addEventListener('click', action);
-    return button;
-  }
-
-  function wrap(block) {
-    if (block.closest('.mermaid-viewport')) { return; }
-    var svg = block.querySelector('svg');
-    if (!svg) { return; }
-    var viewport = document.createElement('div');
-    viewport.className = 'mermaid-viewport';
-    block.parentNode.insertBefore(viewport, block);
-    viewport.appendChild(block);
-
-    var box = svg.viewBox && svg.viewBox.baseVal;
-    var baseWidth = (box && box.width) || svg.getBoundingClientRect().width || 800;
-    var baseHeight = (box && box.height) || svg.getBoundingClientRect().height || 600;
-    var zoom = 1;
-
-    function apply() {
-      svg.style.width = (baseWidth * zoom) + 'px';
-      svg.style.height = (baseHeight * zoom) + 'px';
-    }
-
-    var bar = document.createElement('div');
-    bar.className = 'mermaid-controls';
-    bar.appendChild(makeButton('\u2190', 'Scroll left', function () {
-      viewport.scrollLeft -= Math.max(240, viewport.clientWidth * 0.6);
-    }));
-    bar.appendChild(makeButton('\u2192', 'Scroll right', function () {
-      viewport.scrollLeft += Math.max(240, viewport.clientWidth * 0.6);
-    }));
-    bar.appendChild(makeButton('Zoom +', 'Zoom in', function () {
-      zoom = Math.min(4, zoom * 1.25);
-      apply();
-    }));
-    bar.appendChild(makeButton('Zoom \u2212', 'Zoom out', function () {
-      zoom = Math.max(0.2, zoom * 0.8);
-      apply();
-    }));
-    bar.appendChild(makeButton('Fit', 'Fit to width', function () {
-      zoom = Math.max(0.2, (viewport.clientWidth - 24) / baseWidth);
-      apply();
-      viewport.scrollLeft = 0;
-      viewport.scrollTop = 0;
-    }));
-    bar.appendChild(makeButton('Reset', 'Reset zoom and scroll', function () {
-      zoom = 1;
-      apply();
-      viewport.scrollLeft = 0;
-      viewport.scrollTop = 0;
-    }));
-
-    viewport.parentNode.insertBefore(bar, viewport);
-    apply();
-  }
-
-  function enhance() {
-    document.querySelectorAll('pre.mermaid, div.mermaid').forEach(function (block) {
-      if (block.querySelector('svg')) { wrap(block); }
-    });
-  }
-
-  function start() {
-    enhance();
-    var attempts = 0;
-    var timer = setInterval(function () {
-      enhance();
-      if (++attempts > 150) { clearInterval(timer); }
-    }, 200);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start);
-  } else {
-    start();
-  }
-})();
-</script>
 
 ## Stages
 
 | Stage | Tool | Output |
-| --- | --- | --- |
-| Data generation | `tools/measurement/gen_training_data.py` | Text corpus (`FEN;cp;best_move`). |
-| Corpus encoding | `tools/measurement/koi_dataset.py encode` | Sparse `koi-dataset-v2` binary. |
-| Training | `tools/measurement/train_nnue_koi.py` | Float checkpoint (`.pt`) plus training metadata. |
-| Quantization | `tools/measurement/export_nnue.py` | `int16/int8` `.nnue` file and metadata JSON. |
-| Unit validation | `tests/python/evaluation/*`, `koi-bench --nnue` | Fast parity and throughput checks. |
-| Relative gate | `tools/nnue/net_match.ps1` | Distinct-game SPRT report. |
-| Absolute gate | `tools/measurement/elo_estimate.py --koi-eval-file` | Anchor-ladder Elo estimate. |
-| Promotion | `artifacts/networks/koi-vX-official/` | Network, metadata, checksum. |
+| :--- | :--- | :--- |
+| Data generation | `tools/measurement/gen_training_data.py` or Koi self-play | `FEN;cp;best_move;result` corpora |
+| Bullet packing | `tools/nnue/to_bullet.py` | Binary Bullet dataset (with WDL outcome blend) |
+| GPU training (primary) | `tools/nnue/run_bullet.py` (`tools/nnue/bullet_train/`) | HalfKA-HM v9 SCReLU checkpoint & quantized `.nnue` |
+| CPU training (fallback) | `tools/measurement/koi_dataset.py` + `train_nnue_koi.py` | Float `.pt` checkpoint + quantized `.nnue` |
+| Unit & throughput check | `nnue_boundary_tests`, `koi-bench --nnue` | Scalar/AVX2/NEON parity and NPS validation |
+| Equal-time SPRT gate | `tools/nnue/net_match.ps1` / `uci_match.ps1` | Paired color-reversed match & pentanomial LLR |
+| Absolute Elo check | `tools/measurement/elo_estimate.py --koi-eval-file` | Stockfish `UCI_Elo` anchor ladder report |
 
-## Promotion rules
+## Current Official Network (v9)
 
-- A network is promoted only when the relative SPRT accepts **and** the
-  absolute estimate shows it at least matches the classical evaluator at equal
-  time. A network that is weaker is rejected even if it is faster.
-- Evidence is hash-tied: the report records the network SHA-256, engine
-  executable, options, openings, and time control.
-- The official network directory carries the `.nnue`, its metadata, and a
-  `.sha256` sidecar; release packages copy that payload with provenance.
-- Training changes are one variable at a time (architecture, data size, or
-  shift grid), so a rejected run points at a single cause.
-- **Node-limited matches cannot promote a network on their own.** A wider hidden
-  layer is equal at equal nodes and loses at equal time because it doubles eval
-  cost: the 1024-wide v8 candidate measured 48.75-49.00% against the 512-wide
-  official net at equal nodes but only 50.78% against the classical evaluator at
-  equal time, where the official net scores 62.50%. Always run the equal-time
-  gate before promoting.
-- The version-8 container accepts both layouts: the halfka-only 9216-input
-  payload (identical bytes to v4, written by `--arch v8`) and the 36864-input
-  `threat-pairs-v1` form written by `--arch v6`. The input width selects the
-  layout. The threat form lost every match it entered (33.75% against the
-  official net) and its export saturates the L1 head, so it is not the default.
+The current development and next-release official network is a **v9 `halfka-hm-v2` SCReLU** network:
 
-## Promoted network (2026-10-25)
+| Property | Value |
+| :--- | :--- |
+| **Filename** | `koi-v9-hm10-h256-official.nnue` |
+| **Container** | `KOI-NNUE` v9 (`halfka-hm-v2`, `qa=255`, `qb=64`, `eval_scale=400`) |
+| **Architecture** | `7680 → 256×2 (SCReLU) → 1` across 10 horizontally-mirrored king buckets and 8 piece-count output buckets |
+| **Runtime caching** | 20-slot `(bucket, mirror)` Finny table with fused AVX-512 / AVX2 / ARM NEON int16 accumulators |
+| **SHA-256** | `bfb2470c87115af1b689802873608f14f15d087901b4adfca723184e985aec42` |
+| **Download** | [Koi NNUEs release hub](https://github.com/nhatquang1701/Koi/releases/tag/koi-nnues) |
+| **Strength delta** | **+180+ Elo** over the v1.2.0 bundled `koi-v7-h128-official-20261025.nnue` in equal-time self-play |
 
-The first NNUE-primary promotion is a v4-container halfka network:
+## Historical Milestone: First Official Network (v7, 2026-10-25)
 
-- file: `koi-v7-h128-official-20261025.nnue` (2,360,459 bytes, 128 hidden,
-  8 output buckets, SHA-256
-  `0bb8d25e871fefeede3c1d00c563815510133f1daca9191638ea74d82ebba6b3`);
-- trained on the 29.9M-row `p2big-dataset-v1` corpus for 10 epochs
-  (validation MAE 137.6 cp); it is faster than the classical evaluator on the
-  local bench, so 128 hidden was chosen over the larger 256/512 nets;
-- equal-time gate (200 ms, NNUE side vs classical side): **68.4 % over 144
-  games** (74 W / 49 D / 21 L on two opening sets), point estimate **+134 Elo**,
-  95 % CI on score 0.604–0.754;
-- absolute check: **73.8 %** (29 W / 1 D / 10 L) vs Stockfish 19 `UCI_Elo=1600` on the same 20 openings, versus 34.0 % for the classical baseline; the 256-hidden sibling scored 65.0 %
-  vs Stockfish 19 `UCI_Elo=1600` where the classical baseline scored 34.0 %
-  (unpaired, SF-limited play is noisy);
-- shipped flat inside release archives at `koi.nnue`; the engine discovers it
-  beside the executable at boot and advertises `EvalFile` default
-  `<autodiscovery>`.
+Bundled in Koi **v1.1.5** through **v1.2.0**:
 
-The network file is a local artifact under `artifacts/networks/` and is not
-committed to engine branches. Early-access or standalone public NNUE net
-releases are published as signed orphan Git tags under `nnue/<name>` paired with
-a GitHub Pre-release that attaches `<name>.nnue` and `<name>.metadata.json`
-directly under `Assets` (while official engine semver releases `X.Y.Z` /
-`vX.Y.Z` keep the `Latest` badge and also attach standalone `koi.nnue` alongside
-their archives). Release packaging consumes a promoted network plus its accepted
-`koi-nnue-gate-v1` report (`-ReleasePackage -NnuePath -NnueGateReport`).
+- **File:** `koi-v7-h128-official-20261025.nnue` (v4 container, 2,360,459 bytes, 128 hidden units, 12 king buckets, 8 output buckets, SHA-256 `0bb8d25e871fefeede3c1d00c563815510133f1daca9191638ea74d82ebba6b3`).
+- **Role:** Established Koi as an NNUE-primary engine (`+134 Elo` vs classical at equal time) and carried Koi v1.2.0 to **2727 Elo** against Stockfish 19 `UCI_Elo` anchors before being superseded by the v9 `halfka-hm-v2` 256×2 SCReLU architecture.
+
+## Promotion Rules
+
+- **Equal-time gating is mandatory.** Node-limited matches cannot promote a network on their own because wider layers can tie at equal nodes while losing at equal time due to higher evaluation cost.
+- **One variable at a time.** Isolate architecture, dataset composition, WDL blend, or quantization changes so rejected runs diagnose a single cause.
+- **Hash-tied evidence.** Every local gate report records the candidate and incumbent SHA-256 hashes, engine binary, UCI options, opening book, and time control.
+- **Release assets policy.** Binary `.nnue` files are never committed to Git branches. Public official networks are published as `.nnue` files on the [koi-nnues](https://github.com/nhatquang1701/Koi/releases/tag/koi-nnues) pre-release and bundled flat as `koi.nnue` inside official platform release archives (without `.metadata.json` or `.sha256` clutter in the GitHub Releases Assets tab).

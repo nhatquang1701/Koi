@@ -27,6 +27,7 @@ EXCLUDED_PREFIXES = (
     "build/",
     ".superpowers/",
     ".github/",
+    "tests/data/",
     "artifacts/",
 )
 MARKDOWN_LINK = re.compile(r"(?<!!)\[([^\]]+)\]\(([^)]+)\)")

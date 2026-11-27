@@ -1,5 +1,5 @@
 site_name: Koi
-site_description: Documentation for the Koi UCI chess engine
+site_description: Documentation for the Koi C++26 UCI chess engine
 site_url: https://nhatquang1701.github.io/Koi/
 repo_url: https://github.com/nhatquang1701/Koi
 repo_name: nhatquang1701/Koi
@@ -9,24 +9,45 @@ site_dir: build/pages-site
 theme:
   name: material
   language: en
+  icon:
+    repo: fontawesome/brands/github
   features:
-    - navigation.sections
-    - navigation.expand
-    - navigation.top
+    - navigation.instant
+    - navigation.instant.progress
     - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
     - content.code.copy
     - content.code.annotate
+    - content.tabs.link
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
+      primary: teal
+      accent: amber
       toggle:
         icon: material/brightness-7
-        name: Use dark mode
+        name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
+      primary: teal
+      accent: amber
       toggle:
         icon: material/brightness-4
-        name: Use light mode
+        name: Switch to light mode
+
+extra_css:
+  - assets/extra.css
+  - assets/mermaid-controls.css
+
+extra_javascript:
+  - assets/mermaid-controls.js
 
 plugins:
   - search
@@ -42,6 +63,8 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
@@ -50,28 +73,32 @@ markdown_extensions:
   - tables
 
 nav:
-  - Start here:
-      - Home: index.md
+  - Home:
+      - Overview: index.md
       - Repository README: repository.md
-  - Using Koi:
-      - User guide: docs/USER_GUIDE.md
-      - Lichess bot: docs/lichess-bot.md
-  - Developing Koi:
+      - Changelog: CHANGELOG.md
+  - User Guide:
+      - Playing & Configuration: docs/USER_GUIDE.md
+      - Lichess Bot: docs/lichess-bot.md
+  - Architecture & NNUE:
+      - System Architecture: docs/ARCHITECTURE.md
+      - NNUE Pipeline: docs/NNUE_PIPELINE.md
+      - Engine Specification: docs/ENGINE_SPEC.md
+  - Development:
       - Contributing: CONTRIBUTING.md
-      - Architecture: docs/ARCHITECTURE.md
-      - NNUE pipeline: docs/NNUE_PIPELINE.md
-      - Apple Silicon worker: docs/mac-worker.md
-      - Tests: tests/README.md
-      - Developer tools: tools/README.md
-  - Reference:
-      - Documentation map: docs/overview.md
-      - Engine specification: docs/ENGINE_SPEC.md
-      - Release notes (1.2.0): docs/releases/v1.2.0.md
-      - Release notes (1.1.6): docs/releases/v1.1.6.md
-      - Release notes (1.1.5): docs/releases/v1.1.5.md
-      - Release notes (1.1.4): docs/releases/v1.1.4.md
-      - Release notes (1.1.3): docs/releases/v1.1.3.md
-      - Release notes (1.1.2): docs/releases/v1.1.2.md
-      - Release notes (1.1.1): docs/releases/v1.1.1.md
-      - Release notes (1.1.0): docs/releases/v1.1.0.md
-      - Release notes (1.0.0): docs/releases/v1.0.0.md
+      - Developer Tools: tools/README.md
+      - Test Suite: tests/README.md
+      - Apple Silicon Worker: docs/mac-worker.md
+      - Security Policy: SECURITY.md
+  - Releases:
+      - Documentation Map: docs/overview.md
+      - Latest (v1.2.0): docs/releases/v1.2.0.md
+      - Release History:
+          - v1.1.6: docs/releases/v1.1.6.md
+          - v1.1.5: docs/releases/v1.1.5.md
+          - v1.1.4: docs/releases/v1.1.4.md
+          - v1.1.3: docs/releases/v1.1.3.md
+          - v1.1.2: docs/releases/v1.1.2.md
+          - v1.1.1: docs/releases/v1.1.1.md
+          - v1.1.0: docs/releases/v1.1.0.md
+          - v1.0.0: docs/releases/v1.0.0.md

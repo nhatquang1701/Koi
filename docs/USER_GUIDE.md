@@ -25,96 +25,7 @@ this guide uses **Koi** throughout. Binary and archive file names keep the
 
 ## Architecture
 
-The engine is deliberately layered so the chess rules implementation remains a
-private dependency. Public Koi rules types (`Move`, `GameState`, `Position`)
-never expose `chess.hpp`. The native `Position` core is the sole production
-authority for legality, keys, rule state, reversible history, and move
-generation. `GameState` remains the compatibility facade used by the existing
-evaluator/search/UCI APIs and coordinates two private owners: `CompatibilityMirror`
-holds the vendored chess-library board and reversible shadow history for
-Polyglot/book compatibility, completion validation, explicit differential
-diagnostics, and other legacy adapters; `FeatureState` owns cached
-`PositionFeatures` derived from the native `Position`. The mirror is not part
-of the public API and is covered by the opt-in `KOI_BUILD_SHADOW_DIFF`
-differential target. Explicit validation and diagnostic boundaries still check
-the mirror, while search-only copies detach it at root (`GameState::detach_mirror()`)
-so search moves never maintain or copy the shadow board. The NNUE evaluator, time management, the
-transposition table, and the `SearchService` build on Koi-owned types. The UCI
-controller owns the current position and worker lifecycle, and is the only layer
-that writes protocol output.
-
-The C++26 module boundary is represented by the aggregate `koi` module and the
-partitions `koi:types`, `koi:position`, `koi:eval`, `koi:tablebase`,
-`koi:search`, and `koi:runtime`. These partitions export stable value contracts;
-the implementation headers remain internal so future search and evaluation work
-does not create an ABI promise.
-
-Search ordering is also an internal search concern: TT best moves are tried
-first, followed by staged good captures/promotions, history-ranked good quiets
-(including checks, killers, and proven counters), deferred losing captures, and
-bad quiets. Stable UCI-coordinate tie-breaking keeps repeated searches
-deterministic. The public diagnostic ordering API retains its documented
-capture/killer/history view; the richer staged picker is recursive-search
-state. There is no public rule API for these policies; `Threads` is the UCI
-control over the search runtime.
-
-The search lifecycle is decomposed behind the public `SearchService` and
-`SearchHandle` contracts. `detail::SearchSession` owns one request's immutable
-root/limits/options snapshot, cancellation, worker lifetime, identity, and
-exactly-once completion claim. Each worker owns a fixed-capacity
-`detail::SearchStack` through `detail::SearchContext`; the context keeps
-recursive state and search-local statistics out of `GameState`. Root-line
-records and deterministic score/index ranking belong to
-`detail::RootCoordinator`. These types are private implementation headers in
-`src/koi/detail`; root-worker scheduling remains behind the existing service,
-while ordering, policy, evaluation, and runtime-resource ownership are
-separately testable internal seams.
-
-Adaptive ordering state is separately owned by
-`detail::SearchOrderingTables`, which stores killers, quiet history, counter
-moves/confidence, and continuation history for one worker. The
-`detail::SearchPolicy` seam contains the scalar null-move, check-extension,
-LMR, reverse-futility, quiet-futility, and quiescence-capture decisions;
-`SearchContext` still applies the decisions and owns recursion and statistics.
-This keeps future
-heuristic experiments local while preserving the current formulas and avoids
-making search policy depend on the physical layout of ordering tables.
-
-Evaluation execution has a corresponding private boundary. The optional
-`EvaluatorWorker` capability lets stateful evaluators provide one worker per
-search context; `NnueEvaluator` uses it to keep an `NnueWorker` accumulator
-local while immutable network data remains shared. `detail::EvaluationContext`
-selects that worker path or the existing evaluator-plus-mutex fallback, so
-`SearchContext` no longer owns evaluator synchronization or a particular NNUE
-representation. NNUE is the primary evaluator in packaged releases; malformed or
-absent NNUE input is a boot error unless `KOI_EVALUATOR=hce` is set.
-`EvaluatorSelection` and `make_evaluator` are the selection seam
-used by the engine entry points: at boot `main.cpp` resolves `KOI_NNUE_PATH` or
-`koi.nnue` beside the executable, and the advertised `EvalFile` and `EvalMode`
-options swap the evaluator at runtime.
-
-Search runtime resources have the same ownership boundary. The private
-`detail::SearchTableAccess` view is the only TT boundary used by search code:
-both the orchestrator (`SearchRunner`) and the recursive contexts make their
-probes and the once-per-search generation advance through it, while
-`TranspositionTable` remains the owner of striped physical
-storage, locking, generations, clear, resize, and mate-score normalization.
-The private `detail::SearchBudget` snapshots the node limit and keeps serial
-local-count validation separate from bounded shared-atomic reservation for
-root-parallel contexts. `TimeManager` remains the owner of clock/deadline and
-iteration pacing, while `SearchSession` owns cancellation; this stage adds no
-new scheduler, shared history, or Lazy-SMP behavior. These seams let future
-parallel search evolve shared-state policy without moving it through recursive
-search or changing the public `SearchService` contract.
-
-Stages 1 through 5 cover native state ownership, search lifecycle and stack,
-ordering/policy, evaluation/NNUE worker state, and TT/budget runtime resources.
-The final Stage 6 review recorded the module/tooling alignment, Release and
-Debug evidence, Stockfish-informed self-review, future-change test, and the
-known short-clock/Debug limitations.
-The architecture is accepted as the baseline for future strength work. Lazy
-SMP has since landed for `Threads > 1` (see the search section above); shared
-histories across helper threads remain deliberately future work.
+Koi keeps chess rules, search, evaluation, transposition tables, and UCI protocol formatting behind strict internal module boundaries, with `UciController` as the sole protocol writer and `Position` as the native rules authority. For the full module diagram, threading ownership, and the 1.0.0 architecture contract, see [System Architecture](ARCHITECTURE.md).
 
 ## Build prerequisites
 
@@ -606,75 +517,20 @@ full inventory, how to run the whole suite or a single test (`KOI_TEST_FILTER`,
 `KOI_ALLOW_XPASS`, `KOI_TEST_TIMEOUT_SECONDS`, `KOI_UCI_TIMEOUT_MS`,
 `KOI_REPLAY_PATH`, `PYTHONDONTWRITEBYTECODE`, `KOI_NNUE_BOUNDARY_EXE`),
 optional-dependency skips, and per-test timeouts. The search suite's
-`known_failures` and `intermittent` registries are empty for v1.2.0; all 147
-search behavior cases run as ordinary fatal tests. The dated counts in the
-verification snapshots below ("17 targets", "26 tests") are historical records
-from the 2026-09-05 and 2026-09-06 runs, not the current inventory.
+`known_failures` and `intermittent` registries are empty; all search behavior
+cases run as ordinary fatal tests.
 
-### Task 5 release verification (2026-09-05)
+## Interactive and CLI commands
 
-Fresh external Ninja builds used Visual Studio 2022 MSVC 19.44.35228.0 targeting
-x64, `/std:c++latest`, and CMake 4.4.2. Debug and Release each configured and
-built from scratch; all 17 registered CTest targets passed. Debug completed in
-84.74 seconds and Release in 43.44 seconds. This includes all C++ tests, process
-tests, replay validation, UCI transcripts, benchmark/profile checks, and optional
-Python tests.
+In addition to standard UCI/XBoard sessions, `koi-engine` supports standard chess-engine CLI options and interactive terminal commands:
 
-The fresh Release hard gate ran at `Threads` 1, 2, and 4: each
-reported 64/64 accepted tactical rows, and normalized move/score rows were
-identical across all three runs. Node counts and elapsed times are intentionally
-not required to match. The optional 128-position profile completed with 32
-accepted rows and is diagnostic rather than a pass/fail Elo gate. A timed Release
-run at `Threads 4` visited 183,807 nodes plus quiescence nodes over
-157 ms (about 1.17M visited nodes/s aggregated). Timing is machine-sensitive;
-untimed profiles report NPS as zero and identify `hash_state` as `cold` or `warm`.
-
-The fresh UCI smoke transcript produced 26 lines, 21 option declarations, one
-legal coordinate `bestmove`, and empty stderr. CTest and the direct Release
-process checks covered the handshake, analysis/tutor `MultiPV`, ponder/`ponderhit`,
-book hit and missing-book fallback, `stop`, `quit`, input EOF, and clean stdout.
-The fresh En Croissant-style process scenario completed 24 legal plies with `Hash=512`
-and `Threads=4`; both engine processes shut down cleanly. Direct
-replay output classified the repeated knight sequence as a legal rule draw.
-
-No Stockfish executable, fresh CPL corpus, or fresh color-balanced match data was
-available in this environment. Therefore this release verification makes no Elo,
-CPL, or playing-strength improvement claim. En Croissant GUI automation was not
-available in that run; use the Release executable and the settings below for the
-remaining manual registration/play check.
-
-The architecture follow-up verification on 2026-09-06 rebuilt the existing
-MSVC x64 Release tree with no pending compilation work and ran all 26 registered
-CTest tests. The suite passed 26/26 in 197.30 seconds, including the native
-position/module tests, benchmark process gate, UCI process tests, En Croissant
-scenario, package layout, and Python measurement-tool tests. This confirms the
-current checkout is regression-clean; it does not replace the still-missing
-external Stockfish/Lc0 strength campaign.
-
-The 2026-09-16 strength program replaced the mailbox attack scans with
-precomputed bitboard attack tables and made quiet check flags O(1) table
-lookups. A startpos `go depth 6` probe still visits exactly 406,067 nodes,
-while single-thread throughput on that probe rose from 58,697 to 86,989 nps.
-The same program added the Stockfish-labeled NNUE pipeline described above:
-1,200,002 depth-10 labels produced a 960-256-32-1 network that round-trips
-through the version 3 container and runs at about 65k nps against about 87k
-for the classical evaluator. It lost the equal-node A/B match that finished,
-so at that point the classical evaluator was the default and NNUE was opt-in (later reversed: NNUE is now the default and HCE is explicit opt-in).
-
-The 2026-09-17/18 NNUE and evaluation overhaul replaced that model with the
-`halfka-king-bucket-v1` feature set (9,216 inputs, 12 king buckets, CReLU pair
-products, and eight piece-count output buckets), the version 4 container,
-dual-perspective incremental accumulators, and scalar plus AVX2 inference.
-Trained on 2,249,171 depth-10 labels with the new `train_nnue_koi.py` trainer,
-the first v4 candidate reached a quantized round-trip validation MAE of about
-142 cp, scored 61/64 on the 64-position tactical suite, and ran at about 76k
-nps against about 144k for the classical evaluator. It lost the equal-node
-color-balanced A/B to classical and drew every game against the earlier v3
-network, so at that point the classical evaluator was the default and NNUE was
-opt-in (later reversed: NNUE is now the default and HCE is explicit opt-in). The same overhaul deduplicated the original classical evaluator's material and
-attack logic without changing its fixed-depth benchmark rows, and added a
-classical term tuner whose first candidate was not adopted. Version 2 and
-version 3 containers still load. No Elo or CPL claim is made.
+- **CLI flags:** `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, `koi-engine --help` (`-h`), and `koi-engine bench [depth]` (runs an OpenBench-compatible deterministic benchmark and exits).
+- **Interactive commands (inside a UCI session):**
+  - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, and checkers.
+  - `eval` — prints the active evaluator's static score (side-to-move and White perspectives).
+  - `compiler` — prints build version, commit hash, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`).
+  - `bench [depth]` — runs the deterministic single-thread benchmark (default depth 12, 16 MB hash) and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second`.
+  - `go perft <depth>` — runs an interruptible perft divide from the current position.
 
 ## UCI smoke test
 
@@ -1040,8 +896,7 @@ Linux archive is
 are published alongside them. Each user-facing archive is intentionally minimal
 and contains only the platform engine executables (`koi-engine` plus AVX2/AVX-512
 siblings on Windows/Linux), the bundled `koi.nnue`, the bundled Stockfish-verified
-CC0 opening book (`book.bin`), and `LICENSE`. Standalone `koi.nnue` and external
-`<package>.package.json` provenance manifests are attached alongside the archives in GitHub releases (GitHub also surfaces built-in SHA-256 digests per asset).
+CC0 opening book (`book.bin`), and `LICENSE`. Standalone `koi.nnue` is attached alongside the platform archives on GitHub Releases (without `.package.json` or `.sha256` clutter in the Releases Assets tab; GitHub displays built-in SHA-256 digests and SLSA build-provenance attestations).
 
 Koi has no required configuration file. En Croissant or another UCI GUI sends
 the options at session start; the portable release defaults are `RandomSeed=0`,

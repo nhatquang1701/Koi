@@ -14,6 +14,15 @@ SPRT matches.
 
 ## Build
 
+Using the checked-in CMake preset:
+
+```bash
+cmake --preset macos-arm64-release
+cmake --build --preset macos-arm64-release -j 6
+```
+
+Or explicitly (passing `-DPython3_FIND_FRAMEWORK=LAST` to avoid the system Python framework):
+
 ```bash
 cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF \
@@ -57,11 +66,7 @@ ctest --test-dir build/release -j 8 --output-on-failure
   with `-KoiPath` / `-OpponentPath`; install PowerShell 7 on macOS with
   `brew install --cask powershell`.
 
-- Reference numbers (M4, historical classical evaluator, Threads=1): about 1.05M
-  visited nodes/s at depth 6 from the start position. The visited-node count is
-  quiescence-dominated (about 98% at middlegame depth 7), so per-ply costs grow
-  quickly with depth: budget minutes per middlegame position at depth 7, and
-  hours for a ten-position depth-8 sweep.
+- Reference throughput (Apple Silicon M4, `Threads=1`, Official NNUE v9 `h256` with PGO+LTO): ~3.4–4.2M NPS in `1+0` self-play and ~12–14M NPS at `Threads=4`. Use `build/release/koi-engine bench` for a quick single-threaded deterministic node-count and NPS check.
 
 ## Remote worker pattern
 

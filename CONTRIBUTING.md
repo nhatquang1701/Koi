@@ -12,8 +12,8 @@
   - **macOS arm64 (Apple Silicon):** Homebrew LLVM Clang 19+ (`brew install llvm ninja`) or AppleClang 18+, configured with `-DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF`.
 - **CMake 3.31+:** On distributions that ship an older CMake (such as Ubuntu 24.04), upgrade via `python3 -m pip install --upgrade cmake` or the Kitware APT repository.
 - **Ninja:** Required for fast builds and C++26 named-module compilation.
-- **PowerShell (`pwsh`):** Enables the cross-platform UCI and process integration tests.
-- **Python 3 (Optional):** Enables the measurement, dataset, and reliability fuzzer suites:
+- **PowerShell (`pwsh`):** Enables cross-platform UCI, packaging, and architecture boundary tests.
+- **Python 3 (Optional):** Enables measurement, dataset, docs (`mkdocs`), and reliability fuzzer suites:
   ```bash
   python -m pip install -r ./tools/measurement/requirements.txt
   ```
@@ -22,84 +22,76 @@
 
 ## Building Koi
 
-### Windows (x64)
-
-```powershell
-cmake -S . -B build\release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl
-cmake --build build\release --config Release
-```
-
-### Linux (x86-64)
-
-Substitute `clang-18` / `clang++-18` when building with Clang:
+Use the checked-in [CMakePresets.json](CMakePresets.json) presets for standard builds:
 
 ```bash
-cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
-cmake --build build/release --config Release
+# Windows x64 (x64 Visual Studio Developer PowerShell)
+cmake --preset windows-release && cmake --build --preset windows-release
+
+# Linux x86-64 (GCC 14; or linux-clang-release)
+cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release
+
+# macOS arm64 (Apple Silicon)
+cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release
 ```
 
-### macOS (Apple Silicon `arm64`)
+Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, and `macos-arm64-release`. Equivalent explicit `cmake -S . -B build/release -G Ninja ...` commands remain documented in the [User Guide](docs/USER_GUIDE.md#build-prerequisites).
+
+### CPU Dispatch & Quick Smoke Check
+
+On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engine-avx512` or `koi-engine-avx2` when the host CPU supports them (with fast `PEXT`), or runs the baseline build in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary.
 
 ```bash
-brew install llvm ninja
-cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" \
-  -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" \
-  -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
-cmake --build build/release --config Release
-```
+# Deterministic OpenBench-compatible node benchmark
+./build/windows-release/koi-engine.exe bench
 
-For Debug builds, replace `build\release` / `Release` with `build\debug` / `Debug`.
-
-### CPU Dispatch & Executables
-
-The Release build produces `build\release\koi-engine.exe` (`build/release/koi-engine` on Linux and macOS). On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engine-avx512` or `koi-engine-avx2` when the host CPU supports them (and fast `PEXT`), or runs its baseline code in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary. The selector is completely silent on `stdout` and `stderr` so UCI GUIs never see non-protocol output.
-
-Quick UCI smoke check:
-
-```powershell
-@('uci','isready','position startpos','go depth 2','stop','quit') | & .\build\release\koi-engine.exe
+# Interactive UCI smoke check
+printf "uci\nisready\nposition startpos\ngo depth 4\nquit\n" | ./build/linux-gcc-release/koi-engine
 ```
 
 ---
 
-## Running the Test Suite
+## Running Tests & Verification
 
-```powershell
-# Full parallel Release suite
-ctest --test-dir build\release -C Release -j 8 --output-on-failure
+```bash
+# Full parallel Release test suite (via preset or explicit build dir)
+ctest --preset windows-release -j 8 --output-on-failure
 
-# 64-position tactical strength gate
-ctest --test-dir build\release -C Release -R koi_strength_tests --output-on-failure
+# Fast unit subset (with JUnit XML and LastTest.log capture)
+pwsh -NoProfile -File tools/test/run_tests.ps1 -Label unit
 
-# Fast unit subset via the PowerShell runner (captures JUnit XML and LastTest.log)
-.\tools\test\run_tests.ps1 -Label unit
+# Architecture boundary and CI configuration checks
+pwsh -NoProfile -File tests/integration/packaging/architecture_boundaries_test.ps1
+pwsh -NoProfile -File tests/integration/packaging/ci_configuration_test.ps1
+
+# Documentation strict build (stages from Git's index; run `git add` on new files first)
+python tools/docs/prepare_pages.py && mkdocs build --strict
 ```
 
-On Linux and macOS, use `build/release` with forward slashes.
-
-- **Strict assertions:** Never weaken or delete test assertions or `XFAIL` entries to force a green run; an unexpected pass (`XPASS`) fails the suite by design so fixed entries are cleaned up immediately.
-- **Determinism contract:** `Threads = 1` is strictly deterministic. Multi-threaded tests (`Threads > 1`) exercise Lazy SMP and must assert invariants (legality, completion, depth, ranked MultiPV) rather than byte-for-byte PV equality.
-- **Full release verification gate:** `.\tools\build\release_verify.ps1`.
+- **Strict assertions:** Never weaken or delete test assertions or `XFAIL` entries to force a green run; an unexpected pass (`XPASS`) fails the suite by design.
+- **Determinism contract:** `Threads = 1` is strictly deterministic. Multi-threaded tests (`Threads > 1`) validate invariants (legality, completion, depth, ranked MultiPV) rather than byte-for-byte PV equality.
+- **Non-functional changes:** Verify that `koi-engine bench` produces an identical node count before and after your change.
+- **Functional search/eval changes:** Gate strength changes with equal-time paired matches / SPRT (see [Apple Silicon Worker](docs/mac-worker.md) and [Developer Tools](tools/README.md)).
 
 ---
 
-## Submitting Changes
+## Submitting Pull Requests
 
 1. **Branch** from `koi-engine`.
-2. **Commit** with a clear, imperative summary (e.g., `Fix mate score normalization at root`).
-3. **Verify** against the CI matrix when opening a pull request:
-   - **Windows (`.github/workflows/windows.yml`):** Full Release CTest, Debug smoke (`-LE heavy`), MSVC AddressSanitizer (`-DKOI_SANITIZE=ON`), shadow-diff oracle (`-DKOI_BUILD_SHADOW_DIFF=ON`), release package verification, and a 3-pass no-retry flake gate.
-   - **Linux (`.github/workflows/linux.yml`):** GCC 14 and Clang 18 Release suites, modules-off build, portable Ubuntu 22.04 tarball smoke, no-retry flake gate, and GCC ThreadSanitizer (`linux-tsan`).
+2. **Format** C++ changes consistently with `.clang-format` and `.editorconfig`.
+3. **Commit** with a clear, imperative summary (e.g., `Fix mate score normalization at root`).
+4. **Verify** the CI matrix checks:
+   - **Windows (`.github/workflows/windows.yml`):** Full Release CTest, Debug smoke (`-LE heavy`), MSVC AddressSanitizer (`-DKOI_SANITIZE=ON`), shadow-diff oracle (`-DKOI_BUILD_SHADOW_DIFF=ON`), package verification, and a 3-pass no-retry flake gate.
+   - **Linux (`.github/workflows/linux.yml`):** GCC 14 and Clang 18 Release suites, modules-off build, Ubuntu 22.04 portable tarball smoke, no-retry flake gate, and GCC ThreadSanitizer (`linux-tsan`).
    - **macOS (`.github/workflows/macos.yml`):** Apple Silicon Release suite and `macos-arm64` tarball verification.
+   - **Docs (`.github/workflows/docs.yml`):** `prepare_pages.py` + `mkdocs build --strict`.
 
 ---
 
 ## Engineering Rules
 
 - **Handshake stability:** Keep the UCI handshake output byte-identical unless a change intentionally updates it; update `tests/data/uci/handshake.txt`, tests, and documentation together.
-- **Protocol purity:** `stdout` is reserved exclusively for valid UCI output (`UciController` is the sole protocol writer), with exactly one legal `bestmove` emitted per search.
+- **Protocol purity:** `stdout` is reserved exclusively for valid protocol output (`UciController` is the sole protocol writer), with exactly one legal `bestmove` emitted per search.
 - **Evaluator contract:** NNUE is the default and required boot evaluator; the clean classical evaluator is selectable via `EvalMode=hce` or `KOI_EVALUATOR=hce`.
 - **Evidence discipline:** Elo, CPL, and NPS figures are measurement reports—never unverified claims or fragile CI thresholds.
 - **Repository hygiene:** Never commit `build/`, generated corpora, trained `.nnue` files, user `book.bin` files, Syzygy tablebases, or temporary scratch directories.
@@ -107,17 +99,6 @@ On Linux and macOS, use `build/release` with forward slashes.
 
 ---
 
-## Documentation References
-
-- **[Repository README](README.md)** — Overview, quick start, and build instructions
-- **[User Guide](docs/USER_GUIDE.md)** — UCI options, time controls, GUI registration, and optional assets
-- **[System Architecture](docs/ARCHITECTURE.md)** — Module map, concurrency ownership, and 1.0.0 architecture boundaries
-- **[Test Suite](tests/README.md)** — Test targets, CTest labels, environment variables, and progress indicators
-- **[Developer Tools](tools/README.md)** — Benchmarks, PGO, oracle analysis, and match harnesses
-- **[Documentation Map](docs/README.md)** — Full index of project documentation
-
----
-
 ## License
 
-Contributions to Koi are licensed under the [GNU General Public License v3.0](LICENSE), Copyright (c) 2026 Nguyễn Nhật Quang.
+Contributions to Koi are licensed under the [GNU General Public License v3.0](LICENSE), Copyright © 2026 Nguyễn Nhật Quang.

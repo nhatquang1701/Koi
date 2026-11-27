@@ -1,55 +1,82 @@
-# Koi
+# Koi Chess Engine
 
-**Koi** is a modern, open-source C++26 UCI chess engine for standard chess on **Windows x64**, **Linux x86-64**, and **macOS arm64 (Apple Silicon)**.
+**Koi** is an open-source **C++26 UCI chess engine** for standard chess on **Windows x64**, **Linux x86-64**, and **macOS arm64 (Apple Silicon)**.
 
-It combines an iterative-deepening Principal Variation Search (PVS) and Lazy SMP parallelism with a persistent transposition table, a bundled HalfKA NNUE evaluator, a clean classical evaluator (`EvalMode=hce`), and zero-configuration support for Polyglot opening books and Syzygy endgame tablebases.
+It combines Fancy Magic / BMI2 PEXT bitboards, iterative-deepening Principal Variation Search (PVS), Lazy SMP parallelism, and a lockless 24-byte XOR transposition table with a **HalfKA-HM SCReLU NNUE** evaluator, a built-in tapered classical evaluator (`EvalMode=hce`), and zero-configuration support for Polyglot opening books and Syzygy endgame tablebases.
+
+<div class="grid cards" markdown>
+
+-   **Download & Play**
+
+    ---
+
+    Grab the latest self-contained Windows, Linux, or macOS archive with bundled `koi.nnue` and verified CC0 `book.bin`.
+
+    [GitHub Releases](https://github.com/nhatquang1701/Koi/releases) · [Changelog](CHANGELOG.md)
+
+-   **User Guide & GUIs**
+
+    ---
+
+    Configure Koi in En Croissant, Pawn Appétit, Cute Chess, Lucas Chess, or Arena, and tune UCI options, books, and Syzygy tablebases.
+
+    [Open User Guide](docs/USER_GUIDE.md)
+
+-   **Architecture & Engine Spec**
+
+    ---
+
+    Explore the module map, concurrency ownership, search pruning formulas, time management math, and NNUE container specs.
+
+    [Architecture](docs/ARCHITECTURE.md) · [Engine Spec](docs/ENGINE_SPEC.md)
+
+-   **NNUE Pipeline & Development**
+
+    ---
+
+    Train HalfKA-HM networks with Bullet or PyTorch, run SPRT strength gates, and contribute with CMake Presets.
+
+    [NNUE Pipeline](docs/NNUE_PIPELINE.md) · [Contributing](CONTRIBUTING.md)
+
+</div>
 
 ---
 
-## Quick Navigation
+## 60-Second Quick Start
 
-| Goal | Where to Go |
+1. **Extract a release archive** (or build via `cmake --preset <platform>-release`).
+2. **Register `koi-engine`** (`koi-engine.exe` on Windows) as a UCI engine in your chess GUI.
+3. **Play or analyze** with `Hash = 512` and `Threads = 1` (deterministic) or `Threads = 4` (Lazy SMP).
+
+Koi discovers its assets automatically with zero config files:
+
+- **NNUE Network:** Loads `koi.nnue` beside the executable automatically at boot (`EvalMode=hce` or `KOI_EVALUATOR=hce` switches to the built-in classical evaluator).
+- **Opening Book:** Ships a compact Stockfish-verified CC0 Polyglot `book.bin` beside the executable (auto-detected unless `OwnBook=false` is explicitly set).
+- **Syzygy Tablebases:** Drop 3–7 man `.rtbw`/`.rtbz` files into `syzygy/` beside the executable (or set `SyzygyPath`) for automatic root and interior probing.
+
+---
+
+## Interactive CLI Highlights
+
+```bash
+koi-engine bench        # OpenBench-compatible deterministic benchmark
+koi-engine --version    # Print version and git build commit
+koi-engine --engine-json # Print En Croissant / Pawn Appétit JSON profile
+```
+
+Inside a UCI session, Koi also accepts `d` (ASCII board + FEN + Zobrist key), `eval` (static evaluation), `compiler` (toolchain & SIMD capabilities), `bench [depth]`, and `go perft <depth>`.
+
+---
+
+## Explore the Documentation
+
+| Section | Contents |
 | :--- | :--- |
-| **Download & Play** | Grab the latest Windows, Linux, or macOS archive from **[GitHub Releases](https://github.com/nhatquang1701/Koi/releases)**. |
-| **Configure a Chess GUI** | Follow the **[User Guide](USER_GUIDE.md#register-in-en-croissant-primary)** for En Croissant, Lucas Chess, Arena, or Cute Chess. |
-| **Understand UCI Options** | Browse the **[Supported UCI Behavior](USER_GUIDE.md#supported-uci-behavior)** and **[Engine Specification](ENGINE_SPEC.md#7-uci-surface)**. |
-| **Run a Lichess Bot** | Set up an automated online bot with **[Running Koi as a Lichess Bot](lichess-bot.md)**. |
-| **Build & Contribute** | Read **[Contributing](../CONTRIBUTING.md)**, **[System Architecture](ARCHITECTURE.md)**, and **[Test Layout](../tests/README.md)**. |
-
----
-
-## Getting Started in 60 Seconds
-
-1. **Extract a release package** (or [build from source](USER_GUIDE.md#build-prerequisites)).
-2. **Register `koi-engine`** (`koi-engine.exe` on Windows) in your UCI chess GUI.
-3. **Start playing or analyzing** with `Hash=512` and `Threads=1` (deterministic) or `Threads=4` (Lazy SMP).
-
-Koi requires no external configuration files:
-
-- **NNUE Evaluator:** Bundled flat beside the executables (`koi.nnue`) in release archives and discovered automatically at startup. A clean hand-crafted evaluator is also built in and selectable at any time via `setoption name EvalMode value hce` (or `KOI_EVALUATOR=hce` at boot).
-- **Opening Book (bundled):** A compact Stockfish-verified CC0 Polyglot book ships flat beside the executables as `book.bin` and is auto-detected unless `OwnBook=false` is explicitly sent (or replace it / configure `BookFile` for custom books).
-- **Syzygy Tablebases:** Place licensed `.rtbw` / `.rtbz` files in a `syzygy/` directory beside the executable (or set `SyzygyPath`) for automatic root and interior probing.
-
----
-
-## Documentation Sections
-
-### Using Koi
-
-- **[User Guide](USER_GUIDE.md)** — Complete guide to building, UCI commands and options, time management, MultiPV analysis, GUI setup, opening books, Syzygy tablebases, and release packaging.
-- **[Lichess Bot Guide](lichess-bot.md)** — Turn-key macOS and Linux workflow (`tools/bot/koi-bot.sh`) for running Koi on Lichess with automatic release updates.
-
-### Developing Koi
-
-- **[Contributing](../CONTRIBUTING.md)** — Toolchain prerequisites, build commands, CTest workflows, and repository rules.
-- **[System Architecture](ARCHITECTURE.md)** — Interactive module diagram, translation-unit responsibilities, threading ownership, and the 1.0.0 architecture contract.
-- **[NNUE Pipeline](NNUE_PIPELINE.md)** — End-to-end training loop: Stockfish self-play generation, sparse binary encoding, PyTorch/Bullet training, quantization, and SPRT promotion gates.
-- **[Apple Silicon Worker](mac-worker.md)** — Configuring an Apple Silicon Mac for low-noise speed gates, benchmarks, and SPRT matches.
-- **[Test Suite](../tests/README.md)** — C++ harness, shard layout, CTest labels, reliability fuzzers, and determinism guarantees.
-- **[Developer Tools](../tools/README.md)** — `koi-bench`, `koi-perft`, `koi-replay`, PGO workflow, Stockfish oracle analysis, and Elo estimation harnesses.
-
-### Reference & Release History
-
-- **[Engine Specification](ENGINE_SPEC.md)** — Authoritative technical reference covering position representation, draw rules, search pruning formulas, time allocation math, and UCI protocol contracts.
-- **[Documentation Map](README.md)** — Concise directory of all maintained documentation.
-- **[Latest Release Notes (v1.2.0)](releases/v1.2.0.md)** — Highlights, search and evaluation upgrades, strength progression, SF19 Elo measurement, and archive provenance.
+| **[User Guide](docs/USER_GUIDE.md)** | Installation, build presets, UCI options, time controls, GUI registration, opening books, and Syzygy tablebases. |
+| **[Lichess Bot](docs/lichess-bot.md)** | Running Koi on Lichess via `tools/bot/koi-bot.sh` with automated matchmaking and release updates. |
+| **[System Architecture](docs/ARCHITECTURE.md)** | Interactive module diagram, translation-unit responsibilities, threading model, and 1.0.0 architecture boundaries. |
+| **[Engine Specification](docs/ENGINE_SPEC.md)** | Complete technical specification of rules, search heuristics, NNUE v2–v9 containers, time formulas, and UCI contracts. |
+| **[NNUE Pipeline](docs/NNUE_PIPELINE.md)** | Self-play corpus generation, Bullet/PyTorch training, quantization, and equal-time SPRT promotion gates. |
+| **[Contributing](CONTRIBUTING.md)** | Prerequisites, CMake Presets, CTest matrix, engineering rules, and pull-request standards. |
+| **[Developer Tools](tools/README.md) & [Test Suite](tests/README.md)** | `koi-bench`, `koi-perft`, `koi-replay`, PGO, Elo/SPRT harnesses, reliability fuzzers, and CTest labels. |
+| **[Releases](docs/releases/v1.2.0.md) & [Security](SECURITY.md)** | Release highlights, strength measurements, changelog, and vulnerability disclosure policy. |
