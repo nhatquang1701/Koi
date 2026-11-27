@@ -256,6 +256,31 @@ if (-not $statsHeader.Contains('inline void accumulate_stats(')) {
     Fail 'search_stats_support.hpp accumulate_stats must be inline'
 }
 
+# 3i. UCI parsing/formatting helpers and NNUE container I/O stay separated
+# from controller orchestration and SIMD inference kernels.
+foreach ($required in @('src/koi/detail/uci_support.hpp',
+                        'src/koi/detail/uci_support.cpp',
+                        'src/koi/detail/nnue_manifest.hpp',
+                        'src/koi/detail/nnue_io.cpp')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
+        Fail "$required is missing"
+    }
+}
+$controllerImpl = Read-RepositoryFile 'src/koi/uci_controller.cpp'
+if (-not $controllerImpl.Contains('#include "koi/detail/uci_support.hpp"')) {
+    Fail 'uci_controller.cpp must include detail/uci_support.hpp'
+}
+if ($controllerImpl -match 'BoundedLineRead read_bounded_protocol_line\(|std::string format_ascii_board\(') {
+    Fail 'uci_controller.cpp must not redefine extracted detail/uci_support helpers'
+}
+$nnueImpl = Read-RepositoryFile 'src/koi/nnue.cpp'
+if (-not $nnueImpl.Contains('#include "koi/detail/nnue_manifest.hpp"')) {
+    Fail 'nnue.cpp must include detail/nnue_manifest.hpp'
+}
+if ($nnueImpl -match 'class Sha256|NnueLoader::serialize\(') {
+    Fail 'nnue.cpp must not redefine extracted detail/nnue_io container I/O'
+}
+
 # 4. Engine core sources must not contain dead/tooling translation units.
 Write-Output '[4/4] check CMake core sources, reliability fuzzer location, and architecture docs'
 $cmake = Read-RepositoryFile 'CMakeLists.txt'
@@ -266,6 +291,11 @@ if (-not $coreMatch.Success) {
     $coreSources = $coreMatch.Groups[1].Value
     if ($coreSources -notmatch 'detail/debug_log\.cpp') {
         Fail 'KOI_CORE_SOURCES must contain detail/debug_log.cpp'
+    }
+    foreach ($requiredSource in @('detail/uci_support.cpp', 'detail/nnue_io.cpp')) {
+        if ($coreSources -notmatch [regex]::Escape($requiredSource)) {
+            Fail "KOI_CORE_SOURCES must contain $requiredSource"
+        }
     }
     foreach ($forbidden in @('move_chooser.cpp', 'strength_suite.cpp')) {
         if ($coreSources -match [regex]::Escape($forbidden)) {
