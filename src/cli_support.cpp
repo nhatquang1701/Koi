@@ -862,8 +862,7 @@ std::optional<int> run_zero_network_cli_command(
             return 2;
         }
         const int gain = detail::static_exchange_gain(*root, *move);
-        std::cout << "SEE " << move->uci() << " : " << std::showpos << gain << " cp\n"
-                  << std::noshowpos << std::flush;
+        std::cout << detail::format_see_result(move->uci(), gain) << std::flush;
         return 0;
     }
     if (options.book) {

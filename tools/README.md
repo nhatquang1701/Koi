@@ -542,18 +542,25 @@ python .\tools\nnue\run_bullet.py --help
 python .\tools\measurement\nnue_info.py .\artifacts\networks\koi-v9-hm10-h256-official.nnue --verify
 ```
 
-Validation runs the 64-position gate (`koi-bench --nnue`) and an equal-time,
+Validation runs the 64-position gate (`koi-bench --nnue`) and an equal-time (`-TimeControl 1+0` or `-MovetimeMs 200`),
 colour-split network-vs-network match (`tools/nnue/net_match.ps1`, schema
 `koi-nnue-net-match-v1`), or `tools/stability/uci_match.ps1` with
 `-OpponentOptions @{ EvalMode = 'hce' }` against the clean classical
-evaluator. Those results are local reports and no reported number is an Elo
+evaluator (or `-Nodes` for fixed-node sanity checks). Those results are local reports and no reported number is an Elo
 claim. `net_match.ps1` prefers the
 160-opening `tests/data/openings/openings-release-strength-160.txt` corpus
 (falling back to the curated book), plays exactly one game per opening per
 colour, refuses a request that would repeat a game, and marks its report
 invalid if two games share a move sequence; pass `-OpeningFile` to override.
 Its promotion verdict is an SPRT (H0=0, H1=+10 Elo, alpha=beta=0.05) over the
-combined colour legs with a 200-effective-game target.
+combined colour legs with a 200-effective-game target:
+
+```powershell
+pwsh -NoProfile -File .\tools\nnue\net_match.ps1 `
+  -NnueNet .\artifacts\networks\koi-v9-hm10-h256-official.nnue `
+  -OpponentNet .\artifacts\networks\koi-v7-h128-official-20261025.nnue `
+  -TimeControl '1+0' -Games 200
+```
 
 Public official NNUE weights (including `koi-v9-hm10-h256-official.nnue`) are
 published directly as `.nnue` assets on the rolling **`koi-nnues`** GitHub

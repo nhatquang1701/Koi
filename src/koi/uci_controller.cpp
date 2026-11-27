@@ -89,6 +89,10 @@ std::uint64_t option_maximum(const UciOptionDescriptor& option) {
                                   : option.maximum;
 }
 
+std::string display_filename(const std::filesystem::path& path) {
+    return path.filename().empty() ? path.string() : path.filename().string();
+}
+
 std::optional<UciController::ProtocolMode> parse_protocol_mode(std::string_view value) noexcept {
     if (equals_ignore_case(value, "uci")) {
         return UciController::ProtocolMode::uci;
@@ -1427,11 +1431,9 @@ void UciController::handle_nnue() {
                nnue != nullptr && nnue->network() != nullptr) {
         std::string display_name;
         if (!eval_file_.empty()) {
-            display_name = eval_file_.filename().empty() ? eval_file_.string()
-                                                         : eval_file_.filename().string();
+            display_name = display_filename(eval_file_);
         } else if (!boot_nnue_path_.empty()) {
-            display_name = boot_nnue_path_.filename().empty() ? boot_nnue_path_.string()
-                                                              : boot_nnue_path_.filename().string();
+            display_name = display_filename(boot_nnue_path_);
         } else {
             display_name = nnue_autodiscovered_ ? "<autodiscovery>" : "<loaded>";
         }
@@ -1455,10 +1457,9 @@ void UciController::handle_see(std::istream& command) {
         return;
     }
     const int gain = detail::static_exchange_gain(position_, *move);
-    std::ostringstream line;
-    line << "SEE " << move->uci() << " : " << std::showpos << gain << " cp\n";
+    const std::string line = detail::format_see_result(move->uci(), gain);
     std::lock_guard lock(output_mutex_);
-    output_ << line.str() << std::flush;
+    output_ << line << std::flush;
 }
 
 void UciController::handle_flip() {
@@ -1640,10 +1641,8 @@ void UciController::handle_options() {
     if (!eval_file_.empty()) {
         snapshot.eval_file = eval_file_.string();
     } else if (!boot_nnue_path_.empty()) {
-        const std::string boot_name = boot_nnue_path_.filename().empty()
-            ? boot_nnue_path_.string()
-            : boot_nnue_path_.filename().string();
-        snapshot.eval_file = boot_name + (nnue_autodiscovered_ ? " (autodiscovered)" : " (boot)");
+        snapshot.eval_file =
+            display_filename(boot_nnue_path_) + (nnue_autodiscovered_ ? " (autodiscovered)" : " (boot)");
     } else {
         snapshot.eval_file = nnue_autodiscovered_ ? "<autodiscovery>" : "<default>";
     }

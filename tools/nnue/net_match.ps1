@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-Node-limited A/B match: a Koi NNUE network against another Koi NNUE network.
+Equal-time or node-limited A/B match: a Koi NNUE network against another Koi NNUE network.
 
 .DESCRIPTION
-Runs two node-limited matches through tools/stability/uci_match.ps1.  Both
+Runs two equal-time or node-limited matches through tools/stability/uci_match.ps1. Both
 sides are the same Koi engine executable; the candidate network is loaded on
 the Koi side through `EvalFile` and the reference network on the opponent side
 through the opponent option set, then the games are split so the candidate
@@ -18,12 +18,12 @@ target reports 'accepted-below-target' instead of 'candidate-stronger'.
 
 .PARAMETER NnueNet
 Path to the `.nnue` file used by the candidate side. The container must be a
-Koi v4 or v5 NNUE file; it is attested through uci_match.ps1's
+Koi v4, v5, v6, v8, or v9 NNUE file; it is attested through uci_match.ps1's
 -KoiEvalFile/-KoiEvaluatorMode path and its SHA-256 is recorded.
 
 .PARAMETER OpponentNet
 Path to the `.nnue` file used by the reference side. The container must be a
-Koi v4 or v5 NNUE file; its SHA-256 is recorded (the reference side has no
+Koi v4, v5, v6, v8, or v9 NNUE file; its SHA-256 is recorded (the reference side has no
 harness attestation path).
 
 .PARAMETER EnginePath
@@ -35,7 +35,16 @@ play a distinct opening, so the request is refused unless Games is at most
 twice the opening count.
 
 .PARAMETER Nodes
-Per-move node limit for both engines (default 20000).
+Per-move node limit for both engines when neither -TimeControl nor -MovetimeMs
+is set (default 20000).
+
+.PARAMETER TimeControl
+Clock time control in `<base_sec>+<inc_sec>` format (mutually exclusive with
+-MovetimeMs; takes precedence over -Nodes).
+
+.PARAMETER MovetimeMs
+Fixed per-move budget in milliseconds (mutually exclusive with -TimeControl;
+takes precedence over -Nodes).
 
 .PARAMETER OpeningFile
 Opening file with `name | uci move uci move ...` lines. When omitted, the
@@ -46,7 +55,7 @@ with one color and one derived seed, so the match is refused instead of
 silently repeating a game.
 
 .EXAMPLE
-pwsh -NoProfile -File tools/nnue/net_match.ps1 -NnueNet artifacts/training/koi-v4-1024.nnue -OpponentNet artifacts/training/koi-sf-v1.nnue -Games 20
+pwsh -NoProfile -File tools/nnue/net_match.ps1 -NnueNet artifacts/networks/koi-v9-hm10-h256-official.nnue -OpponentNet artifacts/networks/koi-v7-h128-official-20261025.nnue -TimeControl '1+0' -Games 200
 #>
 
 param(
@@ -62,6 +71,11 @@ param(
     [int]$Games = 20,
 
     [uint64]$Nodes = 20000,
+
+    [string]$TimeControl = '',
+
+    [ValidateRange(0, 600000)]
+    [int]$MovetimeMs = 0,
 
     [ValidateRange(1, 64)]
     [int]$Threads = 1,
@@ -82,6 +96,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not [string]::IsNullOrWhiteSpace($TimeControl) -and $MovetimeMs -gt 0) {
+    throw 'Choose -TimeControl or -MovetimeMs, not both.'
+}
 Import-Module (Join-Path $PSScriptRoot '../stability/EtaSupport.psm1') -Force
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $binarySuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
@@ -356,26 +373,34 @@ function Invoke-NetLeg {
     $legOpeningFile = Join-Path $legDirectory 'openings.txt'
     Set-Content -LiteralPath $legOpeningFile -Encoding UTF8 -Value $script:openingLines[0..($LegGames - 1)]
 
-    $output = & $UciMatchPath `
-        -KoiPath $engine `
-        -OpponentPath $engine `
-        -ReplayPath $replay `
-        -Nodes $Nodes `
-        -Threads $Threads `
-        -Hash $Hash `
-        -KoiColor $KoiColor `
-        -KoiRandomSeed $BaseSeed `
-        -Games 1 `
-        -OpeningFile $legOpeningFile `
-        -KoiOwnBook 'false' `
-        -KoiEvalFile $nnuePath `
-        -KoiEvaluatorMode $script:candidateEvaluatorMode `
-        -OpponentOptions @{ EvalFile = $opponentPath } `
-        -OpponentOwnBook 'false' `
-        -TimeoutMilliseconds $TimeoutMilliseconds `
-        -OutputDirectory $legDirectory `
-        -BatchId "nnue-net-$Tag" `
-        -RunLabel 'measurement'
+    $matchParams = @{
+        KoiPath = $engine
+        OpponentPath = $engine
+        ReplayPath = $replay
+        Threads = $Threads
+        Hash = $Hash
+        KoiColor = $KoiColor
+        KoiRandomSeed = $BaseSeed
+        Games = 1
+        OpeningFile = $legOpeningFile
+        KoiOwnBook = 'false'
+        KoiEvalFile = $nnuePath
+        KoiEvaluatorMode = $script:candidateEvaluatorMode
+        OpponentOptions = @{ EvalFile = $opponentPath }
+        OpponentOwnBook = 'false'
+        TimeoutMilliseconds = $TimeoutMilliseconds
+        OutputDirectory = $legDirectory
+        BatchId = "nnue-net-$Tag"
+        RunLabel = 'measurement'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TimeControl)) {
+        $matchParams.TimeControl = $TimeControl
+    } elseif ($MovetimeMs -gt 0) {
+        $matchParams.MovetimeMs = $MovetimeMs
+    } else {
+        $matchParams.Nodes = $Nodes
+    }
+    $output = & $UciMatchPath @matchParams
 
     $jsonLine = @($output | Where-Object { $_ -match '^json\s+(.+)$' } | Select-Object -Last 1)
     if ($jsonLine.Count -ne 1) {
@@ -510,7 +535,9 @@ $report = [ordered]@{
     opponent_sha256 = $opponentSha256
     opponent_container_version = $opponentInfo.ContainerVersion
     engine_path = $engine
-    nodes = $Nodes
+    nodes = if (-not [string]::IsNullOrWhiteSpace($TimeControl) -or $MovetimeMs -gt 0) { 0 } else { $Nodes }
+    time_control = if (-not [string]::IsNullOrWhiteSpace($TimeControl)) { $TimeControl } else { $null }
+    movetime_ms = $MovetimeMs
     threads = $Threads
     hash_mb = $Hash
     games_requested = $Games

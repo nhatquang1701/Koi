@@ -174,6 +174,7 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] std::string format_speedtest_summary(
     std::size_t threads, std::size_t hash_mb,
     std::uint64_t total_nodes, std::int64_t elapsed_ms);
+[[nodiscard]] std::string format_see_result(std::string_view move_uci, int gain_cp);
 [[nodiscard]] std::string format_interactive_help();
 [[nodiscard]] std::string format_position_debug_json(
     std::uint64_t generation, std::string_view command_text,

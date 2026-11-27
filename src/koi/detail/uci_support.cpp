@@ -1535,4 +1535,10 @@ std::string format_speedtest_summary(const std::size_t threads, const std::size_
            "\nNodes/second    : " + std::to_string(nps) + "\n";
 }
 
+std::string format_see_result(const std::string_view move_uci, const int gain_cp) {
+    std::ostringstream out;
+    out << "SEE " << move_uci << " : " << std::showpos << gain_cp << " cp\n";
+    return out.str();
+}
+
 } // namespace koi::detail

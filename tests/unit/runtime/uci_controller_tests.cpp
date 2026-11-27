@@ -3532,6 +3532,11 @@ void test_uci_support_helpers_direct() {
                 speed_clamped.find("Total time (ms) : 1\nNodes searched  : 40\nNodes/second    : 40000\n") !=
                     std::string::npos,
             "format_bench_summary or format_speedtest_summary mismatch");
+
+    require(format_see_result("e4d5", 100) == "SEE e4d5 : +100 cp\n" &&
+                format_see_result("e2e4", 0) == "SEE e2e4 : +0 cp\n" &&
+                format_see_result("d1d5", -320) == "SEE d1d5 : -320 cp\n",
+            "format_see_result formatting mismatch");
 }
 
 } // namespace
