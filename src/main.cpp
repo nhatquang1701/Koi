@@ -174,7 +174,8 @@ int main(int argc, char* argv[]) {
     koi::UciController controller(
         batch_input.has_value() ? static_cast<std::istream&>(*batch_input) : std::cin,
         std::cout, std::cerr, std::move(search_service), engine_directory,
-        autodiscovered_network && selection.nnue_enabled);
+        autodiscovered_network && selection.nnue_enabled,
+        selection.nnue_enabled ? nnue_path : std::filesystem::path{});
     if (cli_options.bench_depth.has_value()) {
         return controller.run_bench(*cli_options.bench_depth, cli_options.bench_hash_mb,
                                     cli_options.bench_threads);

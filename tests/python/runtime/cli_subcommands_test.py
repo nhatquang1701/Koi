@@ -429,17 +429,20 @@ class CliSubcommandsTest(unittest.TestCase):
             "Expected an NNUE network fixture for --cmd NNUE test",
         )
         nnue_eval = self._run(
-            ["--nnue", str(nnue_path), "--cmd=position startpos", "--cmd=eval", "--cmd=nnue"],
+            ["--nnue", str(nnue_path), "--cmd=position startpos", "--cmd=eval", "--cmd=nnue", "--cmd=options"],
             disable_nnue=True,
             extra_env={"KOI_EVALUATOR": "hce"},
         )
         self.assertEqual(nnue_eval.returncode, 0, nnue_eval.stderr)
         self.assertEqual(nnue_eval.stderr, "")
+        nnue_name = pathlib.Path(nnue_path).name
         self.assertIn("Evaluator      : NNUE", nnue_eval.stdout)
         self.assertIn("Network SHA256 :", nnue_eval.stdout)
+        self.assertIn(f"NNUE file      : {nnue_name}", nnue_eval.stdout)
         self.assertIn("Format version : v", nnue_eval.stdout)
         self.assertIn("Payload SHA256 :", nnue_eval.stdout)
         self.assertIn("Status         : valid (checksum verified)", nnue_eval.stdout)
+        self.assertIn(f"EvalFile        : {nnue_name} (boot)", nnue_eval.stdout)
 
         hce_nnue = self._run(["--hce", "-c", "nnue"], disable_nnue=True)
         self.assertEqual(hce_nnue.returncode, 0, hce_nnue.stderr)

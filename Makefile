@@ -25,7 +25,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release profile-build bench speedtest eval compiler perft smoke test docs clean help
+.PHONY: all release profile-build bench speedtest eval nnue compiler perft smoke test docs clean help
 
 all: release
 
@@ -63,9 +63,16 @@ profile-build:
 
 bench: release
 	@if [ -n "$(EVALFILE)" ]; then \
-	  KOI_NNUE_PATH="$(EVALFILE)" "$(BUILD_DIR)/koi-engine" bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
+	  "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
 	else \
-	  "$(BUILD_DIR)/koi-engine" bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
+	  "$(BUILD_DIR)/koi-engine" --hce bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
+	fi
+
+nnue: release
+	@if [ -n "$(EVALFILE)" ]; then \
+	  "$(BUILD_DIR)/koi-engine" nnue "$(EVALFILE)"; \
+	else \
+	  "$(BUILD_DIR)/koi-engine" nnue; \
 	fi
 
 speedtest: release
@@ -122,6 +129,7 @@ help:
 	@echo "  make bench [EVALFILE=...]              Build and run deterministic OpenBench benchmark"
 	@echo "  make speedtest [SPEEDTEST_THREADS=1]   Build and run timed NPS throughput benchmark"
 	@echo "  make eval [EVALFILE=...] [FEN=...]     Evaluate startpos or FEN with NNUE/HCE"
+	@echo "  make nnue [EVALFILE=...]               Inspect NNUE container metadata and payload SHA-256"
 	@echo "  make compiler                          Build and print compiler / ISA metadata"
 	@echo "  make perft [PERFT_DEPTH=5]             Build and run timed startpos perft divide"
 	@echo "  make smoke [EVALFILE=...]              Run one-shot UCI handshake + depth-2 search smoke check"

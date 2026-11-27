@@ -3116,7 +3116,7 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
             "see must reject illegal moves cleanly; got:\n" + see_raw);
 
     std::istringstream nnue_eval_in(
-        "position startpos\nfen\nkey\nmoves\nbook\ntb\neval\nnnue\n"
+        "position startpos\nfen\nkey\nmoves\nbook\ntb\neval\nnnue\noptions\n"
         "setoption name EvalMode value hce\nnnue\n"
         "position fen 8/8/8/8/8/6K1/5Q2/7k b - - 0 1\nmoves\nquit\n");
     std::ostringstream nnue_eval_out;
@@ -3126,7 +3126,8 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
         koi::SearchService(
             std::make_shared<koi::NnueEvaluator>(
                 std::make_shared<koi::NnueNetwork>(koi::test::synthetic_network_v4())),
-            {}, 16));
+            {}, 16),
+        {}, false, std::filesystem::path("/tmp/demo-boot.nnue"));
     const int nnue_eval_exit = nnue_eval_ctrl.run();
     const std::string nnue_eval_raw = nnue_eval_out.str();
     require(nnue_eval_exit == 0 &&
@@ -3135,12 +3136,14 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                 nnue_eval_raw.find("Network SHA256 : ") != std::string::npos &&
                 nnue_eval_raw.find("Output bucket  : 0 (of 8)") != std::string::npos &&
                 nnue_eval_raw.find("Quantization   : int16/int8") != std::string::npos &&
+                nnue_eval_raw.find("NNUE file      : demo-boot.nnue") != std::string::npos &&
                 nnue_eval_raw.find("Format version : v4") != std::string::npos &&
                 nnue_eval_raw.find("Payload SHA256 : ") != std::string::npos &&
                 nnue_eval_raw.find("Status         : valid (checksum verified)") !=
                     std::string::npos &&
+                nnue_eval_raw.find("EvalFile        : demo-boot.nnue (boot)") != std::string::npos &&
                 nnue_eval_raw.find("NNUE : inactive (EvalMode=hce)") != std::string::npos,
-            "eval and nnue commands must report NNUE metadata, SHA256, and HCE inactive state; got:\n" +
+            "eval, nnue, and options commands must report NNUE metadata, boot path, SHA256, and HCE inactive state; got:\n" +
                 nnue_eval_raw);
     require(nnue_eval_raw.find("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\n") !=
                 std::string::npos,

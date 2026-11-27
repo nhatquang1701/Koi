@@ -194,12 +194,14 @@ std::uint32_t derive_network_overhead_ms(std::int64_t previous_remaining_ms,
 UciController::UciController(std::istream& input, std::ostream& output,
                              std::ostream& diagnostics, SearchService search_service,
                              std::filesystem::path executable_directory,
-                             bool nnue_autodiscovered)
+                             bool nnue_autodiscovered,
+                             std::filesystem::path boot_nnue_path)
     : input_(input), output_(output), diagnostics_(diagnostics),
       executable_directory_(std::move(executable_directory)),
       opening_book_(executable_directory_),
       search_service_(std::move(search_service)),
-      nnue_autodiscovered_(nnue_autodiscovered) {
+      nnue_autodiscovered_(nnue_autodiscovered),
+      boot_nnue_path_(std::move(boot_nnue_path)) {
     boot_evaluator_ = search_service_.evaluator();
     hce_active_ = dynamic_cast<const ClassicalEvaluator*>(boot_evaluator_.get()) != nullptr;
     debug_log_ = std::make_unique<detail::DebugLog>();
@@ -1477,6 +1479,9 @@ void UciController::handle_nnue() {
         if (!eval_file_.empty()) {
             display_name = eval_file_.filename().empty() ? eval_file_.string()
                                                          : eval_file_.filename().string();
+        } else if (!boot_nnue_path_.empty()) {
+            display_name = boot_nnue_path_.filename().empty() ? boot_nnue_path_.string()
+                                                              : boot_nnue_path_.filename().string();
         } else {
             display_name = nnue_autodiscovered_ ? "<autodiscovery>" : "<loaded>";
         }
@@ -1624,9 +1629,16 @@ void UciController::handle_options() {
     const bool book_available = book_is_available();
     detail::LiveOptionsSnapshot snapshot;
     snapshot.evaluator_name = hce_active_ ? "HCE" : "NNUE";
-    snapshot.eval_file = !eval_file_.empty()
-        ? eval_file_.string()
-        : (nnue_autodiscovered_ ? "<autodiscovery>" : "<default>");
+    if (!eval_file_.empty()) {
+        snapshot.eval_file = eval_file_.string();
+    } else if (!boot_nnue_path_.empty()) {
+        const std::string boot_name = boot_nnue_path_.filename().empty()
+            ? boot_nnue_path_.string()
+            : boot_nnue_path_.filename().string();
+        snapshot.eval_file = boot_name + (nnue_autodiscovered_ ? " (autodiscovered)" : " (boot)");
+    } else {
+        snapshot.eval_file = nnue_autodiscovered_ ? "<autodiscovery>" : "<default>";
+    }
     snapshot.hash_mb = hash_mb_;
     snapshot.threads = threads_;
     snapshot.multi_pv = multi_pv_;

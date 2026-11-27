@@ -67,7 +67,8 @@ public:
     UciController(std::istream& input, std::ostream& output, std::ostream& diagnostics,
                   SearchService search_service,
                   std::filesystem::path executable_directory = {},
-                  bool nnue_autodiscovered = false);
+                  bool nnue_autodiscovered = false,
+                  std::filesystem::path boot_nnue_path = {});
     ~UciController();
 
     UciController(const UciController&) = delete;
@@ -233,6 +234,7 @@ private:
     bool syzygy_auto_loaded_ = false;
     bool syzygy_configured_ = false;
     std::filesystem::path eval_file_;
+    std::filesystem::path boot_nnue_path_;
     std::shared_ptr<const Evaluator> boot_evaluator_;
     bool hce_active_ = false;
     // Boot-time autodiscovery actually installed a network: advertise that in
