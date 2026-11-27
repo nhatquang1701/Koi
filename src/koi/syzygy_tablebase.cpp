@@ -313,12 +313,7 @@ SyzygyTablebase::SyzygyTablebase(std::filesystem::path path, const std::uint8_t 
     // Fathom accepts a platform path list and splits it itself (SEP_CHAR:
     // ';' on Windows, ':' elsewhere).  A list is not a directory, so the
     // single-directory readability gate must not reject it up front.
-    const std::string path_text = impl_->path.string();
-#if defined(_WIN32)
-    const bool path_list = path_text.find(';') != std::string::npos;
-#else
-    const bool path_list = path_text.find(':') != std::string::npos;
-#endif
+    const bool path_list = is_path_list(impl_->path.string());
     const bool readable_directory =
         path_list || std::filesystem::is_directory(impl_->path, path_error);
     if (impl_->path.empty()) {
@@ -355,15 +350,7 @@ bool SyzygyTablebase::probe_eligible(const GameState& state) const noexcept {
     if (!impl_->enabled || state.castling_rights() != 0) {
         return false;
     }
-    // The GameState bitboards are maintained incrementally, so this stays far
-    // cheaper than building a TablebaseSnapshot at every interior node.
-    std::size_t pieces = 0;
-    for (std::uint8_t type = static_cast<std::uint8_t>(PieceType::pawn);
-         type <= static_cast<std::uint8_t>(PieceType::king); ++type) {
-        const auto piece_type = static_cast<PieceType>(type);
-        pieces += static_cast<std::size_t>(std::popcount(state.piece_bitboard(piece_type, Color::white)));
-        pieces += static_cast<std::size_t>(std::popcount(state.piece_bitboard(piece_type, Color::black)));
-    }
+    const std::size_t pieces = state.piece_count();
     if (pieces == 0 || pieces > impl_->probe_limit || pieces > 7) {
         return false;
     }

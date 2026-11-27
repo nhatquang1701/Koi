@@ -8,6 +8,7 @@ build products, local notes, networks, books, and tablebases out of the site.
 
 from __future__ import annotations
 
+import argparse
 import posixpath
 import re
 import shutil
@@ -139,7 +140,17 @@ def rewrite_links(
     return MARKDOWN_LINK.sub(replace, markdown)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=SOURCE_DIRECTORY,
+        help="directory to stage tracked Markdown and static docs assets (default: build/pages-src)",
+    )
+    args = parser.parse_args(argv)
+    output_directory = args.output.resolve()
+
     paths = tracked_markdown_paths()
     if not paths:
         raise RuntimeError("No tracked Markdown files were found.")
@@ -149,14 +160,14 @@ def main() -> int:
     if PurePosixPath("docs/index.md") not in source_to_output:
         raise RuntimeError("docs/index.md must be tracked before building the Pages site.")
 
-    if SOURCE_DIRECTORY.exists():
-        shutil.rmtree(SOURCE_DIRECTORY)
-    SOURCE_DIRECTORY.mkdir(parents=True)
+    if output_directory.exists():
+        shutil.rmtree(output_directory)
+    output_directory.mkdir(parents=True)
 
     for path in paths:
         source = REPOSITORY_ROOT.joinpath(*path.parts)
         staged_path = source_to_output[path]
-        destination = SOURCE_DIRECTORY.joinpath(*staged_path.parts)
+        destination = output_directory.joinpath(*staged_path.parts)
         destination.parent.mkdir(parents=True, exist_ok=True)
         markdown = source.read_text(encoding="utf-8")
         destination.write_text(
@@ -168,13 +179,17 @@ def main() -> int:
     for asset_path in asset_paths:
         source = REPOSITORY_ROOT.joinpath(*asset_path.parts)
         relative_asset = asset_path.relative_to("docs")
-        destination = SOURCE_DIRECTORY.joinpath(*relative_asset.parts)
+        destination = output_directory.joinpath(*relative_asset.parts)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
 
+    try:
+        display_output = output_directory.relative_to(REPOSITORY_ROOT)
+    except ValueError:
+        display_output = output_directory
     print(
         f"Staged {len(paths)} tracked Markdown files and {len(asset_paths)} static assets "
-        f"in {SOURCE_DIRECTORY.relative_to(REPOSITORY_ROOT)}"
+        f"in {display_output}"
     )
     return 0
 

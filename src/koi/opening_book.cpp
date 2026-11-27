@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <fstream>
 #include <limits>
 #include <mutex>
@@ -145,19 +146,15 @@ constexpr std::size_t kBookSafetyNodeBudget = 512;
 // into an unbounded memory allocation while loading.
 constexpr std::uintmax_t kMaximumBookFileSize = 16U * 1024U * 1024U;
 
-int piece_value(PieceType type) noexcept {
-    return piece_material_value(type);
-}
-
-int material_score(const GameState& state, Color perspective) noexcept {
+int material_score(const GameState& state, const Color perspective) noexcept {
+    const Color opponent = opposite(perspective);
     int score = 0;
-    for (const Piece& piece : state.position_features().board) {
-        if (piece.type == PieceType::none) {
-            continue;
-        }
-        const int signed_value = piece_value(piece.type) *
-            (piece.color == perspective ? 1 : -1);
-        score += signed_value;
+    for (std::uint8_t index = static_cast<std::uint8_t>(PieceType::pawn);
+         index <= static_cast<std::uint8_t>(PieceType::king); ++index) {
+        const PieceType type = static_cast<PieceType>(index);
+        const int diff = std::popcount(state.piece_bitboard(type, perspective)) -
+            std::popcount(state.piece_bitboard(type, opponent));
+        score += diff * piece_material_value(type);
     }
     return score;
 }
