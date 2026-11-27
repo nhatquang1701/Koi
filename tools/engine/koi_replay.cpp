@@ -5,6 +5,13 @@
 
 #include "koi/game_state.hpp"
 
+#ifndef KOI_ENGINE_BUILD_VERSION
+#define KOI_ENGINE_BUILD_VERSION "1.2.0"
+#endif
+#ifndef KOI_ENGINE_BUILD_COMMIT
+#define KOI_ENGINE_BUILD_COMMIT "unknown"
+#endif
+
 namespace {
 
 struct ReplayResult {
@@ -67,6 +74,10 @@ int main(int argument_count, char* arguments[]) {
     const std::string_view first(arguments[1]);
     if (first == "-h" || first == "--help") {
         std::cout << "usage: koi-replay <startpos|fen six-field-fen> [moves <coordinate>...]\n";
+        return 0;
+    }
+    if (first == "-v" || first == "--version") {
+        std::cout << "koi-replay " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT << ")\n";
         return 0;
     }
 

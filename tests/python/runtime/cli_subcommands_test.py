@@ -582,6 +582,22 @@ class CliSubcommandsTest(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, f"{tool_exe} {flag}: {proc.stderr}")
                 self.assertIn(expected_prefix, proc.stdout)
 
+        for tool_exe, stem in (
+            (perft_exe, "koi-perft"),
+            (replay_exe, "koi-replay"),
+            (bench_exe, "koi-bench"),
+            (eval_features_exe, "koi-eval-features"),
+            (nnue_fixture_exe, "koi-nnue-fixture"),
+        ):
+            for flag in ("-v", "--version"):
+                proc = subprocess.run([str(tool_exe), flag], capture_output=True, text=True, timeout=15)
+                self.assertEqual(proc.returncode, 0, f"{tool_exe} {flag}: {proc.stderr}")
+                self.assertEqual(proc.stderr, "")
+                line = proc.stdout.strip()
+                self.assertTrue(line.startswith(f"{stem} "), f"{stem} {flag}: {line!r}")
+                self.assertIn("(", line)
+                self.assertIn(")", line)
+
         with tempfile.TemporaryDirectory() as tmpdir:
             v9_path = pathlib.Path(tmpdir) / "fixture-v9.nnue"
             gen = subprocess.run(

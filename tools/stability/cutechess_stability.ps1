@@ -3,7 +3,7 @@ param(
     [string]$KoiPath,
     [Parameter(Mandatory = $true)]
     [string]$OpponentPath,
-    [string]$CutechessPath = 'C:\Program Files (x86)\Cute Chess\cutechess-cli.exe',
+    [string]$CutechessPath = $(if ($env:OS -eq 'Windows_NT') { 'C:\Program Files (x86)\Cute Chess\cutechess-cli.exe' } else { $cmd = Get-Command 'cutechess-cli' -ErrorAction SilentlyContinue; if ($cmd) { $cmd.Source } else { '/usr/local/bin/cutechess-cli' } }),
     [string]$ReplayPath = '',
     [string]$OpeningFile = '',
     [string]$FenFile = '',

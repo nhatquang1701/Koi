@@ -26,6 +26,9 @@
 #ifndef KOI_ENGINE_BUILD_VERSION
 #define KOI_ENGINE_BUILD_VERSION "1.2.0"
 #endif
+#ifndef KOI_ENGINE_BUILD_COMMIT
+#define KOI_ENGINE_BUILD_COMMIT "unknown"
+#endif
 
 namespace {
 
@@ -916,6 +919,10 @@ int main(int argc, char** argv) {
         const std::string_view argument(argv[index]);
         if (argument == "-h" || argument == "--help") {
             std::cout << kBenchUsage;
+            return 0;
+        }
+        if (argument == "-v" || argument == "--version") {
+            std::cout << "koi-bench " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT << ")\n";
             return 0;
         }
     }

@@ -10,6 +10,13 @@
 #include "koi/nnue.hpp"
 #include "../../tests/support/nnue_synthetic.hpp"
 
+#ifndef KOI_ENGINE_BUILD_VERSION
+#define KOI_ENGINE_BUILD_VERSION "1.2.0"
+#endif
+#ifndef KOI_ENGINE_BUILD_COMMIT
+#define KOI_ENGINE_BUILD_COMMIT "unknown"
+#endif
+
 namespace {
 
 constexpr std::string_view kUsage =
@@ -76,6 +83,10 @@ int main(int argc, char** argv) {
             const std::string_view argument(argv[index]);
             if (argument == "-h" || argument == "--help") {
                 std::cout << kUsage;
+                return 0;
+            }
+            if (argument == "-v" || argument == "--version") {
+                std::cout << "koi-nnue-fixture " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT << ")\n";
                 return 0;
             }
         }

@@ -18,6 +18,13 @@
 #include <string>
 #include <string_view>
 
+#ifndef KOI_ENGINE_BUILD_VERSION
+#define KOI_ENGINE_BUILD_VERSION "1.2.0"
+#endif
+#ifndef KOI_ENGINE_BUILD_COMMIT
+#define KOI_ENGINE_BUILD_COMMIT "unknown"
+#endif
+
 namespace {
 
 std::string strip_carriage_return(std::string line) {
@@ -48,6 +55,9 @@ int main(int argc, char** argv) {
             std::cout << "usage: koi-eval-features (--nnue NET | --hce) [--input FILE] [--output FILE]\n"
                          "  reads FEN or FEN;cp;... rows (stdin by default) and writes\n"
                          "  CSV rows fen,label_cp,<evaluator>_cp from the side-to-move perspective\n";
+            return 0;
+        } else if (argument == "-v" || argument == "--version") {
+            std::cout << "koi-eval-features " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT << ")\n";
             return 0;
         } else {
             std::cerr << "koi-eval-features: unknown argument " << argument << '\n';

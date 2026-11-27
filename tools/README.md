@@ -46,7 +46,7 @@ platform archives (`.zip` / `.tar.gz`) for end users.
 ## Engine CLI utilities (`tools/engine/`)
 
 Besides `koi-engine` itself, five standalone developer CLI executables are built
-alongside the engine. Every tool supports `-h` / `--help`; full flag tables and
+alongside the engine. Every tool supports `-h` / `--help` and `-v` / `--version`; full flag tables and
 examples live in [CLI & Interactive Reference](../docs/CLI.md):
 
 - `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
@@ -344,7 +344,7 @@ book is an external licensed input; do not commit or redistribute it.
 
 ## Stockfish matches
 
-`stockfish_match.py` is a safe Python entrypoint for the Windows
+`stockfish_match.py` is a safe Python entrypoint for the cross-platform
 PowerShell UCI match harness. It uses `subprocess.run` with an argument list and
 never invokes a shell. `--help` only parses arguments and does not start engines.
 The default output directory is `artifacts/matches`.
