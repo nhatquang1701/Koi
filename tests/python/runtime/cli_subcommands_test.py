@@ -144,6 +144,30 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(bad.returncode, 2)
             self.assertIn("invalid FEN", bad.stderr)
 
+        see_quiet = self._run(["see", "e2e4"], disable_nnue=True)
+        self.assertEqual(see_quiet.returncode, 0, see_quiet.stderr)
+        self.assertEqual(see_quiet.stdout.strip(), "SEE e2e4 : +0 cp")
+
+        see_fen = "4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1"
+        see_cap = self._run(["see", "e4d5", see_fen], disable_nnue=True)
+        self.assertEqual(see_cap.returncode, 0, see_cap.stderr)
+        self.assertEqual(see_cap.stdout.strip(), "SEE e4d5 : +100 cp")
+
+        see_unquoted = self._run(["see", "e4d5", *see_fen.split()], disable_nnue=True)
+        self.assertEqual(see_unquoted.returncode, 0, see_unquoted.stderr)
+        self.assertEqual(see_unquoted.stdout.strip(), "SEE e4d5 : +100 cp")
+
+        see_missing = self._run(["see"], disable_nnue=True)
+        self.assertEqual(see_missing.returncode, 2)
+
+        see_illegal = self._run(["see", "e1e8"], disable_nnue=True)
+        self.assertEqual(see_illegal.returncode, 2)
+        self.assertIn("illegal move", see_illegal.stderr)
+
+        see_bad_fen = self._run(["see", "e2e4", "bad fen"], disable_nnue=True)
+        self.assertEqual(see_bad_fen.returncode, 2)
+        self.assertIn("invalid FEN", see_bad_fen.stderr)
+
     def test_invalid_perft_and_unknown_options(self) -> None:
         bad_depth = self._run(["perft", "99"], disable_nnue=True)
         self.assertEqual(bad_depth.returncode, 2)

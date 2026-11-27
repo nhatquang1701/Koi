@@ -24,6 +24,7 @@
 #include "koi/classical_evaluator.hpp"
 #include "koi/cpu_features.hpp"
 #include "koi/cpu_variant.hpp"
+#include "koi/detail/static_exchange.hpp"
 #include "koi/detail/uci_support.hpp"
 #include "koi/executable_path.hpp"
 #include "koi/game_state.hpp"
@@ -171,7 +172,8 @@ void write_help() {
               << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n"
               << "  d, --display [fen]                       Display ASCII board, FEN, Zobrist key, and move count\n"
               << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
-              << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n\n"
+              << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n"
+              << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
               << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait, help\n";
 }
 
@@ -246,6 +248,7 @@ int main(int argc, char* argv[]) {
     bool cli_display = false;
     bool cli_key = false;
     bool cli_moves = false;
+    std::optional<std::string> cli_see_move;
     std::optional<std::string> cli_eval_fen;
     std::optional<int> cli_perft_depth;
     std::optional<std::string> cli_perft_fen;
@@ -312,6 +315,19 @@ int main(int argc, char* argv[]) {
         if (arg == "moves") {
             cli_moves = true;
             set_environment_value("KOI_CLI_MOVES", "1");
+            collect_trailing_fen(index, cli_inspect_fen);
+            if (cli_inspect_fen.has_value()) {
+                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
+            }
+            continue;
+        }
+        if (arg == "see") {
+            if (index + 1 >= argc) {
+                std::cerr << "koi-engine: missing move for see (e.g. see e4d5 [fen]).\n";
+                return 2;
+            }
+            cli_see_move = std::string(argv[++index]);
+            set_environment_value("KOI_CLI_SEE_MOVE", *cli_see_move);
             collect_trailing_fen(index, cli_inspect_fen);
             if (cli_inspect_fen.has_value()) {
                 set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
@@ -396,7 +412,7 @@ int main(int argc, char* argv[]) {
             std::cerr << "koi-engine: unknown option '" << arg
                       << "' (supported: --version, --help, --engine-json, --protocol <name>, "
                          "bench [depth [hash [threads]]], compiler, eval [fen], "
-                         "perft <depth> [fen], d [fen], key [fen], moves [fen]).\n";
+                         "perft <depth> [fen], d [fen], key [fen], moves [fen], see <move> [fen]).\n";
             return 2;
         }
         if (initial_protocol.has_value()) {
@@ -437,6 +453,12 @@ int main(int argc, char* argv[]) {
         if (const char* env_moves = std::getenv("KOI_CLI_MOVES");
             env_moves != nullptr && std::string_view(env_moves) == "1") {
             cli_moves = true;
+        }
+    }
+    if (!cli_see_move.has_value()) {
+        if (const char* env_see = std::getenv("KOI_CLI_SEE_MOVE");
+            env_see != nullptr && *env_see != '\0') {
+            cli_see_move = env_see;
         }
     }
     if (!cli_inspect_fen.has_value()) {
@@ -526,6 +548,21 @@ int main(int argc, char* argv[]) {
         } else {
             std::cout << koi::detail::format_legal_moves(*root) << std::flush;
         }
+        return 0;
+    }
+    if (cli_see_move.has_value()) {
+        const std::optional<koi::GameState> root = resolve_cli_position(cli_inspect_fen);
+        if (!root.has_value()) {
+            return 2;
+        }
+        const std::optional<koi::Move> move = koi::Move::parse_uci(*cli_see_move);
+        if (!move.has_value() || !root->is_legal(*move)) {
+            std::cerr << "koi-engine: illegal move '" << *cli_see_move << "' for see.\n";
+            return 2;
+        }
+        const int gain = koi::detail::static_exchange_gain(*root, *move);
+        std::cout << "SEE " << move->uci() << " : " << std::showpos << gain << " cp\n"
+                  << std::noshowpos << std::flush;
         return 0;
     }
     if (cli_perft_depth.has_value()) {
