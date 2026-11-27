@@ -1,6 +1,3 @@
-#include <iostream>
-#include <stdexcept>
-
 #include "koi/cpu_features.hpp"
 
 #include "koi_test_support.hpp"

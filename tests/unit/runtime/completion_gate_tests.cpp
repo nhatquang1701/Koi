@@ -1,9 +1,6 @@
 #include "koi/completion_gate.hpp"
 
-#include <algorithm>
 #include <cstdlib>
-#include <iostream>
-#include <optional>
 #include <string>
 #include <vector>
 

@@ -2,7 +2,6 @@
 #include <array>
 #include <atomic>
 #include <bit>
-#include <iostream>
 #include <random>
 #include <stdexcept>
 #include <string>
