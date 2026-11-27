@@ -166,6 +166,8 @@ void write_help() {
               << "  -h, --help                               Show this help message\n"
               << "  --engine-json                            Print En Croissant / Pawn Appetit JSON profile\n"
               << "  --protocol <name>                        Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
+              << "  --hce                                    Use built-in classical evaluation without a network\n"
+              << "  --nnue <path>                            Load NNUE weights from path (overrides KOI_EVALUATOR)\n"
               << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n"
               << "  compiler, --compiler                     Print compiler, C++26 standard, and dispatched ISA\n"
               << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
@@ -244,6 +246,8 @@ int main(int argc, char* argv[]) {
     std::size_t bench_hash_mb = koi::UciController::kDefaultBenchHashMb;
     std::size_t bench_threads = koi::UciController::kDefaultBenchThreads;
     bool cli_compiler = false;
+    bool cli_hce = false;
+    bool cli_nnue = false;
     bool cli_eval = false;
     bool cli_display = false;
     bool cli_key = false;
@@ -399,6 +403,32 @@ int main(int argc, char* argv[]) {
             set_environment_value("KOI_BENCH_THREADS", std::to_string(threads));
             continue;
         }
+        if (arg == "--hce") {
+            cli_hce = true;
+            set_environment_value("KOI_EVALUATOR", "hce");
+            continue;
+        }
+        if (arg == "--nnue") {
+            if (index + 1 >= argc || *argv[index + 1] == '\0') {
+                std::cerr << "koi-engine: missing path for --nnue.\n";
+                return 2;
+            }
+            cli_nnue = true;
+            set_environment_value("KOI_NNUE_PATH", argv[++index]);
+            set_environment_value("KOI_EVALUATOR", "nnue");
+            continue;
+        }
+        if (arg.starts_with("--nnue=")) {
+            const std::string_view nnue_arg = arg.substr(std::string_view("--nnue=").size());
+            if (nnue_arg.empty()) {
+                std::cerr << "koi-engine: missing path for --nnue.\n";
+                return 2;
+            }
+            cli_nnue = true;
+            set_environment_value("KOI_NNUE_PATH", nnue_arg);
+            set_environment_value("KOI_EVALUATOR", "nnue");
+            continue;
+        }
         if (arg == "--protocol") {
             if (index + 1 >= argc) {
                 std::cerr << "koi-engine: missing argument for --protocol (expected uci, usi, "
@@ -411,8 +441,9 @@ int main(int argc, char* argv[]) {
         } else {
             std::cerr << "koi-engine: unknown option '" << arg
                       << "' (supported: --version, --help, --engine-json, --protocol <name>, "
-                         "bench [depth [hash [threads]]], compiler, eval [fen], "
-                         "perft <depth> [fen], d [fen], key [fen], moves [fen], see <move> [fen]).\n";
+                         "--hce, --nnue <path>, bench [depth [hash [threads]]], compiler, "
+                         "eval [fen], perft <depth> [fen], d [fen], key [fen], moves [fen], "
+                         "see <move> [fen]).\n";
             return 2;
         }
         if (initial_protocol.has_value()) {
@@ -423,6 +454,10 @@ int main(int argc, char* argv[]) {
             }
             set_environment_value("KOI_PROTOCOL", *initial_protocol);
         }
+    }
+    if (cli_hce && cli_nnue) {
+        std::cerr << "koi-engine: --hce and --nnue cannot be combined.\n";
+        return 2;
     }
     if (!initial_protocol.has_value()) {
         if (const char* env_protocol = std::getenv("KOI_PROTOCOL");

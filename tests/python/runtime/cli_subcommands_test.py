@@ -227,6 +227,47 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Nodes searched  :", bench.stdout)
         self.assertIn("Nodes/second    :", bench.stdout)
 
+    def test_hce_and_nnue_cli_flags(self) -> None:
+        hce_eval = self._run(["--hce", "eval"], disable_nnue=True)
+        self.assertEqual(hce_eval.returncode, 0, hce_eval.stderr)
+        self.assertIn("HCE (classical tapered)", hce_eval.stdout)
+        self.assertIn("Total (White)", hce_eval.stdout)
+
+        hce_bench = self._run(["--hce", "bench", "2", "8", "1"], disable_nnue=True)
+        self.assertEqual(hce_bench.returncode, 0, hce_bench.stderr)
+        self.assertIn("Nodes searched  :", hce_bench.stdout)
+
+        nnue_path = os.environ.get("KOI_NNUE_PATH")
+        if not nnue_path or not pathlib.Path(nnue_path).is_file():
+            for candidate in (
+                self.engine.parent / "koi.nnue",
+                self.engine.parent / "nnue" / "koi.nnue",
+                ROOT / "artifacts" / "networks" / "koi-v9-hm10-h256-official.nnue",
+            ):
+                if candidate.is_file():
+                    nnue_path = str(candidate)
+                    break
+        self.assertTrue(
+            nnue_path and pathlib.Path(nnue_path).is_file(),
+            "Expected an NNUE network fixture for --nnue test",
+        )
+        nnue_eval = self._run(
+            ["--nnue", str(nnue_path), "eval"],
+            disable_nnue=True,
+            extra_env={"KOI_EVALUATOR": "hce"},
+        )
+        self.assertEqual(nnue_eval.returncode, 0, nnue_eval.stderr)
+        self.assertIn("Evaluator      : NNUE", nnue_eval.stdout)
+        self.assertIn("Network SHA256 :", nnue_eval.stdout)
+
+        conflict = self._run(["--hce", "--nnue", str(nnue_path), "eval"], disable_nnue=True)
+        self.assertEqual(conflict.returncode, 2)
+        self.assertIn("cannot be combined", conflict.stderr)
+
+        missing_nnue = self._run(["--nnue"], disable_nnue=True)
+        self.assertEqual(missing_nnue.returncode, 2)
+        self.assertIn("missing path for --nnue", missing_nnue.stderr)
+
     def test_developer_tool_cli_subcommands(self) -> None:
         perft_exe = _resolve_tool("KOI_PERFT_EXE", "koi-perft", self.engine)
         replay_exe = _resolve_tool("KOI_REPLAY_EXE", "koi-replay", self.engine)
