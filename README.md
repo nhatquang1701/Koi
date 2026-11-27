@@ -91,9 +91,10 @@ koi-engine see <move> [fen]
 koi-engine eval [fen]
 koi-engine perft 5 [fen]
 
-# Evaluator selection, version, GUI profile JSON, protocol selection, and CLI help
+# Evaluator selection, inline batch commands, version, GUI JSON, protocol, and help
 koi-engine --hce eval [fen]
 koi-engine --nnue <path> eval [fen]
+koi-engine -c "position startpos moves e2e4" -c "go depth 6"
 koi-engine --version
 koi-engine --engine-json
 koi-engine --protocol xboard

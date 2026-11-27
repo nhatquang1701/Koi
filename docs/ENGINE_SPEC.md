@@ -798,7 +798,7 @@ Rules for `setoption`:
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check; also zero-network CLI `flip [fen]`). |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns (also zero-network CLI `see <move> [fen]`). |
 | `perft <depth>` | Runs an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position (also CLI `perft <depth> [fen]`). |
-| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `compiler`, `eval`, `perft`, `--hce`, `--nnue <path>`, `--version`, `--help`, `--engine-json`, `--protocol`). |
+| `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`, alongside `-c`/`--cmd`, `compiler`, `eval`, `perft`, `--hce`, `--nnue <path>`, `--version`, `--help`, `--engine-json`, `--protocol`). |
 | `wait` | Blocks until any finite active search or `perft` finishes (ignores unbounded `infinite`/`ponder`). |
 | `compiler` | Prints engine version, commit, compiler, C++26 standard, architecture, and ISA (also CLI `compiler`/`--compiler`). |
 | `help` | Prints the interactive command summary. |

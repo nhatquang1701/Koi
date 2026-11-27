@@ -493,7 +493,7 @@ cases run as ordinary fatal tests.
 
 In addition to standard UCI/XBoard sessions, `koi-engine` supports standard chess-engine CLI options and interactive terminal commands:
 
-- **CLI subcommands & flags:** `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine compiler` (`--compiler`), `koi-engine d`/`--display [fen]`, `koi-engine key [fen]`, `koi-engine moves [fen]`, `koi-engine flip [fen]`, `koi-engine book [fen]` (optional `--book <path>`), `koi-engine tb [fen]` (optional `--syzygy <path>`), `koi-engine see <move> [fen]`, `koi-engine eval [fen]` (`--eval [fen]`), `koi-engine perft <depth> [fen]` (`1..10`), `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
+- **CLI subcommands & flags:** `koi-engine -c <cmd>` (`--cmd <cmd>`, repeatable batch execution with automatic `wait` + `quit`), `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine compiler` (`--compiler`), `koi-engine d`/`--display [fen]`, `koi-engine key [fen]`, `koi-engine moves [fen]`, `koi-engine flip [fen]`, `koi-engine book [fen]` (optional `--book <path>`), `koi-engine tb [fen]` (optional `--syzygy <path>`), `koi-engine see <move> [fen]`, `koi-engine eval [fen]` (`--eval [fen]`), `koi-engine perft <depth> [fen]` (`1..10`), `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
 - **Interactive commands (inside a UCI session):**
   - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, check status, and legal move count.
   - `fen` — prints the six-field FEN of the current position.
@@ -512,19 +512,33 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
 
 ## UCI smoke test
 
-Run this PowerShell transcript after building:
+Run an end-to-end handshake, search, and clean shutdown after building:
 
-```powershell
-$engine = (Resolve-Path .\build\release\koi-engine.exe).Path
-@(
-    'uci'
-    'isready'
-    'position startpos'
-    'go depth 2'
-    'stop'
-    'quit'
-) | & $engine
-```
+=== "One-shot CLI (--cmd)"
+
+    ```bash
+    ./build/release/koi-engine -c "uci" -c "isready" -c "position startpos" -c "go depth 2"
+    ```
+
+=== "PowerShell"
+
+    ```powershell
+    $engine = (Resolve-Path .\build\release\koi-engine.exe).Path
+    @(
+        'uci'
+        'isready'
+        'position startpos'
+        'go depth 2'
+        'wait'
+        'quit'
+    ) | & $engine
+    ```
+
+=== "Linux / macOS (Bash)"
+
+    ```bash
+    printf 'uci\nisready\nposition startpos\ngo depth 2\nwait\nquit\n' | ./build/release/koi-engine
+    ```
 
 The output should include, in order, the versioned engine identification lines
 (`id name Koi <version>` plus an `info string build <commit>` line), the
@@ -765,7 +779,10 @@ protocol clean. Leave this option disabled for normal release use.
 2. In **Pawn Appétit** / **En Croissant**, add a UCI engine and select that `koi-engine` path.
    Keep the engine's working directory beside the executable when configuring
    the engine so portable relative assets resolve predictably.
-   - **Showing a separate `VERSION` indicator (like Stockfish):** Pawn Appétit / En Croissant's local binary scanner only populates `Name` from `id name` and leaves `Version` blank. Run `koi-engine --engine-json` to print a ready-to-paste JSON snippet (`name: "Koi"`, `version: "<semver>"`, resolved `path`, defaults) for the GUI's **Edit JSON** dialog (or fill the GUI's `Version` field manually). Check the CLI version directly with `koi-engine --version`.
+
+    !!! tip "Showing a separate `VERSION` badge (like Stockfish)"
+        Pawn Appétit / En Croissant's local binary scanner only populates `Name` from `id name` and leaves `Version` blank. Run `koi-engine --engine-json` to print a ready-to-paste JSON profile (`name: "Koi"`, `version: "<semver>"`, resolved `path`, defaults) for the GUI's **Edit JSON** dialog (or inspect `koi-engine --version`).
+
    - **Protocols (`uci`, `usi`, `ucci`, `ucicyclone`, `xboard`):** Select `Protocol` in UCI options (or launch with `--protocol <name>`, or send `xboard` / `usi` / `ucci` directly on stdin). All modes target standard 8x8 chess (`xboard` implements CECP v2 `protover 2`, `feature`, `setboard`, `usermove`, `ping/pong`, `level`/`st`/`sd`, `time`/`otim`, `post`/`nopost`, `analyze`/`exit`, `undo`/`remove`; `usi` and `ucci`/`ucicyclone` support their handshake, option, `go`, `bestmove resign`/`nobestmove`, and `bye` conventions on 8x8 boards).
 3. Release archives ship a compact Stockfish-verified CC0 opening book as
    `book.bin` beside `koi-engine.exe` (used automatically unless `OwnBook` is
@@ -931,8 +948,9 @@ permit it.
 
 Release archives contain strictly the engine binaries, `koi.nnue`, `book.bin`,
 and `LICENSE`.
-Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`) and
-the test suite are not included; build them from source when you need them.
+
+!!! note "Source-only developer tools"
+    Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`) and the test suite are excluded from user-facing release archives; build them from source via `CMakePresets.json` when needed.
 The repository retains third-party license texts under `third_party/` (`chess-library` and `fathom`), while generated release archives keep the flat layout above.
 Do not include generated benchmark profiles, match JSON/PGN, debug logs, or
 tablebase data in the repository release commit; write those artifacts under the

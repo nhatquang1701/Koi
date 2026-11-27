@@ -38,15 +38,16 @@ koi-engine --eval [fen]
 koi-engine --hce eval [fen]
 koi-engine --nnue <path> eval [fen]
 
-# Identity, GUI JSON profile, initial protocol dialect, and help
+# Identity, GUI JSON profile, protocol dialect, batch execution, and help
 koi-engine --version      # or -v
 koi-engine --engine-json
 koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>
+koi-engine -c "position startpos moves e2e4" -c "go depth 6"   # repeatable --cmd
 koi-engine --help         # or -h
 ```
 
-!!! note "Zero-network subcommands & unquoted FENs"
-    `compiler`, `perft`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before NNUE network discovery and work without a `koi.nnue` file. Both quoted (`koi-engine perft 2 "..."`) and unquoted 6-field FEN arguments are supported. Invalid perft depths, illegal `see` or `flip` inputs, missing `--book`/`--syzygy`/`--nnue` paths, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
+!!! note "Zero-network subcommands, unquoted FENs & batch mode"
+    `compiler`, `perft`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before NNUE network discovery and work without a `koi.nnue` file. Both quoted (`koi-engine perft 2 "..."`) and unquoted 6-field FEN arguments are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, illegal `see` or `flip` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
 
 ### Example Outputs
 
