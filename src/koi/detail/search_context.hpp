@@ -831,7 +831,7 @@ struct SearchContext {
     bool run_probcut(
         GameState& state, int ply, int beta, int probcut_beta, int probcut_depth,
         int static_eval, int raw_static_eval, std::uint64_t transposition_key,
-        const MoveMetadataList& current_moves, Move excluded_move,
+        const MoveMetadataList* existing_moves, Move excluded_move,
         std::optional<Move> tt_move, const SearchHistoryContext& history,
         PrincipalVariation& probcut_pv, MoveMetadataList& probcut_moves,
         int child_check_extensions_remaining, bool& path_repetition_sensitive,

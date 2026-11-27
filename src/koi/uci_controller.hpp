@@ -74,12 +74,15 @@ public:
     UciController(const UciController&) = delete;
     UciController& operator=(const UciController&) = delete;
 
+    static constexpr int kDefaultBenchDepth = 10;
+
     // Selects the initial wire protocol (`uci`, `usi`, `ucci`, `ucicyclone`, or
     // `xboard`).  Returns false when `name` is unrecognized.
     bool set_protocol(std::string_view name);
     [[nodiscard]] static bool is_valid_protocol(std::string_view name) noexcept;
 
     int run();
+    int run_bench(int depth = kDefaultBenchDepth);
 
 private:
     enum class ControllerState : std::uint8_t {
@@ -95,6 +98,10 @@ private:
     void handle_go(std::istream& command);
     void handle_ponderhit();
     void handle_annotate(std::istream& command);
+    void handle_display();
+    void handle_eval();
+    void handle_compiler();
+    void handle_bench(std::istream& command);
     void reset_new_game();
     bool handle_xboard_command(std::string_view name, std::istream& command, bool& should_quit);
     void start_xboard_search(bool analyze_mode);

@@ -529,7 +529,7 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
   - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, and checkers.
   - `eval` — prints the active evaluator's static score (side-to-move and White perspectives).
   - `compiler` — prints build version, commit hash, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`).
-  - `bench [depth]` — runs the deterministic single-thread benchmark (default depth 12, 16 MB hash) and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second`.
+  - `bench [depth]` — runs the deterministic single-thread benchmark (default depth 10, 16 MB hash) and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second`.
   - `go perft <depth>` — runs an interruptible perft divide from the current position.
 
 ## UCI smoke test

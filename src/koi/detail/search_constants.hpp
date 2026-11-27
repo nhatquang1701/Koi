@@ -56,7 +56,6 @@ inline constexpr int kRazorMarginPerDepthSquared = 120;
 inline constexpr int kChildFutilityMaximumLmrDepth = 12;
 inline constexpr int kChildFutilityBaseMargin = 96;
 inline constexpr int kChildFutilityDepthMargin = 71;
-inline constexpr int kChildFutilityEvalAboveAlphaMargin = 54;
 inline constexpr int kInternalIterativeReductionMinimumDepth = 6;
 // True internal iterative deepening re-searches the current node at a reduced
 // depth with a null window when no transposition move is available, so the

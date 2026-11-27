@@ -1,4 +1,5 @@
 #include <cctype>
+#include <charconv>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -149,13 +150,37 @@ void write_engine_json(int argc, char* argv[]) {
               << "}\n";
 }
 
-void set_protocol_environment(std::string_view protocol) noexcept {
-    std::string protocol_copy(protocol);
+void write_help() {
+    std::cout << "Koi " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT
+              << ") - C++26 UCI chess engine\n\n"
+              << "Usage: koi-engine [options] [bench [depth]]\n\n"
+              << "Options:\n"
+              << "  -v, --version            Print engine version and git commit\n"
+              << "  -h, --help               Show this help message\n"
+              << "  --engine-json            Print En Croissant / Pawn Appetit JSON profile\n"
+              << "  --protocol <name>        Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
+              << "  bench [depth]            Run deterministic OpenBench-compatible benchmark (default depth 10)\n\n"
+              << "Interactive UCI commands also include: d, eval, compiler, bench [depth], go perft <depth>\n";
+}
+
+void set_environment_value(const char* name, std::string_view value) noexcept {
+    std::string value_copy(value);
 #if defined(_WIN32)
-    (void)::_putenv_s("KOI_PROTOCOL", protocol_copy.c_str());
+    (void)::_putenv_s(name, value_copy.c_str());
 #else
-    (void)::setenv("KOI_PROTOCOL", protocol_copy.c_str(), 1);
+    (void)::setenv(name, value_copy.c_str(), 1);
 #endif
+}
+
+bool parse_bench_depth(std::string_view token, int& depth_out) noexcept {
+    int parsed = 0;
+    const auto [end, error] =
+        std::from_chars(token.data(), token.data() + token.size(), parsed);
+    if (error != std::errc{} || end != token.data() + token.size() || parsed < 1 || parsed > 64) {
+        return false;
+    }
+    depth_out = parsed;
+    return true;
 }
 
 } // namespace
@@ -183,9 +208,11 @@ int main(int argc, char* argv[]) {
     }
 #endif
     // Parse CLI options before `run_cpu_selector()`: selector re-exec strips
-    // argv, so metadata queries (`--version`, `--engine-json`) answer for the
-    // entry executable directly while `--protocol` propagates via KOI_PROTOCOL.
+    // argv, so metadata queries (`--version`, `--help`, `--engine-json`) answer
+    // for the entry executable directly while `--protocol` and `bench` propagate
+    // via KOI_PROTOCOL / KOI_BENCH_DEPTH.
     std::optional<std::string_view> initial_protocol;
+    std::optional<int> bench_depth;
     for (int index = 1; index < argc; ++index) {
         const std::string_view arg(argv[index]);
         if (arg == "--version" || arg == "-v") {
@@ -193,9 +220,30 @@ int main(int argc, char* argv[]) {
                       << ")\n";
             return 0;
         }
+        if (arg == "--help" || arg == "-h") {
+            write_help();
+            return 0;
+        }
         if (arg == "--engine-json") {
             write_engine_json(argc, argv);
             return 0;
+        }
+        if (arg == "bench") {
+            int depth = koi::UciController::kDefaultBenchDepth;
+            if (index + 1 < argc) {
+                const std::string_view next_arg(argv[index + 1]);
+                if (!next_arg.starts_with('-')) {
+                    if (!parse_bench_depth(next_arg, depth)) {
+                        std::cerr << "koi-engine: invalid bench depth '" << next_arg
+                                  << "' (expected integer 1..64).\n";
+                        return 2;
+                    }
+                    ++index;
+                }
+            }
+            bench_depth = depth;
+            set_environment_value("KOI_BENCH_DEPTH", std::to_string(depth));
+            continue;
         }
         if (arg == "--protocol") {
             if (index + 1 >= argc) {
@@ -208,7 +256,7 @@ int main(int argc, char* argv[]) {
             initial_protocol = arg.substr(std::string_view("--protocol=").size());
         } else {
             std::cerr << "koi-engine: unknown option '" << arg
-                      << "' (supported: --version, --engine-json, --protocol <name>).\n";
+                      << "' (supported: --version, --help, --engine-json, --protocol <name>, bench [depth]).\n";
             return 2;
         }
         if (initial_protocol.has_value()) {
@@ -217,7 +265,7 @@ int main(int argc, char* argv[]) {
                           << "' (supported: uci, usi, ucci, ucicyclone, xboard).\n";
                 return 2;
             }
-            set_protocol_environment(*initial_protocol);
+            set_environment_value("KOI_PROTOCOL", *initial_protocol);
         }
     }
     if (!initial_protocol.has_value()) {
@@ -225,6 +273,15 @@ int main(int argc, char* argv[]) {
             env_protocol != nullptr && *env_protocol != '\0' &&
             koi::UciController::is_valid_protocol(env_protocol)) {
             initial_protocol = std::string_view(env_protocol);
+        }
+    }
+    if (!bench_depth.has_value()) {
+        if (const char* env_bench = std::getenv("KOI_BENCH_DEPTH");
+            env_bench != nullptr && *env_bench != '\0') {
+            int parsed = 0;
+            if (parse_bench_depth(env_bench, parsed)) {
+                bench_depth = parsed;
+            }
         }
     }
 #if defined(KOI_CPU_SELECTOR)
@@ -306,6 +363,9 @@ int main(int argc, char* argv[]) {
     koi::UciController controller(std::cin, std::cout, std::cerr, std::move(search_service),
                                   engine_directory,
                                   autodiscovered_network && selection.nnue_enabled);
+    if (bench_depth.has_value()) {
+        return controller.run_bench(*bench_depth);
+    }
     if (initial_protocol.has_value()) {
         (void)controller.set_protocol(*initial_protocol);
     }

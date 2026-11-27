@@ -1398,6 +1398,14 @@ int UciController::run() {
             handle_go(command);
         } else if (name == "annotate") {
             handle_annotate(command);
+        } else if (name == "d") {
+            handle_display();
+        } else if (name == "eval") {
+            handle_eval();
+        } else if (name == "compiler") {
+            handle_compiler();
+        } else if (name == "bench") {
+            handle_bench(command);
         } else if (name == "ponderhit") {
             handle_ponderhit();
         } else if (name == "debug") {
@@ -2068,6 +2076,201 @@ void UciController::handle_annotate(std::istream& command) {
         return;
     }
     output_ << format_annotate_move_line(*annotated) << '\n' << std::flush;
+}
+
+void UciController::handle_display() {
+    std::array<Piece, 64> board{};
+    position_.copy_board_to(board);
+    const std::string fen = position_.fen();
+    const std::uint64_t key = position_.position_key();
+    const bool white_to_move = (position_.side_to_move() == Color::white);
+    const bool checked = position_.in_check();
+
+    auto piece_symbol = [](const Piece piece) noexcept -> char {
+        char symbol = ' ';
+        switch (piece.type) {
+        case PieceType::pawn:   symbol = 'P'; break;
+        case PieceType::knight: symbol = 'N'; break;
+        case PieceType::bishop: symbol = 'B'; break;
+        case PieceType::rook:   symbol = 'R'; break;
+        case PieceType::queen:  symbol = 'Q'; break;
+        case PieceType::king:   symbol = 'K'; break;
+        case PieceType::none:   return ' ';
+        }
+        return piece.color == Color::white ? symbol : static_cast<char>(symbol - 'A' + 'a');
+    };
+
+    std::ostringstream buffer;
+    buffer << "\n +---+---+---+---+---+---+---+---+\n";
+    for (int rank = 7; rank >= 0; --rank) {
+        buffer << " |";
+        for (int file = 0; file < 8; ++file) {
+            const Piece piece = board[static_cast<std::size_t>(rank * 8 + file)];
+            buffer << ' ' << piece_symbol(piece) << " |";
+        }
+        buffer << ' ' << (rank + 1) << "\n +---+---+---+---+---+---+---+---+\n";
+    }
+    buffer << "   a   b   c   d   e   f   g   h\n\n"
+           << "Fen   : " << fen << '\n'
+           << "Key   : " << std::hex << std::setfill('0') << std::setw(16) << key
+           << std::dec << std::setfill(' ') << '\n'
+           << "Side  : " << (white_to_move ? "white" : "black") << '\n'
+           << "Check : " << (checked ? "yes" : "no") << '\n';
+
+    std::lock_guard lock(output_mutex_);
+    output_ << buffer.str() << std::flush;
+}
+
+void UciController::handle_eval() {
+    const std::shared_ptr<const Evaluator> evaluator = search_service_.evaluator();
+    std::ostringstream buffer;
+    if (evaluator == nullptr) {
+        buffer << "Evaluator      : unavailable\n";
+    } else {
+        const int score_stm = evaluator->evaluate(position_, position_.side_to_move());
+        const int score_white =
+            (position_.side_to_move() == Color::white) ? score_stm : -score_stm;
+        auto format_score = [](const int cp) {
+            std::ostringstream out;
+            out << std::showpos << std::fixed << std::setprecision(2)
+                << (static_cast<double>(cp) / 100.0) << " (" << cp << " cp)";
+            return out.str();
+        };
+        buffer << "Evaluator      : " << (hce_active_ ? "HCE" : "NNUE") << '\n'
+               << "Side to move   : " << format_score(score_stm) << '\n'
+               << "White relative : " << format_score(score_white) << '\n';
+    }
+    std::lock_guard lock(output_mutex_);
+    output_ << buffer.str() << std::flush;
+}
+
+void UciController::handle_compiler() {
+    std::ostringstream buffer;
+    buffer << "Koi " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT << ")\n";
+    buffer << "Compiled by    : ";
+#if defined(_MSC_VER)
+    buffer << "MSVC " << _MSC_VER;
+#elif defined(__apple_build_version__)
+    buffer << "AppleClang " << __clang_major__ << '.' << __clang_minor__ << '.'
+           << __clang_patchlevel__;
+#elif defined(__clang__)
+    buffer << "Clang " << __clang_major__ << '.' << __clang_minor__ << '.'
+           << __clang_patchlevel__;
+#elif defined(__GNUC__)
+    buffer << "GCC " << __GNUC__ << '.' << __GNUC_MINOR__ << '.' << __GNUC_PATCHLEVEL__;
+#else
+    buffer << "Unknown";
+#endif
+    buffer << "\nC++ standard   : C++26\nArchitecture   : ";
+#if defined(__x86_64__) || defined(_M_X64)
+    buffer << "x86_64";
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    buffer << "arm64";
+#else
+    buffer << "64-bit";
+#endif
+    buffer << "\nSIMD / ISA     : ";
+#if defined(KOI_CPU_REQUIRES_AVX512) || defined(__AVX512F__)
+    buffer << "AVX-512";
+#elif defined(KOI_CPU_REQUIRES_AVX2) || defined(__AVX2__)
+    buffer << "AVX2";
+#elif defined(__ARM_NEON)
+    buffer << "NEON";
+#else
+    buffer << "baseline";
+#endif
+#if defined(KOI_PEXT_ATTACKS) || defined(__BMI2__)
+    buffer << " + BMI2 PEXT";
+#endif
+    buffer << '\n';
+
+    std::lock_guard lock(output_mutex_);
+    output_ << buffer.str() << std::flush;
+}
+
+void UciController::handle_bench(std::istream& command) {
+    int depth = kDefaultBenchDepth;
+    std::string token;
+    if (command >> token) {
+        std::uint64_t parsed = 0;
+        if (parse_uint64(token, parsed) && parsed >= 1 && parsed <= 64) {
+            depth = static_cast<int>(parsed);
+        } else {
+            write_uci_info_string("bench ignored invalid depth '" + token + "' (expected 1..64)");
+            return;
+        }
+    }
+    (void)run_bench(depth);
+}
+
+int UciController::run_bench(int depth) {
+    depth = std::clamp(depth, 1, 64);
+    stop_and_suppress_active_search();
+
+    static constexpr std::array<std::string_view, 16> kBenchFens{{
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        "r1bqkb1r/1p2pppp/p1np1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6",
+        "r1bq1rk1/2p1bppp/p1np1n2/1p2p3/4P3/1BP2N2/PP1P1PPP/RNBQR1K1 w - - 0 9",
+        "r2q1rk1/pp2bppp/2n1bn2/3pp3/8/1BP2NP1/PP1P1PBP/RNBQ1RK1 b - - 0 8",
+        "r2qkb1r/pp1n1ppp/2p1pn2/3p4/2PP4/2N2NP1/PP2PPBP/R1BQK2R b KQkq - 0 6",
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+        "2r3k1/1q1nbppp/r3p3/3pP3/pPpP4/P1Q2N2/2RN1PPP/2R4K b - b3 0 23",
+        "r1b1k2r/pp2qppp/2n2n2/2b5/3pP3/2N2N2/PP2BPPP/R1BQ1RK1 w kq - 0 10",
+        "r2q1rk1/pb1nbppp/1p2pn2/2pp4/2PP4/1PN1PN2/PB2BPPP/R2Q1RK1 w - - 0 10",
+        "3r2k1/p4ppp/1q2p3/2n5/4P3/1P3P2/P2Q2PP/3R2K1 w - - 0 24",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "8/5pk1/7p/3p4/3P4/5PP1/5K2/8 w - - 0 40",
+        "4k3/2p2pp1/1p5p/8/3B4/1P3P2/2P2KPP/4b3 w - - 0 30",
+        "8/1P3k2/8/8/8/5K2/6p1/8 w - - 0 55",
+    }};
+
+    const std::size_t saved_hash_mb = search_service_.hash_size_mb();
+    (void)search_service_.set_hash_size_mb(16);
+
+    SearchOptions options;
+    options.threads = 1;
+    options.multi_pv = 1;
+    options.hash_mb = 0;
+    options.interim_report_interval = std::chrono::milliseconds{0};
+
+    SearchLimits limits;
+    limits.depth = depth;
+
+    std::uint64_t total_nodes = 0;
+    const auto started = std::chrono::steady_clock::now();
+    for (const std::string_view fen : kBenchFens) {
+        const auto parsed = GameState::from_fen(fen);
+        if (!parsed.has_value()) {
+            continue;
+        }
+        search_service_.clear_hash();
+        SearchResult completed_result;
+        SearchEventSink sink;
+        sink.on_complete = [&completed_result](const SearchResult& result) {
+            completed_result = result;
+        };
+        SearchHandle handle = search_service_.start(*parsed, limits, std::move(sink), options);
+        handle.wait();
+        total_nodes += completed_result.stats.nodes + completed_result.stats.qnodes;
+    }
+    const auto elapsed_ms = std::max<std::int64_t>(
+        1, std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - started)
+               .count());
+    const std::uint64_t nps = (total_nodes * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
+
+    (void)search_service_.set_hash_size_mb(saved_hash_mb);
+    search_service_.clear_hash();
+
+    std::lock_guard lock(output_mutex_);
+    output_ << "\n===========================\n"
+            << "Total time (ms) : " << elapsed_ms << '\n'
+            << "Nodes searched  : " << total_nodes << '\n'
+            << "Nodes/second    : " << nps << '\n'
+            << std::flush;
+    return 0;
 }
 
 void UciController::handle_ponderhit() {

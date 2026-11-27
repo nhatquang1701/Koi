@@ -303,17 +303,36 @@ KOI_CTX_NOINLINE int SearchContext::run_null_verification(
 KOI_CTX_NOINLINE bool SearchContext::run_probcut(
     GameState& state, const int ply, const int beta, const int probcut_beta,
     const int probcut_depth, const int static_eval, const int raw_static_eval,
-    const std::uint64_t transposition_key, const MoveMetadataList& current_moves,
+    const std::uint64_t transposition_key, const MoveMetadataList* existing_moves,
     const Move excluded_move, const std::optional<Move> tt_move,
     const SearchHistoryContext& history, PrincipalVariation& probcut_pv,
     MoveMetadataList& probcut_moves, const int child_check_extensions_remaining,
     bool& path_repetition_sensitive, bool& path_selective_bound,
     bool& path_lower_bound, int& cutoff_score) {
-    probcut_moves.clear();
-    for (const MoveMetadata& candidate : current_moves) {
-        if ((candidate.is_capture() || candidate.move.promotion() != Promotion::none) &&
-            candidate.move != excluded_move) {
-            (void)probcut_moves.push_back(candidate);
+    if (existing_moves != nullptr) {
+        probcut_moves.clear();
+        for (const MoveMetadata& candidate : *existing_moves) {
+            if ((candidate.is_capture() || candidate.move.promotion() != Promotion::none) &&
+                candidate.move != excluded_move) {
+                (void)probcut_moves.push_back(candidate);
+            }
+        }
+    } else {
+        const bool tactical_only = state.legal_tactical_only_search_moves_with_metadata(probcut_moves);
+        if (!tactical_only || !excluded_move.is_no_move()) {
+            std::size_t write_index = 0;
+            const std::size_t count = probcut_moves.size();
+            for (std::size_t read_index = 0; read_index < count; ++read_index) {
+                const MoveMetadata& candidate = probcut_moves[read_index];
+                if ((candidate.is_capture() || candidate.move.promotion() != Promotion::none) &&
+                    candidate.move != excluded_move) {
+                    if (write_index != read_index) {
+                        probcut_moves[write_index] = candidate;
+                    }
+                    ++write_index;
+                }
+            }
+            probcut_moves.resize(write_index);
         }
     }
     ordering.order(state, probcut_moves, tt_move, history);
@@ -1705,13 +1724,13 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             !pawn_endgame &&
             !(tt_entry.has_value() && tt_entry->depth >= probcut.depth &&
               tt_entry->score < probcut.beta)) {
-            const MoveMetadataList& current_moves = ensure_moves();
             if (lease.slot().aux_moves == nullptr) {
                 lease.slot().aux_moves = std::make_unique<MoveMetadataList>();
             }
             int cutoff_score = 0;
             if (run_probcut(state, ply, beta, probcut.beta, probcut.depth, static_eval,
-                            raw_static_eval, transposition_key, current_moves,
+                            raw_static_eval, transposition_key,
+                            moves_generated ? &moves : nullptr,
                             excluded_move, tt_move, ensure_history(), lease.slot().child_pv,
                             *lease.slot().aux_moves, child_check_extensions_remaining,
                             path_repetition_sensitive, path_selective_bound,
@@ -2070,8 +2089,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 const int pre_lmr_depth = std::max(0, full_child_depth);
                 if (pre_lmr_depth < kChildFutilityMaximumLmrDepth &&
                     static_eval + kChildFutilityBaseMargin +
-                        kChildFutilityDepthMargin * pre_lmr_depth +
-                        (static_eval > alpha ? kChildFutilityEvalAboveAlphaMargin : 0) <= alpha) {
+                        kChildFutilityDepthMargin * pre_lmr_depth <= alpha) {
                     selective_pruning = true;
                     ++stats.quiet_futility_prunes;
                     ++move_number;
@@ -2228,17 +2246,14 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // forcing moves, and TT moves, so a quiet move that is the only
             // plausible continuation still receives an authoritative search.
             // The reference envelope is keyed to the reduced depth, so late
-            // reduced moves at deeper nodes are also covered; a static score
-            // already above alpha reduces the margin because the position is
-            // less clearly lost.
+            // reduced moves at deeper nodes are also covered.
             const bool child_futility = !claimable_draw && !pv_node && !checked &&
                 move_number > 0 && !metadata.is_capture() &&
                 !metadata.gives_check &&
                 move.promotion() == Promotion::none && !is_tt_move &&
                 lmr_depth < kChildFutilityMaximumLmrDepth &&
                 static_eval + kChildFutilityBaseMargin +
-                    kChildFutilityDepthMargin * lmr_depth +
-                    (static_eval > alpha ? kChildFutilityEvalAboveAlphaMargin : 0) <= alpha;
+                    kChildFutilityDepthMargin * lmr_depth <= alpha;
             if (child_futility) {
                 selective_pruning = true;
                 ++stats.quiet_futility_prunes;

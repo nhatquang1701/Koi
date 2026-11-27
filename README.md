@@ -76,7 +76,7 @@ Koi requires zero configuration files: `koi.nnue`, `book.bin`, and any user-supp
 In addition to standard UCI and XBoard/CECP v2 commands, Koi supports standard chess-engine terminal and benchmark commands:
 
 ```bash
-# OpenBench-compatible deterministic benchmark (default depth 12, 1 thread, 16 MB hash)
+# OpenBench-compatible deterministic benchmark (default depth 10, 1 thread, 16 MB hash)
 koi-engine bench [depth]
 
 # Version, GUI profile JSON, protocol selection, and CLI help

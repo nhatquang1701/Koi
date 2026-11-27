@@ -2926,6 +2926,41 @@ void test_xboard_suppresses_uci_info_strings_across_all_handlers() {
             "XBoard book and search moves must still emit clean CECP move replies");
 }
 
+void test_interactive_engine_commands_display_eval_compiler_and_bench() {
+    std::istringstream input(
+        "position startpos moves e2e4\n"
+        "d\n"
+        "eval\n"
+        "compiler\n"
+        "bench 2\n"
+        "quit\n");
+    std::ostringstream output;
+    std::ostringstream diagnostics;
+    koi::UciController controller(
+        input, output, diagnostics,
+        koi::SearchService(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16));
+    const int exit_code = controller.run();
+
+    const std::string raw = output.str();
+    require(exit_code == 0, "interactive engine commands must exit cleanly with 0");
+    require(raw.find("Fen   : rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1") !=
+                std::string::npos,
+            "d command must print the current position FEN; got:\n" + raw);
+    require(raw.find("Key   : ") != std::string::npos &&
+                raw.find("Side  : black") != std::string::npos,
+            "d command must print Zobrist key and side to move");
+    require(raw.find("Side to move   :") != std::string::npos &&
+                raw.find("White relative :") != std::string::npos,
+            "eval command must print side-to-move and white-relative static scores");
+    require(raw.find("Compiled by    :") != std::string::npos &&
+                raw.find("SIMD / ISA     :") != std::string::npos,
+            "compiler command must print toolchain and ISA metadata");
+    require(raw.find("Total time (ms) :") != std::string::npos &&
+                raw.find("Nodes searched  :") != std::string::npos &&
+                raw.find("Nodes/second    :") != std::string::npos,
+            "bench command must print OpenBench-compatible node and NPS summary");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -3015,6 +3050,8 @@ int main(int argc, char** argv) {
          test_annotate_rejects_invalid_limits_and_debug_log_stays_nonthrowing},
         {"XBoard UCI info string suppression",
          test_xboard_suppresses_uci_info_strings_across_all_handlers},
+        {"interactive d eval compiler and bench commands",
+         test_interactive_engine_commands_display_eval_compiler_and_bench},
     };
 
     return koi::test::run_tests(tests, argc, argv);
