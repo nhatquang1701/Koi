@@ -45,6 +45,10 @@ try {
     if ($rootMoveCount -ne 20 -or $totalNodes -ne 20) {
         throw "Start-position perft depth 1 reported $rootMoveCount root moves and $totalNodes nodes."
     }
+    $timingLine = Read-UciLine $session 'completed depth-one perft timing summary'
+    if ($timingLine -notmatch '^info string Time \(ms\): [0-9]+ \| Nodes/second: [0-9]+$') {
+        throw "Unexpected depth-one perft timing output: $timingLine"
+    }
     Send-UciCommand $session 'isready'
     if ((Read-UciLine $session 'readyok after completed perft') -cne 'readyok') {
         throw 'A completed perft did not leave the controller ready.'
@@ -80,6 +84,9 @@ try {
     }
     if (@($lines | Where-Object { $_ -like 'info string Nodes searched:*' }).Count -ne 1) {
         throw 'Only the completed perft may publish a node total.'
+    }
+    if (@($lines | Where-Object { $_ -like 'info string Time (ms):*' }).Count -ne 1) {
+        throw 'Only the completed perft may publish a timing summary.'
     }
     $reportedRootMoves = @($lines | Where-Object {
         $_ -match '^info string [a-h][1-8][a-h][1-8][nbrq]?: [0-9]+$'
