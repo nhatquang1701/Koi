@@ -3196,6 +3196,37 @@ void test_uci_support_helpers_direct() {
                 !flip_position_fen("8/8/8/8/8/8/8/8 x - - 0 1").has_value(),
             "flip_position_fen must reject malformed FENs");
 
+    std::string spec_error;
+    const auto empty_spec = parse_cli_position_spec("", spec_error);
+    const auto start_spec = parse_cli_position_spec("startpos", spec_error);
+    const auto implicit_moves = parse_cli_position_spec("moves e2e4 e7e5", spec_error);
+    const auto start_moves = parse_cli_position_spec("startpos moves e2e4", spec_error);
+    const auto explicit_fen_moves = parse_cli_position_spec(
+        "fen 8/8/8/8/8/4k3/4P3/4K3 w - - 0 1 moves e2e4", spec_error);
+    koi::test::require(empty_spec.has_value() && start_spec.has_value() &&
+                           empty_spec->fen() == koi::GameState::startpos().fen() &&
+                           start_spec->fen() == koi::GameState::startpos().fen(),
+                       "empty and startpos CLI position specs must resolve to startpos");
+    koi::test::require(implicit_moves.has_value() &&
+                           implicit_moves->fen() ==
+                               "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
+                       "moves-only CLI position spec must start from startpos");
+    koi::test::require(start_moves.has_value() &&
+                           start_moves->fen() ==
+                               "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+                       "startpos moves CLI position spec must apply moves");
+    koi::test::require(explicit_fen_moves.has_value() &&
+                           explicit_fen_moves->fen() == "8/8/8/8/4P3/4k3/8/4K3 b - - 0 1",
+                       "fen ... moves ... CLI position spec must apply moves to FEN");
+    std::string fen_err;
+    require(!parse_cli_position_spec("bad fen", fen_err).has_value() &&
+                fen_err.find("invalid FEN") != std::string::npos,
+            "malformed CLI position spec must report invalid FEN");
+    std::string move_err;
+    require(!parse_cli_position_spec("moves e2e5", move_err).has_value() &&
+                move_err.find("illegal move") != std::string::npos,
+            "illegal move in CLI position spec must report illegal move");
+
     const std::optional<koi::Move> e2e4 = koi::Move::parse_uci("e2e4");
     const std::optional<koi::Move> d2d4 = koi::Move::parse_uci("d2d4");
     require(e2e4.has_value() && d2d4.has_value(), "expected valid UCI moves");

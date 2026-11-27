@@ -1191,4 +1191,59 @@ bool is_bare_coordinate_move_token(const std::string_view token) noexcept {
     return true;
 }
 
+std::optional<GameState> parse_cli_position_spec(const std::string_view spec, std::string& error) {
+    error.clear();
+    std::istringstream stream{std::string(spec)};
+    std::vector<std::string> tokens;
+    for (std::string token; stream >> token;) {
+        tokens.push_back(std::move(token));
+    }
+    if (tokens.empty()) {
+        return GameState::startpos();
+    }
+
+    GameState state = GameState::startpos();
+    std::size_t move_start = tokens.size();
+    if (tokens[0] == "startpos") {
+        if (tokens.size() > 1) {
+            if (tokens[1] != "moves") {
+                error = "invalid FEN '" + std::string(spec) + "'";
+                return std::nullopt;
+            }
+            move_start = 2;
+        }
+    } else if (tokens[0] == "moves") {
+        move_start = 1;
+    } else {
+        const std::size_t fen_start = (tokens[0] == "fen") ? 1 : 0;
+        std::size_t moves_index = fen_start;
+        while (moves_index < tokens.size() && tokens[moves_index] != "moves") {
+            ++moves_index;
+        }
+        const std::string fen_text = join_tokens(tokens, fen_start, moves_index);
+        if (fen_text.empty()) {
+            error = "invalid FEN '" + std::string(spec) + "'";
+            return std::nullopt;
+        }
+        const std::optional<GameState> parsed = GameState::from_fen(fen_text);
+        if (!parsed.has_value()) {
+            error = "invalid FEN '" + fen_text + "'";
+            return std::nullopt;
+        }
+        state = *parsed;
+        if (moves_index < tokens.size()) {
+            move_start = moves_index + 1;
+        }
+    }
+
+    for (std::size_t index = move_start; index < tokens.size(); ++index) {
+        const std::optional<Move> move = Move::parse_uci(tokens[index]);
+        if (!move.has_value() || !state.make_move(*move)) {
+            error = "illegal move '" + tokens[index] + "'";
+            return std::nullopt;
+        }
+    }
+    return state;
+}
+
 } // namespace koi::detail

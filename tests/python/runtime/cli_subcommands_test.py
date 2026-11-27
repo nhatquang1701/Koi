@@ -191,6 +191,21 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(see_bad_fen.returncode, 2)
         self.assertIn("invalid FEN", see_bad_fen.stderr)
 
+        d_moves = self._run(["d", "moves", "e2e4", "e7e5"], disable_nnue=True)
+        self.assertEqual(d_moves.returncode, 0, d_moves.stderr)
+        self.assertIn(
+            "Fen   : rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
+            d_moves.stdout,
+        )
+
+        perft_moves = self._run(["perft", "1", "moves", "e2e4"], disable_nnue=True)
+        self.assertEqual(perft_moves.returncode, 0, perft_moves.stderr)
+        self.assertIn("Nodes searched: 20", perft_moves.stdout)
+
+        bad_moves = self._run(["d", "moves", "e2e5"], disable_nnue=True)
+        self.assertEqual(bad_moves.returncode, 2, bad_moves.stdout)
+        self.assertIn("illegal move", bad_moves.stderr)
+
     def test_invalid_perft_and_unknown_options(self) -> None:
         bad_depth = self._run(["perft", "99"], disable_nnue=True)
         self.assertEqual(bad_depth.returncode, 2)
@@ -268,6 +283,13 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(hce_eval.returncode, 0, hce_eval.stderr)
         self.assertIn("HCE (classical tapered)", hce_eval.stdout)
         self.assertIn("Total (White)", hce_eval.stdout)
+
+        hce_eval_moves = self._run(
+            ["--hce", "eval", "startpos", "moves", "e2e4", "e7e5"],
+            disable_nnue=True,
+        )
+        self.assertEqual(hce_eval_moves.returncode, 0, hce_eval_moves.stderr)
+        self.assertIn("HCE (classical tapered)", hce_eval_moves.stdout)
 
         hce_bench = self._run(["--hce", "bench", "2", "8", "1"], disable_nnue=True)
         self.assertEqual(hce_bench.returncode, 0, hce_bench.stderr)

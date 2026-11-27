@@ -115,9 +115,10 @@ std::optional<GameState> resolve_cli_position(const std::optional<std::string>& 
     if (!fen.has_value()) {
         return GameState::startpos();
     }
-    const auto parsed = GameState::from_fen(*fen);
+    std::string error;
+    const auto parsed = detail::parse_cli_position_spec(*fen, error);
     if (!parsed.has_value()) {
-        std::cerr << "koi-engine: invalid FEN '" << *fen << "'\n";
+        std::cerr << "koi-engine: " << error << '\n';
         return std::nullopt;
     }
     return *parsed;
