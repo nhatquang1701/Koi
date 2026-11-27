@@ -3446,6 +3446,8 @@ void test_uci_support_helpers_direct() {
                 history_empty.find("info string") == std::string::npos,
             "format_move_history empty mismatch; got:\n" + history_empty);
 
+    const std::optional<koi::Move> e7e5 = koi::Move::parse_uci("e7e5");
+    require(e7e5.has_value(), "expected valid e7e5 UCI move");
     const std::string history_moves = format_move_history(startpos, {*e2e4, *e7e5});
     require(history_moves.find("Origin  : startpos\n") != std::string::npos &&
                 history_moves.find("Plies   : 2\n") != std::string::npos &&
