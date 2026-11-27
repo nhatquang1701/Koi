@@ -156,8 +156,9 @@ Other environment variables relevant to operation:
    searches.
 8. `ponderhit` is consumed at the top of the next iteration; `TimeManager` is
    reconfigured in place and the elapsed clock restarts so the converted budget
-   is fully available. If no ponder search is running (including when a finite
-   ponder already finished), `ponderhit` is ignored and no new search starts.
+   is fully available. If ponder mode is active but a node-limited ponder
+   search already finished, the controller starts a fresh bounded search so
+   the move is still answered; idle `ponderhit` (not pondering) is ignored.
 
 Three unrelated "generation" concepts are deliberately distinct
 (`src/koi/search_types.hpp`): the controller's protocol staleness
@@ -768,7 +769,7 @@ Rules for `setoption`:
 | `position [startpos | fen <6 fields>] [moves ...]` | Replaces the root. The old search is cancelled with generation suppression before parsing. Malformed FEN/position/move emits `info string invalid ...` and writes `UCI position error: ...` to stderr; the prior position is retained on a failed parse. Moves are applied only if legal. |
 | `go` | Parses `depth`, `nodes`, `mate`, `perft`, `movetime`, `wtime`, `btime`, `winc`, `binc`, `movestogo`, `infinite`, `ponder`, and `searchmoves`. Malformed values are ignored. Bare or asymmetric clock commands fall back to 250 ms. |
 | `stop` | Cancels and joins the active search and emits exactly one final legal `bestmove` with a `ponder` suffix when the completed PV has a reply. |
-| `ponderhit` | Converts a running ponder search in place and re-arms timing; if no ponder search is running, the command is ignored (no search starts). |
+| `ponderhit` | Converts a running ponder search in place and re-arms timing (or starts a fresh bounded search if a node-limited ponder already finished); if not pondering, the command is ignored. |
 | `quit` | Sets shutting-down, cancels/joins, and returns 0 without late protocol output. EOF follows the same cancellation path. |
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
 | `d` | Displays the ASCII board, FEN, Zobrist key, side, check state, legal move count, and FIDE game state (`ongoing`, `checkmate`, `stalemate`, or draw reason; also zero-network CLI `d`/`--display [fen]`). |

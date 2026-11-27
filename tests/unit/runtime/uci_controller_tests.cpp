@@ -3537,6 +3537,34 @@ void test_uci_support_helpers_direct() {
                 format_see_result("e2e4", 0) == "SEE e2e4 : +0 cp\n" &&
                 format_see_result("d1d5", -320) == "SEE d1d5 : -320 cp\n",
             "format_see_result formatting mismatch");
+
+    {
+        koi::test::TempDirectory scratch;
+        const std::filesystem::path book_file = scratch.file("cli-book.bin");
+        const std::optional<koi::Move> e2e4_move = koi::Move::parse_uci("e2e4");
+        require(e2e4_move.has_value(), "expected valid e2e4 move");
+        koi::test::write_polyglot_book_file(
+            book_file, {{koi::GameState::startpos().polyglot_key(), *e2e4_move, 100}});
+        const std::filesystem::path tb_dir = scratch.subdir("empty-tb");
+
+        std::istringstream in;
+        std::ostringstream out;
+        std::ostringstream diag;
+        auto ctrl = koi::test::make_uci_controller(in, out, diag);
+        ctrl->set_initial_book_path(book_file.string());
+        ctrl->set_initial_syzygy_path(tb_dir.string());
+        require(out.str().empty() && diag.str().empty(),
+                "set_initial_book_path and set_initial_syzygy_path must not emit unsolicited diagnostics");
+        require(ctrl->run_options() == 0, "run_options must exit 0");
+        const std::string printed = out.str();
+        require(printed.find("OwnBook         : true (explicit: true, available: true") !=
+                        std::string::npos &&
+                    printed.find("cli-book.bin") != std::string::npos &&
+                    printed.find("SyzygyPath      : " + tb_dir.string()) != std::string::npos &&
+                    printed.find("info string") == std::string::npos,
+                "options output did not reflect set_initial_book_path / set_initial_syzygy_path; got:\n" +
+                    printed);
+    }
 }
 
 } // namespace

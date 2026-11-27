@@ -225,11 +225,13 @@ with `PYTHONPATH=.` on Python 3.10) from the repository root:
   executable), and `bullet_data_python` / `bullet_conversion_python`
   (bulletformat conversion, exporter weight layouts for v4/v5, and wrapper line parsing).
 - Runtime / CLI: `cli_subcommands_python` (`tests/python/runtime/cli_subcommands_test.py`)
-  exercises one-shot CLI flags and subcommands (`--version`, `--help`,
-  `--engine-json`, `compiler`, `nnue`, `options`, `speedtest`, `-c`/`--cmd`,
+  exercises one-shot CLI flags and subcommands (`version`/`--version`,
+  `help`/`--help`, `--engine-json` including `--threads`/`--hash` overrides,
+  `--hash`, `--threads`, `compiler`, `nnue`, `options`, `speedtest`, `-c`/`--cmd`,
   `d`/`--display`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `eval`,
-  `perft <depth> [pos]`, `bench`, `--hce`/`--nnue`/`--book`/`--syzygy`/`--protocol`,
-  and invalid-argument exit codes across `koi-engine` and companion tools).
+  `perft <depth> [pos]`, `bench`, `--hce`/`--nnue`/`--book`/`--syzygy`/`--protocol`
+  both one-shot and in live sessions, and invalid-argument exit codes across
+  `koi-engine` and companion tools).
 ## Labels and scheduling
 
 Every test carries CTest labels; combine them with `-L`/`-LE`, for example
@@ -415,7 +417,7 @@ An Apple Silicon Mac (for example a Mac mini M4) can run the heavy search and
 process suites, the speed gate, and Elo A/B matches so the Windows machine
 stays reserved for builds, git and pushes. Prerequisites: Xcode
 command line tools, Homebrew LLVM clang 19+, Ninja, CMake, Python 3, and
-PowerShell 7 (`brew install llvm ninja cmake python pwsh`).
+PowerShell 7 (`brew install llvm ninja cmake python && brew install --cask powershell`).
 
 Build Release with the documented macOS configuration and drive the suites
 through `tools/test/run_tests.ps1`; no MSVC wrapper is needed off Windows:
@@ -450,6 +452,7 @@ git worktree add --detach build/<name>-baseline-src <baseline-revision>
 tools/build/launch_gate_macos.sh \
   -BaselineExecutable build/<name>-baseline-release/koi-bench \
   -CandidateExecutable build/release/koi-bench \
+  -NnuePath artifacts/networks/koi-v9-hm10-h256-official.nnue \
   -OutputDirectory artifacts/verification/speed-gate/<name> \
   -Runs 5 -Threads 1 -DepthSweep 2..5 \
   -FenFile artifacts/verification/speed-gate/<name>/sparse-qsearch-fens.txt

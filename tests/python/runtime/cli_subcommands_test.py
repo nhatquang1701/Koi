@@ -421,6 +421,24 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(tb_empty.returncode, 0, tb_empty.stderr)
             self.assertEqual(tb_empty.stdout.strip(), "Syzygy : unavailable")
 
+            book_opts = self._run(["--hce", "--book", str(book_file), "options"], disable_nnue=True)
+            self.assertEqual(book_opts.returncode, 0, book_opts.stderr)
+            self.assertEqual(book_opts.stderr, "")
+            self.assertIn("OwnBook         : true (explicit: true, available: true,", book_opts.stdout)
+            self.assertIn("book.bin", book_opts.stdout)
+
+            book_batch = self._run(["--hce", "--book", str(book_file), "-c", "book"], disable_nnue=True)
+            self.assertEqual(book_batch.returncode, 0, book_batch.stderr)
+            self.assertEqual(book_batch.stderr, "")
+            self.assertIn("Opening book : book.bin", book_batch.stdout)
+            self.assertIn("e2e4  weight=100 (100.0%)", book_batch.stdout)
+
+            syz_opts = self._run(["--hce", "--syzygy", str(tmp_path), "options"], disable_nnue=True)
+            self.assertEqual(syz_opts.returncode, 0, syz_opts.stderr)
+            self.assertEqual(syz_opts.stderr, "")
+            self.assertIn(f"SyzygyPath      : {tmp_path}", syz_opts.stdout)
+            self.assertNotIn("info string", syz_opts.stdout)
+
         for cmd in ("book", "tb"):
             bad_fen = self._run([cmd, "bad fen"], disable_nnue=True)
             self.assertEqual(bad_fen.returncode, 2)

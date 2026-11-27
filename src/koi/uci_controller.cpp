@@ -15,6 +15,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -246,6 +247,54 @@ void UciController::set_initial_hash_mb(const std::size_t hash_mb) {
 
 void UciController::set_initial_threads(const std::size_t threads) noexcept {
     threads_ = std::clamp<std::size_t>(threads, 1, maximum_search_threads());
+}
+
+void UciController::set_initial_book_path(const std::string_view path) {
+    if (path.empty()) {
+        return;
+    }
+    std::filesystem::path resolved(path);
+    if (resolved.is_relative()) {
+        std::error_code ec;
+        if (std::filesystem::exists(resolved, ec) && !ec) {
+            const std::filesystem::path abs = std::filesystem::absolute(resolved, ec);
+            if (!ec) {
+                resolved = abs;
+            }
+        }
+    }
+    own_book_explicit_ = true;
+    own_book_ = true;
+    book_file_ = resolved.string();
+    opening_book_.set_file(book_file_);
+}
+
+void UciController::set_initial_syzygy_path(const std::string_view path) {
+    if (path.empty()) {
+        return;
+    }
+    syzygy_path_explicit_ = true;
+    syzygy_auto_detected_ = false;
+#ifdef _WIN32
+    constexpr char kSyzygyPathSeparator = ';';
+#else
+    constexpr char kSyzygyPathSeparator = ':';
+#endif
+    const bool path_list = path.find(kSyzygyPathSeparator) != std::string_view::npos;
+    std::filesystem::path resolved(path);
+    if (!path_list && resolved.is_relative()) {
+        std::error_code ec;
+        if (std::filesystem::exists(resolved, ec) && !ec) {
+            const std::filesystem::path abs = std::filesystem::absolute(resolved, ec);
+            if (!ec) {
+                resolved = abs;
+            }
+        } else if (!executable_directory_.empty()) {
+            resolved = executable_directory_ / resolved;
+        }
+    }
+    syzygy_path_ = std::move(resolved);
+    rebuild_syzygy(false);
 }
 
 void UciController::reset_new_game() {
@@ -2574,7 +2623,7 @@ void UciController::ensure_auto_syzygy_loaded() {
     rebuild_syzygy();
 }
 
-void UciController::rebuild_syzygy() {
+void UciController::rebuild_syzygy(const bool emit_diagnostics) {
     syzygy_configured_ = true;
     syzygy_.reset();
     // Every configured directory is validated before Fathom sees it: Fathom
@@ -2590,12 +2639,14 @@ void UciController::rebuild_syzygy() {
 #endif
     const bool path_list = raw_path.find(kSyzygyPathSeparator) != std::string::npos;
     if (!syzygy_path_.empty()) {
-        const auto reject_unusable = [this](const std::filesystem::path& bad,
-                                            SyzygyDirectoryStatus status) {
-            write_uci_info_string(
-                std::string("Syzygy: ") +
-                (status == SyzygyDirectoryStatus::unreadable ? "unreadable" : "corrupt") +
-                " tables at " + bad.string() + " (probing disabled)");
+        const auto reject_unusable = [this, emit_diagnostics](const std::filesystem::path& bad,
+                                                              SyzygyDirectoryStatus status) {
+            if (emit_diagnostics) {
+                write_uci_info_string(
+                    std::string("Syzygy: ") +
+                    (status == SyzygyDirectoryStatus::unreadable ? "unreadable" : "corrupt") +
+                    " tables at " + bad.string() + " (probing disabled)");
+            }
             syzygy_ = std::make_shared<SyzygyTablebase>();
         };
         const auto unusable = [](SyzygyDirectoryStatus status) {
@@ -2632,7 +2683,7 @@ void UciController::rebuild_syzygy() {
     }
     syzygy_ = std::make_shared<SyzygyTablebase>(
         syzygy_path_, syzygy_probe_limit_, syzygy_probe_depth_, syzygy_50_move_rule_);
-    if (syzygy_path_.empty()) {
+    if (syzygy_path_.empty() || !emit_diagnostics) {
         return;
     }
     // Surface load diagnostics and the largest registered table so a GUI can

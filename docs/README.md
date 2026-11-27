@@ -8,7 +8,7 @@ Welcome to the **Koi** documentation index. Start with the **[Documentation Home
 | :--- | :--- |
 | **[Repository README](../README.md)** | Project overview, quick start, download links, and platform build commands. |
 | **[User Guide](USER_GUIDE.md)** | Comprehensive manual covering builds, UCI options, time controls, GUI registration (En Croissant, Lucas Chess), optional assets, and measurement workflows. |
-| **[CLI & Interactive Reference](CLI.md)** | Complete reference for `koi-engine` CLI subcommands (`bench`, `speedtest`, `nnue`, `options`, `compiler`, `version`, `help`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `eval`, `perft`, `-c`/`--cmd`) and flags (`--hce`, `--nnue`, `--book`, `--syzygy`), interactive terminal commands (`options`, `nnue`, etc.), multi-protocol modes, developer binaries, and environment variables. |
+| **[CLI & Interactive Reference](CLI.md)** | Complete reference for `koi-engine` CLI subcommands (`bench`, `speedtest`, `nnue`, `options`, `compiler`, `version`, `help`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `eval`, `perft`, `-c`/`--cmd`) and flags (`--hash`, `--threads`, `--engine-json`, `--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), interactive terminal commands (`options`, `nnue`, etc.), multi-protocol modes, developer binaries, and environment variables. |
 | **[Lichess Bot Guide](lichess-bot.md)** | Installing, running, and auto-updating Koi as an online Lichess bot. |
 
 ## Architecture & Engineering

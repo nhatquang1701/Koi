@@ -11,6 +11,10 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+if (-not (Test-Path -LiteralPath $NnuePath -PathType Leaf)) {
+    throw "NNUE network not found: $NnuePath"
+}
+$NnuePath = [System.IO.Path]::GetFullPath($NnuePath)
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $repositoryRoot ('artifacts/verification/release-verify-' +
         [guid]::NewGuid().ToString('N'))
@@ -177,6 +181,9 @@ try {
             if (-not [string]::IsNullOrWhiteSpace($CxxCompiler)) {
                 $configureArguments += "-DCMAKE_CXX_COMPILER=$CxxCompiler"
             }
+            if ($IsMacOS) {
+                $configureArguments += @('-DKOI_BUILD_MODULES=OFF', '-DKOI_STATIC_RUNTIME=OFF')
+            }
         }
         Invoke-LoggedCommand $CMakePath $configureArguments $configureLog | Out-Null
         $buildArguments = @('--build', $build, '--config', $configuration)
@@ -279,19 +286,29 @@ try {
     }
     $threadSummaries.Add("Optional rows=$($optionalRows.Count) profile_positions=$($optionalProfile.positions.Count)")
 
-    $smokeLines = Invoke-UciSmoke $enginePath (Join-Path $verificationRoot 'uci-smoke.txt') (Join-Path $verificationRoot 'uci-smoke.stderr.txt')
-    # The same contract must hold for the baseline build, which runs in-process
-    # without a sibling executable.  Forcing the variant keeps the gate
-    # independent of the CPU that happens to run it.
-    $previousVariant = $env:KOI_CPU_VARIANT
+    $previousNnueEnv = $env:KOI_NNUE_PATH
     try {
-        $env:KOI_CPU_VARIANT = 'generic'
-        $genericSmokeLines = Invoke-UciSmoke $enginePath (Join-Path $verificationRoot 'uci-smoke-generic.txt') (Join-Path $verificationRoot 'uci-smoke-generic.stderr.txt')
+        $env:KOI_NNUE_PATH = $NnuePath
+        $smokeLines = Invoke-UciSmoke $enginePath (Join-Path $verificationRoot 'uci-smoke.txt') (Join-Path $verificationRoot 'uci-smoke.stderr.txt')
+        # The same contract must hold for the baseline build, which runs in-process
+        # without a sibling executable.  Forcing the variant keeps the gate
+        # independent of the CPU that happens to run it.
+        $previousVariant = $env:KOI_CPU_VARIANT
+        try {
+            $env:KOI_CPU_VARIANT = 'generic'
+            $genericSmokeLines = Invoke-UciSmoke $enginePath (Join-Path $verificationRoot 'uci-smoke-generic.txt') (Join-Path $verificationRoot 'uci-smoke-generic.stderr.txt')
+        } finally {
+            if ($null -ne $previousVariant) {
+                $env:KOI_CPU_VARIANT = $previousVariant
+            } else {
+                Remove-Item Env:\KOI_CPU_VARIANT -ErrorAction SilentlyContinue
+            }
+        }
     } finally {
-        if ($null -ne $previousVariant) {
-            $env:KOI_CPU_VARIANT = $previousVariant
+        if ($null -ne $previousNnueEnv) {
+            $env:KOI_NNUE_PATH = $previousNnueEnv
         } else {
-            Remove-Item Env:\KOI_CPU_VARIANT -ErrorAction SilentlyContinue
+            Remove-Item Env:\KOI_NNUE_PATH -ErrorAction SilentlyContinue
         }
     }
     $replayStdoutPath = Join-Path $verificationRoot 'replay.txt'
@@ -311,6 +328,7 @@ try {
     # the gate works on hosts that only ship pwsh.
     $matchOutput = Invoke-LoggedCommand (Get-Process -Id $PID).Path @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $matchScript,
         '-KoiPath', $enginePath, '-OpponentPath', $enginePath, '-ReplayPath', $replayPath,
+        '-KoiEvalFile', $NnuePath,
         '-Depth', '2', '-Games', '1', '-MaxPlies', '24', '-TimeoutMilliseconds', '5000',
         '-Threads', "$enCroissantThreads", '-Hash', '512', '-KoiOwnBook', 'false',
         '-OutputDirectory', $enCroissantDirectory) (Join-Path $verificationRoot 'en-croissant-style-command.txt')

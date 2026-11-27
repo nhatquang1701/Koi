@@ -86,6 +86,8 @@ public:
     bool set_protocol(std::string_view name);
     void set_initial_hash_mb(std::size_t hash_mb);
     void set_initial_threads(std::size_t threads) noexcept;
+    void set_initial_book_path(std::string_view path);
+    void set_initial_syzygy_path(std::string_view path);
     [[nodiscard]] static bool is_valid_protocol(std::string_view name) noexcept;
 
     int run();
@@ -175,7 +177,7 @@ private:
                              std::uint64_t generation);
     void debug_event(std::string message) noexcept;
     void debug_json_event(std::string event, std::string fields) noexcept;
-    void rebuild_syzygy();
+    void rebuild_syzygy(bool emit_diagnostics = true);
     void ensure_auto_syzygy_loaded();
 
     std::istream& input_;

@@ -43,9 +43,11 @@ koi-engine eval [fen]
 koi-engine --eval [fen]
 koi-engine options                     # or --options
 
-# Force built-in classical evaluation or select a specific NNUE network file
+# Pre-boot session defaults & asset overrides (also apply to live UCI, `-c`, `eval`, `bench`, and `options`)
 koi-engine --hce eval [fen]
 koi-engine --nnue <path> eval [fen]
+koi-engine --book <path> --syzygy <dir> options
+koi-engine --book <path> -c "position startpos" -c "go depth 6"
 
 # Identity, GUI JSON profile, initial hash/threads, protocol dialect, batch execution, and help
 koi-engine version                                    # or -v, --version
@@ -57,7 +59,7 @@ koi-engine help          # or -h, --help
 ```
 
 !!! note "Zero-network subcommands, unquoted FENs & batch mode"
-    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3` or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make version`, `make compiler`, and `make perft PERFT_DEPTH=5 [FEN=...]`.
+    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network; `--book <path>` and `--syzygy <path>` apply to both one-shot `book`/`tb` probes and live UCI, `-c`, or `options` sessions). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3` or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd`/`--hash`/`--threads` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make version`, `make compiler`, and `make perft PERFT_DEPTH=5 [FEN=...]`.
 
 ### Example Outputs
 
