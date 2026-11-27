@@ -486,7 +486,7 @@ hardware/options/time control” and must not be presented as a universal Elo
 claim.
 
 NNUE runs pass the network with `--koi-eval-file`: the container header selects
-the `nnue-v4`/`nnue-v5` attestation mode, the match harness proves the engine
+the `nnue-v4`/`nnue-v5`/`nnue-v9` attestation mode, the match harness proves the engine
 enabled that exact file, and the report records the absolute path, SHA-256, byte
 size, container version, and harness attestation under
 `configuration.koi_evaluator`. A missing, malformed, or rejected network exits
@@ -496,20 +496,20 @@ set `EvalFile` or the pinned measurement options.
 
 ## NNUE training
 
-Training is driven by the Python trainer (`train_nnue_koi.py`) and the Rust/CUDA
-Bullet pipeline (`tools/nnue/run_bullet.py`).
+See [docs/NNUE_PIPELINE.md](../docs/NNUE_PIPELINE.md) for the full production
+v9 (`halfka-hm-v2`, 256×2 SCReLU) data-generation, training, and promotion workflow.
+Training and inspection use the Rust/CUDA Bullet pipeline and Python utilities:
 
-- `tools/measurement/train_nnue_koi.py` is the primary trainer on CPU PyTorch.
-  `--arch v4` trains the within-perspective `halfka-king-bucket-v1` network
-  (hidden 1024); `--arch v5` trains the cross-perspective variant with group A
-  `halfka-king-bucket-v1` (9216 inputs) plus group B `threat-pairs-v1` (27648
-  inputs) and full-width cross pairs `p[j] = own[j] * opp[j]` (hidden 1024 and
-  l1 32 by default).
 - `tools/nnue/run_bullet.py` drives the pinned Rust/CUDA crate under
   `tools/nnue/bullet_train/` when cargo and a CUDA 12.x toolkit are installed;
   `tools/nnue/to_bullet.py` converts text labels, and
   `tools/measurement/export_bullet_v5.py` (v5) or `export_bullet_v4.py` (v4)
   export the matching container from saved checkpoints.
+- `tools/measurement/train_nnue_koi.py` is the offline CPU PyTorch trainer
+  for `--arch v4` (`halfka-king-bucket-v1`, 9216 inputs) and `--arch v5`
+  (`halfka-king-bucket-v1+threat-pairs-v1`, 36864 inputs).
+- `tools/measurement/nnue_info.py` inspects `v4`/`v5`/`v6`/`v8`/`v9` `.nnue`
+  containers offline and verifies their embedded payload SHA-256 checksums.
 - `koi-dataset-v2` encodes four index groups (`A_stm`, `B_stm`, `A_opp`,
   `B_opp`) per record. The converter carries the corpus game result through when
   the labels record one, and the bullet trainer's `--wdl` weight (default `0.5`)
@@ -519,13 +519,12 @@ Bullet pipeline (`tools/nnue/run_bullet.py`).
 Typical commands:
 
 ```powershell
-python .\tools\measurement\train_nnue_koi.py --corpus .\artifacts\training\corpus.txt `
-  --net-out .\artifacts\training\koi.nnue --arch v4 --epochs 10
 python .\tools\nnue\to_bullet.py --help
 python .\tools\nnue\run_bullet.py --help
+python .\tools\measurement\nnue_info.py .\artifacts\networks\koi-v9-hm10-h256-official.nnue
 ```
 
-Validation runs the 64-position gate (`koi-bench --nnue`) and a node-limited,
+Validation runs the 64-position gate (`koi-bench --nnue`) and an equal-time,
 colour-split network-vs-network match (`tools/nnue/net_match.ps1`, schema
 `koi-nnue-net-match-v1`), or `tools/stability/uci_match.ps1` with
 `-OpponentOptions @{ EvalMode = 'hce' }` against the clean classical
@@ -538,10 +537,10 @@ invalid if two games share a move sequence; pass `-OpeningFile` to override.
 Its promotion verdict is an SPRT (H0=0, H1=+10 Elo, alpha=beta=0.05) over the
 combined colour legs with a 200-effective-game target.
 
-Early-access or standalone public NNUE network releases are published as
-**signed orphan Git tags** under `nnue/<name>` paired with a GitHub Pre-release
-that attaches `<name>.nnue` and `<name>.metadata.json` directly under `Assets`
-(while official engine semver releases `X.Y.Z` / `vX.Y.Z` keep the `Latest`
-badge and also attach standalone `koi.nnue` alongside their archives). Engine
-release workflows can consume a public tag directly via `nnue_url` /
+Public official NNUE weights (including `koi-v9-hm10-h256-official.nnue`) are
+published directly as `.nnue` assets on the rolling **`koi-nnues`** GitHub
+pre-release, while official engine semver releases (`X.Y.Z` / `vX.Y.Z`) attach
+the user-facing platform archives and standalone `koi.nnue` (without cluttering
+the Releases Assets tab with `.metadata.json`, `.package.json`, or `.sha256`
+files). Engine release workflows can consume a network URL via `nnue_url` /
 `KOI_NNUE_URL` alongside `nnue_sha256` / `KOI_NNUE_SHA256`.

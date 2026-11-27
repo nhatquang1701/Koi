@@ -8,19 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 - **Official NNUE v9 (`halfka-hm-v2`, 10-bucket horizontal-mirror 256×2 SCReLU)** with 20-slot Finny king-bucket cache, AVX-512 / AVX2 / NEON fused kernels, and multi-stage Bullet training (`+180+ Elo` over v7 `h128`).
-- **Interactive chess-engine CLI & UCI commands:** `bench [depth]` (OpenBench-compatible benchmark signature), `d` (ASCII board, FEN, Zobrist hash, and checkers), `eval` (static NNUE/HCE evaluation readout), `compiler` (toolchain, C++ standard, and ISA diagnostics), and CLI `--help` / `-h`.
-- **Profile-Guided Optimization (PGO)** CMake support (`-DKOI_PGO=generate|use`) across MSVC, GCC, and Clang/AppleClang, plus standardized `CMakePresets.json` workflows.
+- **Interactive chess-engine CLI & UCI commands:** `bench, --bench [depth [hash [threads]]]` (OpenBench-compatible benchmark), `d` (ASCII board, FEN, Zobrist hash, checkers), `eval` (static score, WDL probabilities, game phase), `flip` (legal side-to-move flip), `see <move>` (bitboard static exchange inspection), `perft <depth>` (bare interruptible perft), `wait` (script synchronization for active search/`perft`), `compiler` (toolchain, C++26, ISA diagnostics), and `--help` / `-h`.
+- **Profile-Guided Optimization (PGO)** & build ergonomics: `-DKOI_PGO=generate|use` across MSVC, GCC, and Clang/AppleClang, `CMakePresets.json`, and a root OpenBench-compatible `Makefile`.
 - **Open-source repository infrastructure:** GitHub issue forms, pull request template, Dependabot config, `SECURITY.md`, `CHANGELOG.md`, `.editorconfig`, and `.clang-format`.
 
 ### Changed
+- **Internal modularization & build hygiene:** Split pure protocol parsers/formatters out of `uci_controller.cpp` into `detail/uci_support.*`, split container serialization/SHA-256/discovery out of `nnue.cpp` into `detail/nnue_io.cpp` + `detail/nnue_manifest.hpp`, deduplicated `CMakeLists.txt` test helpers, and eliminated MSVC `D9025` and vendored Fathom Clang deprecation warnings.
+- **Tooling updates (`tools/measurement/nnue_info.py`):** Added full inspection and SHA-256 checksum validation support for NNUE `v4` and `v9` (`halfka-hm-v2`) containers alongside `v5`/`v6`/`v8`.
 - **Search improvements:** Allowed Reverse Futility Pruning on quiet transposition-table move nodes (`c19_rfp_qtt`, `+11.01 Elo` at `1+0`), dynamic aspiration window widening, and tactical-only ProbCut move generation.
-- **GitHub Releases asset policy:** Release assets now publish strictly user-facing platform archives (`.zip` / `.tar.gz`) and `koi.nnue` without `.package.json` or `.sha256` clutter in the Releases UI.
-- **Documentation & site modernization:** Upgraded MkDocs Material navigation/theme, extracted inline Mermaid CSS/JS into `docs/assets/`, synced `README.md`, `USER_GUIDE.md`, `ENGINE_SPEC.md`, `ARCHITECTURE.md`, and `NNUE_PIPELINE.md` to current code.
+- **GitHub Releases asset policy:** Release assets publish user-facing platform archives (`.zip` / `.tar.gz`) and `koi.nnue` without `.package.json`, `.metadata.json`, or `.sha256` clutter in the Releases UI.
+- **Documentation & site modernization:** Upgraded MkDocs Material navigation/theme, extracted inline Mermaid CSS/JS into `docs/assets/`, synced `README.md`, `USER_GUIDE.md`, `ENGINE_SPEC.md`, `ARCHITECTURE.md`, `NNUE_PIPELINE.md`, `tools/README.md`, and `tests/README.md`.
 - **Lichess bot (`tools/bot/koi-bot.sh`):** Enabled rated bot-vs-bot matchmaking by default (`KOI_BOT_MATCHMAKING`) and added `reconfigure`.
 
 ### Removed
 - Retired legacy NNUE v2/Lc0 trainers (`train_nnue_sf.py`, `gen_lc0_labels.py`, `lc0_jsonl_to_corpus.py`, `select_lc0_positions.py`), superseded Polyglot book builders (`build_book.py`, `build_database_book.py`, `build_polyglot_subset.py`), legacy `performance_gate.ps1`, and the obsolete `removed-nnue-studio.md` tombstone.
-- Removed dead search constants and unreachable pruning branches.
+- Removed dead search constants (`kChildFutilityEvalAboveAlphaMargin`), unreachable LMR history branches, and unused standard headers.
 
 ## [1.2.0] - 2026-11-21
 

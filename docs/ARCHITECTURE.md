@@ -7,7 +7,7 @@ direction, and every node names a real translation unit or header.
 ```mermaid
 flowchart TD
     GUI["UCI / XBoard GUI · Arena<br/>Cute Chess · lichess-bot"] -- "UCI / XBoard" --> UCI
-    UCI["uci_controller.cpp<br/>options · protocol output<br/>bench · d · eval · compiler"]
+    UCI["uci_controller.cpp<br/>options · protocol output<br/>bench · d · eval · flip · see · perft · wait"]
     UCI --> TIME["time_manager.cpp<br/>soft/hard budgets<br/>move overhead"]
     UCI --> SERVICE["search_service.cpp<br/>request snapshot<br/>cancellation · exactly-once"]
     SERVICE --> RUNNER["detail/search_runner.cpp<br/>iterative deepening<br/>aspiration · Lazy SMP root split"]
@@ -19,7 +19,7 @@ flowchart TD
     CONTEXT --> SEE["static_exchange.cpp<br/>bitboard SEE"]
     CONTEXT --> ORDER["search_ordering.cpp<br/>history · killers · counters · corrhist"]
     CONTEXT --> EVAL["Evaluator boundary<br/>NNUE (default) · Clean HCE (EvalMode=hce)"]
-    EVAL --> NNUE["nnue.cpp · classical_evaluator.cpp<br/>HalfKA-HM v9 SCReLU · AVX2/NEON · HCE"]
+    EVAL --> NNUE["nnue.cpp · detail/nnue_io.cpp · classical_evaluator.cpp<br/>HalfKA-HM v9 SCReLU · AVX2/NEON · HCE"]
     UCI --> BOOK["opening_book.cpp<br/>optional Polyglot book"]
     UCI --> TB["syzygy_tablebase.cpp<br/>optional Syzygy probing"]
 ```
@@ -29,6 +29,7 @@ flowchart TD
 | File | Responsibility |
 | --- | --- |
 | `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output. |
+| `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, WDL conversion, ASCII board and compiler formatters, and benchmark FEN suite. |
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |
 | `detail/search_session.cpp` | One immutable request, worker ownership, cancellation/ponderhit timer, completion claim. |
 | `detail/root_fallback.*` | Bounded root-fallback policy: emergency static/one-ply scanners used when a short search cannot complete an authoritative iteration. |
@@ -49,7 +50,8 @@ flowchart TD
 | `transposition_table.cpp` | Physical storage, locking, generations, clearing, resizing, and mate-score normalization. |
 | `static_exchange.cpp` | Bitboard static-exchange evaluation used by pruning and ordering. |
 | `search_ordering.cpp` | History, killers, and continuation counters for move ordering. |
-| `nnue.cpp` | Default/production evaluator: NNUE container, inference and incremental state. |
+| `nnue.cpp` | Default/production evaluator inference and Finny incremental accumulators (AVX-512, AVX2, ARM NEON, and scalar kernels). |
+| `detail/nnue_io.cpp`, `detail/nnue_manifest.hpp` | NNUE container serialization/deserialization, SHA-256 verification, manifest validation, and boot-time network discovery. |
 | `classical_evaluator.*` | Clean hand-crafted evaluator (HCE rewrite): stateless, tapered, selectable with `EvalMode=hce`/`KOI_EVALUATOR=hce`. |
 | `opening_book.cpp` | Optional Polyglot opening book; release packages bundle a CC0 book, the repository commits none. |
 | `syzygy_tablebase.cpp` | Optional Syzygy root and interior probing; no tablebase data is bundled. |
