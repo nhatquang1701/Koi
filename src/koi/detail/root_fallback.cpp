@@ -258,7 +258,7 @@ static int checked_root_fallback_score(
             }
             int reply_score = short_fallback_evaluate(
                 evaluator, after_reply, root_color, evaluator_mutex);
-            if (after_reply.in_check() && after_reply.legal_moves().empty()) {
+            if (after_reply.in_check() && !after_reply.has_legal_move()) {
                 reply_score = kMateScore - 2;
             }
             best_reply_score = std::max(best_reply_score, reply_score);
@@ -341,7 +341,7 @@ static int shallow_checked_root_fallback_score(
             // against quiet defensive moves.
             evasion_score = std::min(evasion_score, -3'000);
         }
-        if (after_evasion.in_check() && after_evasion.legal_moves().empty()) {
+        if (after_evasion.in_check() && !after_evasion.has_legal_move()) {
             // The root side is to move after the opponent's evasion.  If
             // that evasion also checks the root and leaves no legal move,
             // the original checking candidate has been refuted by mate.
@@ -667,7 +667,7 @@ static int overdue_check_reply_fallback_score(
         int evasion_score = short_fallback_evaluate(
             evaluator, after_evasion, root_color, evaluator_mutex);
         if (after_evasion.in_check()) {
-            if (after_evasion.legal_moves().empty()) {
+            if (!after_evasion.has_legal_move()) {
                 // The evasion belongs to the root side.  A checking evasion
                 // that mates the opponent is a win for the root, not a loss.
                 evasion_score = kMateScore - 2;
@@ -841,7 +841,7 @@ bool root_move_is_broad_quiet_check(
     try {
         GameState after_check = root;
         return after_check.make_search_move(metadata) && after_check.in_check() &&
-            after_check.legal_moves().size() > kMaximumEmergencyForcingCheckEvasions;
+            after_check.legal_moves_into({}) > kMaximumEmergencyForcingCheckEvasions;
     } catch (...) {
         return false;
     }
@@ -1291,7 +1291,7 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
             }
 
             if (after_move.in_check()) {
-                check_evasion_count = after_move.legal_moves().size();
+                check_evasion_count = after_move.legal_moves_into({});
             }
             const std::optional<int> king_escape_risk =
                 emergency_king_escape_risk(root, metadata, after_move);
@@ -1545,7 +1545,7 @@ bool short_fallback_should_replace_completed_root(
                 current_metadata->move.promotion() == Promotion::none) {
                 GameState after_current = root;
                 if (after_current.make_search_move(*current_metadata)) {
-                    const std::size_t evasion_count = after_current.legal_moves().size();
+                    const std::size_t evasion_count = after_current.legal_moves_into({});
                     if (evasion_count == 0) {
                         // Do not replace a completed mate with any shallow
                         // alternative, even when that alternative captures.

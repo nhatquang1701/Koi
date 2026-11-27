@@ -7,6 +7,7 @@
 #include "koi/syzygy_tablebase.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cstdint>
@@ -334,7 +335,7 @@ void UciController::start_xboard_search(const bool analyze_mode) {
     ensure_auto_syzygy_loaded();
     stop_and_suppress_active_search();
     apply_pending_xboard_move();
-    if (!analyze_mode && position_.legal_moves().empty()) {
+    if (!analyze_mode && !position_.has_legal_move()) {
         std::lock_guard lock(output_mutex_);
         output_ << xboard_terminal_result_line(position_) << '\n' << std::flush;
         return;
@@ -2253,7 +2254,11 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         start_failure_fallback.completed = true;
         start_failure_fallback.failed = true;
         start_failure_fallback.failure_reason = SearchFailureReason::setup_failed;
-        for (const Move& move : search_root.legal_moves()) {
+        std::array<Move, kMaximumLegalMoves> fallback_moves{};
+        const std::size_t move_count =
+            std::min(search_root.legal_moves_into(fallback_moves), fallback_moves.size());
+        for (std::size_t index = 0; index < move_count; ++index) {
+            const Move& move = fallback_moves[index];
             if (!has_search_moves ||
                 std::find(fallback_search_moves.begin(), fallback_search_moves.end(), move) !=
                     fallback_search_moves.end()) {
@@ -2510,10 +2515,13 @@ void UciController::write_perft_results(GameState root, const int depth,
                                         const std::uint64_t generation) {
     const auto started = std::chrono::steady_clock::now();
     std::vector<std::pair<Move, std::uint64_t>> counts;
-    const std::vector<Move> legal_moves = root.legal_moves();
-    counts.reserve(legal_moves.size());
+    std::array<Move, kMaximumLegalMoves> legal_moves{};
+    const std::size_t move_count =
+        std::min(root.legal_moves_into(legal_moves), legal_moves.size());
+    counts.reserve(move_count);
     std::uint64_t total = 0;
-    for (const Move& move : legal_moves) {
+    for (std::size_t index = 0; index < move_count; ++index) {
+        const Move& move = legal_moves[index];
         if (stop_token.stop_requested()) {
             debug_event("perft cancelled before completion");
             return;

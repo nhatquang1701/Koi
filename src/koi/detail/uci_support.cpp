@@ -8,6 +8,7 @@
 #include "koi/syzygy_tablebase.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cctype>
 #include <charconv>
@@ -319,7 +320,7 @@ int cecp_mate_score(const int mate_in_moves) noexcept {
 }
 
 std::string xboard_terminal_result_line(const GameState& state) {
-    if (state.legal_moves().empty()) {
+    if (!state.has_legal_move()) {
         if (state.in_check()) {
             return state.side_to_move() == Color::white ? "0-1 {Black mates}" : "1-0 {White mates}";
         }
@@ -571,11 +572,13 @@ std::string format_key_info(const GameState& position) {
 }
 
 std::string format_legal_moves(const GameState& position) {
-    const std::vector<Move> raw_moves = position.legal_moves();
+    std::array<Move, kMaximumLegalMoves> raw_moves{};
+    const std::size_t move_count =
+        std::min(position.legal_moves_into(raw_moves), raw_moves.size());
     std::vector<std::string> moves;
-    moves.reserve(raw_moves.size());
-    for (const Move& move : raw_moves) {
-        moves.push_back(move.uci());
+    moves.reserve(move_count);
+    for (std::size_t index = 0; index < move_count; ++index) {
+        moves.push_back(raw_moves[index].uci());
     }
     std::sort(moves.begin(), moves.end());
     std::ostringstream buffer;

@@ -18,6 +18,9 @@
 #include <windows.h>
 #elif defined(__linux__)
 #include <sys/sysinfo.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#include <sys/sysctl.h>
 #endif
 
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
@@ -172,8 +175,35 @@ HashMemorySnapshot default_memory_snapshot() noexcept {
                                      unit;
         return HashMemorySnapshot{total, available, commit};
     }
+#elif defined(__APPLE__)
+    std::uint64_t total_bytes = 0;
+    std::size_t total_size = sizeof(total_bytes);
+    if (::sysctlbyname("hw.memsize", &total_bytes, &total_size, nullptr, 0) == 0 &&
+        total_bytes > 0) {
+        std::uint64_t available_bytes = 0;
+        const mach_port_t host = ::mach_host_self();
+        vm_size_t page_size = 0;
+        vm_statistics64_data_t vm{};
+        mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+        if (::host_page_size(host, &page_size) == KERN_SUCCESS &&
+            ::host_statistics64(host, HOST_VM_INFO64, reinterpret_cast<host_info64_t>(&vm),
+                                &count) == KERN_SUCCESS) {
+            const std::uint64_t free_pages =
+                static_cast<std::uint64_t>(vm.free_count) +
+                static_cast<std::uint64_t>(vm.inactive_count) +
+                static_cast<std::uint64_t>(vm.speculative_count);
+            const std::uint64_t page_bytes = static_cast<std::uint64_t>(page_size);
+            if (page_bytes != 0 && free_pages <= total_bytes / page_bytes) {
+                available_bytes = free_pages * page_bytes;
+            } else {
+                available_bytes = total_bytes;
+            }
+        }
+        (void)::mach_port_deallocate(::mach_task_self(), host);
+        return HashMemorySnapshot{total_bytes, available_bytes, 0};
+    }
 #endif
-    // macOS (and any other platform) has no snapshot provider yet; a zero
+    // Fallback for platforms without a memory snapshot provider; a zero
     // snapshot tells resize_locked() to skip the memory caps and honor the
     // requested Hash size.
     return {};

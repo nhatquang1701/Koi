@@ -1,6 +1,7 @@
 #include "cli_support.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <chrono>
@@ -900,12 +901,15 @@ std::optional<int> run_zero_network_cli_command(
             return 2;
         }
         const GameState& root = *resolved;
-        const std::vector<Move> legal_moves = root.legal_moves();
+        std::array<Move, kMaximumLegalMoves> legal_moves{};
+        const std::size_t move_count =
+            std::min(root.legal_moves_into(legal_moves), legal_moves.size());
         const auto started = std::chrono::steady_clock::now();
         std::uint64_t total = 0;
         std::vector<std::pair<Move, std::uint64_t>> counts;
-        counts.reserve(legal_moves.size());
-        for (const Move& move : legal_moves) {
+        counts.reserve(move_count);
+        for (std::size_t index = 0; index < move_count; ++index) {
+            const Move& move = legal_moves[index];
             GameState child = root;
             if (!child.make_move(move)) {
                 continue;

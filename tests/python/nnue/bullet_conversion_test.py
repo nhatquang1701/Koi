@@ -11,6 +11,7 @@ tests pin the conversion contract used by
 from __future__ import annotations
 
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -55,6 +56,27 @@ class BulletConversionTests(unittest.TestCase):
         self.assertIsNone(convert_line(""))
         self.assertIsNone(convert_line("   "))
         self.assertIsNone(convert_line("not a bullet row"))
+        self.assertIsNone(convert_line("not a fen | 42 | 0.5"))
+        self.assertIsNone(convert_line(f"{STARTPOS} w KQkq - 0 1 | nope | 0.5"))
+
+    def test_cli_missing_input_exits_two(self) -> None:
+        script = REPO_ROOT / "tools" / "measurement" / "convert_bullet_corpus.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "--input",
+                    str(pathlib.Path(tmp) / "missing.txt"),
+                    "--output",
+                    str(pathlib.Path(tmp) / "out.txt"),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(proc.returncode, 2, proc.stdout)
+            self.assertIn("convert_bullet_corpus: error:", proc.stderr)
 
     def test_convert_file_writes_side_to_move_scores(self) -> None:
         rows = [

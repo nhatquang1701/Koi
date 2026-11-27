@@ -372,6 +372,17 @@ void test_nested_locked_access_preserves_session_pin() {
             "the table must remain usable after nested-lease resize and reaping");
 }
 
+void test_default_memory_snapshot_populates_host_ram() {
+    TranspositionTable table(1);
+    const koi::HashResizeResult result = table.set_size_mb(1);
+#if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
+    require(result.total_physical_bytes > 0,
+            "default memory snapshot must report physical RAM on desktop platforms");
+#else
+    (void)result;
+#endif
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -390,6 +401,7 @@ int main(int argc, char** argv) {
         {"transposition repeated deferred resizes", test_repeated_deferred_resizes_are_safe},
         {"transposition exclusive pin blocks resize", test_exclusive_session_pin_blocks_resize_until_release},
         {"transposition nested locked lease preserves pin", test_nested_locked_access_preserves_session_pin},
+        {"default memory snapshot populates host RAM", test_default_memory_snapshot_populates_host_ram},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

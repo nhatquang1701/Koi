@@ -166,7 +166,9 @@ bool cpu_supports_avx512() noexcept {
     return supported;
 }
 
-bool cpu_supports_fast_pext() noexcept {
+namespace {
+
+[[nodiscard]] bool detect_fast_pext_support() noexcept {
 #if !KOI_CPU_ARCH_X86
     return false;
 #elif defined(_MSC_VER)
@@ -220,6 +222,13 @@ bool cpu_supports_fast_pext() noexcept {
     }
     return false;
 #endif
+}
+
+} // namespace
+
+bool cpu_supports_fast_pext() noexcept {
+    static const bool supported = detect_fast_pext_support();
+    return supported;
 }
 
 } // namespace koi

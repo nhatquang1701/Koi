@@ -18,6 +18,11 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import sys
+
+MEASUREMENT_DIR = pathlib.Path(__file__).resolve().parent
+if str(MEASUREMENT_DIR) not in sys.path:
+    sys.path.insert(0, str(MEASUREMENT_DIR))
 
 # ``koi_chess`` mirrors the python-chess API subset this tool needs and is
 # standard-library only, so the converter (and its regression test) run in CI
@@ -36,8 +41,11 @@ def convert_line(line: str) -> str | None:
     parts = line.split(" | ")
     if len(parts) < 2:
         return None
-    board = chess.Board(parts[0])
-    white_cp = int(float(parts[1]))
+    try:
+        board = chess.Board(parts[0])
+        white_cp = int(float(parts[1]))
+    except ValueError:
+        return None
     score = white_cp if board.turn == chess.WHITE else -white_cp
     return f"{parts[0]};{score}"
 
@@ -63,13 +71,17 @@ def convert_file(
     return written
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
-    args = parser.parse_args()
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    written = convert_file(args.input, args.output)
+    args = parser.parse_args(argv)
+    try:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        written = convert_file(args.input, args.output)
+    except OSError as error:
+        print(f"convert_bullet_corpus: error: {error}", file=sys.stderr)
+        return 2
     print(f"{args.input} -> {args.output}: {written} rows")
     return 0
 
