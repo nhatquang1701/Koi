@@ -133,6 +133,28 @@ bool parse_depth_sweep(std::string_view value, std::uint8_t& from, std::uint8_t&
     return true;
 }
 
+bool match_value_flag(const std::string_view argument, const std::string_view flag,
+                      int& index, const int argc, char** argv,
+                      std::string_view& value, bool& bad_value) {
+    if (argument == flag) {
+        if (index + 1 >= argc || argv[index + 1] == nullptr || argv[index + 1][0] == '\0') {
+            bad_value = true;
+            return true;
+        }
+        value = argv[++index];
+        return true;
+    }
+    if (argument.size() > flag.size() && argument.starts_with(flag) &&
+        argument[flag.size()] == '=') {
+        value = argument.substr(flag.size() + 1);
+        if (value.empty()) {
+            bad_value = true;
+        }
+        return true;
+    }
+    return false;
+}
+
 std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
     BenchmarkConfig config;
     for (int index = 1; index < argc; ++index) {
@@ -149,131 +171,111 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
             config.optional = true;
             continue;
         }
-        if (argument == "--profile-json") {
-            if (index + 1 >= argc) {
-                return std::nullopt;
-            }
-            config.profile_json_path = argv[++index];
+        if (argument == "--hce") {
+            config.hce = true;
             continue;
         }
-        if (argument == "--iteration-profile-json") {
-            if (index + 1 >= argc) {
-                return std::nullopt;
-            }
-            config.iteration_profile_json_path = argv[++index];
+        std::string_view flag_value;
+        bool bad_flag_value = false;
+        if (match_value_flag(argument, "--profile-json", index, argc, argv, flag_value, bad_flag_value)) {
+            if (bad_flag_value) return std::nullopt;
+            config.profile_json_path = std::string(flag_value);
             continue;
         }
-        if (argument == "--report") {
+        if (match_value_flag(argument, "--iteration-profile-json", index, argc, argv, flag_value, bad_flag_value)) {
+            if (bad_flag_value) return std::nullopt;
+            config.iteration_profile_json_path = std::string(flag_value);
+            continue;
+        }
+        if (match_value_flag(argument, "--report", index, argc, argv, flag_value, bad_flag_value)) {
             // Speed artifact for tools/build/speed_gate.ps1. The schema is
             // koi-bench-speed-v1 and is independent of the text report.
-            if (index + 1 >= argc) {
-                return std::nullopt;
-            }
-            config.report_json_path = argv[++index];
+            if (bad_flag_value) return std::nullopt;
+            config.report_json_path = std::string(flag_value);
             continue;
         }
-        if (argument == "--fen-file") {
+        if (match_value_flag(argument, "--fen-file", index, argc, argv, flag_value, bad_flag_value)) {
             // External position list: one FEN per line, blank lines and
             // #-prefixed comments are ignored.
-            if (index + 1 >= argc) {
-                return std::nullopt;
-            }
-            config.fen_file_path = argv[++index];
+            if (bad_flag_value) return std::nullopt;
+            config.fen_file_path = std::string(flag_value);
             continue;
         }
-        if (argument == "--depth") {
-            if (index + 1 >= argc) {
-                return std::nullopt;
-            }
+        if (match_value_flag(argument, "--depth", index, argc, argv, flag_value, bad_flag_value)) {
             std::uint64_t value = 0;
-            if (!parse_uint64(argv[++index], value) || value < 1 || value > 255) {
+            if (bad_flag_value || !parse_uint64(flag_value, value) || value < 1 || value > 255) {
                 return std::nullopt;
             }
             config.fixed_depth = static_cast<std::uint8_t>(value);
             continue;
         }
-        if (argument == "--depth-sweep") {
-            if (index + 1 >= argc) {
-                return std::nullopt;
-            }
+        if (match_value_flag(argument, "--depth-sweep", index, argc, argv, flag_value, bad_flag_value)) {
             std::uint8_t from = 0;
             std::uint8_t to = 0;
-            if (!parse_depth_sweep(argv[++index], from, to)) {
+            if (bad_flag_value || !parse_depth_sweep(flag_value, from, to)) {
                 return std::nullopt;
             }
             config.depth_sweep = std::pair<std::uint8_t, std::uint8_t>{from, to};
             continue;
         }
-        if (argument == "--hce") {
-            config.hce = true;
-            continue;
-        }
-        if (argument == "--nnue") {
+        if (match_value_flag(argument, "--nnue", index, argc, argv, flag_value, bad_flag_value)) {
             // Default production mode requires an explicit `--nnue <path>` (use `--hce` for ClassicalEvaluator).
-            if (index + 1 >= argc) {
-                return std::nullopt;
-            }
-            config.nnue_path = argv[++index];
+            if (bad_flag_value) return std::nullopt;
+            config.nnue_path = std::string(flag_value);
             continue;
         }
-        if (argument == "--nodes") {
+        if (match_value_flag(argument, "--nodes", index, argc, argv, flag_value, bad_flag_value)) {
             // Node-limited mode: measures the steady-state search instead of a
             // fixed shallow depth, matching the SPRT/node-limited match regime.
-            if (index + 1 >= argc) {
-                return std::nullopt;
-            }
             std::uint64_t value = 0;
-            if (!parse_uint64(argv[++index], value) || value == 0) {
+            if (bad_flag_value || !parse_uint64(flag_value, value) || value == 0) {
                 return std::nullopt;
             }
             config.node_limit = value;
             continue;
         }
-        if (argument == "--warmup" || argument == "--repeat") {
-            if (index + 1 >= argc) {
-                return std::nullopt;
-            }
+        if (match_value_flag(argument, "--warmup", index, argc, argv, flag_value, bad_flag_value)) {
             std::uint64_t value = 0;
-            if (!parse_uint64(argv[++index], value)) {
+            if (bad_flag_value || !parse_uint64(flag_value, value)) {
                 return std::nullopt;
             }
-            if (argument == "--warmup") {
-                config.warmup = static_cast<std::size_t>(value);
-            } else {
-                if (value == 0) {
-                    return std::nullopt;
-                }
-                config.repeat = static_cast<std::size_t>(value);
-            }
+            config.warmup = static_cast<std::size_t>(value);
             continue;
         }
-        if (argument != "--hash" && argument != "--threads" && argument != "--speed") {
-            return std::nullopt;
+        if (match_value_flag(argument, "--repeat", index, argc, argv, flag_value, bad_flag_value)) {
+            std::uint64_t value = 0;
+            if (bad_flag_value || !parse_uint64(flag_value, value) || value == 0) {
+                return std::nullopt;
+            }
+            config.repeat = static_cast<std::size_t>(value);
+            continue;
         }
-        if (index + 1 >= argc) {
-            return std::nullopt;
-        }
-
-        std::uint64_t value = 0;
-        if (!parse_uint64(argv[++index], value)) {
-            return std::nullopt;
-        }
-        if (argument == "--hash") {
-            if (value < 1 || value > 4'096) {
+        if (match_value_flag(argument, "--hash", index, argc, argv, flag_value, bad_flag_value)) {
+            std::uint64_t value = 0;
+            if (bad_flag_value || !parse_uint64(flag_value, value) || value < 1 || value > 4'096) {
                 return std::nullopt;
             }
             config.hash_mb = static_cast<std::size_t>(value);
-        } else if (argument == "--threads") {
-            if (value == 0) {
+            continue;
+        }
+        if (match_value_flag(argument, "--threads", index, argc, argv, flag_value, bad_flag_value)) {
+            std::uint64_t value = 0;
+            if (bad_flag_value || !parse_uint64(flag_value, value) || value == 0) {
                 return std::nullopt;
             }
             config.threads = std::min<std::size_t>(static_cast<std::size_t>(value),
                                                    koi::maximum_search_threads());
-        } else if (value < 1 || value > 100) {
-            return std::nullopt;
-        } else {
-            config.speed_percent = static_cast<std::uint8_t>(value);
+            continue;
         }
+        if (match_value_flag(argument, "--speed", index, argc, argv, flag_value, bad_flag_value)) {
+            std::uint64_t value = 0;
+            if (bad_flag_value || !parse_uint64(flag_value, value) || value < 1 || value > 100) {
+                return std::nullopt;
+            }
+            config.speed_percent = static_cast<std::uint8_t>(value);
+            continue;
+        }
+        return std::nullopt;
     }
     if (config.fixed_depth.has_value() && config.depth_sweep.has_value()) {
         return std::nullopt;

@@ -672,6 +672,26 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(profile["hash_mb"], 32)
             self.assertEqual(profile["positions"][0]["hash_mb"], 32)
 
+            profile_eq_json = bench_dir / "profile_eq.json"
+            bench_eq = subprocess.run(
+                [
+                    str(bench_exe),
+                    "--hce",
+                    "--hash=24",
+                    "--depth=1",
+                    f"--fen-file={fen_file}",
+                    f"--profile-json={profile_eq_json}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(bench_eq.returncode, 0, bench_eq.stderr)
+            self.assertEqual(bench_eq.stderr, "")
+            profile_eq = json.loads(profile_eq_json.read_text(encoding="utf-8"))
+            self.assertEqual(profile_eq["hash_mb"], 24)
+            self.assertEqual(profile_eq["positions"][0]["hash_mb"], 24)
+
         bad_bench_hash = subprocess.run(
             [str(bench_exe), "--hce", "--hash", "0"],
             capture_output=True,
@@ -679,6 +699,14 @@ class CliSubcommandsTest(unittest.TestCase):
             timeout=15,
         )
         self.assertEqual(bad_bench_hash.returncode, 2, bad_bench_hash.stdout)
+
+        empty_bench_hash = subprocess.run(
+            [str(bench_exe), "--hce", "--hash="],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(empty_bench_hash.returncode, 2, empty_bench_hash.stdout)
 
         eval_features_exe = _resolve_tool("KOI_EVAL_FEATURES_EXE", "koi-eval-features", self.engine)
         nnue_fixture_exe = _resolve_tool("KOI_NNUE_FIXTURE_EXE", "koi-nnue-fixture", self.engine)

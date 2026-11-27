@@ -166,8 +166,8 @@ From the configured build directory:
     ./build/release/koi-replay startpos moves e2e4 e7e5 g1f3
     ```
 
-`koi-perft` counts legal nodes from `startpos` (or an optional custom FEN) at
-the given non-negative depth (`--divide` prints per-move counts, elapsed time,
+`koi-perft` counts legal nodes from `startpos` (or `[startpos|fen [moves <uci>...]]`) at
+the given non-negative depth using bulk counting and mirror-detached root traversal (`--divide` prints per-move counts, elapsed time,
 and NPS; pass `--help` on `koi-perft`, `koi-replay`, or `koi-bench` for full
 usage). `koi-bench` runs the 64-position fixed-depth tactical hard gate and
 writes only its deterministic benchmark report to stdout by default (`--nnue <path>`

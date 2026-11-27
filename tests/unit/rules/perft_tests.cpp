@@ -15,9 +15,13 @@ using koi::test::require;
 void test_start_position_perft_counts() {
     koi::GameState state = koi::GameState::startpos();
 
+    require(koi::perft(state, 0) == 1, "start position depth 0 must have 1 node");
     require(koi::perft(state, 1) == 20, "start position depth 1 must have 20 nodes");
     require(koi::perft(state, 2) == 400, "start position depth 2 must have 400 nodes");
     require(koi::perft(state, 3) == 8902, "start position depth 3 must have 8902 nodes");
+    require(koi::perft(state, 4) == 197281, "start position depth 4 must have 197281 nodes");
+    require(state.native_shadow_consistent(),
+            "perft must preserve caller mirror tracking and consistency");
 }
 
 void test_kiwipete_perft_counts() {
@@ -30,6 +34,7 @@ void test_kiwipete_perft_counts() {
     require(koi::perft(state, 1) == 48, "Kiwipete depth 1 must have 48 nodes");
     require(koi::perft(state, 2) == 2039, "Kiwipete depth 2 must have 2039 nodes");
     require(koi::perft(state, 3) == 97862, "Kiwipete depth 3 must have 97862 nodes");
+    require(koi::perft(state, 4) == 4085603, "Kiwipete depth 4 must have 4085603 nodes");
 }
 
 void test_endgame_perft_counts_cover_pins_and_en_passant_legality() {
@@ -42,6 +47,7 @@ void test_endgame_perft_counts_cover_pins_and_en_passant_legality() {
     require(koi::perft(state, 1) == 14, "position three depth 1 must have 14 nodes");
     require(koi::perft(state, 2) == 191, "position three depth 2 must have 191 nodes");
     require(koi::perft(state, 3) == 2812, "position three depth 3 must have 2812 nodes");
+    require(koi::perft(state, 4) == 43238, "position three depth 4 must have 43238 nodes");
 }
 
 void test_promotion_and_castling_perft_fixtures() {
@@ -56,6 +62,8 @@ void test_promotion_and_castling_perft_fixtures() {
             "promotion fixture depth 2 must have 264 nodes");
     require(koi::perft(promotion_state, 3) == 9467,
             "promotion fixture depth 3 must have 9467 nodes");
+    require(koi::perft(promotion_state, 4) == 422333,
+            "promotion fixture depth 4 must have 422333 nodes");
 
     // CPW position 5: castling rights, en passant, and tactical legality.
     const auto castling = koi::GameState::from_fen(
@@ -68,6 +76,8 @@ void test_promotion_and_castling_perft_fixtures() {
             "castling fixture depth 2 must have 1486 nodes");
     require(koi::perft(castling_state, 3) == 62379,
             "castling fixture depth 3 must have 62379 nodes");
+    require(koi::perft(castling_state, 4) == 2103487,
+            "castling fixture depth 4 must have 2103487 nodes");
 }
 
 void test_interruptible_perft_matches_standard_count_and_restores_position() {
@@ -80,6 +90,8 @@ void test_interruptible_perft_matches_standard_count_and_restores_position() {
             "completed interruptible perft must match the native legal-move count");
     require(state.fen() == root_fen,
             "completed interruptible perft must restore the root position");
+    require(state.native_shadow_consistent(),
+            "interruptible perft must preserve caller mirror tracking and consistency");
 }
 
 void test_interruptible_perft_stops_before_generating_moves() {
