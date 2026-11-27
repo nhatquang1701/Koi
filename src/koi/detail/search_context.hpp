@@ -6,7 +6,6 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
 #include <functional>
 #include <memory>
 #include <mutex>

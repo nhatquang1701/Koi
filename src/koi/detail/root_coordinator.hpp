@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstddef>
-#include <optional>
 #include <vector>
 
 #include "koi/detail/search_stack.hpp"

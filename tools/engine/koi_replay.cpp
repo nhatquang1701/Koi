@@ -2,7 +2,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "koi/game_state.hpp"
 

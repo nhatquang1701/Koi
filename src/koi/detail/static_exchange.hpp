@@ -5,7 +5,6 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 
 #include "koi/detail/attack_tables.hpp"
 #include "koi/game_state.hpp"

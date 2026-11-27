@@ -7,7 +7,6 @@
 #include "koi/syzygy_tablebase.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <chrono>
 #include <cstdint>

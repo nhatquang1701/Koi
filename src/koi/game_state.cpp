@@ -3,11 +3,9 @@
 #include "koi/detail/fen_validation.hpp"
 
 #include <algorithm>
-#include <atomic>
 #include <array>
 #include <bit>
 #include <charconv>
-#include <cctype>
 #include <cstdlib>
 #include <limits>
 #include <memory>

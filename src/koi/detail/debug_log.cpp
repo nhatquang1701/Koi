@@ -1,6 +1,5 @@
 #include "koi/detail/debug_log.hpp"
 
-#include <cstdint>
 #include <string>
 #include <utility>
 

@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <string_view>
 
 #include <tbprobe.h>
