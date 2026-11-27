@@ -1494,4 +1494,21 @@ std::string format_book_move_debug_json(
            ",\"book_depth\":" + std::to_string(book_depth);
 }
 
+std::vector<std::string> format_perft_divide_lines(
+    const std::vector<std::pair<Move, std::uint64_t>>& counts,
+    const std::uint64_t total_nodes, const std::int64_t elapsed_ms) {
+    const auto safe_elapsed_ms = std::max<std::int64_t>(1, elapsed_ms);
+    const std::uint64_t nps =
+        (total_nodes * 1000ULL) / static_cast<std::uint64_t>(safe_elapsed_ms);
+    std::vector<std::string> lines;
+    lines.reserve(counts.size() + 2);
+    for (const auto& [move, nodes] : counts) {
+        lines.push_back(move.uci() + ": " + std::to_string(nodes));
+    }
+    lines.push_back("Nodes searched: " + std::to_string(total_nodes));
+    lines.push_back("Time (ms): " + std::to_string(safe_elapsed_ms) +
+                    " | Nodes/second: " + std::to_string(nps));
+    return lines;
+}
+
 } // namespace koi::detail

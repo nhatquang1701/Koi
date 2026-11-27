@@ -176,6 +176,9 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] std::string format_nnue_info(
     std::string_view display_path, const NnueNetwork& network);
 [[nodiscard]] std::string format_options_summary(const LiveOptionsSnapshot& snapshot);
+[[nodiscard]] std::vector<std::string> format_perft_divide_lines(
+    const std::vector<std::pair<Move, std::uint64_t>>& counts,
+    std::uint64_t total_nodes, std::int64_t elapsed_ms);
 [[nodiscard]] std::string format_interactive_help();
 [[nodiscard]] std::string format_position_debug_json(
     std::uint64_t generation, std::string_view command_text,

@@ -133,7 +133,7 @@ C++ unit / integration executables under `tests/unit/` and `tests/integration/`:
 
 - Rules and state: `koi_core_tests`, `koi_rules_tests`, `native_rule_state_tests`,
   `perft_tests`, `koi_shadow_diff_tests` (opt-in via `KOI_BUILD_SHADOW_DIFF`).
-- Evaluation: `evaluation_boundary_tests`, `evaluation_architecture_tests`,
+- Evaluation: `classical_evaluator_tests`, `evaluation_architecture_tests`,
   `nnue_boundary_tests`, `evaluation_features_tests`.
 - Search: `koi_search_tests` (four CTest shards), `search_ordering_tests`,
   `search_architecture_tests`, `search_policy_tests`, `search_runtime_tests`,
@@ -146,8 +146,8 @@ C++ unit / integration executables under `tests/unit/` and `tests/integration/`:
   (variant parsing, executable names, automatic selection, and the override
   rules), `koi_module_tests`,
   `syzygy_tablebase_tests`, `opening_book_tests`, `cli_support_tests`, `uci_controller_tests`
-  (including legal MultiPV/WDL, searchmoves, and lifecycle cases),
-  `koi_replay_tests`.
+  (including legal MultiPV/WDL, searchmoves, `detail/uci_support`, and lifecycle cases),
+  `koi_replay_tests`, `koi_nnue_fixture_tests`.
 
 PowerShell process tests (`tests/integration/**/*.ps1`), driven through
 `pwsh` with the built engine path:
@@ -183,10 +183,10 @@ PowerShell process tests (`tests/integration/**/*.ps1`), driven through
   with no late bestmove, a malformed EvalFile is rejected once, and each
   replacement search answers legally),
   `koi_fen_fuzz_process`, `koi_move_fuzz_process`, `koi_option_fuzz_process`,
-  `koi_go_fuzz_process`, `koi_command_fuzz_process` (seeded randomized
-  adversarial FEN/move-list/setoption/go-state/raw-command inputs,
-  150/150/100/100/150 cases; fixture-driven, no third-party Python runtime
-  dependency),
+  `koi_go_fuzz_process`, `koi_command_fuzz_process`, `koi_protocol_mode_fuzz_process`
+  (seeded randomized adversarial FEN/move-list/setoption/go-state/raw-command/protocol-dialect
+  inputs, 150/150/100/100/150/100 cases; fixture-driven, no third-party Python
+  runtime dependency),
   `koi_engine_perft_responsiveness`,
   `koi_engine_variant_process` (three engine binaries,
   automatic selection, and the `KOI_CPU_VARIANT` overrides),
@@ -206,27 +206,30 @@ exactly-one-legal-bestmove for completed searches, bounded oversized-line
 rejection, and `isready` during an infinite search. It takes a few seconds, so it
 runs in every CI leg.
 
-Python tooling tests (`tests/python/**/*.py`), run as `python -m unittest` with
-the repository root as the working directory:
+Python tooling tests (`tests/python/**/*.py`), run as `python -m unittest` (or
+with `PYTHONPATH=.` on Python 3.10) from the repository root:
 
 - Measurement: `elo_oracle_python`, `elo_estimate_python`, `stockfish_match_python`,
-  `elo_openings_python`, `spsa_search_python`, `measurement_phase_python`, `measurement_forensics_python`.
-- Release evidence: `release_candidate_games_python` validates recorded game
+  `elo_openings_python`, `spsa_search_python`, `uci_benchmark_python`,
+  `measurement_phase_python`, `measurement_forensics_python`,
+  `koi_chess_python`, `koi_chess_pgn_python`, `koi_chess_engine_python`.
+- Release evidence & books: `release_candidate_games_python` validates recorded game
   artifacts, `release_strength_openings_python` checks the fixed opening sample,
-  and `strength_bound_python` checks the paired strength decision and provenance.
-- Evaluation/NNUE: `tune_eval_python`, `nnue_training_python`, `nnue_wrapper_python`,
-  `nnue_info_python`,
+  `strength_bound_python` checks the paired strength decision and provenance, and
+  `build_verified_book_python` verifies the deterministic CC0 Polyglot book builder.
+- Evaluation/NNUE: `nnue_training_python` (NNUE export/training round trips),
+  `nnue_wrapper_python`, `nnue_info_python`,
   `strength_report_python`, `koi_dataset_python` (koi-dataset-v1 and v2 encoders
   with four-group records), `gen_training_data_python`,
   `koi_trainer_python` (cross-language v4 and v5 parity against the boundary
-  executable),
-  `nnue_training_python` (NNUE export/training round trips), and
-  `bullet_data_python` (bulletformat conversion, exporter weight layouts for v4
-  and v5, and wrapper line parsing).
+  executable), and `bullet_data_python` / `bullet_conversion_python`
+  (bulletformat conversion, exporter weight layouts for v4/v5, and wrapper line parsing).
 - Runtime / CLI: `cli_subcommands_python` (`tests/python/runtime/cli_subcommands_test.py`)
   exercises one-shot CLI flags and subcommands (`--version`, `--help`,
-  `--engine-json`, `compiler`, zero-network `perft <depth> [fen]`, `eval [fen]`,
-  `bench`, and invalid-argument error exit codes).
+  `--engine-json`, `compiler`, `nnue`, `options`, `speedtest`, `-c`/`--cmd`,
+  `d`/`--display`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `eval`,
+  `perft <depth> [pos]`, `bench`, `--hce`/`--nnue`/`--book`/`--syzygy`/`--protocol`,
+  and invalid-argument exit codes across `koi-engine` and companion tools).
 ## Labels and scheduling
 
 Every test carries CTest labels; combine them with `-L`/`-LE`, for example
@@ -241,7 +244,7 @@ Every test carries CTest labels; combine them with `-L`/`-LE`, for example
 - `reliability` — adversarial protocol/robustness regression tests
   (`koi_protocol_fuzz_process`, the `koi_protocol_soak_process` resource churn
   test, `koi_protocol_option_churn_process`,
-  `koi_protocol_broken_pipe_process`, the five randomized
+  `koi_protocol_broken_pipe_process`, the six randomized
   `koi_*_fuzz_process` tests, and the Linux-only
   `koi_protocol_memory_limit_process` OS-limit probe); run with
   `ctest -L reliability`. CI executes this label on Linux and macOS, runs the
@@ -453,11 +456,11 @@ tools/build/launch_gate_macos.sh \
 ```
 
 The wrapper writes `gate.out.log`, `gate.err.log`, `gate.pid`, and (when the
-gate exits) `gate-status.txt` into the gate directory. An arm64 gate measures
-the scalar NNUE path; the AVX2 kernels only exist on x86-64, so arm64 and
-x86-64 NPS numbers are never compared. Treat the Mac as the fast pre-screen and
-keep a Windows x86-64 gate for release claims that touch hot paths. Record the
-first `-Runs 2` run as that machine's noise floor.
+gate exits) `gate-status.txt` into the gate directory. An arm64 gate exercises
+ARM NEON NNUE inference whereas AVX2/AVX-512 kernels run on x86-64, so arm64
+and x86-64 NPS numbers are never compared. Treat the Mac as the fast pre-screen
+and keep a Windows x86-64 gate for release claims that touch hot paths. Record
+the first `-Runs 2` run as that machine's noise floor.
 
 ### Elo A/B matches on macOS
 
@@ -495,7 +498,8 @@ evidence stays under the ignored `artifacts/` tree and is not published.
 ### Verified on a Mac mini M4 (macOS 27, AppleClang 21)
 
 The full local flow was exercised on an Apple Silicon Mac mini M4 (10 cores,
-16 GiB): Release build (145/145 targets), `ctest -j 8` = 100% of 67,
+16 GiB): Release build (145/145 targets), `ctest -j 8` = 100% of 67 historical
+cases (current tree registers 83 CTest cases on macOS arm64),
 `run_tests.ps1` heavy (5/5), process (9/9, serial), and Python (24/24) groups
 all green with `ctest-junit.xml` and `LastTest.log` written under
 `artifacts/verification/test-suite-hardening/`. The first `-Runs 2` gate

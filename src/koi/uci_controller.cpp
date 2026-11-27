@@ -2003,13 +2003,8 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         const bool book_auto = !own_book_explicit_ && book_is_available();
         if (book_auto && !book_auto_reported_) {
             book_auto_reported_ = true;
-            // UciController is the single protocol writer; every output write
-            // goes through output_mutex_, including this lazy detection line.
-            std::lock_guard lock(output_mutex_);
-            if (protocol_mode_ != ProtocolMode::xboard) {
-                output_ << "info string book detected: " << resolved_book_path().string()
-                        << " (OwnBook not set, using it)\n" << std::flush;
-            }
+            write_uci_info_string("book detected: " + resolved_book_path().string() +
+                                  " (OwnBook not set, using it)");
         }
         book_choice = opening_book_.choose(root, ply, own_book_ || book_auto, book_depth_,
                                            random_seed_, book_random_, book_safety_,
@@ -2504,7 +2499,8 @@ void UciController::write_perft_results(GameState root, const int depth,
         1, std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now() - started)
                .count());
-    const std::uint64_t nps = (total * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
+    const std::vector<std::string> divide_lines =
+        detail::format_perft_divide_lines(counts, total, elapsed_ms);
     debug_event("perft depth " + std::to_string(depth) + " nodes " + std::to_string(total));
     std::lock_guard lock(output_mutex_);
     if (stop_token.stop_requested() || generation != generation_ ||
@@ -2512,13 +2508,9 @@ void UciController::write_perft_results(GameState root, const int depth,
         return;
     }
     if (protocol_mode_ != ProtocolMode::xboard) {
-        for (const auto& [move, nodes] : counts) {
-            output_ << "info string " << move.uci() << ": " << nodes << '\n';
+        for (const std::string& line : divide_lines) {
+            write_uci_info_string_locked(line);
         }
-        output_ << "info string Nodes searched: " << total << '\n'
-                << "info string Time (ms): " << elapsed_ms << " | Nodes/second: " << nps
-                << '\n'
-                << std::flush;
     }
     state_ = ControllerState::Idle;
 }

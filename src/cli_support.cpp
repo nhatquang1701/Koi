@@ -922,6 +922,8 @@ std::optional<int> run_zero_network_cli_command(
         const std::vector<Move> legal_moves = root.legal_moves();
         const auto started = std::chrono::steady_clock::now();
         std::uint64_t total = 0;
+        std::vector<std::pair<Move, std::uint64_t>> counts;
+        counts.reserve(legal_moves.size());
         for (const Move& move : legal_moves) {
             GameState child = root;
             if (!child.make_move(move)) {
@@ -929,17 +931,17 @@ std::optional<int> run_zero_network_cli_command(
             }
             const std::uint64_t nodes = perft(child, *options.perft_depth - 1);
             total += nodes;
-            std::cout << "info string " << move.uci() << ": " << nodes << '\n';
+            counts.emplace_back(move, nodes);
         }
         const auto elapsed_ms = std::max<std::int64_t>(
             1, std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::steady_clock::now() - started)
                    .count());
-        const std::uint64_t nps = (total * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
-        std::cout << "info string Nodes searched: " << total << '\n'
-                  << "info string Time (ms): " << elapsed_ms << " | Nodes/second: " << nps
-                  << '\n'
-                  << std::flush;
+        for (const std::string& line :
+             detail::format_perft_divide_lines(counts, total, elapsed_ms)) {
+            std::cout << "info string " << line << '\n';
+        }
+        std::cout << std::flush;
         return 0;
     }
     return std::nullopt;
