@@ -318,6 +318,25 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Evaluator      : NNUE", nnue_eval.stdout)
         self.assertIn("Network SHA256 :", nnue_eval.stdout)
 
+        nnue_info = self._run(["nnue", str(nnue_path)], disable_nnue=True)
+        self.assertEqual(nnue_info.returncode, 0, nnue_info.stderr)
+        self.assertEqual(nnue_info.stderr, "")
+        for expected_field in (
+            "Format version : v",
+            "Feature set    :",
+            "Architecture   :",
+            "Payload SHA256 :",
+            "Status         : valid (checksum verified)",
+        ):
+            self.assertIn(expected_field, nnue_info.stdout)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            corrupt = pathlib.Path(tmp_dir) / "corrupt.nnue"
+            corrupt.write_bytes(b"not-a-net")
+            bad_nnue_info = self._run(["nnue", str(corrupt)], disable_nnue=True)
+            self.assertEqual(bad_nnue_info.returncode, 2, bad_nnue_info.stdout)
+            self.assertIn("invalid NNUE network", bad_nnue_info.stderr)
+
         conflict = self._run(["--hce", "--nnue", str(nnue_path), "eval"], disable_nnue=True)
         self.assertEqual(conflict.returncode, 2)
         self.assertIn("cannot be combined", conflict.stderr)

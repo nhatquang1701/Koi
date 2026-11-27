@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr std::array<const char*, 26> kCliEnvVars = {
+constexpr std::array<const char*, 28> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_EVALUATOR",
     "KOI_NNUE_PATH",
@@ -24,6 +24,8 @@ constexpr std::array<const char*, 26> kCliEnvVars = {
     "KOI_CLI_FLIP",
     "KOI_CLI_BOOK",
     "KOI_CLI_TB",
+    "KOI_CLI_NNUE_INFO",
+    "KOI_CLI_NNUE_INFO_PATH",
     "KOI_CLI_BOOK_PATH",
     "KOI_CLI_SYZYGY_PATH",
     "KOI_CLI_SEE_MOVE",
@@ -183,7 +185,7 @@ void test_inline_cmd_parsing_and_env_roundtrip() {
                            "missing or empty --cmd error must explain why it failed");
     }
 
-    for (const std::string_view subcommand : {"bench", "speedtest", "eval", "compiler"}) {
+    for (const std::string_view subcommand : {"bench", "speedtest", "nnue", "eval", "compiler"}) {
         env.clear_all();
         ScopedStreamCapture err(std::cerr);
         koi::cli::CliOptions conflict_options;
@@ -234,6 +236,22 @@ void test_evaluator_and_asset_flags() {
                            asset_reexec.book_path == "/tmp/book.bin" &&
                            asset_reexec.syzygy_path == "/tmp/tb",
                        "asset options and tb flag must roundtrip across env");
+
+    env.clear_all();
+    koi::cli::CliOptions nnue_default;
+    koi::test::require(!invoke_parse({"nnue"}, nnue_default).has_value() &&
+                           nnue_default.nnue_info && !nnue_default.nnue_info_path.has_value(),
+                       "nnue without path must enable nnue_info discovery");
+    env.clear_all();
+    koi::cli::CliOptions nnue_explicit;
+    koi::test::require(!invoke_parse({"nnue", "/tmp/model.nnue"}, nnue_explicit).has_value() &&
+                           nnue_explicit.nnue_info &&
+                           nnue_explicit.nnue_info_path == "/tmp/model.nnue",
+                       "nnue <path> must store explicit target path");
+    koi::cli::CliOptions nnue_reexec;
+    koi::test::require(!invoke_parse({}, nnue_reexec).has_value() && nnue_reexec.nnue_info &&
+                           nnue_reexec.nnue_info_path == "/tmp/model.nnue",
+                       "KOI_CLI_NNUE_INFO* must roundtrip across empty argv");
 
     for (const std::string_view missing_flag : {"--nnue", "--book", "--syzygy="}) {
         env.clear_all();

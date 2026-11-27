@@ -17,6 +17,7 @@
 #include "koi/executable_path.hpp"
 #include "koi/game_state.hpp"
 #include "koi/move.hpp"
+#include "koi/nnue.hpp"
 #include "koi/opening_book.hpp"
 #include "koi/perft.hpp"
 #include "koi/search_types.hpp"
@@ -99,6 +100,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n"
               << "  speedtest, --speedtest [t [hash [secs]]]  Run timed multi-position NPS throughput benchmark (defaults: 1 128 3)\n"
               << "  compiler, --compiler                     Print compiler, C++26 standard, and dispatched ISA\n"
+              << "  nnue [path]                              Inspect NNUE container metadata and verify payload SHA-256\n"
               << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
               << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n"
               << "  d, --display [fen]                       Display ASCII board, FEN, Zobrist key, and move count\n"
@@ -240,6 +242,15 @@ std::optional<int> parse_cli_options(
         if (arg == "compiler" || arg == "--compiler") {
             out.compiler = true;
             set_environment_value("KOI_CLI_COMPILER", "1");
+            continue;
+        }
+        if (arg == "nnue") {
+            out.nnue_info = true;
+            set_environment_value("KOI_CLI_NNUE_INFO", "1");
+            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
+                out.nnue_info_path = argv[++index];
+                set_environment_value("KOI_CLI_NNUE_INFO_PATH", *out.nnue_info_path);
+            }
             continue;
         }
         if (arg == "d" || arg == "--display") {
@@ -524,7 +535,7 @@ std::optional<int> parse_cli_options(
                       << "' (supported: --version, --help, --engine-json, --protocol <name>, "
                          "-c/--cmd <command>, --hce, --nnue <path>, --book <path>, "
                          "--syzygy <path>, bench [depth [hash [threads]]], "
-                         "speedtest [threads [hash [seconds]]], compiler, eval [fen], "
+                         "speedtest [threads [hash [seconds]]], compiler, nnue [path], eval [fen], "
                          "perft <depth> [fen], d [fen], key [fen], moves [fen], flip [fen], "
                          "book [fen], tb [fen], see <move> [fen]).\n";
             return 2;
@@ -610,6 +621,18 @@ std::optional<int> parse_cli_options(
         if (const char* env_tb = std::getenv("KOI_CLI_TB");
             env_tb != nullptr && std::string_view(env_tb) == "1") {
             out.tb = true;
+        }
+    }
+    if (!out.nnue_info) {
+        if (const char* env_nnue_info = std::getenv("KOI_CLI_NNUE_INFO");
+            env_nnue_info != nullptr && std::string_view(env_nnue_info) == "1") {
+            out.nnue_info = true;
+        }
+    }
+    if (!out.nnue_info_path.has_value()) {
+        if (const char* env_nnue_info_path = std::getenv("KOI_CLI_NNUE_INFO_PATH");
+            env_nnue_info_path != nullptr && *env_nnue_info_path != '\0') {
+            out.nnue_info_path = env_nnue_info_path;
         }
     }
     if (!out.book_path.has_value()) {
@@ -714,9 +737,9 @@ std::optional<int> parse_cli_options(
         }
     }
     if (!out.commands.empty() &&
-        (out.bench_depth.has_value() || out.speedtest || out.compiler || out.display || out.key ||
-         out.moves || out.flip || out.book || out.tb || out.see_move.has_value() || out.eval ||
-         out.perft_depth.has_value())) {
+        (out.bench_depth.has_value() || out.speedtest || out.compiler || out.nnue_info ||
+         out.display || out.key || out.moves || out.flip || out.book || out.tb ||
+         out.see_move.has_value() || out.eval || out.perft_depth.has_value())) {
         std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
         return 2;
     }
@@ -728,6 +751,45 @@ std::optional<int> run_zero_network_cli_command(
     std::string_view commit) {
     if (options.compiler) {
         std::cout << detail::format_compiler_info(version, commit) << std::flush;
+        return 0;
+    }
+    if (options.nnue_info) {
+        const std::filesystem::path engine_directory = executable_directory(argc, argv);
+        std::filesystem::path target_path;
+        if (options.nnue_info_path.has_value()) {
+            target_path = std::filesystem::path(*options.nnue_info_path);
+        } else if (const char* env_path = std::getenv("KOI_NNUE_PATH");
+                   env_path != nullptr && *env_path != '\0') {
+            target_path = std::filesystem::path(env_path);
+        } else if (const auto discovered = discover_nnue_network(engine_directory);
+                   discovered.has_value()) {
+            target_path = *discovered;
+        } else {
+            std::error_code working_error;
+            const std::filesystem::path working_directory =
+                std::filesystem::current_path(working_error);
+            if (!working_error && working_directory != engine_directory) {
+                if (const auto cwd_discovered = discover_nnue_network(working_directory);
+                    cwd_discovered.has_value()) {
+                    target_path = *cwd_discovered;
+                }
+            }
+        }
+        if (target_path.empty()) {
+            std::cerr << "koi-engine: no NNUE network found to inspect "
+                         "(pass a path or set KOI_NNUE_PATH).\n";
+            return 2;
+        }
+        const auto loaded = NnueLoader::load_file(target_path);
+        if (!loaded.has_value()) {
+            std::cerr << "koi-engine: invalid NNUE network '" << target_path.string() << "' ("
+                      << loaded.error().message << ").\n";
+            return 2;
+        }
+        const std::string display_name = target_path.filename().empty()
+            ? target_path.string()
+            : target_path.filename().string();
+        std::cout << detail::format_nnue_info(display_name, *loaded) << std::flush;
         return 0;
     }
     if (options.display || options.key || options.moves || options.flip) {

@@ -22,6 +22,7 @@ namespace koi {
 
 struct BookChoice;
 class Evaluator;
+struct NnueNetwork;
 class SyzygyTablebase;
 
 } // namespace koi
@@ -172,6 +173,8 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] std::optional<GameState> parse_cli_position_spec(
     std::string_view spec, std::string& error);
 [[nodiscard]] std::string format_compiler_info(std::string_view version, std::string_view commit);
+[[nodiscard]] std::string format_nnue_info(
+    std::string_view display_path, const NnueNetwork& network);
 [[nodiscard]] std::string format_options_summary(const LiveOptionsSnapshot& snapshot);
 [[nodiscard]] std::string format_interactive_help();
 [[nodiscard]] std::optional<std::pair<std::string, std::string>>

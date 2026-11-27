@@ -26,10 +26,12 @@ struct CliOptions {
     bool flip = false;
     bool book = false;
     bool tb = false;
+    bool nnue_info = false;
     bool eval = false;
     std::optional<std::string> see_move;
     std::optional<std::string> book_path;
     std::optional<std::string> syzygy_path;
+    std::optional<std::string> nnue_info_path;
     std::optional<std::string> inspect_fen;
     std::optional<std::string> eval_fen;
     std::optional<int> perft_depth;

@@ -774,6 +774,58 @@ std::string format_options_summary(const LiveOptionsSnapshot& snapshot) {
     return buffer.str();
 }
 
+std::string format_nnue_info(const std::string_view display_path, const NnueNetwork& network) {
+    const NnueManifest& manifest = network.manifest;
+    std::ostringstream buffer;
+    buffer << "NNUE file      : " << display_path << '\n'
+           << "Format version : v" << manifest.version << '\n'
+           << "Feature set    : " << manifest.feature_set << '\n'
+           << "Architecture   : " << manifest.layer_sizes[0] << " -> "
+           << manifest.layer_sizes[1];
+    if (manifest.version == kKoiNnueHalfkaHmV9FormatVersion ||
+        manifest.version == kKoiNnueHalfkaKingBucketV1FormatVersion ||
+        (manifest.version == kKoiNnueHalfkaThreatV8FormatVersion &&
+         manifest.layer_sizes[0] == kKoiNnueHalfkaKingBucketV1FeatureCount)) {
+        buffer << " x 2 -> " << manifest.layer_sizes[2];
+    } else if (manifest.version == kKoiNnueHalfkaThreatV5FormatVersion ||
+               manifest.version == kKoiNnueHalfkaThreatV6FormatVersion ||
+               manifest.version == kKoiNnueHalfkaThreatV8FormatVersion) {
+        buffer << " x 2 -> " << manifest.layer_sizes[2] << " -> " << manifest.layer_sizes[3];
+    } else {
+        buffer << " -> " << manifest.layer_sizes[2] << " -> " << manifest.layer_sizes[3];
+    }
+    buffer << '\n' << "Quantization   : " << manifest.quantization;
+    if (manifest.version == kKoiNnueHalfkaHmV9FormatVersion) {
+        buffer << " (QA=" << static_cast<unsigned>(network.qa)
+               << ", QB=" << static_cast<unsigned>(network.qb)
+               << ", scale=" << network.eval_scale << ')';
+    } else if (network.hidden_shift != 0 || network.bottleneck_shift != 0 ||
+               network.output_shift != 0 || network.l1_shift != 0 ||
+               network.l1_diff_shift != 0) {
+        buffer << " (shifts:"
+               << " h=" << static_cast<unsigned>(network.hidden_shift)
+               << " b=" << static_cast<unsigned>(network.bottleneck_shift)
+               << " o=" << static_cast<unsigned>(network.output_shift);
+        if (network.l1_shift != 0 || network.l1_diff_shift != 0) {
+            buffer << " l1=" << static_cast<unsigned>(network.l1_shift)
+                   << " diff=" << static_cast<unsigned>(network.l1_diff_shift);
+        }
+        buffer << ')';
+    }
+    constexpr char kHexDigits[] = "0123456789abcdef";
+    std::string sha_hex;
+    sha_hex.reserve(manifest.network_sha256.size() * 2U);
+    for (const std::uint8_t byte : manifest.network_sha256) {
+        sha_hex.push_back(kHexDigits[(byte >> 4U) & 0x0fU]);
+        sha_hex.push_back(kHexDigits[byte & 0x0fU]);
+    }
+    buffer << '\n'
+           << "Payload bytes  : " << manifest.payload_size << '\n'
+           << "Payload SHA256 : " << sha_hex << '\n'
+           << "Status         : valid (checksum verified)\n";
+    return buffer.str();
+}
+
 std::string format_compiler_info(const std::string_view version, const std::string_view commit) {
     std::ostringstream buffer;
     buffer << "Koi " << version << " (" << commit << ")\n";

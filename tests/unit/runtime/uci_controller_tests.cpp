@@ -3341,6 +3341,23 @@ void test_uci_support_helpers_direct() {
                 opts_summary.find("SyzygyPath      : <none>") != std::string::npos,
             "format_options_summary must format live configuration clearly");
 
+    koi::NnueNetwork net_info_sample;
+    net_info_sample.manifest.version = 9;
+    net_info_sample.manifest.feature_set = "halfka-hm-v2";
+    net_info_sample.manifest.quantization = "int16/int8";
+    net_info_sample.manifest.layer_sizes = {7680, 256, 8, 1};
+    net_info_sample.manifest.payload_size = 1234;
+    net_info_sample.qa = 255;
+    net_info_sample.qb = 64;
+    net_info_sample.eval_scale = 400;
+    const std::string nnue_summary = format_nnue_info("demo.nnue", net_info_sample);
+    require(nnue_summary.find("NNUE file      : demo.nnue") != std::string::npos &&
+                nnue_summary.find("Format version : v9") != std::string::npos &&
+                nnue_summary.find("7680 -> 256 x 2 -> 8") != std::string::npos &&
+                nnue_summary.find("QA=255, QB=64, scale=400") != std::string::npos &&
+                nnue_summary.find("Status         : valid (checksum verified)") != std::string::npos,
+            "format_nnue_info must format container metadata clearly; got:\n" + nnue_summary);
+
     const std::string help_text = format_interactive_help();
     for (const char* cmd : {"bench", "speedtest", "options", "d", "fen", "key", "moves", "book",
                             "tb", "eval", "flip", "see", "perft", "wait", "compiler", "help"}) {
