@@ -165,16 +165,18 @@ From the configured build directory:
 
 ```powershell
 .\build\release\koi-perft.exe 4
-.\build\release\koi-bench.exe
+.\build\release\koi-perft.exe --divide 3 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 .\build\release\koi-bench.exe --threads 4 --speed 100 --timed
 .\build\release\koi-bench.exe --optional --profile-json .\artifacts\verification\optional-strength.json
 .\build\release\koi-bench.exe --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json .\artifacts\verification\steady-state.json
 .\build\release\koi-replay.exe startpos moves e2e4 e7e5 g1f3
 ```
 
-`koi-perft` counts legal nodes from the standard starting position at the given
-non-negative depth. `koi-bench` runs the 64-position fixed-depth tactical hard
-gate and writes only its deterministic benchmark report to stdout by default.
+`koi-perft` counts legal nodes from `startpos` (or an optional custom FEN) at
+the given non-negative depth (`--divide` prints per-move counts, elapsed time,
+and NPS; pass `--help` on `koi-perft`, `koi-replay`, or `koi-bench` for full
+usage). `koi-bench` runs the 64-position fixed-depth tactical hard gate and
+writes only its deterministic benchmark report to stdout by default.
 `--optional` instead selects the 128-position optional strength corpus and labels
 that suite in both its text and JSON-profile output. `--threads N` and `--speed
 1..100` are recorded in every report and use the same deterministic search
@@ -636,6 +638,40 @@ from the starting position (for example, `bestmove e2e4`).
 - A terminal position with no legal moves returns `bestmove 0000`.
 - `quit` and input EOF cancel and join the worker without late protocol output.
 
+### UCI Options Quick Reference
+
+Koi advertises 27 options during the `uci` handshake (plus two unadvertised `Debug` / `DebugFile` diagnostics options):
+
+| Option | Type | Default | Range / Values | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| `RandomSeed` | `spin` | `0` | `0..2147483647` | Seed for `BookRandom` Polyglot selection (`0` = deterministic) |
+| `Hash` | `spin` | `512` | `1..4096` MB | Transposition table size |
+| `Threads` | `spin` | `1` | `1..min(64, cores)` | Search threads (`1` = deterministic; `> 1` = Lazy SMP) |
+| `UCI_AnalyseMode` | `check` | `false` | `true` / `false` | Analysis mode (bypasses opening book and Syzygy root moves) |
+| `MultiPV` | `spin` | `1` | `1..16` | Number of principal variations to search and emit |
+| `Ponder` | `check` | `false` | `true` / `false` | Enable GUI `go ponder` / `ponderhit` workflow |
+| `OwnBook` | `check` | `false` | `true` / `false` | Use Polyglot opening book at the root |
+| `BookFile` | `string` | `book.bin` | Path | Polyglot `.bin` opening book path (auto-detected if present) |
+| `BookDepth` | `spin` | `16` | `0..40` | Maximum fullmove plies to play from book (`0` = unlimited) |
+| `BookRandom` | `check` | `false` | `true` / `false` | Weighted random book choice vs highest-weight move |
+| `BookSafety` | `check` | `true` | `true` / `false` | Reject book moves that hang material in a shallow tactical check |
+| `BookSafetyDepth` | `spin` | `2` | `0..3` | Tactical safety check horizon for `BookSafety` |
+| `Clear Hash` | `button` | — | — | Immediately zeroes the transposition table |
+| `UCI_ShowWDL` | `check` | `false` | `true` / `false` | Append `wdl W D L` permill probabilities to proven `info` lines |
+| `Move Overhead` | `spin` | `30` | `0..5000` ms | Per-move GUI/network latency reserve subtracted from clocks |
+| `Dynamic Overhead` | `check` | `false` | `true` / `false` | Learn additional network round-trip latency from clock deltas |
+| `Slow Mover` | `spin` | `100` | `10..1000` % | Time usage percentage multiplier for clocked searches |
+| `Contempt` | `spin` | `0` | `0..1000` cp | Dynamic contempt bonus scaled against symmetric draw scores |
+| `StrengthMode` | `check` | `false` | `true` / `false` | Accepted compatibility flag (neutral at full strength) |
+| `SyzygyPath` | `string` | `""` | Path list | Syzygy tablebase directory/path list (or auto-detected `syzygy/`) |
+| `SyzygyProbeDepth` | `spin` | `1` | `1..100` | Minimum depth for root Syzygy probes |
+| `SyzygyProbeLimit` | `spin` | `7` | `0..7` | Maximum piece count eligible for Syzygy probing |
+| `SyzygyInteriorDepth` | `spin` | `0` | `0..100` | Maximum remaining depth for interior WDL cutoffs (`0` = off) |
+| `Syzygy50MoveRule` | `check` | `true` | `true` / `false` | Respect 50-move draw clock in Syzygy probing |
+| `EvalFile` | `string` | `""` | Path | NNUE network path (`<autodiscovery>` marker when auto-loaded) |
+| `EvalMode` | `combo` | `nnue` | `nnue`, `hce` | Active evaluator backend (NNUE or clean tapered HCE) |
+| `Protocol` | `combo` | `uci` | `uci`, `usi`, `ucci`, `ucicyclone`, `xboard` | Wire protocol dialect (or `--protocol <name>` at launch) |
+
 ### Timing controls
 
 Koi separates search limits from time-allocation policy. Explicit `go depth`
@@ -674,17 +710,16 @@ search starts, so iteration evidence can pace the search but can never push it
 past the safe ceiling. `ponderhit` converts a still-running ponder search in
 place: the same worker keeps its accumulated work and switches to the original
 limit or clock budget with the ponder flag cleared. If no ponder search is
-running (for example a node-limited ponder already completed), Koi starts a
-bounded search of the current position instead of returning without a move, so
-every `go` is answered. `time_manager_tests` and
+running (for example a node-limited ponder already completed, or `ponderhit` is
+sent while idle), the command is ignored and no extra search starts. `time_manager_tests` and
 `koi_engine_time_safety_process` enforce these invariants.
 
 ### WDL and strength controls
 
-`UCI_ShowWDL` defaults to false. When enabled, scored alpha-beta `info` lines
-append a deterministic `wdl W D L` triplet. An alpha-beta selective iteration
-with no proven score direction reports depth, nodes, and PV but omits score and
-WDL. Koi v1.2.0 does not advertise `UCI_LimitStrength` or `UCI_Elo`:
+`UCI_ShowWDL` defaults to false. When enabled, proven alpha-beta `info` lines
+append a deterministic `wdl W D L` triplet. A selective iteration without a
+proven score direction still publishes its best available estimate `score`
+unmarked (so analysis GUIs never drop to 0 cp) while omitting `wdl`. Koi does not advertise `UCI_LimitStrength` or `UCI_Elo`:
 the previous node-cap mapping was not calibrated to an actual rating. A GUI
 that sends those legacy options receives normal full-strength play.
 Stockfish's separate Elo controls remain available to the measurement tools
@@ -902,8 +937,8 @@ the options at session start; the portable release defaults are `RandomSeed=0`,
 `BookRandom=false`, `BookSafety=true`, `BookSafetyDepth=2`,
 `UCI_ShowWDL=false`, `Move Overhead=30`, `Slow Mover=100`, `StrengthMode=false`,
 `SyzygyPath=""`, `SyzygyProbeDepth=1`, `SyzygyProbeLimit=7`,
-`Syzygy50MoveRule=true`, `SyzygyInteriorDepth=0`, and `EvalFile=""`
-(empty keeps the boot-time evaluator).
+`Syzygy50MoveRule=true`, `SyzygyInteriorDepth=0`, `EvalFile=""`
+(empty keeps the boot-time evaluator), `EvalMode=nnue`, and `Protocol=uci`.
 For the recommended En Croissant smoke scenario, use `Hash=512` and `Threads=4`,
 then keep the book and Syzygy paths explicitly configured if those
 assets are available.

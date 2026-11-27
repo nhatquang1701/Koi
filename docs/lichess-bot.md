@@ -64,8 +64,8 @@ bot-vs-bot matchmaking enabled (`KOI_BOT_MATCHMAKING=true` by default,
 
 `update` asks GitHub for `releases/latest`, compares the tag with the installed
 `~/koi-bot/engines/VERSION`, and does nothing when they match. When a newer
-release exists it downloads the macOS arm64 package, verifies the sidecar hash,
-swaps the binary and net, rewrites the config, and restarts the bot.
+release exists it downloads the macOS arm64 package, verifies the sidecar hash
+when present, swaps the binary and net, rewrites the config, and restarts the bot.
 
 `install-launchd` registers two agents:
 
@@ -145,7 +145,7 @@ the opening, which matters most in short games.
 - Optional assets stay optional: a book beside the executable and a conventional
   Syzygy directory (`syzygy/`, `syzygy345/`, `tablebases/`, `3-4-5/`) are
   auto-detected; `OwnBook`/`BookFile` and `SyzygyPath` only override that.
-  Release archives ship only the executables, `koi.nnue`, `book.bin`, `README.md`, and `LICENSE`.
+  Release archives ship only the executables, `koi.nnue`, `book.bin`, and `LICENSE`.
 - For analysis-style use (no clock, infinite search, MultiPV), a GUI is a better
   fit than a bot; see the [user guide](USER_GUIDE.md).
 - **Desktop status window.** While the bot is online, `koi-bot.sh start` opens a
