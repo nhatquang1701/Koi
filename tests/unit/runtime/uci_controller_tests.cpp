@@ -3500,18 +3500,16 @@ void test_uci_support_helpers_direct() {
                 bm_json.find("\"move\":\"e2e4\"") != std::string::npos,
             "move debug JSON helpers mismatch");
 
-    const std::optional<koi::Move> g1f3 = koi::Move::from_uci("g1f3");
-    require(g1f3.has_value(), "failed to parse g1f3 move");
     const std::vector<std::pair<koi::Move, std::uint64_t>> divide_counts{
         {*e2e4, 20},
-        {*g1f3, 20},
+        {*d2d4, 20},
     };
     const std::vector<std::string> divide_lines =
         format_perft_divide_lines(divide_counts, 400, 250);
     const std::vector<std::string> clamped_lines =
         format_perft_divide_lines(divide_counts, 40, 0);
     require(divide_lines.size() == 4 && divide_lines[0] == "e2e4: 20" &&
-                divide_lines[1] == "g1f3: 20" && divide_lines[2] == "Nodes searched: 400" &&
+                divide_lines[1] == "d2d4: 20" && divide_lines[2] == "Nodes searched: 400" &&
                 divide_lines[3] == "Time (ms): 250 | Nodes/second: 1600" &&
                 clamped_lines.size() == 4 &&
                 clamped_lines[3] == "Time (ms): 1 | Nodes/second: 40000",
