@@ -16,12 +16,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 - **Internal modularization & build hygiene:** Split pure protocol parsers, `go` limit & UCCI/USI argument translation, network overhead estimation, FEN flipping, and interactive/annotation formatters (`d`, `key`, `moves`, `book`, `tb`, `eval`, `flip`, `annotate`, `compiler`, `help`) out of `uci_controller.cpp` into protocol-literal-free `detail/uci_support.*`, split container serialization/SHA-256/discovery out of `nnue.cpp` into `detail/nnue_io.cpp` + `detail/nnue_manifest.hpp`, extracted stateless AVX-512/AVX2/NEON/scalar NNUE inference kernels into `detail/nnue_kernels.hpp`, deduplicated `CMakeLists.txt` test helpers, and eliminated MSVC `D9025` and vendored Fathom Clang deprecation warnings.
-- **Documentation & site modernization:** Added a dedicated [CLI & Interactive Reference](docs/CLI.md) page, upgraded MkDocs Material navigation/theme, extracted inline Mermaid CSS/JS into `docs/assets/`, added a complete 27-option UCI quick-reference table in `USER_GUIDE.md`, fixed stale `ponderhit`/WDL/`lichess-bot` facts, and synced `README.md`, `ENGINE_SPEC.md`, `ARCHITECTURE.md`, `NNUE_PIPELINE.md`, `tools/README.md` (documenting `tools/docs/`, `tools/engine/`, `annotate_pgn.py`, and `sample_release_openings.py`), and `tests/README.md`.
+- **Documentation & site modernization:** Added a dedicated [CLI & Interactive Reference](docs/CLI.md) page, upgraded MkDocs Material navigation/theme, extracted inline Mermaid CSS/JS into `docs/assets/`, added a complete 27-option UCI quick-reference table in `USER_GUIDE.md`, fixed stale `ponderhit`/WDL/`lichess-bot` facts, synced `README.md`, `ENGINE_SPEC.md`, `ARCHITECTURE.md`, `NNUE_PIPELINE.md`, `tools/README.md` (documenting `tools/docs/`, `tools/engine/`, `annotate_pgn.py`, and `sample_release_openings.py`), and `tests/README.md`, and extended `command_fuzz.py` for HCE `eval` table grammar.
 - **Lichess bot (`tools/bot/koi-bot.sh`):** Enabled rated bot-vs-bot matchmaking by default (`KOI_BOT_MATCHMAKING`) and added `reconfigure`.
 
 ### Removed
 - Retired legacy NNUE v2/Lc0 trainers (`train_nnue_sf.py`, `gen_lc0_labels.py`, `lc0_jsonl_to_corpus.py`, `select_lc0_positions.py`), superseded Polyglot book builders (`build_book.py`, `build_database_book.py`, `build_polyglot_subset.py`), legacy `performance_gate.ps1`, and the obsolete `removed-nnue-studio.md` tombstone.
-- Removed dead search constants (`kChildFutilityEvalAboveAlphaMargin`), unreachable LMR history branches, and unused standard headers.
+- Removed dead search constants (`kChildFutilityEvalAboveAlphaMargin`), unreachable LMR history branches, and unused standard library headers across public and internal C++ units (`<atomic>`, `<mutex>`, `<functional>`, `<thread>`, `<condition_variable>`, etc.).
 
 ## [1.2.0] - 2026-11-21
 
