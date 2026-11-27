@@ -738,6 +738,7 @@ endfunction()
 # exist there.
 add_executable(koi_engine
     src/main.cpp
+    src/cli_support.cpp
     src/koi/cpu_variant_selector.cpp
 )
 
@@ -749,6 +750,7 @@ koi_configure_shipping_metadata(koi_engine "Koi UCI Chess Engine" "koi-engine.ex
 if(KOI_TARGET_X86_64)
     add_executable(koi_engine_avx2
         src/main.cpp
+        src/cli_support.cpp
     )
 
     target_link_libraries(koi_engine_avx2 PRIVATE koi_core)
@@ -763,6 +765,7 @@ if(KOI_TARGET_X86_64)
 
     add_executable(koi_engine_avx512
         src/main.cpp
+        src/cli_support.cpp
     )
 
     target_link_libraries(koi_engine_avx512 PRIVATE koi_core_avx512)

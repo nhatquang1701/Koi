@@ -1,18 +1,12 @@
-#include <algorithm>
-#include <cctype>
-#include <charconv>
-#include <chrono>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
-#include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
-#include <vector>
 
 #if defined(__linux__)
 #include <pthread.h>
@@ -22,45 +16,15 @@
 #include <csignal>
 #endif
 
+#include "cli_support.hpp"
 #include "koi/classical_evaluator.hpp"
 #include "koi/cpu_features.hpp"
 #include "koi/cpu_variant.hpp"
-#include "koi/detail/static_exchange.hpp"
-#include "koi/detail/uci_support.hpp"
-#include "koi/executable_path.hpp"
-#include "koi/game_state.hpp"
 #include "koi/nnue.hpp"
-#include "koi/opening_book.hpp"
-#include "koi/perft.hpp"
 #include "koi/search_service.hpp"
-#include "koi/syzygy_tablebase.hpp"
 #include "koi/uci_controller.hpp"
 
 namespace {
-
-// Development/measurement override: select the clean HCE without requiring a
-// network at boot.  Release/default behavior is unchanged (NNUE required).
-[[nodiscard]] bool hce_requested_from_environment() noexcept {
-    const char* value = std::getenv("KOI_EVALUATOR");
-    if (value == nullptr) {
-        return false;
-    }
-    std::string_view requested(value);
-    const auto equals_ignore_case = [requested](std::string_view candidate) {
-        if (requested.size() != candidate.size()) {
-            return false;
-        }
-        for (std::size_t index = 0; index < requested.size(); ++index) {
-            const char lhs = static_cast<char>(std::tolower(static_cast<unsigned char>(requested[index])));
-            const char rhs = static_cast<char>(std::tolower(static_cast<unsigned char>(candidate[index])));
-            if (lhs != rhs) {
-                return false;
-            }
-        }
-        return true;
-    };
-    return equals_ignore_case("hce") || equals_ignore_case("classical");
-}
 
 #if defined(__linux__) && defined(__GLIBC__)
 // The Windows build links with a 16 MiB stack reserve that worker threads
@@ -83,143 +47,6 @@ void configure_worker_stack() noexcept {
     pthread_attr_destroy(&attributes);
 }
 #endif
-
-std::filesystem::path resolved_executable_path(int argc, char* argv[]) {
-    const std::filesystem::path module_path = koi::current_executable_path();
-    if (!module_path.empty()) {
-        return module_path;
-    }
-
-    std::error_code path_error;
-    if (argc > 0) {
-        const std::filesystem::path path = std::filesystem::absolute(argv[0], path_error);
-        if (!path_error) {
-            return path;
-        }
-    }
-    return {};
-}
-
-std::filesystem::path executable_directory(int argc, char* argv[]) {
-    return resolved_executable_path(argc, argv).parent_path();
-}
-
-std::string json_escape(std::string_view text) {
-    std::string escaped;
-    escaped.reserve(text.size() + 8);
-    for (const unsigned char ch : text) {
-        switch (ch) {
-        case '\\':
-            escaped += "\\\\";
-            break;
-        case '"':
-            escaped += "\\\"";
-            break;
-        case '\b':
-            escaped += "\\b";
-            break;
-        case '\f':
-            escaped += "\\f";
-            break;
-        case '\n':
-            escaped += "\\n";
-            break;
-        case '\r':
-            escaped += "\\r";
-            break;
-        case '\t':
-            escaped += "\\t";
-            break;
-        default:
-            if (ch < 0x20U) {
-                constexpr char kHex[] = "0123456789abcdef";
-                escaped += "\\u00";
-                escaped.push_back(kHex[(ch >> 4U) & 0x0fU]);
-                escaped.push_back(kHex[ch & 0x0fU]);
-            } else {
-                escaped.push_back(static_cast<char>(ch));
-            }
-            break;
-        }
-    }
-    return escaped;
-}
-
-void write_engine_json(int argc, char* argv[]) {
-    const std::string exe_path = resolved_executable_path(argc, argv).string();
-    std::cout << "{\n"
-              << "  \"type\": \"local\",\n"
-              << "  \"name\": \"Koi\",\n"
-              << "  \"version\": \"" << json_escape(KOI_ENGINE_BUILD_VERSION) << "\",\n"
-              << "  \"path\": \"" << json_escape(exe_path) << "\",\n"
-              << "  \"loaded\": true,\n"
-              << "  \"settings\": [\n"
-              << "    { \"name\": \"Threads\", \"value\": 1 },\n"
-              << "    { \"name\": \"Hash\", \"value\": 512 }\n"
-              << "  ]\n"
-              << "}\n";
-}
-
-void write_help() {
-    std::cout << "Koi " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT
-              << ") - C++26 UCI chess engine\n\n"
-              << "Usage: koi-engine [options] [command]\n\n"
-              << "Options & commands:\n"
-              << "  -v, --version                            Print engine version and git commit\n"
-              << "  -h, --help                               Show this help message\n"
-              << "  --engine-json                            Print En Croissant / Pawn Appetit JSON profile\n"
-              << "  --protocol <name>                        Start in protocol mode (uci, usi, ucci, ucicyclone, xboard)\n"
-              << "  --hce                                    Use built-in classical evaluation without a network\n"
-              << "  --nnue <path>                            Load NNUE weights from path (overrides KOI_EVALUATOR)\n"
-              << "  --book <path>                            Specify Polyglot book path for one-shot book\n"
-              << "  --syzygy <path>                          Specify Syzygy directory for one-shot tb\n"
-              << "  bench, --bench [depth [hash [threads]]]  Run OpenBench-compatible benchmark (defaults: 10 16 1)\n"
-              << "  compiler, --compiler                     Print compiler, C++26 standard, and dispatched ISA\n"
-              << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
-              << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n"
-              << "  d, --display [fen]                       Display ASCII board, FEN, Zobrist key, and move count\n"
-              << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
-              << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n"
-              << "  flip [fen]                               Toggle side to move if legal and print updated FEN\n"
-              << "  book [fen]                               Probe Polyglot opening book entries for position\n"
-              << "  tb [fen]                                 Probe Syzygy tablebases for root WDL and best moves\n"
-              << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
-              << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait, help\n";
-}
-
-std::optional<koi::GameState> resolve_cli_position(const std::optional<std::string>& fen) {
-    if (!fen.has_value()) {
-        return koi::GameState::startpos();
-    }
-    const auto parsed = koi::GameState::from_fen(*fen);
-    if (!parsed.has_value()) {
-        std::cerr << "koi-engine: invalid FEN '" << *fen << "'\n";
-        return std::nullopt;
-    }
-    return *parsed;
-}
-
-void set_environment_value(const char* name, std::string_view value) noexcept {
-    std::string value_copy(value);
-#if defined(_WIN32)
-    (void)::_putenv_s(name, value_copy.c_str());
-#else
-    (void)::setenv(name, value_copy.c_str(), 1);
-#endif
-}
-
-bool parse_bounded_uint(std::string_view token, std::size_t minimum, std::size_t maximum,
-                        std::size_t& value_out) noexcept {
-    std::size_t parsed = 0;
-    const auto [end, error] =
-        std::from_chars(token.data(), token.data() + token.size(), parsed);
-    if (error != std::errc{} || end != token.data() + token.size() ||
-        parsed < minimum || parsed > maximum) {
-        return false;
-    }
-    value_out = parsed;
-    return true;
-}
 
 } // namespace
 
@@ -247,419 +74,16 @@ int main(int argc, char* argv[]) {
 #endif
     // Parse CLI options before `run_cpu_selector()`: selector re-exec strips
     // argv, so metadata queries (`--version`, `--help`, `--engine-json`) answer
-    // for the entry executable directly while `--protocol` and `bench` propagate
-    // via KOI_PROTOCOL / KOI_BENCH_DEPTH.
-    std::optional<std::string_view> initial_protocol;
-    std::optional<int> bench_depth;
-    std::size_t bench_hash_mb = koi::UciController::kDefaultBenchHashMb;
-    std::size_t bench_threads = koi::UciController::kDefaultBenchThreads;
-    bool cli_compiler = false;
-    bool cli_hce = false;
-    bool cli_nnue = false;
-    bool cli_eval = false;
-    bool cli_display = false;
-    bool cli_key = false;
-    bool cli_moves = false;
-    bool cli_flip = false;
-    bool cli_book = false;
-    bool cli_tb = false;
-    std::optional<std::string> cli_see_move;
-    std::optional<std::string> cli_book_path;
-    std::optional<std::string> cli_syzygy_path;
-    std::optional<std::string> cli_eval_fen;
-    std::optional<int> cli_perft_depth;
-    std::optional<std::string> cli_perft_fen;
-    std::optional<std::string> cli_inspect_fen;
-    constexpr std::size_t kMaximumBenchHashMb = 4'096;
-    const std::size_t max_bench_threads = koi::maximum_search_threads();
-    const auto collect_trailing_fen = [argc, argv](int& idx,
-                                                   std::optional<std::string>& fen_out) {
-        std::string collected;
-        while (idx + 1 < argc) {
-            const std::string_view next(argv[idx + 1]);
-            // Single `-` is the empty en-passant square in an unquoted FEN, whereas
-            // longer leading-dash tokens (`-v`, `--help`, `--protocol`) remain flags.
-            if (next != "-" && next.starts_with('-')) {
-                break;
-            }
-            if (!collected.empty()) {
-                collected.push_back(' ');
-            }
-            collected.append(argv[++idx]);
-        }
-        if (!collected.empty()) {
-            fen_out = std::move(collected);
-        }
-    };
-    for (int index = 1; index < argc; ++index) {
-        const std::string_view arg(argv[index]);
-        if (arg == "--version" || arg == "-v") {
-            std::cout << "Koi " << KOI_ENGINE_BUILD_VERSION << " (" << KOI_ENGINE_BUILD_COMMIT
-                      << ")\n";
-            return 0;
-        }
-        if (arg == "--help" || arg == "-h") {
-            write_help();
-            return 0;
-        }
-        if (arg == "--engine-json") {
-            write_engine_json(argc, argv);
-            return 0;
-        }
-        if (arg == "compiler" || arg == "--compiler") {
-            cli_compiler = true;
-            set_environment_value("KOI_CLI_COMPILER", "1");
-            continue;
-        }
-        if (arg == "d" || arg == "--display") {
-            cli_display = true;
-            set_environment_value("KOI_CLI_DISPLAY", "1");
-            collect_trailing_fen(index, cli_inspect_fen);
-            if (cli_inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
-            }
-            continue;
-        }
-        if (arg == "key") {
-            cli_key = true;
-            set_environment_value("KOI_CLI_KEY", "1");
-            collect_trailing_fen(index, cli_inspect_fen);
-            if (cli_inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
-            }
-            continue;
-        }
-        if (arg == "moves") {
-            cli_moves = true;
-            set_environment_value("KOI_CLI_MOVES", "1");
-            collect_trailing_fen(index, cli_inspect_fen);
-            if (cli_inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
-            }
-            continue;
-        }
-        if (arg == "flip") {
-            cli_flip = true;
-            set_environment_value("KOI_CLI_FLIP", "1");
-            collect_trailing_fen(index, cli_inspect_fen);
-            if (cli_inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
-            }
-            continue;
-        }
-        if (arg == "book") {
-            cli_book = true;
-            set_environment_value("KOI_CLI_BOOK", "1");
-            collect_trailing_fen(index, cli_inspect_fen);
-            if (cli_inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
-            }
-            continue;
-        }
-        if (arg == "tb") {
-            cli_tb = true;
-            set_environment_value("KOI_CLI_TB", "1");
-            collect_trailing_fen(index, cli_inspect_fen);
-            if (cli_inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
-            }
-            continue;
-        }
-        if (arg == "see") {
-            if (index + 1 >= argc) {
-                std::cerr << "koi-engine: missing move for see (e.g. see e4d5 [fen]).\n";
-                return 2;
-            }
-            cli_see_move = std::string(argv[++index]);
-            set_environment_value("KOI_CLI_SEE_MOVE", *cli_see_move);
-            collect_trailing_fen(index, cli_inspect_fen);
-            if (cli_inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *cli_inspect_fen);
-            }
-            continue;
-        }
-        if (arg == "eval" || arg == "--eval") {
-            cli_eval = true;
-            set_environment_value("KOI_CLI_EVAL", "1");
-            collect_trailing_fen(index, cli_eval_fen);
-            if (cli_eval_fen.has_value()) {
-                set_environment_value("KOI_CLI_EVAL_FEN", *cli_eval_fen);
-            }
-            continue;
-        }
-        if (arg == "perft") {
-            if (index + 1 >= argc) {
-                std::cerr << "koi-engine: missing depth for perft (expected integer 1..10).\n";
-                return 2;
-            }
-            const std::string_view depth_arg(argv[++index]);
-            std::size_t depth = 0;
-            if (!parse_bounded_uint(depth_arg, 1, 10, depth)) {
-                std::cerr << "koi-engine: invalid perft depth '" << depth_arg
-                          << "' (expected integer 1..10).\n";
-                return 2;
-            }
-            cli_perft_depth = static_cast<int>(depth);
-            set_environment_value("KOI_CLI_PERFT", std::to_string(depth));
-            collect_trailing_fen(index, cli_perft_fen);
-            if (cli_perft_fen.has_value()) {
-                set_environment_value("KOI_CLI_PERFT_FEN", *cli_perft_fen);
-            }
-            continue;
-        }
-        if (arg == "bench" || arg == "--bench") {
-            std::size_t depth = static_cast<std::size_t>(koi::UciController::kDefaultBenchDepth);
-            std::size_t hash_mb = koi::UciController::kDefaultBenchHashMb;
-            std::size_t threads = koi::UciController::kDefaultBenchThreads;
-            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
-                const std::string_view next_arg(argv[++index]);
-                if (!parse_bounded_uint(next_arg, 1, 64, depth)) {
-                    std::cerr << "koi-engine: invalid bench depth '" << next_arg
-                              << "' (expected integer 1..64).\n";
-                    return 2;
-                }
-            }
-            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
-                const std::string_view next_arg(argv[++index]);
-                if (!parse_bounded_uint(next_arg, 1, kMaximumBenchHashMb, hash_mb)) {
-                    std::cerr << "koi-engine: invalid bench hash '" << next_arg
-                              << "' (expected integer 1.." << kMaximumBenchHashMb << ").\n";
-                    return 2;
-                }
-            }
-            if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
-                const std::string_view next_arg(argv[++index]);
-                if (!parse_bounded_uint(next_arg, 1, max_bench_threads, threads)) {
-                    std::cerr << "koi-engine: invalid bench threads '" << next_arg
-                              << "' (expected integer 1.." << max_bench_threads << ").\n";
-                    return 2;
-                }
-            }
-            bench_depth = static_cast<int>(depth);
-            bench_hash_mb = hash_mb;
-            bench_threads = threads;
-            set_environment_value("KOI_BENCH_DEPTH", std::to_string(depth));
-            set_environment_value("KOI_BENCH_HASH", std::to_string(hash_mb));
-            set_environment_value("KOI_BENCH_THREADS", std::to_string(threads));
-            continue;
-        }
-        if (arg == "--hce") {
-            cli_hce = true;
-            set_environment_value("KOI_EVALUATOR", "hce");
-            continue;
-        }
-        if (arg == "--nnue") {
-            if (index + 1 >= argc || *argv[index + 1] == '\0') {
-                std::cerr << "koi-engine: missing path for --nnue.\n";
-                return 2;
-            }
-            cli_nnue = true;
-            set_environment_value("KOI_NNUE_PATH", argv[++index]);
-            set_environment_value("KOI_EVALUATOR", "nnue");
-            continue;
-        }
-        if (arg.starts_with("--nnue=")) {
-            const std::string_view nnue_arg = arg.substr(std::string_view("--nnue=").size());
-            if (nnue_arg.empty()) {
-                std::cerr << "koi-engine: missing path for --nnue.\n";
-                return 2;
-            }
-            cli_nnue = true;
-            set_environment_value("KOI_NNUE_PATH", nnue_arg);
-            set_environment_value("KOI_EVALUATOR", "nnue");
-            continue;
-        }
-        if (arg == "--book") {
-            if (index + 1 >= argc || *argv[index + 1] == '\0') {
-                std::cerr << "koi-engine: missing path for --book.\n";
-                return 2;
-            }
-            cli_book_path = argv[++index];
-            set_environment_value("KOI_CLI_BOOK_PATH", *cli_book_path);
-            continue;
-        }
-        if (arg.starts_with("--book=")) {
-            const std::string_view book_arg = arg.substr(std::string_view("--book=").size());
-            if (book_arg.empty()) {
-                std::cerr << "koi-engine: missing path for --book.\n";
-                return 2;
-            }
-            cli_book_path = std::string(book_arg);
-            set_environment_value("KOI_CLI_BOOK_PATH", *cli_book_path);
-            continue;
-        }
-        if (arg == "--syzygy") {
-            if (index + 1 >= argc || *argv[index + 1] == '\0') {
-                std::cerr << "koi-engine: missing path for --syzygy.\n";
-                return 2;
-            }
-            cli_syzygy_path = argv[++index];
-            set_environment_value("KOI_CLI_SYZYGY_PATH", *cli_syzygy_path);
-            continue;
-        }
-        if (arg.starts_with("--syzygy=")) {
-            const std::string_view syzygy_arg = arg.substr(std::string_view("--syzygy=").size());
-            if (syzygy_arg.empty()) {
-                std::cerr << "koi-engine: missing path for --syzygy.\n";
-                return 2;
-            }
-            cli_syzygy_path = std::string(syzygy_arg);
-            set_environment_value("KOI_CLI_SYZYGY_PATH", *cli_syzygy_path);
-            continue;
-        }
-        if (arg == "--protocol") {
-            if (index + 1 >= argc) {
-                std::cerr << "koi-engine: missing argument for --protocol (expected uci, usi, "
-                             "ucci, ucicyclone, or xboard).\n";
-                return 2;
-            }
-            initial_protocol = std::string_view(argv[++index]);
-        } else if (arg.starts_with("--protocol=")) {
-            initial_protocol = arg.substr(std::string_view("--protocol=").size());
-        } else {
-            std::cerr << "koi-engine: unknown option '" << arg
-                      << "' (supported: --version, --help, --engine-json, --protocol <name>, "
-                         "--hce, --nnue <path>, --book <path>, --syzygy <path>, "
-                         "bench [depth [hash [threads]]], compiler, eval [fen], "
-                         "perft <depth> [fen], d [fen], key [fen], moves [fen], flip [fen], "
-                         "book [fen], tb [fen], see <move> [fen]).\n";
-            return 2;
-        }
-        if (initial_protocol.has_value()) {
-            if (!koi::UciController::is_valid_protocol(*initial_protocol)) {
-                std::cerr << "koi-engine: unknown protocol '" << *initial_protocol
-                          << "' (supported: uci, usi, ucci, ucicyclone, xboard).\n";
-                return 2;
-            }
-            set_environment_value("KOI_PROTOCOL", *initial_protocol);
-        }
-    }
-    if (cli_hce && cli_nnue) {
-        std::cerr << "koi-engine: --hce and --nnue cannot be combined.\n";
-        return 2;
-    }
-    if (!initial_protocol.has_value()) {
-        if (const char* env_protocol = std::getenv("KOI_PROTOCOL");
-            env_protocol != nullptr && *env_protocol != '\0' &&
-            koi::UciController::is_valid_protocol(env_protocol)) {
-            initial_protocol = std::string_view(env_protocol);
-        }
-    }
-    if (!cli_compiler) {
-        if (const char* env_compiler = std::getenv("KOI_CLI_COMPILER");
-            env_compiler != nullptr && std::string_view(env_compiler) == "1") {
-            cli_compiler = true;
-        }
-    }
-    if (!cli_display) {
-        if (const char* env_display = std::getenv("KOI_CLI_DISPLAY");
-            env_display != nullptr && std::string_view(env_display) == "1") {
-            cli_display = true;
-        }
-    }
-    if (!cli_key) {
-        if (const char* env_key = std::getenv("KOI_CLI_KEY");
-            env_key != nullptr && std::string_view(env_key) == "1") {
-            cli_key = true;
-        }
-    }
-    if (!cli_moves) {
-        if (const char* env_moves = std::getenv("KOI_CLI_MOVES");
-            env_moves != nullptr && std::string_view(env_moves) == "1") {
-            cli_moves = true;
-        }
-    }
-    if (!cli_flip) {
-        if (const char* env_flip = std::getenv("KOI_CLI_FLIP");
-            env_flip != nullptr && std::string_view(env_flip) == "1") {
-            cli_flip = true;
-        }
-    }
-    if (!cli_book) {
-        if (const char* env_book = std::getenv("KOI_CLI_BOOK");
-            env_book != nullptr && std::string_view(env_book) == "1") {
-            cli_book = true;
-        }
-    }
-    if (!cli_tb) {
-        if (const char* env_tb = std::getenv("KOI_CLI_TB");
-            env_tb != nullptr && std::string_view(env_tb) == "1") {
-            cli_tb = true;
-        }
-    }
-    if (!cli_book_path.has_value()) {
-        if (const char* env_book_path = std::getenv("KOI_CLI_BOOK_PATH");
-            env_book_path != nullptr && *env_book_path != '\0') {
-            cli_book_path = env_book_path;
-        }
-    }
-    if (!cli_syzygy_path.has_value()) {
-        if (const char* env_syzygy_path = std::getenv("KOI_CLI_SYZYGY_PATH");
-            env_syzygy_path != nullptr && *env_syzygy_path != '\0') {
-            cli_syzygy_path = env_syzygy_path;
-        }
-    }
-    if (!cli_see_move.has_value()) {
-        if (const char* env_see = std::getenv("KOI_CLI_SEE_MOVE");
-            env_see != nullptr && *env_see != '\0') {
-            cli_see_move = env_see;
-        }
-    }
-    if (!cli_inspect_fen.has_value()) {
-        if (const char* env_fen = std::getenv("KOI_CLI_FEN");
-            env_fen != nullptr && *env_fen != '\0') {
-            cli_inspect_fen = env_fen;
-        }
-    }
-    if (!cli_eval) {
-        if (const char* env_eval = std::getenv("KOI_CLI_EVAL");
-            env_eval != nullptr && std::string_view(env_eval) == "1") {
-            cli_eval = true;
-        }
-    }
-    if (!cli_eval_fen.has_value()) {
-        if (const char* env_eval_fen = std::getenv("KOI_CLI_EVAL_FEN");
-            env_eval_fen != nullptr && *env_eval_fen != '\0') {
-            cli_eval_fen = env_eval_fen;
-        }
-    }
-    if (!cli_perft_depth.has_value()) {
-        if (const char* env_perft = std::getenv("KOI_CLI_PERFT");
-            env_perft != nullptr && *env_perft != '\0') {
-            std::size_t parsed = 0;
-            if (parse_bounded_uint(env_perft, 1, 10, parsed)) {
-                cli_perft_depth = static_cast<int>(parsed);
-            }
-        }
-    }
-    if (!cli_perft_fen.has_value()) {
-        if (const char* env_perft_fen = std::getenv("KOI_CLI_PERFT_FEN");
-            env_perft_fen != nullptr && *env_perft_fen != '\0') {
-            cli_perft_fen = env_perft_fen;
-        }
-    }
-    if (!bench_depth.has_value()) {
-        if (const char* env_bench = std::getenv("KOI_BENCH_DEPTH");
-            env_bench != nullptr && *env_bench != '\0') {
-            std::size_t parsed = 0;
-            if (parse_bounded_uint(env_bench, 1, 64, parsed)) {
-                bench_depth = static_cast<int>(parsed);
-            }
-        }
-        if (const char* env_hash = std::getenv("KOI_BENCH_HASH");
-            env_hash != nullptr && *env_hash != '\0') {
-            std::size_t parsed = 0;
-            if (parse_bounded_uint(env_hash, 1, kMaximumBenchHashMb, parsed)) {
-                bench_hash_mb = parsed;
-            }
-        }
-        if (const char* env_threads = std::getenv("KOI_BENCH_THREADS");
-            env_threads != nullptr && *env_threads != '\0') {
-            std::size_t parsed = 0;
-            if (parse_bounded_uint(env_threads, 1, max_bench_threads, parsed)) {
-                bench_threads = parsed;
-            }
-        }
+    // for the entry executable directly while CLI flags and subcommands
+    // propagate via KOI_* environment variables.
+    koi::cli::CliOptions cli_options;
+    if (const std::optional<int> early_exit = koi::cli::parse_cli_options(
+            argc, argv, KOI_ENGINE_BUILD_VERSION, KOI_ENGINE_BUILD_COMMIT,
+            koi::UciController::kDefaultBenchDepth, koi::UciController::kDefaultBenchHashMb,
+            koi::UciController::kDefaultBenchThreads, &koi::UciController::is_valid_protocol,
+            cli_options);
+        early_exit.has_value()) {
+        return *early_exit;
     }
 #if defined(KOI_CPU_SELECTOR)
     // The baseline build runs on any x64 CPU. When a faster sibling executable
@@ -675,125 +99,10 @@ int main(int argc, char* argv[]) {
         return selector_exit;
     }
 #endif
-    if (cli_compiler) {
-        std::cout << koi::detail::format_compiler_info(
-            KOI_ENGINE_BUILD_VERSION, KOI_ENGINE_BUILD_COMMIT) << std::flush;
-        return 0;
-    }
-    if (cli_display || cli_key || cli_moves || cli_flip) {
-        const std::optional<koi::GameState> root = resolve_cli_position(cli_inspect_fen);
-        if (!root.has_value()) {
-            return 2;
-        }
-        if (cli_flip) {
-            if (root->in_check()) {
-                std::cerr << "koi-engine: flip rejected: position cannot legally switch sides.\n";
-                return 2;
-            }
-            const std::optional<std::string> flipped =
-                koi::detail::flip_position_fen(root->fen());
-            if (!flipped.has_value() || !koi::GameState::from_fen(*flipped).has_value()) {
-                std::cerr << "koi-engine: flip rejected: position cannot legally switch sides.\n";
-                return 2;
-            }
-            std::cout << *flipped << '\n' << std::flush;
-            return 0;
-        }
-        if (cli_display) {
-            std::cout << koi::detail::format_ascii_board(*root) << std::flush;
-        } else if (cli_key) {
-            std::cout << koi::detail::format_key_info(*root) << std::flush;
-        } else {
-            std::cout << koi::detail::format_legal_moves(*root) << std::flush;
-        }
-        return 0;
-    }
-    if (cli_see_move.has_value()) {
-        const std::optional<koi::GameState> root = resolve_cli_position(cli_inspect_fen);
-        if (!root.has_value()) {
-            return 2;
-        }
-        const std::optional<koi::Move> move = koi::Move::parse_uci(*cli_see_move);
-        if (!move.has_value() || !root->is_legal(*move)) {
-            std::cerr << "koi-engine: illegal move '" << *cli_see_move << "' for see.\n";
-            return 2;
-        }
-        const int gain = koi::detail::static_exchange_gain(*root, *move);
-        std::cout << "SEE " << move->uci() << " : " << std::showpos << gain << " cp\n"
-                  << std::noshowpos << std::flush;
-        return 0;
-    }
-    if (cli_book) {
-        const std::optional<koi::GameState> root = resolve_cli_position(cli_inspect_fen);
-        if (!root.has_value()) {
-            return 2;
-        }
-        const std::filesystem::path engine_directory = executable_directory(argc, argv);
-        std::filesystem::path book_path;
-        if (cli_book_path.has_value()) {
-            book_path = std::filesystem::path(*cli_book_path);
-        } else {
-            const std::filesystem::path primary = engine_directory / "book.bin";
-            const std::filesystem::path packaged = engine_directory / "book" / "book.bin";
-            book_path = koi::OpeningBook::is_usable_file(primary) ? primary : packaged;
-        }
-        if (koi::OpeningBook::is_usable_file(book_path) &&
-            static_cast<bool>(std::ifstream(book_path, std::ios::binary))) {
-            koi::OpeningBook book(engine_directory);
-            book.set_file(book_path);
-            std::cout << koi::detail::format_book_entries(
-                             book_path.filename().string(), book.probe_all(*root))
-                      << std::flush;
-        } else {
-            std::cout << "Opening book : unavailable\n" << std::flush;
-        }
-        return 0;
-    }
-    if (cli_tb) {
-        const std::optional<koi::GameState> root = resolve_cli_position(cli_inspect_fen);
-        if (!root.has_value()) {
-            return 2;
-        }
-        const std::filesystem::path engine_directory = executable_directory(argc, argv);
-        const std::filesystem::path tb_path = cli_syzygy_path.has_value()
-            ? std::filesystem::path(*cli_syzygy_path)
-            : koi::discover_syzygy_directory(engine_directory).value_or(std::filesystem::path{});
-        if (!tb_path.empty() && koi::is_usable_syzygy_directory(tb_path)) {
-            koi::SyzygyTablebase tb(tb_path);
-            std::cout << koi::detail::format_syzygy_probe(&tb, *root) << std::flush;
-        } else {
-            std::cout << koi::detail::format_syzygy_probe(nullptr, *root) << std::flush;
-        }
-        return 0;
-    }
-    if (cli_perft_depth.has_value()) {
-        const std::optional<koi::GameState> resolved = resolve_cli_position(cli_perft_fen);
-        if (!resolved.has_value()) {
-            return 2;
-        }
-        const koi::GameState& root = *resolved;
-        const std::vector<koi::Move> legal_moves = root.legal_moves();
-        const auto started = std::chrono::steady_clock::now();
-        std::uint64_t total = 0;
-        for (const koi::Move& move : legal_moves) {
-            koi::GameState child = root;
-            if (!child.make_move(move)) {
-                continue;
-            }
-            const std::uint64_t nodes = koi::perft(child, *cli_perft_depth - 1);
-            total += nodes;
-            std::cout << move.uci() << ": " << nodes << '\n';
-        }
-        const auto elapsed_ms = std::max<std::int64_t>(
-            1, std::chrono::duration_cast<std::chrono::milliseconds>(
-                   std::chrono::steady_clock::now() - started)
-                   .count());
-        const std::uint64_t nps = (total * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
-        std::cout << "\nNodes searched: " << total << '\n'
-                  << "Time (ms)     : " << elapsed_ms << '\n'
-                  << "Nodes/second  : " << nps << '\n'
-                  << std::flush;
-        return 0;
+    if (const std::optional<int> zero_net_exit = koi::cli::run_zero_network_cli_command(
+            cli_options, argc, argv, KOI_ENGINE_BUILD_VERSION, KOI_ENGINE_BUILD_COMMIT);
+        zero_net_exit.has_value()) {
+        return *zero_net_exit;
     }
     // Bootstrap with a tiny table so a GUI/tournament can deliver its Hash
     // option before a large default allocation is charged to the first clock.
@@ -803,7 +112,7 @@ int main(int argc, char* argv[]) {
     // (or `KOI_NNUE_PATH`), unless `KOI_EVALUATOR=hce` is explicitly selected
     // below. `setoption name EvalFile` can load a different network at
     // runtime; a rejected file keeps the boot evaluator instead of failing.
-    const std::filesystem::path engine_directory = executable_directory(argc, argv);
+    const std::filesystem::path engine_directory = koi::cli::executable_directory(argc, argv);
     std::filesystem::path nnue_path;
     bool autodiscovered_network = false;
     if (const char* environment_path = std::getenv("KOI_NNUE_PATH");
@@ -832,7 +141,7 @@ int main(int argc, char* argv[]) {
         }
     }
     koi::EvaluatorSelection selection;
-    if (hce_requested_from_environment()) {
+    if (koi::cli::hce_requested_from_environment()) {
         // Explicit development/measurement override: boot without a network.
         selection.evaluator = std::make_shared<koi::ClassicalEvaluator>();
     } else {
@@ -860,15 +169,17 @@ int main(int argc, char* argv[]) {
     koi::UciController controller(std::cin, std::cout, std::cerr, std::move(search_service),
                                   engine_directory,
                                   autodiscovered_network && selection.nnue_enabled);
-    if (bench_depth.has_value()) {
-        return controller.run_bench(*bench_depth, bench_hash_mb, bench_threads);
+    if (cli_options.bench_depth.has_value()) {
+        return controller.run_bench(*cli_options.bench_depth, cli_options.bench_hash_mb,
+                                    cli_options.bench_threads);
     }
-    if (cli_eval) {
-        return controller.run_eval(cli_eval_fen ? std::optional<std::string_view>(*cli_eval_fen)
-                                                : std::nullopt);
+    if (cli_options.eval) {
+        return controller.run_eval(cli_options.eval_fen
+                                       ? std::optional<std::string_view>(*cli_options.eval_fen)
+                                       : std::nullopt);
     }
-    if (initial_protocol.has_value()) {
-        (void)controller.set_protocol(*initial_protocol);
+    if (cli_options.initial_protocol.has_value()) {
+        (void)controller.set_protocol(*cli_options.initial_protocol);
     }
     return controller.run();
 }
