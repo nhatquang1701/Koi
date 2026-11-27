@@ -55,19 +55,6 @@ examples live in [CLI & Interactive Reference](../docs/CLI.md):
 - `koi-eval-features` — exports NNUE or HCE static evaluations for a FEN corpus to CSV.
 - `koi-nnue-fixture` — generates valid synthetic `.nnue` test fixtures for CI and local testing.
 
-## Generated-tree organization
-
-`tools/build/prune_generated_trees.ps1` previews stale direct children of
-`build/` and the historical `out/` root. It preserves only
-`build/debug`, `build/release`, `build/ci-debug`, and `build/ci-release`
-(an additional local `build/asan` tree is not on the preserve list and will be
-previewed as stale):
-
-```powershell
-& .\tools\build\prune_generated_trees.ps1
-& .\tools\build\prune_generated_trees.ps1 -Apply
-```
-
 ## Speed program gate
 
 `speed_gate.ps1` compares two `koi-bench` executables that both include the

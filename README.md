@@ -42,7 +42,7 @@
 | **Pruning & Ordering** | Adaptive Null-Move Pruning with verification · Reverse Futility, Futility, Razoring, ProbCut, SEE pruning · Internal Iterative Reductions (IIR) & Singular Extensions / Multi-Cut · Late Move Reductions (LMR) · Quiet, Capture, Pawn, Continuation (6-ply), Counter-Move, and 6-table Static Eval Correction Histories |
 | **Evaluation** | **HalfKA-HM v9 NNUE** (`7680 → 256×2 → 1`, SCReLU, 10 mirrored king buckets, 8 output buckets, 20-slot Finny cache) with AVX-512 / AVX2 / ARM NEON kernels · Built-in tapered classical evaluator (`EvalMode=hce` or `KOI_EVALUATOR=hce`) |
 | **Protocols & Assets** | **UCI**, **XBoard/CECP v2**, **USI**, **UCCI**, **UCI_Cyclone** (`--protocol` / `Protocol` option) · Flag-proof time management · In-place `ponder`/`ponderhit` · `UCI_ShowWDL` · Bundled Stockfish-verified CC0 Polyglot book (`book.bin`) · Automatic Syzygy 3–7 man WDL/DTZ probing (`syzygy/`) |
-| **Hardware & CLI** | Silent x86-64 CPU dispatch (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon `arm64` · Interactive & CLI `bench`, `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `see`, `compiler`, and `perft` |
+| **Hardware & CLI** | Silent x86-64 CPU dispatch (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon `arm64` · Interactive & CLI `bench`, `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `flip`, `see`, `compiler`, and `perft` |
 
 ---
 
@@ -84,6 +84,7 @@ koi-engine compiler
 koi-engine d [fen]
 koi-engine key [fen]
 koi-engine moves [fen]
+koi-engine flip [fen]
 koi-engine see <move> [fen]
 koi-engine eval [fen]
 koi-engine perft 5 [fen]
@@ -135,7 +136,7 @@ cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release && 
 cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release && ctest --preset macos-arm64-release
 ```
 
-Available presets in [CMakePresets.json](CMakePresets.json): `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](Makefile) (`make`, `make EXE=koi-engine`, `make bench EVALFILE=...`, `make compiler`, `make perft`, `make test`, `make docs`). See the [User Guide](docs/USER_GUIDE.md#build-prerequisites) for Profile-Guided Optimization (`-DKOI_PGO=generate|use`), CPU variant selection (`KOI_CPU_VARIANT`), and developer tools (`koi-bench`, `koi-perft`, `koi-replay`).
+Available presets in [CMakePresets.json](CMakePresets.json): `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](Makefile) (`make`, `make profile-build` for PGO, `make EXE=koi-engine`, `make bench EVALFILE=...`, `make eval`, `make compiler`, `make perft`, `make test`, `make docs`). See the [User Guide](docs/USER_GUIDE.md#build-prerequisites) for Profile-Guided Optimization (`-DKOI_PGO=generate|use`), CPU variant selection (`KOI_CPU_VARIANT`), and developer tools (`koi-bench`, `koi-perft`, `koi-replay`).
 
 ---
 
