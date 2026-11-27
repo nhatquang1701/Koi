@@ -789,12 +789,13 @@ Rules for `setoption`:
 | `quit` | Sets shutting-down, cancels/joins, and returns 0 without late protocol output. EOF follows the same cancellation path. |
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
 | `d` | Displays the ASCII board, FEN, Zobrist key, side, check state, and legal move count (also zero-network CLI `d`/`--display [fen]`). |
-| `fen` | Prints the six-field FEN of the current position. |
+| `fen` | Prints the six-field FEN of the current position (also zero-network CLI `fen [fen]` / `fen moves ...`). |
 | `key` | Prints the hexadecimal 64-bit Zobrist position key, pawn hash key, and Polyglot book key (also zero-network CLI `key [fen]`). |
 | `moves` | Lists all legal moves sorted lexicographically in UCI coordinate notation (also zero-network CLI `moves [fen]`). |
 | `book` | Lists all legal Polyglot book entries with weights and selection percentages for the current position (also zero-network CLI `book [fen]` with optional `--book <path>`). |
 | `tb` | Probes active Syzygy tablebases for root WDL classification and optimal root moves (also zero-network CLI `tb [fen]` with optional `--syzygy <path>`). |
 | `eval` | Prints active evaluator details (`NNUE` version/feature set/shape, payload SHA-256 prefix, output bucket, quantization parameters, or `HCE` term breakdown), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval [fen]`). |
+| `nnue` | Prints active loaded NNUE container metadata and payload SHA-256 checksum, or `NNUE : inactive (EvalMode=hce)` when running classical evaluation (also CLI `nnue [path]`). |
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check; also zero-network CLI `flip [fen]`). |
 | `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns (also zero-network CLI `see <move> [fen]`). |
 | `perft <depth>` | Runs an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position (also CLI `perft <depth> [fen]`). |

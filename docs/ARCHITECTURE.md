@@ -7,7 +7,7 @@ direction, and every node names a real translation unit or header.
 ```mermaid
 flowchart TD
     GUI["UCI / XBoard GUI · Arena<br/>Cute Chess · lichess-bot"] -- "UCI / XBoard" --> UCI
-    UCI["uci_controller.cpp<br/>options · protocol output<br/>d · fen · key · moves · book · tb<br/>bench · speedtest · options · eval · flip · see · perft · wait"]
+    UCI["uci_controller.cpp<br/>options · protocol output<br/>d · fen · key · moves · book · tb<br/>bench · speedtest · options · eval · nnue · flip · see · perft · wait"]
     UCI --> UCISUPPORT["detail/uci_support.*<br/>parsers · go limits · formatters"]
     UCI --> TIME["time_manager.cpp<br/>soft/hard budgets<br/>move overhead"]
     UCI --> SERVICE["search_service.cpp<br/>request snapshot<br/>cancellation · exactly-once"]
@@ -29,7 +29,7 @@ flowchart TD
 
 | File | Responsibility |
 | --- | --- |
-| `src/main.cpp`, `src/cli_support.*` | Entry point, signal/stack setup, CPU variant guard & dispatch, pre-boot CLI/env option parsing (`-c`/`--cmd` batch script, `speedtest`, `--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), and zero-network CLI subcommands (`compiler`, `nnue`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`). |
+| `src/main.cpp`, `src/cli_support.*` | Entry point, signal/stack setup, CPU variant guard & dispatch, pre-boot CLI/env option parsing (`-c`/`--cmd` batch script, `speedtest`, `--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), and zero-network CLI subcommands (`compiler`, `nnue`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`). |
 | `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output (`detail/uci_support.*` never emits `"info string` literals). |
 | `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, `parse_cli_position_spec` (`[startpos|fen] [moves ...]`), `go` limit parser, network overhead estimator, WDL conversion, FEN flip helper, ASCII board/key/moves/book/tb/nnue/eval/options/annotate/compiler formatters, and benchmark FEN suite. |
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |

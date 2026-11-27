@@ -84,6 +84,7 @@ koi-engine speedtest [threads [hash [seconds]]]
 koi-engine compiler
 koi-engine nnue [path]                 # verify container metadata & payload SHA-256
 koi-engine d [fen]                     # also accepts [startpos|fen] [moves <uci>...] (e.g. d moves e2e4 e7e5)
+koi-engine fen [fen]                   # print six-field FEN after optional move sequence
 koi-engine key [fen]
 koi-engine moves [fen]
 koi-engine flip [fen]
@@ -117,6 +118,7 @@ Inside an interactive session (`koi-engine`):
 | `book` | Probes active Polyglot opening book weights and percentages for the position |
 | `tb` | Probes active Syzygy tablebases for root WDL outcome and best moves |
 | `eval` | Prints active NNUE/HCE metadata, static evaluation (side-to-move & White cp), heuristic WDL triplet, and game phase |
+| `nnue` | Prints active loaded NNUE container metadata and payload SHA-256 checksum (or inactive HCE status) |
 | `flip` | Flips the side to move (when legal) for static evaluation comparison |
 | `see <move>` | Computes the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns |
 | `compiler` | Prints version, git commit, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`) |

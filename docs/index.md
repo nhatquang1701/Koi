@@ -64,6 +64,7 @@ koi-engine speedtest 1 128 3      # Timed multi-position NPS throughput check
 koi-engine compiler               # Print toolchain, C++ standard, and ISA capabilities
 koi-engine nnue [path]            # Inspect NNUE container version, shape, and SHA-256 checksum
 koi-engine d [fen]                # Print ASCII board, FEN, Zobrist key, and move count
+koi-engine fen [fen]              # Print resulting 6-field FEN (e.g. fen moves e2e4 e7e5)
 koi-engine key [fen]              # Print position, pawn, and Polyglot hash keys
 koi-engine moves [fen]            # List sorted legal UCI moves
 koi-engine flip [fen]             # Toggle side to move when legal (updated FEN)
@@ -79,7 +80,7 @@ koi-engine --version              # Print version and git build commit
 koi-engine --engine-json          # Print En Croissant / Pawn Appétit JSON profile
 ```
 
-Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `flip`, `see <move>`, `options`, `compiler`, `bench [depth [hash [threads]]]`, `speedtest [threads [hash [seconds]]]`, `perft <depth>`, `wait`, and `help` (and one-shot CLI position arguments accept `startpos`, a FEN, or `moves <uci>...`). For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
+Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`, `eval`, `nnue`, `flip`, `see <move>`, `options`, `compiler`, `bench [depth [hash [threads]]]`, `speedtest [threads [hash [seconds]]]`, `perft <depth>`, `wait`, and `help` (and one-shot CLI position arguments accept `startpos`, a FEN, or `moves <uci>...`). For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
 
 ---
 
@@ -88,7 +89,7 @@ Inside a UCI session, Koi also accepts `d`, `fen`, `key`, `moves`, `book`, `tb`,
 | Section | Contents |
 | :--- | :--- |
 | **[User Guide](docs/USER_GUIDE.md)** | Installation, build presets, UCI options, time controls, GUI registration, opening books, and Syzygy tablebases. |
-| **[CLI & Interactive Reference](docs/CLI.md)** | Zero-network subcommands (`compiler`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`), `--hce`/`--nnue`/`--book`/`--syzygy` flags, `eval`, interactive commands, protocols, and dev tools. |
+| **[CLI & Interactive Reference](docs/CLI.md)** | Zero-network subcommands (`compiler`, `nnue`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `perft`), `--hce`/`--nnue`/`--book`/`--syzygy` flags, `eval`, interactive commands, protocols, and dev tools. |
 | **[Lichess Bot](docs/lichess-bot.md)** | Running Koi on Lichess via `tools/bot/koi-bot.sh` with automated matchmaking and release updates. |
 | **[System Architecture](docs/ARCHITECTURE.md)** | Interactive module diagram, translation-unit responsibilities, threading model, and 1.0.0 architecture boundaries. |
 | **[Engine Specification](docs/ENGINE_SPEC.md)** | Complete technical specification of rules, search heuristics, NNUE v2–v9 containers, time formulas, and UCI contracts. |

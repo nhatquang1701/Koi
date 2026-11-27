@@ -143,14 +143,27 @@ Stockfish/CPL or En Croissant GUI availability assumption.
 
 From the configured build directory:
 
-```powershell
-.\build\release\koi-perft.exe 4
-.\build\release\koi-perft.exe --divide 3 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
-.\build\release\koi-bench.exe --threads 4 --speed 100 --timed
-.\build\release\koi-bench.exe --optional --profile-json .\artifacts\verification\optional-strength.json
-.\build\release\koi-bench.exe --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json .\artifacts\verification\steady-state.json
-.\build\release\koi-replay.exe startpos moves e2e4 e7e5 g1f3
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    .\build\release\koi-perft.exe 4
+    .\build\release\koi-perft.exe --divide 3 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+    .\build\release\koi-bench.exe --threads 4 --speed 100 --timed
+    .\build\release\koi-bench.exe --optional --profile-json .\artifacts\verification\optional-strength.json
+    .\build\release\koi-bench.exe --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json .\artifacts\verification\steady-state.json
+    .\build\release\koi-replay.exe startpos moves e2e4 e7e5 g1f3
+    ```
+
+=== "Linux / macOS (Bash)"
+
+    ```bash
+    ./build/release/koi-perft 4
+    ./build/release/koi-perft --divide 3 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+    ./build/release/koi-bench --threads 4 --speed 100 --timed
+    ./build/release/koi-bench --optional --profile-json ./artifacts/verification/optional-strength.json
+    ./build/release/koi-bench --nodes 20000 --timed --warm-hash --warmup 1 --repeat 5 --profile-json ./artifacts/verification/steady-state.json
+    ./build/release/koi-replay startpos moves e2e4 e7e5 g1f3
+    ```
 
 `koi-perft` counts legal nodes from `startpos` (or an optional custom FEN) at
 the given non-negative depth (`--divide` prints per-move counts, elapsed time,
@@ -452,13 +465,21 @@ Each fixture records a stable ID, distinct legal FEN, depth,
 category, and explicit accepted-move allowlist; multi-solution positions do not depend
 on one arbitrary root tie-break.
 
-Run the hard gate and the complete Release suite from an x64 Visual Studio developer
-shell:
+Run the hard gate and the complete Release suite from your configured build directory:
 
-```powershell
-.\build\release\koi_strength_tests.exe
-ctest --test-dir build\release -C Release --output-on-failure
-```
+=== "Windows (PowerShell)"
+
+    ```powershell
+    .\build\release\koi_strength_tests.exe
+    ctest --test-dir build\release -C Release --output-on-failure -j
+    ```
+
+=== "Linux / macOS (Bash)"
+
+    ```bash
+    ./build/release/koi_strength_tests
+    ctest --test-dir build/release --output-on-failure -j
+    ```
 
 The optional corpus is retained for local tuning and is deliberately not an Elo or NPS
 CI threshold. Historical note: NNUE was once opt-in; since 2026-10-28 it is required;
@@ -469,7 +490,7 @@ continues to evaluate standard FIDE chess.
 ### Test inventory and known gaps
 
 The reference Windows Release configuration with Python 3 and Cute Chess registers
-86 CTest tests (`85` without `cutechess_stability_smoke`; `KOI_BUILD_SHADOW_DIFF=OFF`);
+87 CTest tests (`86` without `cutechess_stability_smoke`; `KOI_BUILD_SHADOW_DIFF=OFF`);
 enabling the shadow-diff oracle adds `koi_shadow_diff_tests`, so the count
 varies with those optional pieces. Run `ctest -N`
 on the actual build instead of relying on a fixed number. Continuous
@@ -493,7 +514,7 @@ cases run as ordinary fatal tests.
 
 In addition to standard UCI/XBoard sessions, `koi-engine` supports standard chess-engine CLI options and interactive terminal commands:
 
-- **CLI subcommands & flags:** `koi-engine -c <cmd>` (`--cmd <cmd>`, repeatable batch execution with automatic `wait` + `quit`), `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine speedtest [threads [hash [seconds]]]` (or `--speedtest`, timed multi-position NPS throughput benchmark), `koi-engine compiler` (`--compiler`), `koi-engine nnue [path]` (zero-Python container metadata & payload SHA-256 verification), `koi-engine d`/`--display [pos]`, `koi-engine key [pos]`, `koi-engine moves [pos]`, `koi-engine flip [pos]`, `koi-engine book [pos]` (optional `--book <path>`), `koi-engine tb [pos]` (optional `--syzygy <path>`), `koi-engine see <move> [pos]`, `koi-engine eval [pos]` (`--eval [pos]`), `koi-engine perft <depth> [pos]` (`1..10`) — where `[pos]` accepts `startpos`, a quoted/unquoted FEN, or `[startpos|fen] [moves <uci>...]` — plus `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
+- **CLI subcommands & flags:** `koi-engine -c <cmd>` (`--cmd <cmd>`, repeatable batch execution with automatic `wait` + `quit`), `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine speedtest [threads [hash [seconds]]]` (or `--speedtest`, timed multi-position NPS throughput benchmark), `koi-engine compiler` (`--compiler`), `koi-engine nnue [path]` (zero-Python container metadata & payload SHA-256 verification), `koi-engine d`/`--display [pos]`, `koi-engine fen [pos]`, `koi-engine key [pos]`, `koi-engine moves [pos]`, `koi-engine flip [pos]`, `koi-engine book [pos]` (optional `--book <path>`), `koi-engine tb [pos]` (optional `--syzygy <path>`), `koi-engine see <move> [pos]`, `koi-engine eval [pos]` (`--eval [pos]`), `koi-engine perft <depth> [pos]` (`1..10`) — where `[pos]` accepts `startpos`, a quoted/unquoted FEN, or `[startpos|fen] [moves <uci>...]` — plus `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine --version` (`-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine --help` (`-h`).
 - **Interactive commands (inside a UCI session):**
   - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, check status, and legal move count.
   - `fen` — prints the six-field FEN of the current position.
@@ -502,6 +523,7 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
   - `book` — lists weighted legal Polyglot opening book entries for the position.
   - `tb` — probes active Syzygy tablebases for root WDL outcome and best moves.
   - `eval` — prints the active evaluator architecture (`NNUE` container version/feature set/layer shape or `HCE`), static score (side-to-move and White perspectives), heuristic WDL triplet, and game phase / piece count.
+  - `nnue` — prints the active loaded NNUE container metadata and verified payload SHA-256 checksum (or `NNUE : inactive (EvalMode=hce)` when running classical evaluation).
   - `flip` — toggles the side to move (when legal; rejects positions that would leave the non-moving king in check).
   - `see <move>` — prints the bitboard static exchange evaluation (SEE) of a legal UCI move in centipawns.
   - `compiler` — prints build version, commit hash, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`).

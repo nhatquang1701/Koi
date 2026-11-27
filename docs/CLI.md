@@ -27,9 +27,10 @@ koi-engine nnue [path]
 # Timed perft divide from startpos or custom FEN (depth 1..10; no NNUE network required)
 koi-engine perft <depth> [fen]
 
-# Zero-network board diagram, Zobrist/Polyglot hash keys, legal moves, flip, book/TB probe, and SEE
+# Zero-network board diagram, six-field FEN, Zobrist/Polyglot hash keys, legal moves, flip, book/TB probe, and SEE
 koi-engine d [fen]
 koi-engine --display [fen]
+koi-engine fen [fen]
 koi-engine key [fen]
 koi-engine moves [fen]
 koi-engine flip [fen]
@@ -54,7 +55,7 @@ koi-engine --help         # or -h
 ```
 
 !!! note "Zero-network subcommands, unquoted FENs & batch mode"
-    `compiler`, `nnue`, `perft`, `d`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci>...]` sequences (for example `koi-engine d moves e2e4 e7e5 g1f3` or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make smoke`, `make speedtest`, `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
+    `compiler`, `nnue`, `perft`, `d`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network). Both quoted (`koi-engine perft 2 "..."`), unquoted 6-field FEN arguments, and `[startpos|fen] [moves <uci>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3` or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make profile-build` (PGO), `make smoke`, `make speedtest`, `make bench`, `make eval`, `make compiler`, and `make perft PERFT_DEPTH=5`.
 
 ### Example Outputs
 
@@ -114,6 +115,19 @@ koi-engine --help         # or -h
     SIMD / ISA     : NEON
     ```
 
+=== "`koi-engine nnue`"
+
+    ```text
+    NNUE file      : koi-v9-hm10-h256-official.nnue
+    Format version : v9
+    Feature set    : halfka-hm-v2
+    Architecture   : 7680 -> 256 x 2 -> 8
+    Quantization   : int16/int8 (QA=255, QB=64, scale=400)
+    Payload bytes  : 3937338
+    Payload SHA256 : 6290b13822c3...
+    Status         : valid (checksum verified)
+    ```
+
 ---
 
 ## Interactive Session Commands
@@ -129,6 +143,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `book` | — | Probe the active Polyglot book for all legal weighted entries and selection percentages |
 | `tb` | — | Probe loaded Syzygy tablebases for root WDL classification and optimal moves |
 | `eval` | — | Print active evaluator architecture (`NNUE` or `HCE`), score (stm & White), WDL, and phase |
+| `nnue` | — | Print active loaded NNUE container metadata and payload SHA-256 checksum (or inactive HCE status) |
 | `flip` | — | Toggle side to move when legal (clears en passant; rejects positions in check) |
 | `see` | `<uci-move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal move in centipawns |
 | `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
