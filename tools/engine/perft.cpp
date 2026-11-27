@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -91,7 +92,11 @@ int main(int argc, char* argv[]) {
     if (*depth == 0) {
         total = 1;
     } else {
-        for (const koi::Move& move : state.legal_moves()) {
+        std::array<koi::Move, koi::kMaximumLegalMoves> moves{};
+        const std::size_t move_count =
+            std::min(state.legal_moves_into(moves), moves.size());
+        for (std::size_t move_index = 0; move_index < move_count; ++move_index) {
+            const koi::Move& move = moves[move_index];
             koi::GameState child = state;
             if (!child.make_move(move)) {
                 continue;

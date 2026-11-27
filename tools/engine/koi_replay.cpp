@@ -1,5 +1,5 @@
+#include <cctype>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -14,17 +14,24 @@
 
 namespace {
 
+constexpr std::string_view kUsage =
+    "usage: koi-replay <startpos|fen six-field-fen> [moves <coordinate>...]\n";
+
 struct ReplayResult {
     std::string result = "*";
     std::string termination = "ongoing";
 };
 
-bool has_six_fen_fields(std::string_view fen) {
-    std::istringstream stream{std::string(fen)};
-    std::string field;
+bool has_six_fen_fields(std::string_view fen) noexcept {
     int count = 0;
-    while (stream >> field) {
-        ++count;
+    bool in_token = false;
+    for (const unsigned char ch : fen) {
+        if (std::isspace(ch) != 0) {
+            in_token = false;
+        } else if (!in_token) {
+            ++count;
+            in_token = true;
+        }
     }
     return count == 6;
 }
@@ -41,7 +48,7 @@ std::string join_arguments(int begin, int end, char* arguments[]) {
 }
 
 ReplayResult classify(const koi::GameState& state) {
-    if (state.legal_moves().empty()) {
+    if (!state.has_legal_move()) {
         if (state.in_check()) {
             return {state.side_to_move() == koi::Color::white ? "0-1" : "1-0", "checkmate"};
         }
@@ -61,7 +68,7 @@ void print_result(bool legal, const ReplayResult& result, const koi::GameState& 
 }
 
 int usage() {
-    std::cerr << "usage: koi-replay <startpos|fen six-field-fen> [moves <coordinate>...]\n";
+    std::cerr << kUsage;
     return 2;
 }
 
@@ -73,7 +80,7 @@ int main(int argument_count, char* arguments[]) {
     }
     const std::string_view first(arguments[1]);
     if (first == "-h" || first == "--help") {
-        std::cout << "usage: koi-replay <startpos|fen six-field-fen> [moves <coordinate>...]\n";
+        std::cout << kUsage;
         return 0;
     }
     if (first == "-v" || first == "--version") {

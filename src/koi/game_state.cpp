@@ -1970,6 +1970,10 @@ bool GameState::in_check(Color color) const noexcept {
     return impl_->native_position.in_check(color);
 }
 
+std::uint64_t GameState::checkers() const noexcept {
+    return impl_->native_position.checkers();
+}
+
 bool GameState::has_non_pawn_material(Color color) const noexcept {
     return impl_->native_position.has_non_pawn_material(color);
 }

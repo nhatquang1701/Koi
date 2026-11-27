@@ -365,6 +365,7 @@ public:
     [[nodiscard]] bool move_gives_check(const Move& move) const noexcept;
     [[nodiscard]] bool in_check() const noexcept;
     [[nodiscard]] bool in_check(Color color) const noexcept;
+    [[nodiscard]] std::uint64_t checkers() const noexcept;
     [[nodiscard]] bool has_non_pawn_material(Color color) const noexcept;
     // True when the current position has already occurred once in the
     // reversible move history. Null-move pruning must treat this twofold

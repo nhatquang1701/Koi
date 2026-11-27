@@ -8,6 +8,7 @@
 #include "koi/syzygy_tablebase.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -533,12 +534,29 @@ std::string format_ascii_board(const GameState& position) {
             break;
         }
     }
+    const std::uint64_t checkers_mask = position.checkers();
     buffer << "   a   b   c   d   e   f   g   h\n\n"
            << "Fen   : " << fen << '\n'
            << "Key   : " << std::hex << std::setfill('0') << std::setw(16) << key
            << std::dec << std::setfill(' ') << '\n'
            << "Side  : " << (white_to_move ? "white" : "black") << '\n'
-           << "Check : " << (checked ? "yes" : "no") << '\n'
+           << "Check : " << (checked ? "yes" : "no");
+    if (checkers_mask != 0) {
+        buffer << " (";
+        bool first_checker = true;
+        std::uint64_t remaining = checkers_mask;
+        while (remaining != 0) {
+            const auto square = static_cast<std::uint8_t>(std::countr_zero(remaining));
+            remaining &= remaining - 1;
+            if (!first_checker) {
+                buffer << ' ';
+            }
+            first_checker = false;
+            buffer << Square::from_index(square).uci();
+        }
+        buffer << ')';
+    }
+    buffer << '\n'
            << "Moves : " << legal_count << '\n'
            << "State : " << state_label << '\n';
     return buffer.str();

@@ -3347,15 +3347,22 @@ void test_uci_support_helpers_direct() {
         koi::GameState::from_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
     const auto dead_pos =
         koi::GameState::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
-    require(stale_pos.has_value() && dead_pos.has_value(),
-            "expected valid stalemate and dead-material FENs");
-    require(format_ascii_board(startpos).find("State : ongoing\n") != std::string::npos &&
+    const auto double_check_pos =
+        koi::GameState::from_fen("4k3/8/5N2/1B6/8/8/8/4K3 b - - 0 1");
+    require(stale_pos.has_value() && dead_pos.has_value() && double_check_pos.has_value() &&
+                double_check_pos->checkers() != 0,
+            "expected valid stalemate, dead-material, and double-check FENs");
+    require(format_ascii_board(startpos).find("Check : no\n") != std::string::npos &&
+                format_ascii_board(startpos).find("State : ongoing\n") != std::string::npos &&
+                format_ascii_board(*mate_pos).find("Check : yes (g7)\n") != std::string::npos &&
                 format_ascii_board(*mate_pos).find("State : checkmate (white wins)\n") !=
+                    std::string::npos &&
+                format_ascii_board(*double_check_pos).find("Check : yes (b5 f6)\n") !=
                     std::string::npos &&
                 format_ascii_board(*stale_pos).find("State : stalemate\n") != std::string::npos &&
                 format_ascii_board(*dead_pos).find("State : draw (insufficient material)\n") !=
                     std::string::npos,
-            "format_ascii_board State readout mismatch");
+            "format_ascii_board Check/State readout mismatch");
 
     require(translate_ucci_go_arguments("depth 4 time 1500 opptime 1200 increment 50 oppincrement 25",
                                         koi::Color::white) ==

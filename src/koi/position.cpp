@@ -1740,6 +1740,12 @@ public:
 
     [[nodiscard]] bool in_check(Color color) const noexcept { return is_checked(state, color); }
 
+    [[nodiscard]] std::uint64_t checkers() const noexcept {
+        return king_square(state, state.side) < 0
+            ? 0ULL
+            : state.checkers[state.side == Color::white ? 0U : 1U];
+    }
+
     [[nodiscard]] bool has_non_pawn_material(Color color) const noexcept {
         const std::size_t color_index = color == Color::white ? 0U : 1U;
         constexpr std::size_t knight = static_cast<std::size_t>(PieceType::knight);
@@ -3192,6 +3198,8 @@ std::uint64_t Position::occupied_squares() const noexcept {
 bool Position::in_check() const noexcept { return impl_->position.in_check(); }
 
 bool Position::in_check(Color color) const noexcept { return impl_->position.in_check(color); }
+
+std::uint64_t Position::checkers() const noexcept { return impl_->position.checkers(); }
 
 bool Position::has_non_pawn_material(Color color) const noexcept {
     return impl_->position.has_non_pawn_material(color);

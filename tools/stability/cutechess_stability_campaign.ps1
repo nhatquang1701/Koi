@@ -5,9 +5,13 @@ param(
     [string]$StockfishPath,
     [string]$CutechessPath = $(if ($env:OS -eq 'Windows_NT') { 'C:\Program Files (x86)\Cute Chess\cutechess-cli.exe' } else { $cmd = Get-Command 'cutechess-cli' -ErrorAction SilentlyContinue; if ($cmd) { $cmd.Source } else { '/usr/local/bin/cutechess-cli' } }),
     [string]$OutputDirectory = '',
+    [ValidateRange(1, 100000)]
     [int]$Games = 500,
+    [ValidateRange(1, 10000)]
     [int]$MaxMoves = 200,
+    [ValidateNotNullOrEmpty()]
     [string]$TimeControl = '1+0',
+    [ValidateRange(1, 4096)]
     [int]$Hash = 512,
     [string]$BookFile = 'book.bin',
     [ValidateRange(0, 40)]
@@ -199,10 +203,6 @@ function New-Schedule([int]$RequestedGames, [int]$ScheduleSeed, $Allocation, $Op
     return @($schedule)
 }
 
-if ($Games -lt 1) { throw 'Games must be at least 1.' }
-if ($MaxMoves -lt 1) { throw 'MaxMoves must be at least 1.' }
-if ($Hash -lt 1 -or $Hash -gt 4096) { throw 'Hash must be between 1 and 4096 MB.' }
-
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $stabilityScript = Join-Path $repositoryRoot 'tools/stability/cutechess_stability.ps1'
 $stabilityScript = Assert-File $stabilityScript 'Stability harness'
@@ -213,14 +213,16 @@ $cutechess = Assert-File $CutechessPath 'Cutechess executable'
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $repositoryRoot ('artifacts/stability/campaign-' +
         (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss'))
+} else {
+    $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $campaignRoot = (Resolve-Path -LiteralPath $OutputDirectory).Path
 $inputsRoot = Join-Path $campaignRoot 'inputs'
 New-Item -ItemType Directory -Path $inputsRoot -Force | Out-Null
 
-$opening = Get-SourcePath $repositoryRoot $OpeningFile 'tests\data\openings\openings-curated-32.txt'
-$fen = Get-SourcePath $repositoryRoot $FenFile 'tests\data\positions\evaluation-positions.txt'
+$opening = Get-SourcePath $repositoryRoot $OpeningFile 'tests/data/openings/openings-curated-32.txt'
+$fen = Get-SourcePath $repositoryRoot $FenFile 'tests/data/positions/evaluation-positions.txt'
 $openingEntries = Read-OpeningEntries $opening
 $fenEntries = Read-FenEntries $fen
 $bookResolved = if ([System.IO.Path]::IsPathRooted($BookFile)) {

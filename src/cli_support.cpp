@@ -115,7 +115,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  book [fen]                               Probe Polyglot opening book entries for position\n"
               << "  tb [fen]                                 Probe Syzygy tablebases for root WDL and best moves\n"
               << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
-              << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, nnue, flip, makemove <uci...>, undo [plies], see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
+              << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, nnue, flip, makemove <uci...>, undo [plies], history, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
 }
 
 std::optional<GameState> resolve_cli_position(const std::optional<std::string>& fen) {
@@ -856,7 +856,14 @@ std::optional<int> run_zero_network_cli_command(
         } else {
             const std::filesystem::path primary = engine_directory / "book.bin";
             const std::filesystem::path packaged = engine_directory / "book" / "book.bin";
-            book_path = OpeningBook::is_usable_file(primary) ? primary : packaged;
+            const std::filesystem::path bundled = engine_directory / "book" / "koi.bin";
+            if (OpeningBook::is_usable_file(primary)) {
+                book_path = primary;
+            } else if (OpeningBook::is_usable_file(packaged)) {
+                book_path = packaged;
+            } else {
+                book_path = bundled;
+            }
         }
         if (OpeningBook::is_usable_file(book_path) &&
             static_cast<bool>(std::ifstream(book_path, std::ios::binary))) {

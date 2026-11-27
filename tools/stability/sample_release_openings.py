@@ -58,25 +58,30 @@ def sample_openings(
     return openings
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--curated", required=True, type=Path)
     parser.add_argument("--sample-count", required=True, type=int)
     parser.add_argument("--seed", required=True, type=int)
     parser.add_argument("--output", required=True, type=Path)
-    args = parser.parse_args()
-    sample = sample_openings(
-        args.curated, sample_count=args.sample_count, seed=args.seed
-    )
-    header = (
-        f"# Independent uniform curated-root and legal one-ply continuation draws, "
-        f"with replacement; seed={args.seed}; sample_count={args.sample_count}\n"
-    )
-    lines = [f"{name} | {' '.join(moves)}" for name, moves in sample]
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
+    args = parser.parse_args(argv)
+    try:
+        sample = sample_openings(
+            args.curated, sample_count=args.sample_count, seed=args.seed
+        )
+        header = (
+            f"# Independent uniform curated-root and legal one-ply continuation draws, "
+            f"with replacement; seed={args.seed}; sample_count={args.sample_count}\n"
+        )
+        lines = [f"{name} | {' '.join(moves)}" for name, moves in sample]
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
+    except (OSError, ValueError) as error:
+        print(f"sample_release_openings: error: {error}", file=sys.stderr)
+        return 2
     print(f"wrote {len(sample)} sampled openings to {args.output}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

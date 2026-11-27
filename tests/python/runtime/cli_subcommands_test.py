@@ -239,6 +239,13 @@ class CliSubcommandsTest(unittest.TestCase):
             d_moves.stdout,
         )
 
+        d_double_check = self._run(
+            ["d", "4k3/8/5N2/1B6/8/8/8/4K3 b - - 0 1"],
+            disable_nnue=True,
+        )
+        self.assertEqual(d_double_check.returncode, 0, d_double_check.stderr)
+        self.assertIn("Check : yes (b5 f6)", d_double_check.stdout)
+
         perft_moves = self._run(["perft", "1", "moves", "e2e4"], disable_nnue=True)
         self.assertEqual(perft_moves.returncode, 0, perft_moves.stderr)
         self.assertIn("Nodes searched: 20", perft_moves.stdout)

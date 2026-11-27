@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pathlib
+import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -38,6 +40,51 @@ class ReleaseStrengthOpeningsTest(unittest.TestCase):
                 board.push(move)
         self.assertGreaterEqual(len(roots), 25)
         self.assertEqual(sample_numbers, set(range(1, 161)))
+
+    def test_cli_validation_exits_two_with_stderr_diagnostic(self):
+        script = ROOT / "tools" / "stability" / "sample_release_openings.py"
+        curated = ROOT / "tests" / "data" / "openings" / "openings-curated-32.txt"
+        with tempfile.TemporaryDirectory() as tmp:
+            output_path = pathlib.Path(tmp) / "sampled.txt"
+            bad_count = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "--curated",
+                    str(curated),
+                    "--sample-count",
+                    "0",
+                    "--seed",
+                    "1",
+                    "--output",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(bad_count.returncode, 2, bad_count.stdout)
+            self.assertIn("sample_release_openings: error:", bad_count.stderr)
+
+            missing_curated = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "--curated",
+                    str(pathlib.Path(tmp) / "missing.txt"),
+                    "--sample-count",
+                    "1",
+                    "--seed",
+                    "1",
+                    "--output",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(missing_curated.returncode, 2, missing_curated.stdout)
+            self.assertIn("sample_release_openings: error:", missing_curated.stderr)
 
 
 if __name__ == "__main__":

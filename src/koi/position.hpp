@@ -124,6 +124,7 @@ public:
     [[nodiscard]] std::uint64_t occupied_squares() const noexcept;
     [[nodiscard]] bool in_check() const noexcept;
     [[nodiscard]] bool in_check(Color color) const noexcept;
+    [[nodiscard]] std::uint64_t checkers() const noexcept;
     [[nodiscard]] bool has_non_pawn_material(Color color) const noexcept;
     [[nodiscard]] std::uint8_t castling_rights() const noexcept;
     [[nodiscard]] Square en_passant_square() const noexcept;
