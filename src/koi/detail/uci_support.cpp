@@ -1102,4 +1102,52 @@ std::string translate_usi_go_arguments(const std::string_view arguments) {
     return translated.str();
 }
 
+std::optional<std::pair<std::string, std::string>> parse_xboard_option_assignment(
+    const std::string_view text) {
+    const std::size_t eq = text.find('=');
+    if (eq == std::string_view::npos) {
+        return std::nullopt;
+    }
+    std::string_view name = text.substr(0, eq);
+    while (!name.empty() && std::isspace(static_cast<unsigned char>(name.front())) != 0) {
+        name.remove_prefix(1);
+    }
+    while (!name.empty() && std::isspace(static_cast<unsigned char>(name.back())) != 0) {
+        name.remove_suffix(1);
+    }
+    if (name.empty()) {
+        return std::nullopt;
+    }
+    return std::pair<std::string, std::string>{std::string(name),
+                                               std::string(text.substr(eq + 1))};
+}
+
+std::optional<std::chrono::milliseconds> parse_xboard_centiseconds_ms(
+    const std::string_view token) noexcept {
+    std::int64_t cs = 0;
+    if (!parse_int64_token(token, cs)) {
+        return std::nullopt;
+    }
+    constexpr std::int64_t kMaximumCentiseconds =
+        std::numeric_limits<std::int64_t>::max() / 10;
+    const std::int64_t clamped_cs = std::clamp<std::int64_t>(cs, 0, kMaximumCentiseconds);
+    return std::chrono::milliseconds{std::max<std::int64_t>(1, clamped_cs * 10)};
+}
+
+bool is_bare_coordinate_move_token(const std::string_view token) noexcept {
+    if (token.size() != 4 && token.size() != 5) {
+        return false;
+    }
+    if (token[0] < 'a' || token[0] > 'h' || token[1] < '1' || token[1] > '8' ||
+        token[2] < 'a' || token[2] > 'h' || token[3] < '1' || token[3] > '8') {
+        return false;
+    }
+    if (token.size() == 5) {
+        const char promo =
+            static_cast<char>(std::tolower(static_cast<unsigned char>(token[4])));
+        return promo == 'n' || promo == 'b' || promo == 'r' || promo == 'q';
+    }
+    return true;
+}
+
 } // namespace koi::detail

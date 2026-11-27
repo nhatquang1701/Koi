@@ -3222,6 +3222,28 @@ void test_uci_support_helpers_direct() {
                 translate_usi_go_arguments("depth 6 byoyomi 500") == "depth 6",
             "translate_usi_go_arguments mapping mismatch");
 
+    const auto xb_hash = parse_xboard_option_assignment("Hash=128");
+    const auto xb_threads = parse_xboard_option_assignment("  Threads = 4");
+    require(xb_hash.has_value() && xb_hash->first == "Hash" && xb_hash->second == "128" &&
+                xb_threads.has_value() && xb_threads->first == "Threads" &&
+                xb_threads->second == " 4" &&
+                !parse_xboard_option_assignment("NoEquals").has_value() &&
+                !parse_xboard_option_assignment("=val").has_value(),
+            "parse_xboard_option_assignment mismatch");
+    const auto xb_cs_150 = parse_xboard_centiseconds_ms("150");
+    const auto xb_cs_zero = parse_xboard_centiseconds_ms("0");
+    const auto xb_cs_neg = parse_xboard_centiseconds_ms("-5");
+    require(xb_cs_150 == std::chrono::milliseconds{1500} &&
+                xb_cs_zero == std::chrono::milliseconds{1} &&
+                xb_cs_neg == std::chrono::milliseconds{1} &&
+                !parse_xboard_centiseconds_ms("abc").has_value(),
+            "parse_xboard_centiseconds_ms mismatch");
+    require(is_bare_coordinate_move_token("e2e4") &&
+                is_bare_coordinate_move_token("e7e8q") &&
+                !is_bare_coordinate_move_token("e2e9") &&
+                !is_bare_coordinate_move_token("uci"),
+            "is_bare_coordinate_move_token mismatch");
+
     const koi::ClassicalEvaluator hce_eval;
     const std::string hce_summary = format_eval_summary(startpos, &hce_eval, true);
     require(hce_summary.find("HCE (classical tapered)") != std::string::npos &&

@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "koi/completion_gate.hpp"
@@ -138,5 +139,10 @@ inline constexpr std::array<std::string_view, 16> kBenchFens{{
 [[nodiscard]] std::optional<std::string> flip_position_fen(std::string_view fen);
 [[nodiscard]] std::string format_compiler_info(std::string_view version, std::string_view commit);
 [[nodiscard]] std::string format_interactive_help();
+[[nodiscard]] std::optional<std::pair<std::string, std::string>>
+parse_xboard_option_assignment(std::string_view text);
+[[nodiscard]] std::optional<std::chrono::milliseconds>
+parse_xboard_centiseconds_ms(std::string_view token) noexcept;
+[[nodiscard]] bool is_bare_coordinate_move_token(std::string_view token) noexcept;
 
 } // namespace koi::detail

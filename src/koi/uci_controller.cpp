@@ -56,6 +56,7 @@ using detail::format_annotate_summary_line;
 using detail::format_eval_tokens;
 using detail::hash_reason_name;
 using detail::hash_status_name;
+using detail::is_bare_coordinate_move_token;
 using detail::join_tokens;
 using detail::kBenchFens;
 using detail::kMaximumHashMegabytes;
@@ -71,7 +72,9 @@ using detail::parse_milliseconds;
 using detail::parse_random_seed;
 using detail::parse_setoption_for_protocol;
 using detail::parse_uint64;
+using detail::parse_xboard_centiseconds_ms;
 using detail::parse_xboard_level_time;
+using detail::parse_xboard_option_assignment;
 using detail::parse_xboard_seconds;
 using detail::read_bounded_protocol_line;
 using detail::remaining_tokens;
@@ -325,11 +328,11 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
         if (name == "option") {
             const std::vector<std::string> tokens = remaining_tokens(command);
             if (!tokens.empty()) {
-                const std::string joined = join_tokens(tokens, 0, tokens.size());
-                const std::size_t eq = joined.find('=');
-                if (eq != std::string::npos) {
-                    std::istringstream synth(
-                        "name " + joined.substr(0, eq) + " value " + joined.substr(eq + 1));
+                if (const auto parsed_opt =
+                        parse_xboard_option_assignment(join_tokens(tokens, 0, tokens.size()));
+                    parsed_opt.has_value()) {
+                    std::istringstream synth("name " + parsed_opt->first + " value " +
+                                             parsed_opt->second);
                     handle_setoption(synth);
                 }
             }
@@ -522,21 +525,17 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
     }
     if (name == "time" || name == "otim") {
         std::string cs_tok;
-        std::int64_t cs = 0;
-        if ((command >> cs_tok) && parse_int64_token(cs_tok, cs)) {
-            constexpr std::int64_t kMaximumCentiseconds =
-                std::numeric_limits<std::int64_t>::max() / 10;
-            const std::int64_t clamped_cs =
-                std::clamp<std::int64_t>(cs, 0, kMaximumCentiseconds);
-            const auto ms = std::chrono::milliseconds{std::max<std::int64_t>(1, clamped_cs * 10)};
-            const bool engine_is_white = (position_.side_to_move() == Color::white);
-            const bool target_white = (name == "time") ? engine_is_white : !engine_is_white;
-            if (target_white) {
-                xboard_white_time_ = ms;
-            } else {
-                xboard_black_time_ = ms;
+        if (command >> cs_tok) {
+            if (const auto ms = parse_xboard_centiseconds_ms(cs_tok); ms.has_value()) {
+                const bool engine_is_white = (position_.side_to_move() == Color::white);
+                const bool target_white = (name == "time") ? engine_is_white : !engine_is_white;
+                if (target_white) {
+                    xboard_white_time_ = *ms;
+                } else {
+                    xboard_black_time_ = *ms;
+                }
+                xboard_clock_configured_ = true;
             }
-            xboard_clock_configured_ = true;
         }
         return true;
     }
@@ -575,9 +574,7 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
         if (!(command >> move_token)) {
             return true;
         }
-    } else if ((name.size() == 4 || name.size() == 5) &&
-               name[0] >= 'a' && name[0] <= 'h' && name[1] >= '1' && name[1] <= '8' &&
-               name[2] >= 'a' && name[2] <= 'h' && name[3] >= '1' && name[3] <= '8') {
+    } else if (is_bare_coordinate_move_token(name)) {
         move_token = std::string(name);
     } else {
         return false;
