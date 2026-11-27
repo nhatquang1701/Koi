@@ -22,7 +22,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release profile-build bench eval compiler perft test docs clean help
+.PHONY: all release profile-build bench eval compiler perft smoke test docs clean help
 
 all: release
 
@@ -86,6 +86,13 @@ compiler: release
 perft: release
 	"$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)"
 
+smoke: release
+	@if [ -n "$(EVALFILE)" ]; then \
+	  "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" -c "uci" -c "isready" -c "position startpos" -c "go depth 2"; \
+	else \
+	  "$(BUILD_DIR)/koi-engine" --hce -c "uci" -c "isready" -c "position startpos" -c "go depth 2"; \
+	fi
+
 test:
 	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS)
 	cmake --build "$(BUILD_DIR)" --config Release -j "$(JOBS)"
@@ -106,6 +113,7 @@ help:
 	@echo "  make eval [EVALFILE=...] [FEN=...]     Evaluate startpos or FEN with NNUE/HCE"
 	@echo "  make compiler                          Build and print compiler / ISA metadata"
 	@echo "  make perft [PERFT_DEPTH=5]             Build and run timed startpos perft divide"
+	@echo "  make smoke [EVALFILE=...]              Run one-shot UCI handshake + depth-2 search smoke check"
 	@echo "  make test                              Build full suite and run CTest"
 	@echo "  make docs                              Build MkDocs Material site strictly"
 	@echo "  make clean                             Remove $(BUILD_DIR) and PGO artifacts"
