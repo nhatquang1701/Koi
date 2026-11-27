@@ -261,7 +261,8 @@ if (-not $statsHeader.Contains('inline void accumulate_stats(')) {
 foreach ($required in @('src/koi/detail/uci_support.hpp',
                         'src/koi/detail/uci_support.cpp',
                         'src/koi/detail/nnue_manifest.hpp',
-                        'src/koi/detail/nnue_io.cpp')) {
+                        'src/koi/detail/nnue_io.cpp',
+                        'src/koi/detail/nnue_kernels.hpp')) {
     if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot $required))) {
         Fail "$required is missing"
     }
@@ -274,11 +275,12 @@ if ($controllerImpl -match 'BoundedLineRead read_bounded_protocol_line\(|std::st
     Fail 'uci_controller.cpp must not redefine extracted detail/uci_support helpers'
 }
 $nnueImpl = Read-RepositoryFile 'src/koi/nnue.cpp'
-if (-not $nnueImpl.Contains('#include "koi/detail/nnue_manifest.hpp"')) {
-    Fail 'nnue.cpp must include detail/nnue_manifest.hpp'
+if (-not $nnueImpl.Contains('#include "koi/detail/nnue_manifest.hpp"') -or
+    -not $nnueImpl.Contains('#include "koi/detail/nnue_kernels.hpp"')) {
+    Fail 'nnue.cpp must include detail/nnue_manifest.hpp and detail/nnue_kernels.hpp'
 }
-if ($nnueImpl -match 'class Sha256|NnueLoader::serialize\(') {
-    Fail 'nnue.cpp must not redefine extracted detail/nnue_io container I/O'
+if ($nnueImpl -match 'class Sha256|NnueLoader::serialize\(|accumulate_hidden_scalar\(') {
+    Fail 'nnue.cpp must not redefine extracted detail/nnue_io container I/O or detail/nnue_kernels math kernels'
 }
 
 # 4. Engine core sources must not contain dead/tooling translation units.
