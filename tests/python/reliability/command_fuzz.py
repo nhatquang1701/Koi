@@ -30,7 +30,7 @@ from unittest_progress import format_progress_eta  # noqa: E402
 
 FRAGMENTS = [
     "uci", "isready", "ucinewgame", "stop", "ponderhit", "go", "position",
-    "setoption", "debug", "register", "d", "fen", "key", "moves", "eval", "flip", "see", "compiler", "wait", "board",
+    "setoption", "debug", "register", "d", "fen", "key", "moves", "book", "tb", "eval", "flip", "see", "compiler", "wait", "board",
     "help", "quitx", "setoption name", "position startpos", "go depth",
     "setoption name Hash value",
 ]
@@ -81,11 +81,21 @@ def _is_valid_fen_line(line: str) -> bool:
 
 
 def _is_valid_key_line(line: str) -> bool:
-    return line.startswith(("Position key : ", "Pawn key     : "))
+    return line.startswith(("Position key : ", "Pawn key     : ", "Polyglot key : "))
 
 
 def _is_valid_moves_line(line: str) -> bool:
     return re.match(r"Legal moves \(\d+\):", line) is not None
+
+
+def _is_valid_book_line(line: str) -> bool:
+    return line.startswith("Opening book : ") or (
+        re.fullmatch(r"  [a-h][1-8][a-h][1-8][nbrq]?  weight=\d+ \(\d+\.\d%\)", line) is not None
+    )
+
+
+def _is_valid_tb_line(line: str) -> bool:
+    return line.startswith("Syzygy : ")
 
 
 def random_command(rng: random.Random) -> str:
@@ -146,6 +156,8 @@ def run_case(config: dict) -> dict:
         allow_fen = "fen" in sent_tokens
         allow_key = "key" in sent_tokens
         allow_moves = "moves" in sent_tokens
+        allow_book = "book" in sent_tokens
+        allow_tb = "tb" in sent_tokens
         allow_eval = "eval" in sent_tokens
         allow_see = "see" in sent_tokens
         allow_compiler = "compiler" in sent_tokens
@@ -163,6 +175,8 @@ def run_case(config: dict) -> dict:
                 or (allow_fen and _is_valid_fen_line(line))
                 or (allow_key and _is_valid_key_line(line))
                 or (allow_moves and _is_valid_moves_line(line))
+                or (allow_book and _is_valid_book_line(line))
+                or (allow_tb and _is_valid_tb_line(line))
                 or (allow_eval and _is_valid_eval_line(line))
                 or (allow_see and _is_valid_see_line(line))
                 or (allow_compiler and _is_valid_compiler_line(line))

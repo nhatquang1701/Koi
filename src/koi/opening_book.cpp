@@ -407,6 +407,36 @@ std::optional<BookChoice> OpeningBook::choose(
     return selected;
 }
 
+std::vector<BookChoice> OpeningBook::probe_all(const GameState& state) const {
+    const std::shared_ptr<const Impl::Cache> cache = impl_->load();
+    if (!cache || !cache->usable) {
+        return {};
+    }
+    const auto entries = cache->records.find(state.polyglot_key());
+    if (entries == cache->records.end()) {
+        return {};
+    }
+    std::vector<BookChoice> choices;
+    choices.reserve(entries->second.size());
+    for (const Record& entry : entries->second) {
+        if (entry.weight == 0) {
+            continue;
+        }
+        const std::optional<Move> move = decode_move(entry.move, state);
+        if (!move.has_value()) {
+            continue;
+        }
+        choices.push_back(BookChoice{*move, entry.weight, entry.learn});
+    }
+    std::sort(choices.begin(), choices.end(), [](const BookChoice& left, const BookChoice& right) {
+        if (left.weight != right.weight) {
+            return left.weight > right.weight;
+        }
+        return book_move_tie_break_key(left.move) < book_move_tie_break_key(right.move);
+    });
+    return choices;
+}
+
 bool OpeningBook::contains_move(
     const GameState& state, const Move move, const std::uint32_t root_ply, const bool enabled,
     const std::uint8_t maximum_depth, const bool safety_enabled,

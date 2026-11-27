@@ -304,6 +304,34 @@ void test_same_timestamp_size_change_invalidates_book_cache() {
             "corrupted same-timestamp size replacement must fail closed");
 }
 
+void test_probe_all_returns_weight_sorted_legal_entries() {
+    const koi::test::TempDirectory files;
+    const std::filesystem::path book_path = files.path() / "probe_all.bin";
+    const GameState start = GameState::startpos();
+    write_book(book_path, {
+        {start.polyglot_key(), polyglot_move("d2", "d4"), 40, 0},
+        {start.polyglot_key(), polyglot_move("e2", "e4"), 60, 0},
+        {start.polyglot_key(), polyglot_move("c2", "c4"), 60, 0},
+        {start.polyglot_key(), polyglot_move("e1", "e4"), 999, 0},
+        {start.polyglot_key(), polyglot_move("g1", "f3"), 0, 0},
+    });
+
+    OpeningBook book(files.path());
+    book.set_file(book_path);
+    const std::vector<koi::BookChoice> entries = book.probe_all(start);
+    require(entries.size() == 3, "probe_all must filter illegal and zero-weight entries");
+    require(entries[0].move == require_move("c2c4") && entries[0].weight == 60,
+            "probe_all must tie-break equal weights deterministically before sorting lower weights");
+    require(entries[1].move == require_move("e2e4") && entries[1].weight == 60,
+            "probe_all must preserve all tied top-weight entries");
+    require(entries[2].move == require_move("d2d4") && entries[2].weight == 40,
+            "probe_all must place lower weights after higher weights");
+
+    const auto missing = GameState::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+    require(missing.has_value() && book.probe_all(*missing).empty(),
+            "probe_all must return empty for positions absent from the book");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -316,6 +344,7 @@ int main(int argc, char** argv) {
         {"oversized book fallback", test_book_rejects_oversized_record_aligned_input_without_throwing},
         {"book safety", test_book_safety_rejects_an_immediate_hanging_piece},
         {"same-timestamp book replacement invalidated", test_same_timestamp_size_change_invalidates_book_cache},
+        {"probe_all weight-sorted legal entries", test_probe_all_returns_weight_sorted_legal_entries},
 #if defined(_WIN32)
         {"transient open failure retried", test_transient_open_failure_is_not_cached},
 #endif

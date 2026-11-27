@@ -831,6 +831,10 @@ int UciController::run() {
             handle_key();
         } else if (name == "moves") {
             handle_moves();
+        } else if (name == "book") {
+            handle_book();
+        } else if (name == "tb") {
+            handle_tb();
         } else if (name == "eval") {
             handle_eval();
         } else if (name == "see") {
@@ -1534,7 +1538,8 @@ void UciController::handle_fen() {
 void UciController::handle_key() {
     std::ostringstream buffer;
     buffer << "Position key : " << detail::debug_hex(position_.position_key()) << '\n'
-           << "Pawn key     : " << detail::debug_hex(position_.pawn_key()) << '\n';
+           << "Pawn key     : " << detail::debug_hex(position_.pawn_key()) << '\n'
+           << "Polyglot key : " << detail::debug_hex(position_.polyglot_key()) << '\n';
     std::lock_guard lock(output_mutex_);
     output_ << buffer.str() << std::flush;
 }
@@ -1557,6 +1562,85 @@ void UciController::handle_moves() {
         }
     }
     buffer << '\n';
+    std::lock_guard lock(output_mutex_);
+    output_ << buffer.str() << std::flush;
+}
+
+void UciController::handle_book() {
+    const std::filesystem::path book_path = resolved_book_path();
+    std::ostringstream buffer;
+    if (!book_is_available()) {
+        buffer << "Opening book : unavailable\n";
+    } else {
+        const std::vector<BookChoice> entries = opening_book_.probe_all(position_);
+        const std::string name = book_path.filename().string();
+        if (entries.empty()) {
+            buffer << "Opening book : " << name << " (no moves for position)\n";
+        } else {
+            std::uint64_t total_weight = 0;
+            for (const BookChoice& entry : entries) {
+                total_weight += entry.weight;
+            }
+            buffer << "Opening book : " << name << " (" << entries.size()
+                   << " moves, total weight " << total_weight << ")\n"
+                   << std::fixed << std::setprecision(1);
+            for (const BookChoice& entry : entries) {
+                const double pct = total_weight > 0
+                    ? (100.0 * static_cast<double>(entry.weight) /
+                       static_cast<double>(total_weight))
+                    : 0.0;
+                buffer << "  " << entry.move.uci() << "  weight=" << entry.weight
+                       << " (" << pct << "%)\n";
+            }
+        }
+    }
+    std::lock_guard lock(output_mutex_);
+    output_ << buffer.str() << std::flush;
+}
+
+void UciController::handle_tb() {
+    ensure_auto_syzygy_loaded();
+    std::ostringstream buffer;
+    if (!syzygy_ || !syzygy_->enabled()) {
+        buffer << "Syzygy : unavailable\n";
+    } else if (!syzygy_->probe_eligible(position_)) {
+        buffer << "Syzygy : loaded (max " << syzygy_->large_table_limit()
+               << " pieces; position has " << position_.piece_count()
+               << ", not eligible)\n";
+    } else if (const std::optional<SyzygyRootResult> root = syzygy_->probe_root(position_);
+               !root.has_value()) {
+        buffer << "Syzygy : loaded (max " << syzygy_->large_table_limit()
+               << " pieces; no hit)\n";
+    } else {
+        const char* wdl_name = "draw";
+        switch (root->wdl) {
+        case SyzygyWdl::win:
+            wdl_name = "win";
+            break;
+        case SyzygyWdl::cursed_win:
+            wdl_name = "cursed win";
+            break;
+        case SyzygyWdl::draw:
+            wdl_name = "draw";
+            break;
+        case SyzygyWdl::blessed_loss:
+            wdl_name = "blessed loss";
+            break;
+        case SyzygyWdl::loss:
+            wdl_name = "loss";
+            break;
+        }
+        buffer << "Syzygy : " << wdl_name << " (" << std::showpos << root->score.score_cp
+               << " cp) | moves:";
+        if (root->moves.empty()) {
+            buffer << " (none)";
+        } else {
+            for (const Move& move : root->moves) {
+                buffer << ' ' << move.uci();
+            }
+        }
+        buffer << '\n';
+    }
     std::lock_guard lock(output_mutex_);
     output_ << buffer.str() << std::flush;
 }

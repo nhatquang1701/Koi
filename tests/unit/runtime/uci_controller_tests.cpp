@@ -3066,7 +3066,7 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     require(see_raw.find("see rejected illegal move 'e1e8'") != std::string::npos,
             "see must reject illegal moves cleanly; got:\n" + see_raw);
 
-    std::istringstream nnue_eval_in("position startpos\nfen\nkey\nmoves\neval\nposition fen 8/8/8/8/8/6K1/5Q2/7k b - - 0 1\nmoves\nquit\n");
+    std::istringstream nnue_eval_in("position startpos\nfen\nkey\nmoves\nbook\ntb\neval\nposition fen 8/8/8/8/8/6K1/5Q2/7k b - - 0 1\nmoves\nquit\n");
     std::ostringstream nnue_eval_out;
     std::ostringstream nnue_eval_diag;
     koi::UciController nnue_eval_ctrl(
@@ -3086,12 +3086,39 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                 std::string::npos,
             "fen must print exact six-field FEN; got:\n" + nnue_eval_raw);
     require(nnue_eval_raw.find("Position key : ") != std::string::npos &&
-                nnue_eval_raw.find("Pawn key     : ") != std::string::npos,
-            "key must print hex Zobrist position and pawn keys; got:\n" + nnue_eval_raw);
+                nnue_eval_raw.find("Pawn key     : ") != std::string::npos &&
+                nnue_eval_raw.find("Polyglot key : ") != std::string::npos,
+            "key must print hex Zobrist position, pawn, and Polyglot keys; got:\n" + nnue_eval_raw);
     require(nnue_eval_raw.find("Legal moves (20): a2a3 ") != std::string::npos &&
                 nnue_eval_raw.find("Legal moves (0): (none)\n") != std::string::npos,
             "moves must print sorted legal moves count and (none) at checkmate; got:\n" +
                 nnue_eval_raw);
+    require(nnue_eval_raw.find("Opening book : unavailable\n") != std::string::npos &&
+                nnue_eval_raw.find("Syzygy : unavailable\n") != std::string::npos,
+            "book and tb must report unavailable when unconfigured; got:\n" + nnue_eval_raw);
+
+    const koi::test::TempDirectory book_dir;
+    const std::filesystem::path interactive_book = book_dir.path() / "interactive.bin";
+    const koi::GameState startpos = koi::GameState::startpos();
+    write_book(interactive_book, {
+        {startpos.polyglot_key(), polyglot_move("e2", "e4"), 75, 0},
+        {startpos.polyglot_key(), polyglot_move("d2", "d4"), 25, 0},
+    });
+    std::istringstream book_cmd_in(
+        "setoption name BookFile value " + interactive_book.string() +
+        "\nposition startpos\nbook\nquit\n");
+    std::ostringstream book_cmd_out;
+    std::ostringstream book_cmd_diag;
+    auto book_cmd_ctrl = koi::test::make_uci_controller(book_cmd_in, book_cmd_out, book_cmd_diag);
+    const int book_cmd_exit = book_cmd_ctrl->run();
+    const std::string book_cmd_raw = book_cmd_out.str();
+    require(book_cmd_exit == 0 && book_cmd_diag.str().empty(),
+            "book inspection sequence must shut down cleanly");
+    require(book_cmd_raw.find("Opening book : interactive.bin (2 moves, total weight 100)") !=
+                std::string::npos &&
+                book_cmd_raw.find("  e2e4  weight=75 (75.0%)") != std::string::npos &&
+                book_cmd_raw.find("  d2d4  weight=25 (25.0%)") != std::string::npos,
+            "book command must print sorted weighted entries; got:\n" + book_cmd_raw);
 
     std::istringstream cli_eval_in;
     std::ostringstream cli_eval_out;

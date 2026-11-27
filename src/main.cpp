@@ -169,7 +169,7 @@ void write_help() {
               << "  compiler, --compiler                     Print compiler, C++26 standard, and dispatched ISA\n"
               << "  eval, --eval [fen]                       Evaluate startpos or FEN with the active evaluator\n"
               << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n\n"
-              << "Interactive UCI commands also include: d, fen, key, moves, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait, help\n";
+              << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, flip, see <move>, compiler, bench [depth [hash [threads]]], perft <depth>, wait, help\n";
 }
 
 void set_environment_value(const char* name, std::string_view value) noexcept {

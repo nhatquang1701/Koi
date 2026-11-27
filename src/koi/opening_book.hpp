@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "koi/move.hpp"
 
@@ -32,6 +33,7 @@ public:
         std::uint8_t maximum_depth, std::uint64_t random_seed,
         bool random_selection = false, bool safety_enabled = false,
         std::uint8_t safety_depth = 2) const;
+    [[nodiscard]] std::vector<BookChoice> probe_all(const GameState& state) const;
     [[nodiscard]] bool contains_move(
         const GameState& state, Move move, std::uint32_t root_ply, bool enabled,
         std::uint8_t maximum_depth, bool safety_enabled = false,
