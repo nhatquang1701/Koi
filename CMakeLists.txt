@@ -935,6 +935,12 @@ if(Python3_Interpreter_FOUND)
     koi_add_python_unittest(bullet_data_python tests/python/nnue/bullet_data_test.py)
     koi_add_python_unittest(bullet_conversion_python tests/python/nnue/bullet_conversion_test.py)
     koi_add_python_unittest(build_verified_book_python tests/python/book/build_verified_book_test.py)
+    koi_add_python_unittest(cli_subcommands_python tests/python/runtime/cli_subcommands_test.py)
+    set_property(
+        TEST cli_subcommands_python
+        APPEND
+        PROPERTY ENVIRONMENT "KOI_ENGINE_EXE=$<TARGET_FILE:koi_engine>"
+    )
 else()
     message(STATUS
         "Skipping all Python tests: the Python 3 interpreter is unavailable."
@@ -1043,7 +1049,7 @@ if(Python3_Interpreter_FOUND)
         measurement_phase_python measurement_forensics_python strength_report_python
         uci_benchmark_python
         koi_trainer_python
-        bullet_data_python bullet_conversion_python build_verified_book_python release_candidate_games_python release_strength_openings_python strength_bound_python
+        bullet_data_python bullet_conversion_python build_verified_book_python cli_subcommands_python release_candidate_games_python release_strength_openings_python strength_bound_python
         PROPERTIES LABELS "python"
     )
     if(TEST elo_oracle_python)

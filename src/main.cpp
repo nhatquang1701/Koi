@@ -236,7 +236,13 @@ int main(int argc, char* argv[]) {
     const auto collect_trailing_fen = [argc, argv](int& idx,
                                                    std::optional<std::string>& fen_out) {
         std::string collected;
-        while (idx + 1 < argc && !std::string_view(argv[idx + 1]).starts_with('-')) {
+        while (idx + 1 < argc) {
+            const std::string_view next(argv[idx + 1]);
+            // Single `-` is the empty en-passant square in an unquoted FEN, whereas
+            // longer leading-dash tokens (`-v`, `--help`, `--protocol`) remain flags.
+            if (next != "-" && next.starts_with('-')) {
+                break;
+            }
             if (!collected.empty()) {
                 collected.push_back(' ');
             }
