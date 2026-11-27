@@ -5,6 +5,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # macOS arm64 (Apple Silicon) is the modules-off portability leg: it proves the
 # documented fallback build (KOI_BUILD_MODULES=OFF) works with Homebrew LLVM.
 # The static libstdc++ runtime policy is Linux-only,

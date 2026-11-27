@@ -301,6 +301,19 @@ if (-not (Test-Path -LiteralPath $releaseVerifyScript -PathType Leaf)) {
     throw "Release verification script is missing: $releaseVerifyScript"
 }
 $releaseVerifyContent = Get-Content -LiteralPath $releaseVerifyScript -Raw
+
+foreach ($wf in @(
+    @{ Name = 'windows.yml'; Content = $content },
+    @{ Name = 'linux.yml'; Content = $linuxContent },
+    @{ Name = 'macos.yml'; Content = $macosContent }
+)) {
+    if ($wf.Content -notmatch '(?ms)^permissions:\s*\r?\n\s+contents:\s*read\b') {
+        throw "Workflow $($wf.Name) must declare top-level read-only permissions."
+    }
+    if ($wf.Content -notmatch '(?ms)^concurrency:\s*\r?\n\s+group:\s*\$\{\{\s*github\.workflow\s*\}\}-\$\{\{\s*github\.ref\s*\}\}\s*\r?\n\s+cancel-in-progress:\s*true\b') {
+        throw "Workflow $($wf.Name) must configure auto-cancel concurrency per ref."
+    }
+}
 if ($releaseVerifyContent -notmatch '(?s)''--optional'',\s*''--nnue'',\s*\$NnuePath') {
     throw 'tools/build/release_verify.ps1 must pass --nnue $NnuePath to optional koi-bench.'
 }

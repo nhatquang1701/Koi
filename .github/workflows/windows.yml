@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Separate jobs so a Debug, sanitizer, or differential failure cannot cancel
 # the primary Release suite, and so each leg can upload its own diagnostics.
 jobs:

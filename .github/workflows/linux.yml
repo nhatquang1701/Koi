@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Separate jobs so a GCC, Clang, modules-off, or packaging failure cannot cancel
 # the others, and so each leg can upload its own diagnostics.  The GCC/Clang
 # legs exercise the C++26 named-module build; the modules-off leg proves the
