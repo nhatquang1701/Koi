@@ -292,6 +292,58 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertEqual(pgn_bad_fen.returncode, 2)
         self.assertIn("invalid FEN", pgn_bad_fen.stderr)
 
+        epd_start = self._run(["epd"], disable_nnue=True)
+        self.assertEqual(epd_start.returncode, 0, epd_start.stderr)
+        self.assertEqual(
+            epd_start.stdout.strip(),
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - hmvc 0; fmvn 1;",
+        )
+
+        epd_moves = self._run(["epd", "moves", "e4", "e5", "Nf3"], disable_nnue=True)
+        self.assertEqual(epd_moves.returncode, 0, epd_moves.stderr)
+        self.assertEqual(
+            epd_moves.stdout.strip(),
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - hmvc 1; fmvn 2;",
+        )
+
+        epd_interactive = self._run(
+            ["--hce", "-c", "position startpos moves e2e4 e7e5 g1f3", "-c", "epd"],
+            disable_nnue=True,
+        )
+        self.assertEqual(epd_interactive.returncode, 0, epd_interactive.stderr)
+        self.assertEqual(epd_interactive.stderr, "")
+        self.assertEqual(
+            epd_interactive.stdout.strip(),
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - hmvc 1; fmvn 2;",
+        )
+
+        with tempfile.TemporaryDirectory() as epd_tmp:
+            roundtrip_epd = pathlib.Path(epd_tmp) / "roundtrip.epd"
+            roundtrip_epd.write_text(epd_moves.stdout, encoding="utf-8")
+            roundtrip_json = pathlib.Path(epd_tmp) / "roundtrip.json"
+            bench_exe = _resolve_tool("KOI_BENCH_EXE", "koi-bench", self.engine)
+            roundtrip_bench = subprocess.run(
+                [
+                    str(bench_exe),
+                    "--hce",
+                    "--epd",
+                    str(roundtrip_epd),
+                    "--depth",
+                    "1",
+                    "--profile-json",
+                    str(roundtrip_json),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(roundtrip_bench.returncode, 0, roundtrip_bench.stderr)
+            roundtrip_data = json.loads(roundtrip_json.read_text(encoding="utf-8"))
+            self.assertEqual(
+                roundtrip_data["positions"][0]["fen"],
+                "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2",
+            )
+
     def test_invalid_perft_and_unknown_options(self) -> None:
         bad_depth = self._run(["perft", "99"], disable_nnue=True)
         self.assertEqual(bad_depth.returncode, 2)

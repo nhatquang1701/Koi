@@ -14,7 +14,7 @@
 
 namespace {
 
-constexpr std::array<const char*, 34> kCliEnvVars = {
+constexpr std::array<const char*, 35> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_CLI_HASH",
     "KOI_CLI_THREADS",
@@ -25,6 +25,7 @@ constexpr std::array<const char*, 34> kCliEnvVars = {
     "KOI_CLI_COMPILER",
     "KOI_CLI_DISPLAY",
     "KOI_CLI_FEN_CMD",
+    "KOI_CLI_EPD",
     "KOI_CLI_KEY",
     "KOI_CLI_MOVES",
     "KOI_CLI_PGN",
@@ -394,7 +395,8 @@ void test_unquoted_fen_and_inspection_subcommands() {
                                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
                        "see must preserve move and trailing unquoted FEN");
 
-    for (const std::string_view cmd : {"d", "--display", "fen", "key", "moves", "flip", "book", "tb"}) {
+    for (const std::string_view cmd :
+         {"d", "--display", "fen", "epd", "key", "moves", "flip", "book", "tb"}) {
         env.clear_all();
         koi::cli::CliOptions inspect_opts;
         const auto exit_code = invoke_parse({std::string(cmd), "8/8/8/8/8/8/4K3/4k3", "w", "-", "-", "0", "1"}, inspect_opts);
@@ -413,6 +415,35 @@ void test_unquoted_fen_and_inspection_subcommands() {
         koi::test::require(!invoke_parse({}, fen_reexec).has_value() && fen_reexec.fen &&
                                fen_reexec.inspect_fen == "moves e2e4 e7e5",
                            "KOI_CLI_FEN_CMD and KOI_CLI_FEN must roundtrip across empty argv");
+    }
+    {
+        env.clear_all();
+        koi::cli::CliOptions epd_opts;
+        koi::test::require(!invoke_parse({"epd", "moves", "e4", "e5", "Nf3"}, epd_opts)
+                                .has_value() &&
+                               epd_opts.epd && epd_opts.inspect_fen == "moves e4 e5 Nf3",
+                           "epd subcommand must store trailing position spec");
+        koi::cli::CliOptions epd_reexec;
+        koi::test::require(!invoke_parse({}, epd_reexec).has_value() && epd_reexec.epd &&
+                               epd_reexec.inspect_fen == "moves e4 e5 Nf3",
+                           "KOI_CLI_EPD and KOI_CLI_FEN must roundtrip across empty argv");
+        std::array<std::string, 1> storage{{"koi-engine"}};
+        std::array<char*, 1> argv{{storage[0].data()}};
+        ScopedStreamCapture out(std::cout);
+        const auto run_exit = koi::cli::run_zero_network_cli_command(
+            epd_opts, static_cast<int>(argv.size()), argv.data(), "1.2.0", "testsha");
+        koi::test::require(
+            run_exit == std::optional<int>(0) &&
+                out.str() ==
+                    "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - hmvc 1; fmvn 2;\n",
+            "zero-network epd command must emit standard EPD; got:\n" + out.str());
+        env.clear_all();
+        ScopedStreamCapture err(std::cerr);
+        koi::cli::CliOptions conflict_opts;
+        koi::test::require(
+            invoke_parse({"-c", "uci", "epd"}, conflict_opts) == std::optional<int>(2) &&
+                !err.str().empty(),
+            "--cmd combined with epd must exit 2");
     }
     {
         env.clear_all();

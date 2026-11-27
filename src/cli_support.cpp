@@ -110,6 +110,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  perft <depth> [fen]                      Run timed perft divide (depth 1..10)\n"
               << "  d, --display [fen]                       Display ASCII board, FEN, Zobrist key, and move count\n"
               << "  fen [fen]                                Print six-field FEN for startpos, FEN, or moves sequence\n"
+              << "  epd [fen]                                Print standard EPD (hmvc/fmvn) for startpos, FEN, or moves sequence\n"
               << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
               << "  moves [fen]                              List sorted legal UCI moves from startpos or FEN\n"
               << "  pgn [fen]                                Export startpos, FEN, or moves sequence as FIDE PGN\n"
@@ -117,7 +118,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  book [fen]                               Probe Polyglot opening book entries for position\n"
               << "  tb [fen]                                 Probe Syzygy tablebases for root WDL and best moves\n"
               << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
-              << "Interactive UCI commands also include: d, fen, key, moves, book, tb, eval, nnue, flip, makemove <move...>, undo [plies], history, pgn, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
+              << "Interactive UCI commands also include: d, fen, epd, key, moves, book, tb, eval, nnue, flip, makemove <move...>, undo [plies], history, pgn, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
 }
 
 std::optional<GameState> resolve_cli_position(const std::optional<std::string>& fen) {
@@ -339,6 +340,14 @@ std::optional<int> parse_cli_options(
         }
         set_environment_value("KOI_CLI_COMMANDS", joined);
     };
+    const auto set_inspect_command = [&](int& arg_index, bool& flag, const char* env_name) {
+        flag = true;
+        set_environment_value(env_name, "1");
+        collect_trailing_fen(arg_index, out.inspect_fen);
+        if (out.inspect_fen.has_value()) {
+            set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
+        }
+    };
 
     for (int index = 1; index < argc; ++index) {
         const std::string_view arg(argv[index]);
@@ -369,75 +378,39 @@ std::optional<int> parse_cli_options(
             continue;
         }
         if (arg == "d" || arg == "--display") {
-            out.display = true;
-            set_environment_value("KOI_CLI_DISPLAY", "1");
-            collect_trailing_fen(index, out.inspect_fen);
-            if (out.inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
-            }
+            set_inspect_command(index, out.display, "KOI_CLI_DISPLAY");
             continue;
         }
         if (arg == "fen") {
-            out.fen = true;
-            set_environment_value("KOI_CLI_FEN_CMD", "1");
-            collect_trailing_fen(index, out.inspect_fen);
-            if (out.inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
-            }
+            set_inspect_command(index, out.fen, "KOI_CLI_FEN_CMD");
+            continue;
+        }
+        if (arg == "epd") {
+            set_inspect_command(index, out.epd, "KOI_CLI_EPD");
             continue;
         }
         if (arg == "key") {
-            out.key = true;
-            set_environment_value("KOI_CLI_KEY", "1");
-            collect_trailing_fen(index, out.inspect_fen);
-            if (out.inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
-            }
+            set_inspect_command(index, out.key, "KOI_CLI_KEY");
             continue;
         }
         if (arg == "moves") {
-            out.moves = true;
-            set_environment_value("KOI_CLI_MOVES", "1");
-            collect_trailing_fen(index, out.inspect_fen);
-            if (out.inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
-            }
+            set_inspect_command(index, out.moves, "KOI_CLI_MOVES");
             continue;
         }
         if (arg == "pgn") {
-            out.pgn = true;
-            set_environment_value("KOI_CLI_PGN", "1");
-            collect_trailing_fen(index, out.inspect_fen);
-            if (out.inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
-            }
+            set_inspect_command(index, out.pgn, "KOI_CLI_PGN");
             continue;
         }
         if (arg == "flip") {
-            out.flip = true;
-            set_environment_value("KOI_CLI_FLIP", "1");
-            collect_trailing_fen(index, out.inspect_fen);
-            if (out.inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
-            }
+            set_inspect_command(index, out.flip, "KOI_CLI_FLIP");
             continue;
         }
         if (arg == "book") {
-            out.book = true;
-            set_environment_value("KOI_CLI_BOOK", "1");
-            collect_trailing_fen(index, out.inspect_fen);
-            if (out.inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
-            }
+            set_inspect_command(index, out.book, "KOI_CLI_BOOK");
             continue;
         }
         if (arg == "tb") {
-            out.tb = true;
-            set_environment_value("KOI_CLI_TB", "1");
-            collect_trailing_fen(index, out.inspect_fen);
-            if (out.inspect_fen.has_value()) {
-                set_environment_value("KOI_CLI_FEN", *out.inspect_fen);
-            }
+            set_inspect_command(index, out.tb, "KOI_CLI_TB");
             continue;
         }
         if (arg == "see") {
@@ -731,6 +704,7 @@ std::optional<int> parse_cli_options(
     restore_env_flag(out.compiler, "KOI_CLI_COMPILER");
     restore_env_flag(out.display, "KOI_CLI_DISPLAY");
     restore_env_flag(out.fen, "KOI_CLI_FEN_CMD");
+    restore_env_flag(out.epd, "KOI_CLI_EPD");
     restore_env_flag(out.key, "KOI_CLI_KEY");
     restore_env_flag(out.moves, "KOI_CLI_MOVES");
     restore_env_flag(out.pgn, "KOI_CLI_PGN");
@@ -777,8 +751,9 @@ std::optional<int> parse_cli_options(
     }
     if (!out.commands.empty() &&
         (out.bench_depth.has_value() || out.speedtest || out.compiler || out.nnue_info ||
-         out.display || out.fen || out.key || out.moves || out.pgn || out.flip || out.book || out.tb ||
-         out.see_move.has_value() || out.eval || out.options || out.perft_depth.has_value())) {
+         out.display || out.fen || out.epd || out.key || out.moves || out.pgn || out.flip ||
+         out.book || out.tb || out.see_move.has_value() || out.eval || out.options ||
+         out.perft_depth.has_value())) {
         std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
         return 2;
     }
@@ -828,7 +803,8 @@ std::optional<int> run_zero_network_cli_command(
         std::cout << detail::format_pgn(parsed.origin, parsed.moves) << std::flush;
         return 0;
     }
-    if (options.display || options.fen || options.key || options.moves || options.flip) {
+    if (options.display || options.fen || options.epd || options.key || options.moves ||
+        options.flip) {
         const std::optional<GameState> root = resolve_cli_position(options.inspect_fen);
         if (!root.has_value()) {
             return 2;
@@ -850,6 +826,8 @@ std::optional<int> run_zero_network_cli_command(
             std::cout << detail::format_ascii_board(*root) << std::flush;
         } else if (options.fen) {
             std::cout << root->fen() << '\n' << std::flush;
+        } else if (options.epd) {
+            std::cout << detail::format_epd(*root) << std::flush;
         } else if (options.key) {
             std::cout << detail::format_key_info(*root) << std::flush;
         } else {

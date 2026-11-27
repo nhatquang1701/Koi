@@ -3289,6 +3289,8 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     std::istringstream pgn_in(
         "makemove f3 e5 g4 Qh4#\n"
         "pgn\n"
+        "position startpos moves e2e4 e7e5 g1f3\n"
+        "epd\n"
         "position startpos\n"
         "annotate e4 depth 1\n"
         "quit\n");
@@ -3302,9 +3304,12 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     require(pgn_raw.find("[Event \"Koi Session\"]\n") != std::string::npos &&
                 pgn_raw.find("[Result \"0-1\"]\n") != std::string::npos &&
                 pgn_raw.find("1. f3 e5 2. g4 Qh4# 0-1\n") != std::string::npos &&
+                pgn_raw.find(
+                    "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - hmvc 1; fmvn 2;\n") !=
+                    std::string::npos &&
                 pgn_raw.find("info string annotate move e2e4 ply 0 side white ") !=
                     std::string::npos,
-            "interactive pgn and SAN annotate output mismatch; got:\n" + pgn_raw);
+            "interactive pgn/epd and SAN annotate output mismatch; got:\n" + pgn_raw);
 }
 
 void test_uci_support_helpers_direct() {
@@ -3524,9 +3529,9 @@ void test_uci_support_helpers_direct() {
             "format_nnue_info must format container metadata clearly; got:\n" + nnue_summary);
 
     const std::string help_text = format_interactive_help();
-    for (const char* cmd : {"bench", "speedtest", "options", "d", "fen", "key", "moves", "book",
-                            "tb", "eval", "nnue", "flip", "makemove", "undo", "history", "pgn",
-                            "see", "perft", "wait", "compiler", "help"}) {
+    for (const char* cmd : {"bench", "speedtest", "options", "d", "fen", "epd", "key", "moves",
+                            "book", "tb", "eval", "nnue", "flip", "makemove", "undo", "history",
+                            "pgn", "see", "perft", "wait", "compiler", "help"}) {
         require(help_text.find(cmd) != std::string::npos,
                 std::string("format_interactive_help missing command: ") + cmd);
     }
@@ -3686,6 +3691,18 @@ void test_uci_support_helpers_direct() {
     require(pgn_stale.find("[Result \"1/2-1/2\"]\n") != std::string::npos &&
                 pgn_stale.ends_with("\n\n1/2-1/2\n"),
             "format_pgn stalemate mismatch; got:\n" + pgn_stale);
+
+    const std::string epd_start = format_epd(startpos);
+    require(epd_start == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - hmvc 0; fmvn 1;\n" &&
+                epd_start.find("info string") == std::string::npos,
+            "format_epd startpos mismatch; got:\n" + epd_start);
+    auto epd_pos = startpos;
+    require(epd_pos.make_move(*e2e4) && epd_pos.make_move(*e7e5) &&
+                epd_pos.make_move(*koi::Move::parse_uci("g1f3")),
+            "format_epd moves must be legal");
+    require(format_epd(epd_pos) ==
+                "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - hmvc 1; fmvn 2;\n",
+            "format_epd after e4 e5 Nf3 mismatch");
 
     const koi::PositionConsistencySnapshot snap = startpos.consistency_snapshot();
     const std::string pos_json = format_position_debug_json(

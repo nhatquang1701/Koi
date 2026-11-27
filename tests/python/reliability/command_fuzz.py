@@ -30,7 +30,7 @@ from unittest_progress import format_progress_eta  # noqa: E402
 
 FRAGMENTS = [
     "uci", "isready", "ucinewgame", "stop", "ponderhit", "go", "position",
-    "setoption", "debug", "register", "d", "fen", "key", "moves", "book", "tb", "eval", "nnue",
+    "setoption", "debug", "register", "d", "fen", "epd", "key", "moves", "book", "tb", "eval", "nnue",
     "flip", "makemove", "undo", "history", "pgn", "see", "options", "compiler", "wait", "board",
     "help", "quitx", "setoption name", "position startpos", "go depth",
     "setoption name Hash value",
@@ -95,6 +95,16 @@ def _is_valid_help_line(line: str) -> bool:
 def _is_valid_fen_line(line: str) -> bool:
     fields = line.split()
     return len(fields) == 6 and fields[1] in ("w", "b") and fields[0].count("/") == 7
+
+
+def _is_valid_epd_line(line: str) -> bool:
+    return (
+        re.fullmatch(
+            r"\S+/\S+/\S+/\S+/\S+/\S+/\S+/\S+ [wb] (?:-|[KQkq]{1,4}) (?:-|[a-h][36]) hmvc \d+; fmvn \d+;",
+            line,
+        )
+        is not None
+    )
 
 
 def _is_valid_key_line(line: str) -> bool:
@@ -225,6 +235,7 @@ def run_case(config: dict) -> dict:
         }
         allow_display = "d" in sent_tokens
         allow_fen = "fen" in sent_tokens
+        allow_epd = "epd" in sent_tokens
         allow_key = "key" in sent_tokens
         allow_moves = "moves" in sent_tokens
         allow_book = "book" in sent_tokens
@@ -248,6 +259,7 @@ def run_case(config: dict) -> dict:
                 or line.startswith("bestmove ")
                 or (allow_display and _is_valid_display_line(line))
                 or (allow_fen and _is_valid_fen_line(line))
+                or (allow_epd and _is_valid_epd_line(line))
                 or (allow_key and _is_valid_key_line(line))
                 or (allow_moves and _is_valid_moves_line(line))
                 or (allow_book and _is_valid_book_line(line))

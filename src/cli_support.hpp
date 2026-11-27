@@ -24,6 +24,7 @@ struct CliOptions {
     bool compiler = false;
     bool display = false;
     bool fen = false;
+    bool epd = false;
     bool key = false;
     bool moves = false;
     bool pgn = false;

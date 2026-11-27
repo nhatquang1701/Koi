@@ -116,6 +116,7 @@ private:
     void handle_annotate(std::istream& command);
     void handle_display();
     void handle_fen();
+    void handle_epd();
     void handle_key();
     void handle_moves();
     void handle_book();

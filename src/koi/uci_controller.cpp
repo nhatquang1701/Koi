@@ -757,6 +757,8 @@ int UciController::run() {
             handle_display();
         } else if (name == "fen") {
             handle_fen();
+        } else if (name == "epd") {
+            handle_epd();
         } else if (name == "key") {
             handle_key();
         } else if (name == "moves") {
@@ -1432,6 +1434,12 @@ void UciController::handle_fen() {
     const std::string fen = position_.fen();
     std::lock_guard lock(output_mutex_);
     output_ << fen << '\n' << std::flush;
+}
+
+void UciController::handle_epd() {
+    const std::string epd = detail::format_epd(position_);
+    std::lock_guard lock(output_mutex_);
+    output_ << epd << std::flush;
 }
 
 void UciController::handle_key() {

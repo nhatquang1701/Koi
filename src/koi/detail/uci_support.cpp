@@ -775,6 +775,7 @@ std::string format_interactive_help() {
         "  wait                                Wait for a finite search or perft to finish\n"
         "  d                                   Display ASCII board, FEN, key, and move count\n"
         "  fen                                 Print the current position FEN\n"
+        "  epd                                 Print standard EPD (with hmvc and fmvn) of the current position\n"
         "  key                                 Print Zobrist position, pawn, and Polyglot hash keys\n"
         "  moves                               List sorted legal UCI moves from current position\n"
         "  book                                Probe active Polyglot opening book entries\n"
@@ -1813,6 +1814,42 @@ std::string format_pgn(const GameState& origin, const std::vector<Move>& moves) 
     }
     out << '\n' << (movetext.empty() ? std::string(result) : (movetext + ' ' + result)) << '\n';
     return out.str();
+}
+
+std::string format_epd(const GameState& position) {
+    const std::string fen = position.fen();
+    std::array<std::string_view, 6> fields{};
+    std::size_t count = 0;
+    std::size_t cursor = 0;
+    while (cursor < fen.size() && count < fields.size()) {
+        while (cursor < fen.size() &&
+               std::isspace(static_cast<unsigned char>(fen[cursor])) != 0) {
+            ++cursor;
+        }
+        const std::size_t start = cursor;
+        while (cursor < fen.size() &&
+               std::isspace(static_cast<unsigned char>(fen[cursor])) == 0) {
+            ++cursor;
+        }
+        if (start < cursor) {
+            fields[count++] = std::string_view(fen).substr(start, cursor - start);
+        }
+    }
+    if (count < fields.size()) {
+        return fen + '\n';
+    }
+    std::string epd;
+    epd.reserve(fen.size() + 16);
+    epd.append(fields[0]).push_back(' ');
+    epd.append(fields[1]).push_back(' ');
+    epd.append(fields[2]).push_back(' ');
+    epd.append(fields[3]);
+    epd += " hmvc ";
+    epd.append(fields[4]);
+    epd += "; fmvn ";
+    epd.append(fields[5]);
+    epd += ";\n";
+    return epd;
 }
 
 } // namespace koi::detail

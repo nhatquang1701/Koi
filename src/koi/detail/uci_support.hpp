@@ -190,6 +190,7 @@ struct ParsedCliPosition {
 [[nodiscard]] std::string format_move_history(
     const GameState& origin, const std::vector<Move>& moves);
 [[nodiscard]] std::string format_pgn(const GameState& origin, const std::vector<Move>& moves);
+[[nodiscard]] std::string format_epd(const GameState& position);
 [[nodiscard]] std::string format_interactive_help();
 [[nodiscard]] std::string format_position_debug_json(
     std::uint64_t generation, std::string_view command_text,

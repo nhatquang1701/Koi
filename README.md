@@ -42,7 +42,7 @@
 | **Pruning & Ordering** | Adaptive Null-Move Pruning with verification · Reverse Futility, Futility, Razoring, ProbCut, SEE pruning · Internal Iterative Reductions (IIR) & Singular Extensions / Multi-Cut · Late Move Reductions (LMR) · Quiet, Capture, Pawn, Continuation (6-ply), Counter-Move, and 6-table Static Eval Correction Histories |
 | **Evaluation** | **HalfKA-HM v9 NNUE** (`7680 → 256×2 → 1`, SCReLU, 10 mirrored king buckets, 8 output buckets, 20-slot Finny cache) with AVX-512 / AVX2 / ARM NEON kernels · Built-in tapered classical evaluator (`EvalMode=hce` or `KOI_EVALUATOR=hce`) |
 | **Protocols & Assets** | **UCI**, **XBoard/CECP v2**, **USI**, **UCCI**, **UCI_Cyclone** (`--protocol` / `Protocol` option) · Flag-proof time management · In-place `ponder`/`ponderhit` · `UCI_ShowWDL` · Bundled Stockfish-verified CC0 Polyglot book (`book.bin`) · Automatic Syzygy 3–7 man WDL/DTZ probing (`syzygy/`) |
-| **Hardware & CLI** | Silent x86-64 CPU dispatch (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon `arm64` · Interactive & CLI `bench`, `speedtest`, `options`, `d`, `fen`, `key`, `moves`, `pgn`, `book`, `tb`, `eval`, `nnue`, `flip`, `makemove`, `undo`, `history`, `see`, `compiler`, `perft`, and `-c`/`--cmd` batch execution |
+| **Hardware & CLI** | Silent x86-64 CPU dispatch (`koi-engine-avx512` → `koi-engine-avx2` → baseline) · Native Apple Silicon `arm64` · Interactive & CLI `bench`, `speedtest`, `options`, `d`, `fen`, `epd`, `key`, `moves`, `pgn`, `book`, `tb`, `eval`, `nnue`, `flip`, `makemove`, `undo`, `history`, `see`, `compiler`, `perft`, and `-c`/`--cmd` batch execution |
 
 ---
 
@@ -85,6 +85,7 @@ koi-engine compiler
 koi-engine nnue [path]                 # verify container metadata & payload SHA-256
 koi-engine d [fen]                     # also accepts [startpos|fen] [moves <uci|san>...] (e.g. d moves e4 e5 Nf3)
 koi-engine fen [fen]                   # print six-field FEN after optional move sequence
+koi-engine epd [fen]                   # print standard EPD (hmvc/fmvn) for startpos, FEN, or moves sequence
 koi-engine key [fen]
 koi-engine moves [fen]
 koi-engine pgn [fen]                   # export position/moves as FIDE PGN
@@ -115,6 +116,7 @@ Inside an interactive session (`koi-engine`):
 | `options` | Prints live active UCI option, book, and Syzygy configuration values |
 | `d` | Displays an ASCII board of the current position, FEN, Zobrist key, checkers, legal move count, and FIDE game state |
 | `fen` | Prints the six-field FEN of the current position |
+| `epd` | Prints standard EPD (`hmvc`/`fmvn`) of the current position |
 | `key` | Prints the hexadecimal Zobrist position, pawn, and Polyglot book keys |
 | `moves` | Lists all sorted legal moves in UCI coordinate notation |
 | `book` | Probes active Polyglot opening book weights and percentages for the position |
