@@ -218,8 +218,8 @@ Built from source via CMake presets (not shipped in user-facing release archives
 | `koi-bench` | 64-position tactical & 128-position positional strength suite | `koi-bench (--nnue NET \| --hce) [--hash MB] [--optional] [--timed] [--depth-sweep a..b] [--report PATH]` |
 | `koi-perft` | Fast legal move-generator perft & `--divide` counter | `koi-perft [--divide] <depth> [startpos\|fen [moves <uci>...]]` |
 | `koi-replay` | Coordinate move replayer (`legal`, `result`, `termination`, `fen`) | `koi-replay <startpos\|fen 6-field-fen> [moves <uci>...]` |
-| `koi-eval-features` | Bulk CSV evaluator dumper for FEN corpora | `koi-eval-features (--nnue NET \| --hce) [--input FILE] [--output FILE]` |
-| `koi-nnue-fixture` | Synthetic v4/v5/v9 `.nnue` generator for C++ & Python boundary tests | `koi-nnue-fixture --arch v4\|v5\|v9 --output <path>` |
+| `koi-eval-features` | Bulk CSV evaluator dumper for FEN corpora | `koi-eval-features (--nnue NET \| --hce) [--input FILE] [--output FILE]` (`--flag=value` supported) |
+| `koi-nnue-fixture` | Synthetic v4/v5/v9 `.nnue` generator for C++ & Python boundary tests | `koi-nnue-fixture --arch v4\|v5\|v9 --output <path>` (`--flag=value` supported) |
 | `tools/measurement/nnue_info.py` | Offline NNUE container inspector & SHA-256 payload verifier | `python tools/measurement/nnue_info.py <network.nnue> [--json] [--verify]` |
 
 For full measurement, SPRT matching, and packaging documentation, see [Developer Tools](../tools/README.md).

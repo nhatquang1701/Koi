@@ -34,6 +34,30 @@ std::string strip_carriage_return(std::string line) {
     return line;
 }
 
+bool consume_value_flag(const std::string_view argument, const std::string_view flag,
+                        int& index, const int argc, char** argv, std::string& destination,
+                        std::string& error) {
+    if (argument == flag) {
+        if (index + 1 >= argc || argv[index + 1] == nullptr || argv[index + 1][0] == '\0') {
+            error = "missing value for " + std::string(flag);
+            return true;
+        }
+        destination = argv[++index];
+        return true;
+    }
+    if (argument.size() > flag.size() && argument.starts_with(flag) &&
+        argument[flag.size()] == '=') {
+        const std::string_view value = argument.substr(flag.size() + 1);
+        if (value.empty()) {
+            error = "missing value for " + std::string(flag);
+            return true;
+        }
+        destination = std::string(value);
+        return true;
+    }
+    return false;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -43,14 +67,16 @@ int main(int argc, char** argv) {
     bool use_hce = false;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument = argv[index];
-        if (argument == "--input" && index + 1 < argc) {
-            input_path = argv[++index];
-        } else if (argument == "--output" && index + 1 < argc) {
-            output_path = argv[++index];
+        std::string parse_error;
+        if (consume_value_flag(argument, "--input", index, argc, argv, input_path, parse_error) ||
+            consume_value_flag(argument, "--output", index, argc, argv, output_path, parse_error) ||
+            consume_value_flag(argument, "--nnue", index, argc, argv, nnue_path, parse_error)) {
+            if (!parse_error.empty()) {
+                std::cerr << "koi-eval-features: " << parse_error << '\n';
+                return 2;
+            }
         } else if (argument == "--hce") {
             use_hce = true;
-        } else if (argument == "--nnue" && index + 1 < argc) {
-            nnue_path = argv[++index];
         } else if (argument == "-h" || argument == "--help") {
             std::cout << "usage: koi-eval-features (--nnue NET | --hce) [--input FILE] [--output FILE]\n"
                          "  reads FEN or FEN;cp;... rows (stdin by default) and writes\n"

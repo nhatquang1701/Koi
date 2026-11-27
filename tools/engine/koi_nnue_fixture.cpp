@@ -54,15 +54,29 @@ std::optional<Arguments> parse_arguments(int argc, char** argv) {
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if (argument == "--arch") {
-            if (arch.has_value() || index + 1 >= argc || argv[index + 1] == nullptr) {
+            if (arch.has_value() || index + 1 >= argc || argv[index + 1] == nullptr ||
+                argv[index + 1][0] == '\0') {
                 return std::nullopt;
             }
             arch = argv[++index];
+        } else if (argument.starts_with("--arch=")) {
+            const std::string_view value = argument.substr(std::string_view("--arch=").size());
+            if (arch.has_value() || value.empty()) {
+                return std::nullopt;
+            }
+            arch = value;
         } else if (argument == "--output") {
-            if (output.has_value() || index + 1 >= argc || argv[index + 1] == nullptr) {
+            if (output.has_value() || index + 1 >= argc || argv[index + 1] == nullptr ||
+                argv[index + 1][0] == '\0') {
                 return std::nullopt;
             }
             output = std::filesystem::path(argv[++index]);
+        } else if (argument.starts_with("--output=")) {
+            const std::string_view value = argument.substr(std::string_view("--output=").size());
+            if (output.has_value() || value.empty()) {
+                return std::nullopt;
+            }
+            output = std::filesystem::path(value);
         } else {
             return std::nullopt;
         }

@@ -110,6 +110,8 @@ uci_options:
   Threads: 4
   Hash: 512
   UCI_ShowWDL: true
+  Contempt: 50
+  Dynamic Overhead: true
   EvalFile: "/Users/<you>/koi-bot/engines/koi.nnue"
 ```
 

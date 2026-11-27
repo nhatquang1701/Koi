@@ -13,10 +13,12 @@ param(
     [string]$TestRegex = "",
     [string[]]$Label = @(),
     [string]$CaseFilter = "",
+    [ValidateRange(1, 1000)]
     [int]$Repeats = 5,
     [string]$OutputDirectory = "",
     [string]$CTestPath = "ctest",
-    [string]$Parallel = "1"
+    [ValidateRange(1, 256)]
+    [int]$Parallel = 1
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,6 +40,7 @@ if (-not $OutputDirectory) {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $OutputDirectory = Join-Path "artifacts/verification/test-suite-hardening" "flake-probe-$stamp"
 }
+$OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
 $hadPreviousFilter = Test-Path Env:\KOI_TEST_FILTER

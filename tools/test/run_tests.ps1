@@ -1,8 +1,8 @@
 # On Windows this requires the repository's MSVC x64 environment. Either run it
 # from a Visual Studio developer shell, or pass -EnvironmentScript pointing at a
 # .cmd wrapper that calls vcvars64.bat and forwards its arguments (see the
-# developer notes in tools/README.md). On Linux no wrapper is needed: the
-# default GCC/Clang toolchain is used as-is.
+# developer notes in tools/README.md). On Linux and macOS no wrapper is needed:
+# the default GCC/Clang toolchain is used as-is.
 #
 # Examples:
 #   .\tools\test\run_tests.ps1                                  # full Release suite, parallel
@@ -22,6 +22,7 @@ param(
     # (for example the observed pwsh 7 TaskbarJumpList internal CLR error)
     # while a genuine assertion failure still fails every attempt.  Set 1 to
     # disable retries.
+    [ValidateRange(1, 10)]
     [int]$RepeatUntilPass = 2,
     [string]$OutputDirectory = "",
     [switch]$NoBuild,
@@ -61,14 +62,14 @@ $runnerStartedUtc = [DateTime]::UtcNow
 if (-not $NoBuild) {
     Write-Host "[1/3] build: $BuildDirectory ($Configuration)"
     if (-not $isWindowsHost) {
-        & $cmake --build $BuildDirectory --config $Configuration
+        & $cmake --build $BuildDirectory --config $Configuration --parallel $Parallel
     } elseif (Get-Command cl.exe -ErrorAction SilentlyContinue) {
-        & $cmake --build $BuildDirectory --config $Configuration
+        & $cmake --build $BuildDirectory --config $Configuration --parallel $Parallel
     } else {
         if (-not $EnvironmentScript) {
             throw "cl.exe is not on PATH and no -EnvironmentScript was provided."
         }
-        & $EnvironmentScript $cmake --build $BuildDirectory --config $Configuration
+        & $EnvironmentScript $cmake --build $BuildDirectory --config $Configuration --parallel $Parallel
     }
     if ($LASTEXITCODE -ne 0) {
         throw "Build failed with exit code $LASTEXITCODE."

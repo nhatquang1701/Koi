@@ -727,6 +727,63 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertIn("Evaluator       : NNUE", nnue_opts.stdout)
             self.assertIn("fixture-v9.nnue (boot)", nnue_opts.stdout)
 
+            v9_eq_path = pathlib.Path(tmpdir) / "fixture-v9-eq.nnue"
+            gen_eq = subprocess.run(
+                [str(nnue_fixture_exe), "--arch=v9", f"--output={v9_eq_path}"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(gen_eq.returncode, 0, gen_eq.stderr)
+            inspected_eq = self._run(["nnue", str(v9_eq_path)], disable_nnue=True)
+            self.assertEqual(inspected_eq.returncode, 0, inspected_eq.stderr)
+            self.assertIn("Format version : v9", inspected_eq.stdout)
+            self.assertIn("Status         : valid (checksum verified)", inspected_eq.stdout)
+
+            fen_txt = pathlib.Path(tmpdir) / "positions.fen"
+            fen_txt.write_text(
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1;0;e2e4\n",
+                encoding="utf-8",
+            )
+            csv_path = pathlib.Path(tmpdir) / "nnue_evals.csv"
+            eval_nnue = subprocess.run(
+                [
+                    str(eval_features_exe),
+                    f"--nnue={v9_path}",
+                    f"--input={fen_txt}",
+                    f"--output={csv_path}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(eval_nnue.returncode, 0, eval_nnue.stderr)
+            self.assertEqual(eval_nnue.stderr, "")
+            csv_lines = csv_path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(csv_lines), 2, csv_lines)
+            self.assertEqual(csv_lines[0], "fen,label_cp,nnue_cp")
+            self.assertIsInstance(int(csv_lines[1].split(",")[2]), int)
+
+            eval_hce = subprocess.run(
+                [str(eval_features_exe), "--hce", f"--input={fen_txt}"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(eval_hce.returncode, 0, eval_hce.stderr)
+            self.assertEqual(eval_hce.stderr, "")
+            self.assertTrue(eval_hce.stdout.startswith("fen,label_cp,hce_cp\n"), eval_hce.stdout)
+
+            for bad_eval_args in (["--nnue"], ["--input="], ["--output"]):
+                bad_eval = subprocess.run(
+                    [str(eval_features_exe), *bad_eval_args],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                self.assertEqual(bad_eval.returncode, 2, bad_eval.stdout)
+                self.assertIn("missing value for", bad_eval.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
