@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <bitset>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -179,6 +178,7 @@ private:
 
     static constexpr std::size_t kStageRankCount =
         static_cast<std::size_t>(Stage::done) + 1U;
+    static_assert(kStageRankCount <= 8U, "Stage sorted bitmask requires <= 8 stages");
 
 #if defined(__clang__) || defined(__GNUC__)
 #define KOI_PICKER_NOINLINE __attribute__((noinline))
@@ -264,10 +264,10 @@ private:
     // Candidates are grouped into disjoint stage ranges and selected
     // incrementally (or sorted lazily past a small prefix), so stages and late
     // moves skipped by cutoffs never pay for full-list scoring or introsort.
-    std::array<std::uint16_t, kStageRankCount> stage_begin_{};
-    std::array<std::uint16_t, kStageRankCount> stage_end_{};
-    std::array<std::uint16_t, kStageRankCount> stage_cursor_{};
-    std::bitset<kStageRankCount> stage_sorted_{};
+    std::array<std::uint16_t, kStageRankCount> stage_begin_;
+    std::array<std::uint16_t, kStageRankCount> stage_end_;
+    std::array<std::uint16_t, kStageRankCount> stage_cursor_;
+    std::uint8_t stage_sorted_mask_ = 0;
     // The good-capture pass is already ordered by the same history/MVV score
     // used by the bad-capture pass. Keep only the staged slot of each deferred
     // capture instead of copying the complete Candidate record a second time.

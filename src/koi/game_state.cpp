@@ -2019,6 +2019,11 @@ std::uint64_t GameState::occupied_squares() const noexcept {
     return impl_->native_position.occupied_squares();
 }
 
+ExchangeSnapshot GameState::exchange_snapshot() const noexcept {
+    const Position::ExchangeSnapshot snap = impl_->native_position.exchange_snapshot();
+    return ExchangeSnapshot{snap.piece_bitboards, snap.occupied, snap.side_to_move};
+}
+
 std::size_t GameState::piece_count() const noexcept {
     return impl_->native_position.piece_count();
 }

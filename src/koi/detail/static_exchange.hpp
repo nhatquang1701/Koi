@@ -64,7 +64,7 @@ constexpr std::uint64_t exchange_square_bit(int square) noexcept {
 // type, indexed by static_cast<std::size_t>(PieceType), with slot 0
 // (PieceType::none) unused.
 struct ExchangeContext {
-    std::array<std::array<std::uint64_t, 7>, 2> piece_bitboards{};
+    const std::array<std::array<std::uint64_t, 7>, 2>* piece_bitboards = nullptr;
     std::uint64_t occupied = 0;
     std::array<int, 2> king_squares{-1, -1};
     Color side_to_move = Color::white;
@@ -72,35 +72,42 @@ struct ExchangeContext {
 
 // Builds the exchange baseline directly from the native position bitboards.
 inline ExchangeContext exchange_context_from(const Position& position) noexcept {
+    const Position::ExchangeSnapshot snap = position.exchange_snapshot();
     ExchangeContext context;
-    context.piece_bitboards = position.piece_bitboards();
-    context.occupied = position.occupied_squares();
-    for (const Color color : {Color::white, Color::black}) {
-        const std::size_t color_index = exchange_color_index(color);
-        const std::uint64_t king =
-            context.piece_bitboards[color_index][static_cast<std::size_t>(PieceType::king)];
-        if (king != 0) {
-            context.king_squares[color_index] = static_cast<int>(std::countr_zero(king));
+    context.piece_bitboards = snap.piece_bitboards;
+    context.occupied = snap.occupied;
+    context.side_to_move = snap.side_to_move;
+    if (context.piece_bitboards != nullptr) {
+        const auto& bitboards = *context.piece_bitboards;
+        for (std::size_t color_index = 0; color_index < 2; ++color_index) {
+            const std::uint64_t king =
+                bitboards[color_index][static_cast<std::size_t>(PieceType::king)];
+            if (king != 0) {
+                context.king_squares[color_index] = static_cast<int>(std::countr_zero(king));
+            }
         }
     }
-    context.side_to_move = position.side_to_move();
     return context;
 }
 
 // Same baseline through the public GameState surface, for search code that
 // only holds a GameState.
 inline ExchangeContext exchange_context_from(const GameState& state) noexcept {
+    const ExchangeSnapshot snap = state.exchange_snapshot();
     ExchangeContext context;
-    context.piece_bitboards = state.piece_bitboards();
-    context.occupied = state.occupied_squares();
-    for (std::size_t color_index = 0; color_index < 2; ++color_index) {
-        const std::uint64_t king =
-            context.piece_bitboards[color_index][static_cast<std::size_t>(PieceType::king)];
-        if (king != 0) {
-            context.king_squares[color_index] = static_cast<int>(std::countr_zero(king));
+    context.piece_bitboards = snap.piece_bitboards;
+    context.occupied = snap.occupied;
+    context.side_to_move = snap.side_to_move;
+    if (context.piece_bitboards != nullptr) {
+        const auto& bitboards = *context.piece_bitboards;
+        for (std::size_t color_index = 0; color_index < 2; ++color_index) {
+            const std::uint64_t king =
+                bitboards[color_index][static_cast<std::size_t>(PieceType::king)];
+            if (king != 0) {
+                context.king_squares[color_index] = static_cast<int>(std::countr_zero(king));
+            }
         }
     }
-    context.side_to_move = state.side_to_move();
     return context;
 }
 
@@ -265,7 +272,9 @@ template <PieceType Type, bool Promotes>
 // cheapest piece bucket yields a legal move. Piece material values are strictly
 // ordered: pawn < knight < bishop < rook < queen < king.
 [[nodiscard]] inline int find_least_valuable_legal_attacker(
-    const ExchangeContext& context,
+    const std::array<std::array<std::uint64_t, 7>, 2>& piece_bitboards,
+    const std::uint64_t occupied,
+    const std::array<int, 2>& king_squares,
     int target,
     Color side,
     Piece& recapturing_piece,
@@ -280,24 +289,24 @@ template <PieceType Type, bool Promotes>
     }
     const std::size_t side_index = exchange_color_index(side);
     const std::size_t opp_index = 1U - side_index;
-    const auto& own_pieces = context.piece_bitboards[side_index];
-    const auto& enemy_pieces = context.piece_bitboards[opp_index];
+    const auto& own_pieces = piece_bitboards[side_index];
+    const auto& enemy_pieces = piece_bitboards[opp_index];
     const Color enemy = opposite(side);
     const std::uint64_t target_bit = exchange_square_bit(target);
-    const std::uint64_t alive_enemy_mask = ~target_bit;
-    const int own_king_sq = context.king_squares[side_index];
+    const std::uint64_t alive_mask = occupied & ~target_bit;
+    const int own_king_sq = king_squares[side_index];
     const bool pawn_promotes = (target >> 3 == 0 || target >> 3 == 7);
 
     // Lazily precompute aligned enemy sliders and non-slider checks on `own_king_sq`
     // once per attacker search: since `occ_after = (occupied | target_bit) & ~src_bit`
     // only clears `src_bit`, non-aligned attackers cannot expose a slider pin, and
-    // non-slider checks depend only on `own_king_sq` and `alive_enemy_mask`.
+    // non-slider checks depend only on `own_king_sq` and `alive_mask`.
     ExchangeLegalityState legality{
-        enemy_pieces, context.occupied, target_bit, alive_enemy_mask, own_king_sq, enemy};
+        enemy_pieces, occupied, target_bit, alive_mask, own_king_sq, enemy};
 
     if (const std::uint64_t pawns =
             pawn_attackers_of(target, side == Color::white) &
-            own_pieces[static_cast<std::size_t>(PieceType::pawn)];
+            (own_pieces[static_cast<std::size_t>(PieceType::pawn)] & alive_mask);
         pawns != 0) {
         const int sq = pawn_promotes
             ? try_exchange_bucket<PieceType::pawn, true>(
@@ -310,7 +319,8 @@ template <PieceType Type, bool Promotes>
     }
     if (!legality.always_in_check) {
         if (const std::uint64_t knights =
-                knight_attacks(target) & own_pieces[static_cast<std::size_t>(PieceType::knight)];
+                knight_attacks(target) &
+                (own_pieces[static_cast<std::size_t>(PieceType::knight)] & alive_mask);
             knights != 0) {
             if (const int sq = try_exchange_bucket<PieceType::knight, false>(
                     knights, side, legality, recapturing_piece, promotion_gain);
@@ -319,12 +329,15 @@ template <PieceType Type, bool Promotes>
             }
         }
 
-        const std::uint64_t own_bishops = own_pieces[static_cast<std::size_t>(PieceType::bishop)];
-        const std::uint64_t own_rooks = own_pieces[static_cast<std::size_t>(PieceType::rook)];
-        const std::uint64_t own_queens = own_pieces[static_cast<std::size_t>(PieceType::queen)];
+        const std::uint64_t own_bishops =
+            own_pieces[static_cast<std::size_t>(PieceType::bishop)] & alive_mask;
+        const std::uint64_t own_rooks =
+            own_pieces[static_cast<std::size_t>(PieceType::rook)] & alive_mask;
+        const std::uint64_t own_queens =
+            own_pieces[static_cast<std::size_t>(PieceType::queen)] & alive_mask;
         std::uint64_t diag_attacks = 0;
         if ((own_bishops | own_queens) != 0 && !legality.always_in_check) {
-            diag_attacks = bishop_attacks(target, context.occupied);
+            diag_attacks = bishop_attacks(target, occupied);
             if (const std::uint64_t bishops = diag_attacks & own_bishops; bishops != 0) {
                 if (const int sq = try_exchange_bucket<PieceType::bishop, false>(
                         bishops, side, legality, recapturing_piece, promotion_gain);
@@ -335,7 +348,7 @@ template <PieceType Type, bool Promotes>
         }
         std::uint64_t orth_attacks = 0;
         if ((own_rooks | own_queens) != 0 && !legality.always_in_check) {
-            orth_attacks = rook_attacks(target, context.occupied);
+            orth_attacks = rook_attacks(target, occupied);
             if (const std::uint64_t rooks = orth_attacks & own_rooks; rooks != 0) {
                 if (const int sq = try_exchange_bucket<PieceType::rook, false>(
                         rooks, side, legality, recapturing_piece, promotion_gain);
@@ -354,15 +367,16 @@ template <PieceType Type, bool Promotes>
         }
     }
     if (std::uint64_t kings =
-            king_attacks(target) & own_pieces[static_cast<std::size_t>(PieceType::king)];
+            king_attacks(target) &
+            (own_pieces[static_cast<std::size_t>(PieceType::king)] & alive_mask);
         kings != 0) {
         while (kings != 0) {
             const int source = static_cast<int>(std::countr_zero(kings));
             kings &= kings - 1;
             const std::uint64_t occ_after =
-                (context.occupied & ~exchange_square_bit(source)) | target_bit;
+                (occupied & ~exchange_square_bit(source)) | target_bit;
             if (!exchange_square_attacked_by_masked(
-                    enemy_pieces, occ_after, target, enemy, alive_enemy_mask)) {
+                    enemy_pieces, occ_after, target, enemy, alive_mask)) {
                 recapturing_piece = Piece{PieceType::king, side};
                 promotion_gain = 0;
                 return source;
@@ -375,26 +389,29 @@ template <PieceType Type, bool Promotes>
 inline int static_exchange_gain_from_features(const ExchangeContext& context,
                                               const MoveMetadata& initial) noexcept {
     const Move move = initial.move;
-    if (move.is_no_move() || move.from().index() == Square::kInvalid ||
+    if (context.piece_bitboards == nullptr || move.is_no_move() ||
+        move.from().index() == Square::kInvalid ||
         move.to().index() == Square::kInvalid ||
         (!initial.is_capture() && initial.captured_piece == PieceType::none)) {
         return 0;
     }
 
-    ExchangeContext trial = context;
+    const auto& piece_bitboards = *context.piece_bitboards;
+    std::uint64_t occupied = context.occupied;
+    std::array<int, 2> king_squares = context.king_squares;
     const int source = move.from().index();
     const int target = move.to().index();
     if (!exchange_square_valid(source) || !exchange_square_valid(target)) {
         return 0;
     }
 
-    const Color moving_color = trial.side_to_move;
+    const Color moving_color = context.side_to_move;
     const std::size_t moving_color_index = exchange_color_index(moving_color);
     const std::size_t moving_type_index = static_cast<std::size_t>(initial.moving_piece);
     const std::uint64_t source_bit = exchange_square_bit(source);
     if (moving_type_index == 0 ||
-        (trial.piece_bitboards[moving_color_index][moving_type_index] & source_bit) == 0 ||
-        trial.king_squares[0] < 0 || trial.king_squares[1] < 0) {
+        (piece_bitboards[moving_color_index][moving_type_index] & source_bit) == 0 ||
+        king_squares[0] < 0 || king_squares[1] < 0) {
         return 0;
     }
 
@@ -418,17 +435,15 @@ inline int static_exchange_gain_from_features(const ExchangeContext& context,
     PieceType captured_type = PieceType::none;
     const std::size_t hint_captured_index = static_cast<std::size_t>(initial.captured_piece);
     if (hint_captured_index != 0 &&
-        (trial.piece_bitboards[opp_color_index][hint_captured_index] & captured_bit) != 0) {
+        (piece_bitboards[opp_color_index][hint_captured_index] & captured_bit) != 0) {
         captured_type = initial.captured_piece;
-        trial.piece_bitboards[opp_color_index][hint_captured_index] &= ~captured_bit;
-        trial.occupied &= ~captured_bit;
+        occupied &= ~captured_bit;
     } else {
         for (std::size_t c = 0; c < 2 && captured_type == PieceType::none; ++c) {
             for (std::size_t t = 1; t <= 6; ++t) {
-                if ((trial.piece_bitboards[c][t] & captured_bit) != 0) {
+                if ((piece_bitboards[c][t] & captured_bit) != 0) {
                     captured_type = static_cast<PieceType>(t);
-                    trial.piece_bitboards[c][t] &= ~captured_bit;
-                    trial.occupied &= ~captured_bit;
+                    occupied &= ~captured_bit;
                     break;
                 }
             }
@@ -440,12 +455,9 @@ inline int static_exchange_gain_from_features(const ExchangeContext& context,
     if (move.promotion() != Promotion::none) {
         placed_type = promotion_piece_type(move.promotion());
     }
-    trial.piece_bitboards[moving_color_index][moving_type_index] &= ~source_bit;
-    trial.occupied &= ~source_bit;
-    trial.piece_bitboards[moving_color_index][static_cast<std::size_t>(placed_type)] |= target_bit;
-    trial.occupied |= target_bit;
+    occupied = (occupied & ~source_bit) | target_bit;
     if (initial.moving_piece == PieceType::king) {
-        trial.king_squares[moving_color_index] = target;
+        king_squares[moving_color_index] = target;
     }
 
     Color side = opposite(moving_color);
@@ -455,7 +467,8 @@ inline int static_exchange_gain_from_features(const ExchangeContext& context,
         Piece recapturing_piece{};
         int recapture_promotion_gain = 0;
         const int attacker_square = find_least_valuable_legal_attacker(
-            trial, target, side, recapturing_piece, recapture_promotion_gain);
+            piece_bitboards, occupied, king_squares, target, side,
+            recapturing_piece, recapture_promotion_gain);
 
         if (attacker_square < 0 || depth + 1 >= kMaximumExchangeDepth) {
             break;
@@ -469,13 +482,9 @@ inline int static_exchange_gain_from_features(const ExchangeContext& context,
         const PieceType departing_type =
             recapture_promotion_gain != 0 ? PieceType::pawn : recapturing_piece.type;
         const std::uint64_t attacker_bit = exchange_square_bit(attacker_square);
-        trial.piece_bitboards[cur_index][static_cast<std::size_t>(departing_type)] &= ~attacker_bit;
-        trial.occupied &= ~attacker_bit;
-        trial.piece_bitboards[1U - cur_index][static_cast<std::size_t>(target_type)] &= ~target_bit;
-        trial.piece_bitboards[cur_index][static_cast<std::size_t>(recapturing_piece.type)] |=
-            target_bit;
+        occupied &= ~attacker_bit;
         if (departing_type == PieceType::king) {
-            trial.king_squares[cur_index] = target;
+            king_squares[cur_index] = target;
         }
         target_type = recapturing_piece.type;
         side = opposite(side);

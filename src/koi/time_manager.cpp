@@ -472,6 +472,9 @@ std::int64_t TimeManager::now_nanoseconds() const noexcept {
 }
 
 int TimeManager::initial_hardness(const RootTimingContext& context) noexcept {
+    if (context.legal_move_count == 1) {
+        return 0;
+    }
     int hardness = 0;
     // A cold TT means "new position", not "hard position".  The old weights
     // summed to 80 for a plain root TT miss, which latched every normal move
@@ -862,6 +865,13 @@ bool TimeManager::should_stop_after_iteration() const noexcept {
         elapsed >= soft_target) {
         return true;
     }
+    if (ponderhit_converted_ && !hard_position_ && has_effort_sample_ &&
+        best_move_effort_permille_ >= 900U && last_observed_depth_ >= 10 &&
+        stable_observations_ >= 2 && best_move_stability_ >= 4 &&
+        score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
+        elapsed >= scale_fraction(soft_target, 25, 100)) {
+        return true;
+    }
     if (!hard_position_ && has_effort_sample_ && best_move_effort_permille_ >= 900U &&
         last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
         best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
@@ -915,6 +925,13 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
     // concentration (>= 90%), calm stability (>= 75%), or a 1.5x iteration-time
     // projection shows a new ply is unlikely to pay off, skip starting it.
     if (clock_mode_ && !hard_position_) {
+        if (ponderhit_converted_ && has_effort_sample_ &&
+            best_move_effort_permille_ >= 900U && last_observed_depth_ >= 10 &&
+            stable_observations_ >= 2 && best_move_stability_ >= 4 &&
+            score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
+            elapsed >= scale_fraction(soft_target, 25, 100)) {
+            return false;
+        }
         if (has_effort_sample_ && best_move_effort_permille_ >= 900U &&
             last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
             best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&

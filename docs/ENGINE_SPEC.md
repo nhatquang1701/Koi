@@ -667,10 +667,11 @@ the search but cannot push it past the cap.
 
 ### 6.2 Pacing and hardness
 
-- `initial_hardness` scores the root TT/check/move-count context from 0 to 100;
-  a score ≥ 35 marks a hard position. Missing/non-exact/shallow TT entries, old
-  generations, no TT move, check, many forcing moves, and ≥ 30 legal moves add
-  points; a fresh exact deep TT hit subtracts 25.
+- `initial_hardness` returns `0` immediately for forced single-legal-move
+  positions and scores multi-move root TT/check/move-count contexts from 0 to
+  100; a score ≥ 35 marks a hard position. Missing/non-exact/shallow TT
+  entries, old generations, no TT move, check, many forcing moves, and ≥ 30
+  legal moves add points; a fresh exact deep TT hit subtracts 25.
 - `observe_iteration` treats a best-move change, `|Δ| ≥ 75` cp score swing, or
   aspiration re-search as hard evidence (PV growth alone is ignored so
   `stable_observations_` can advance). `hard_position_` latches only at
@@ -703,6 +704,8 @@ the search but cannot push it past the cap.
   twice-confirmed forced mate (`depth >= 6`), on confirmed forced mates or
   single-legal moves after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
+  on deep (`depth >= 10`, `stability >= 4`) `>= 90%` best-move-share
+  converted `ponderhit` searches past `25%` of the soft/optimum target,
   in calm high-effort positions (`>= 90%` best-move node share) past `60%` of the
   soft/optimum target, in calm `depth >= 6` stable (`stability >= 3`, no
   aspiration re-research) positions past `75%` of the soft/optimum target, in
@@ -713,9 +716,10 @@ the search but cannot push it past the cap.
   re-research on the last iteration.
 - `should_start_next_iteration`: honors instant post-`ponderhit` forced-mate /
   single-move exits, emergency pacing, forced-mate / single-move
-  exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm
-  `75%` soft-target cutoffs (symmetrically suppressed after an aspiration
-  re-search), adaptive EWMA branching-factor lookahead (`1.3×..3.2×`, starting at
+  exits, `25%` deep (`depth >= 10`, `stability >= 4`, `>= 90%` effort)
+  converted-`ponderhit` exits, `60%` high-effort dominance (`>= 90%` best-move
+  node share) and calm `75%` soft-target cutoffs (symmetrically suppressed
+  after an aspiration re-search), adaptive EWMA branching-factor lookahead (`1.3×..3.2×`, starting at
   `1.5×`, `4 ms` sample floor in emergency pacing vs `10 ms` otherwise, used
   uniformly across both serial and parallel iterative-deepening drivers to
   avoid doomed partial iterations past `1.2×` soft target), and a doomed

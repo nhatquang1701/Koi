@@ -53,6 +53,12 @@ struct PositionKeyAndSide {
     Color side_to_move = Color::white;
 };
 
+struct ExchangeSnapshot {
+    const std::array<std::array<std::uint64_t, 7>, 2>* piece_bitboards = nullptr;
+    std::uint64_t occupied = 0;
+    Color side_to_move = Color::white;
+};
+
 enum class MoveKind : std::uint8_t { quiet, capture, en_passant, castling, promotion };
 
 enum class CheckFlagMode : std::uint8_t {
@@ -412,6 +418,7 @@ public:
     [[nodiscard]] const std::array<std::array<std::uint64_t, 7>, 2>& piece_bitboards() const noexcept;
     // Incrementally maintained occupancy of both colors.
     [[nodiscard]] std::uint64_t occupied_squares() const noexcept;
+    [[nodiscard]] ExchangeSnapshot exchange_snapshot() const noexcept;
     // Total piece count of both colors, kings included.  Forwards to the
     // native position's maintained bitboards.
     [[nodiscard]] std::size_t piece_count() const noexcept;

@@ -1170,6 +1170,40 @@ void test_aspiration_research_fallback_guard_and_emergency_depth4_stop() {
             "emergency pacing must allow depth-4 stable fallback stop past optimum_budget");
 }
 
+void test_single_move_zero_hardness_and_deep_ponderhit_fast_exit() {
+    RootTimingContext single_ctx;
+    single_ctx.legal_move_count = 1;
+    single_ctx.forcing_move_count = 1;
+    single_ctx.in_check = true;
+    TimeManager forced_single(clock_limits(milliseconds{60'000}, milliseconds{1'000}),
+                              koi::Color::white, 100, kMoveOverheadMs, 100, single_ctx);
+    require(forced_single.diagnostics().initial_hardness == 0 &&
+                !forced_single.diagnostics().extended_for_hard_position,
+            "single-legal-move root must classify as zero hardness even in check");
+
+    auto now_pt = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits ponder_limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    ponder_limits.ponder = true;
+    TimeManager ponder(ponder_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                       warm_context(), [now_pt] { return *now_pt; });
+    for (int depth = 6; depth <= 10; ++depth) {
+        ponder.observe_iteration(
+            {depth, 30, false, false, false, 10'000, 9'500, milliseconds{25}});
+    }
+    SearchLimits live_limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    ponder.reconfigure(live_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                       warm_context(), false, *now_pt, 0);
+    const auto opt = ponder.diagnostics().optimum_budget;
+    *now_pt += (opt * 15) / 100;
+    require(!ponder.should_stop_after_iteration() &&
+                ponder.should_start_next_iteration(milliseconds{1}),
+            "deep high-effort ponderhit at 15% optimum_budget must continue");
+    *now_pt += (opt * 12) / 100 + milliseconds{1};
+    require(ponder.should_stop_after_iteration() &&
+                !ponder.should_start_next_iteration(milliseconds{1}),
+            "deep >=10 ply >=90% effort ponderhit past 25% optimum_budget must exit symmetrically");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1220,6 +1254,8 @@ int main(int argc, char** argv) {
          test_opponent_flagging_pressure_and_aspiration_calm_symmetry},
         {"aspiration re-search fallback guard and emergency depth-4 stop",
          test_aspiration_research_fallback_guard_and_emergency_depth4_stop},
+        {"single-move zero hardness and deep ponderhit fast exit",
+         test_single_move_zero_hardness_and_deep_ponderhit_fast_exit},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

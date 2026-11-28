@@ -630,7 +630,7 @@ void SearchMovePicker::prepare_quiescence_candidates() {
     stage_begin_[chk_rank] = static_cast<std::uint16_t>(kMaximumLegalMoves - check_count);
     stage_end_[chk_rank] = static_cast<std::uint16_t>(kMaximumLegalMoves);
     stage_cursor_[chk_rank] = stage_begin_[chk_rank];
-    stage_sorted_.reset();
+    stage_sorted_mask_ = 0;
 }
 
 void SearchMovePicker::prepare_evasion_candidates() {
@@ -662,7 +662,7 @@ void SearchMovePicker::prepare_evasion_candidates() {
     stage_begin_[rank] = 0;
     stage_end_[rank] = static_cast<std::uint16_t>(evasion_count);
     stage_cursor_[rank] = 0;
-    stage_sorted_.reset();
+    stage_sorted_mask_ = 0;
 }
 
 void SearchMovePicker::prepare_main_captures() {
@@ -670,6 +670,7 @@ void SearchMovePicker::prepare_main_captures() {
     main_captures_end_ = 0;
     deferred_bad_capture_count_ = 0;
     deferred_bad_capture_index_ = 0;
+    stage_sorted_mask_ = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
         if (index == tt_emitted_index_) {
             continue;
@@ -767,10 +768,11 @@ std::size_t SearchMovePicker::pick_next_in_stage(const std::size_t rank) noexcep
     const std::size_t begin = stage_begin_[rank];
     const std::size_t end = stage_end_[rank];
     const std::size_t cursor = stage_cursor_[rank];
-    if (!stage_sorted_[rank]) {
+    const std::uint8_t rank_bit = static_cast<std::uint8_t>(1U << rank);
+    if ((stage_sorted_mask_ & rank_bit) == 0U) {
         const std::size_t remaining = end - cursor;
         if (remaining <= 1U) {
-            stage_sorted_.set(rank);
+            stage_sorted_mask_ |= rank_bit;
         } else if (cursor - begin < kIncrementalPickPrefix) {
             std::size_t best_slot = cursor;
             Candidate best_key = staged_[cursor];
@@ -784,7 +786,7 @@ std::size_t SearchMovePicker::pick_next_in_stage(const std::size_t rank) noexcep
                 std::swap(staged_[cursor], staged_[best_slot]);
             }
         } else {
-            stage_sorted_.set(rank);
+            stage_sorted_mask_ |= rank_bit;
             if (remaining <= 48U) {
                 for (std::size_t i = cursor + 1U; i < end; ++i) {
                     const Candidate value = staged_[i];

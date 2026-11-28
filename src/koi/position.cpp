@@ -1708,6 +1708,10 @@ public:
 
     [[nodiscard]] std::uint64_t occupied_squares() const noexcept { return state.occupied; }
 
+    [[nodiscard]] Position::ExchangeSnapshot exchange_snapshot() const noexcept {
+        return Position::ExchangeSnapshot{&state.piece_bitboards, state.occupied, state.side};
+    }
+
     [[nodiscard]] bool in_check() const noexcept {
         // Bit-identity with is_checked(state, state.side): refresh_king_masks()
         // fills checkers[side] from exactly square_attacked()'s five terms, and
@@ -3132,6 +3136,10 @@ bool Position::make_generated_move_if_key(const Move& move,
 
 Position::KeyAndSide Position::position_key_and_side() const noexcept {
     return impl_->position.position_key_and_side();
+}
+
+Position::ExchangeSnapshot Position::exchange_snapshot() const noexcept {
+    return impl_->position.exchange_snapshot();
 }
 
 bool Position::unmake_move() noexcept { return impl_->position.unmake_move(); }

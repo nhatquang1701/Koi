@@ -128,6 +128,12 @@ public:
     [[nodiscard]] int game_phase() const noexcept;
     // Combined occupancy of both colors, maintained by native make/unmake.
     [[nodiscard]] std::uint64_t occupied_squares() const noexcept;
+    struct ExchangeSnapshot {
+        const std::array<std::array<std::uint64_t, 7>, 2>* piece_bitboards = nullptr;
+        std::uint64_t occupied = 0;
+        Color side_to_move = Color::white;
+    };
+    [[nodiscard]] ExchangeSnapshot exchange_snapshot() const noexcept;
     [[nodiscard]] bool in_check() const noexcept;
     [[nodiscard]] bool in_check(Color color) const noexcept;
     [[nodiscard]] std::uint64_t checkers() const noexcept;
