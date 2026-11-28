@@ -544,11 +544,13 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         }
         record_ply(ply);
 
-        const bool checked = state.in_check();
-        const Color side_to_move = state.side_to_move();
-        // One history scan feeds both the repetition-sensitivity flag here and
-        // the draw status below; the position does not change in between.
-        const std::size_t repetitions = state.repetition_count();
+        const SearchNodeInfo node_info = state.search_node_info();
+        const bool checked = node_info.in_check;
+        const Color side_to_move = node_info.side_to_move;
+        const std::size_t repetitions = node_info.repetition_count;
+        const int halfmove_clock = node_info.halfmove_clock;
+        const std::uint64_t position_key = node_info.position_key;
+        const DrawStatus draw_status = node_info.draw_status;
         const bool repetition_sensitive = repetitions >= 2;
         bool path_repetition_sensitive = repetition_sensitive;
         bool path_selective_bound = false;
@@ -575,7 +577,6 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             if (!state.has_legal_move()) {
                 return terminal_score(checked, side_to_move, ply);
             }
-            const DrawStatus draw_status = state.draw_status();
             if (is_forced_draw_status(draw_status) ||
                 (ply > 0 && is_claimable_draw_status(draw_status))) {
                 return draw_value(side_to_move);
@@ -602,8 +603,6 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // cutoff_count belongs to the parent's move loop: qsearch never
         // increments it, and clearing it here destroyed the accumulated
         // fail-high count that LMR reads for later siblings.
-        const int halfmove_clock = state.halfmove_clock();
-        const std::uint64_t position_key = state.position_key();
         const bool use_qsearch_cache = !repetition_sensitive && halfmove_clock == 0 &&
             !(checked && qdepth >= kMaximumQuiescenceSafetyDepth);
         const std::uint64_t qsearch_key = use_qsearch_cache ?
@@ -631,7 +630,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // it above the terminal checks so this cluster prefetch can overlap
         // them; the probe below reuses the same key without recomputing it.
         const std::uint64_t qsearch_transposition_key = search_transposition_key(
-            position_key, halfmove_clock, state.repetition_history_suppressed());
+            position_key, halfmove_clock, node_info.repetition_history_suppressed);
         table_access.prefetch(qsearch_transposition_key);
 
         // A checked qsearch node has no stand-pat value.  At the native
@@ -645,7 +644,6 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             if (!state.has_legal_move()) {
                 return terminal_score(checked, side_to_move, ply);
             }
-            const DrawStatus draw_status = state.draw_status();
             if (is_forced_draw_status(draw_status) ||
                 (ply > 0 && is_claimable_draw_status(draw_status))) {
                 return draw_value(side_to_move);
@@ -666,7 +664,6 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             ++stats.tt_hits;
         }
 
-        const DrawStatus draw_status = state.draw_status(repetitions);
         // A non-checked forced draw has the same zero score as stalemate and
         // can be returned without generating the tactical frontier. Checked
         // positions still need legal evasions first so checkmate keeps
@@ -1096,11 +1093,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                            bool* root_authoritative_path,
                            bool* lower_bound_path,
                            int singular_extensions_remaining) {
-        // One history scan feeds both the repetition-sensitivity flag here and
-        // the draw status after move generation; no mutation happens between
-        // the two reads on the path that reaches that status.
-        const std::size_t repetitions = state.repetition_count();
-        bool path_repetition_sensitive = repetitions >= 2;
+        bool path_repetition_sensitive = false;
         const PathFlagGuard repetition_path_guard{
             repetition_sensitive_path, &path_repetition_sensitive};
         bool path_selective_bound = false;
@@ -1166,23 +1159,24 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             return 0;
         }
         record_ply(ply);
-        // This node's search key is stable for its whole lifetime, so compute
-        // it once and let the cluster prefetch overlap the static evaluation,
-        // pruning gates, and move ordering before the probe below.
-        const std::uint64_t position_key = state.position_key();
-        const int halfmove_clock = state.halfmove_clock();
+        // Fetch node-entry state in one cross-TU call instead of seven separate
+        // PIMPL queries, and run draw_status / repetition detection once.
+        const SearchNodeInfo node_info = state.search_node_info();
+        const std::size_t repetitions = node_info.repetition_count;
+        path_repetition_sensitive = repetitions >= 2;
+        const std::uint64_t position_key = node_info.position_key;
+        const int halfmove_clock = node_info.halfmove_clock;
         const std::uint64_t transposition_key = search_transposition_key(
-            position_key, halfmove_clock, state.repetition_history_suppressed());
+            position_key, halfmove_clock, node_info.repetition_history_suppressed);
         table_access.prefetch(transposition_key);
 
         // Quiescence performs its own terminal-aware tactical/evasion move
         // generation. Do not build and annotate the full legal move list here
         // only to discard it immediately at the depth boundary.
-        const bool checked = state.in_check();
+        const bool checked = node_info.in_check;
         const bool repetition_sensitive = path_repetition_sensitive;
-        const Color side_to_move = state.side_to_move();
-        const bool parent_has_non_pawn_material =
-            state.has_non_pawn_material(side_to_move);
+        const Color side_to_move = node_info.side_to_move;
+        const bool parent_has_non_pawn_material = node_info.has_non_pawn_material;
         SearchFrame& frame = stack.frame(static_cast<std::size_t>(std::max(ply, 0)));
         // Singular probes recurse at the same ply while temporarily excluding
         // the current TT move.  Stockfish 19 keeps the parent node's
@@ -1244,7 +1238,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             }
             return moves;
         };
-        const DrawStatus draw_status = state.draw_status(repetitions);
+        const DrawStatus draw_status = node_info.draw_status;
         const bool claimable_draw = is_claimable_draw_status(draw_status);
         if (ply == 0 || excluded_search) {
             (void)ensure_moves();

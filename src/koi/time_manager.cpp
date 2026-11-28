@@ -541,9 +541,12 @@ void TimeManager::observe_iteration(const SearchIterationObservation& observatio
     last_observed_depth_ = std::max(last_observed_depth_, observation.depth);
     last_aspiration_researched_ = observation.aspiration_researched;
     if (observation.iteration_elapsed > std::chrono::milliseconds::zero()) {
+        const auto min_branch_ms = emergency_pacing_
+            ? std::chrono::milliseconds{4}
+            : std::chrono::milliseconds{10};
         if (observation.depth >= 5 &&
-            last_iteration_elapsed_ >= std::chrono::milliseconds{10} &&
-            observation.iteration_elapsed >= std::chrono::milliseconds{10}) {
+            last_iteration_elapsed_ >= min_branch_ms &&
+            observation.iteration_elapsed >= min_branch_ms) {
             const std::uint64_t prev_ms =
                 static_cast<std::uint64_t>(last_iteration_elapsed_.count());
             const std::uint64_t curr_ms =
@@ -645,7 +648,9 @@ void TimeManager::observe_iteration(const SearchIterationObservation& observatio
         // windows while move ordering warms up. Only treat deep instability or
         // a genuine score drop as latching hard-position evidence; shallow
         // turbulence is absorbed by the continuous optimum_budget scaling.
-        if (observation.depth >= 4 &&
+        const bool still_overwhelmingly_won =
+            observation.score_cp >= 600 && !observation.best_move_changed;
+        if (observation.depth >= 4 && !still_overwhelmingly_won &&
             (observation.best_move_changed || score_drop_cp_ >= 50 ||
              (observation.aspiration_researched && score_drop_cp_ >= 25))) {
             hard_position_ = true;
@@ -724,7 +729,10 @@ void TimeManager::update_optimum_budget() noexcept {
         scale_permille = std::min<std::uint64_t>(scale_permille, 1000);
     }
 
-    if (score_drop_cp_ > 15) {
+    const bool stable_overwhelming_win =
+        previous_score_.has_value() && *previous_score_ >= 600 &&
+        best_move_stability_ >= 2 && !last_aspiration_researched_;
+    if (score_drop_cp_ > 15 && !stable_overwhelming_win) {
         // Falling evaluation demands extra defensive verification time, whereas
         // a rising score only needs a modest check if the jump was tactical.
         const std::uint64_t drop_bonus = static_cast<std::uint64_t>(
@@ -916,9 +924,12 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         }
     }
     const auto budget = std::chrono::milliseconds{budget_ms};
+    const auto min_doomed_sample = emergency_pacing_
+        ? std::chrono::milliseconds{5}
+        : std::chrono::milliseconds{20};
     if (clock_mode_ && last_observed_depth_ >= 6 &&
         score_drop_cp_ < 60 &&
-        last_iteration_elapsed_ >= std::chrono::milliseconds{20} &&
+        last_iteration_elapsed_ >= min_doomed_sample &&
         elapsed >= soft_target) {
         const auto predicted_next = scale_fraction(
             last_iteration_elapsed_, branching_permille_, 1000);

@@ -1049,6 +1049,42 @@ void test_ponderhit_instant_exit_and_repeating_emergency_horizon() {
             "emergency repeating movestogo=20 must honor movestogo instead of halving it to 10");
 }
 
+void test_overwhelming_win_noise_immunity_and_emergency_bullet_lookahead() {
+    const SearchLimits clock = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    TimeManager won_dip(clock, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    TimeManager won_blunder(clock, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    TimeManager equal_dip(clock, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    for (int depth = 4; depth <= 6; ++depth) {
+        won_dip.observe_iteration(
+            {depth, depth == 6 ? 800 : 850, false, false, false, 10'000, 5'000, milliseconds{20}});
+        won_blunder.observe_iteration(
+            {depth, depth == 6 ? 200 : 850, false, false, false, 10'000, 5'000, milliseconds{20}});
+        equal_dip.observe_iteration(
+            {depth, depth == 6 ? 100 : 150, false, false, false, 10'000, 5'000, milliseconds{20}});
+    }
+    require(won_dip.diagnostics().optimum_budget < equal_dip.diagnostics().optimum_budget,
+            "small eval noise (+850 -> +800) in an overwhelming win must not inflate optimum_budget");
+    require(won_blunder.diagnostics().optimum_budget > won_dip.diagnostics().optimum_budget,
+            "dropping below +600 cp (+850 -> +200) must still trigger full defensive extension");
+
+    auto bullet_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager bullet(clock_limits(milliseconds{2'500}, milliseconds{0}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                       [bullet_now] { return *bullet_now; });
+    const std::array<milliseconds, 3> bullet_times{
+        milliseconds{6}, milliseconds{12}, milliseconds{18}};
+    for (int i = 0; i < 3; ++i) {
+        bullet.observe_iteration(
+            {4 + i, 20, i == 2, i == 2, false, 10'000, 5'000, bullet_times[static_cast<std::size_t>(i)]});
+    }
+    const auto hard_budget = bullet.diagnostics().hard_budget;
+    const auto check_at = std::max(bullet.diagnostics().optimum_budget, hard_budget - milliseconds{15});
+    *bullet_now += std::min(hard_budget - milliseconds{2}, check_at);
+    require(bullet.diagnostics().emergency_pacing &&
+                !bullet.should_start_next_iteration(milliseconds{1}),
+            "emergency <=3s bullet lookahead must catch <20ms doomed hard plies");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1091,6 +1127,8 @@ int main(int argc, char** argv) {
          test_subsecond_sudden_death_bullet_scramble_protection},
         {"ponderhit instant exit and repeating emergency horizon",
          test_ponderhit_instant_exit_and_repeating_emergency_horizon},
+        {"overwhelming-win noise immunity and emergency bullet lookahead",
+         test_overwhelming_win_noise_immunity_and_emergency_bullet_lookahead},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

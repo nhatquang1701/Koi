@@ -239,7 +239,6 @@ struct NativeState {
 };
 
 bool has_legal_en_passant_capture(const NativeState& state) noexcept;
-bool has_legal_en_passant_capture_mutable(NativeState& state) noexcept;
 void refresh_king_masks(NativeState& state) noexcept;
 
 // Pushes the next undo slot. The array has a fixed capacity so the search
@@ -506,13 +505,8 @@ void refresh_king_masks(NativeState& state) noexcept {
     state.pinned[color_index] = pinned;
 }
 
-namespace {
-
-// In-place variant used by the make/unmake hot path.  Checking the pawn
-// attacker bitboard first skips rank/file/board probing on double pawn pushes
-// when no adjacent capturing pawn exists; otherwise applies only to board and
-// bitboards and restores them afterwards.
-bool has_legal_en_passant_capture_in_place(NativeState& state) noexcept {
+// Pure read-only legality probe for en-passant captures.
+bool has_legal_en_passant_capture(const NativeState& state) noexcept {
     if (state.en_passant.index() >= Square::kInvalid) {
         return false;
     }
@@ -540,71 +534,47 @@ bool has_legal_en_passant_capture_in_place(NativeState& state) noexcept {
         return false;
     }
 
-    const std::size_t opposite_index = 1U - side_index;
+    const int king = king_square(state, side);
+    if (king < 0) {
+        return false;
+    }
+    const std::size_t enemy_index = 1U - side_index;
+    const bool enemy_white = side == Color::black;
     const std::uint64_t captured_bit = std::uint64_t{1} << captured_square;
     const std::uint64_t target_bit = std::uint64_t{1} << target;
+    const std::uint64_t enemy_pawns =
+        state.piece_bitboards[enemy_index][pawn_index] & ~captured_bit;
+    const std::uint64_t enemy_knights =
+        state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::knight)];
+    const std::uint64_t enemy_kings =
+        state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::king)];
+    if (((detail::pawn_attackers_of(king, enemy_white) & enemy_pawns) |
+         (detail::knight_attacks(king) & enemy_knights) |
+         (detail::king_attacks(king) & enemy_kings)) != 0) {
+        return false;
+    }
+    const std::uint64_t enemy_bishops =
+        state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::bishop)] |
+        state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::queen)];
+    const std::uint64_t enemy_rooks =
+        state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::rook)] |
+        state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::queen)];
     while (candidate_sources != 0) {
         const int source = static_cast<int>(std::countr_zero(candidate_sources));
         candidate_sources &= candidate_sources - 1;
-        const Piece pawn = state.board[static_cast<std::size_t>(source)];
         const std::uint64_t source_bit = std::uint64_t{1} << source;
-        state.board[static_cast<std::size_t>(source)] = {};
-        state.board[static_cast<std::size_t>(captured_square)] = {};
-        state.board[static_cast<std::size_t>(target)] = pawn;
-        state.piece_bitboards[side_index][pawn_index] &= ~source_bit;
-        state.piece_bitboards[side_index][pawn_index] |= target_bit;
-        state.piece_bitboards[opposite_index][pawn_index] &= ~captured_bit;
-        // Sliding-attack lookups read the occupancy bitboards, so the trial
-        // capture has to update them as well; otherwise pinned-piece checks
-        // would still see the captured pawn and the source square as occupied.
-        state.occupancy[side_index] &= ~source_bit;
-        state.occupancy[side_index] |= target_bit;
-        state.occupancy[opposite_index] &= ~captured_bit;
-        state.occupied = state.occupancy[0] | state.occupancy[1];
-        const bool legal = !is_checked(state, side);
-        state.board[static_cast<std::size_t>(source)] = pawn;
-        state.board[static_cast<std::size_t>(captured_square)] = captured;
-        state.board[static_cast<std::size_t>(target)] = {};
-        state.piece_bitboards[side_index][pawn_index] |= source_bit;
-        state.piece_bitboards[side_index][pawn_index] &= ~target_bit;
-        state.piece_bitboards[opposite_index][pawn_index] |= captured_bit;
-        state.occupancy[side_index] |= source_bit;
-        state.occupancy[side_index] &= ~target_bit;
-        state.occupancy[opposite_index] |= captured_bit;
-        state.occupied = state.occupancy[0] | state.occupancy[1];
-        if (legal) {
+        const std::uint64_t next_occupied =
+            (state.occupied & ~source_bit & ~captured_bit) | target_bit;
+        if ((detail::bishop_attacks(king, next_occupied) & enemy_bishops) == 0 &&
+            (detail::rook_attacks(king, next_occupied) & enemy_rooks) == 0) {
             return true;
         }
     }
     return false;
 }
 
-} // namespace
-
-bool has_legal_en_passant_capture_mutable(NativeState& state) noexcept {
-    return has_legal_en_passant_capture_in_place(state);
-}
-
-bool has_legal_en_passant_capture(const NativeState& state) noexcept {
-    // The read-only wrapper is reached from draw detection on every node, so
-    // the overwhelmingly common "no en-passant target" case must not pay for
-    // the full NativeState copy (board plus the history array).
-    if (state.en_passant.index() >= Square::kInvalid) {
-        return false;
-    }
-    NativeState scratch = state;
-    return has_legal_en_passant_capture_in_place(scratch);
-}
-
-bool safe_king_step(NativeState& state, int from, int to, Color side) noexcept {
-    const Piece source = state.board[static_cast<std::size_t>(from)];
-    const Piece target = state.board[static_cast<std::size_t>(to)];
-    state.board[static_cast<std::size_t>(from)] = {};
-    state.board[static_cast<std::size_t>(to)] = source;
-    const bool safe = !square_attacked(state, to, opposite(side));
-    state.board[static_cast<std::size_t>(from)] = source;
-    state.board[static_cast<std::size_t>(to)] = target;
-    return safe;
+bool safe_king_step(const NativeState& state, int /*from*/, int to, Color side) noexcept {
+    return !square_attacked(state, to, opposite(side));
 }
 
 // Emits the queen, rook, bishop, and knight promotion of one push in that
@@ -1661,7 +1631,7 @@ public:
         // still the side that could capture; the side-to-move term toggles
         // exactly once for the flip below.
         const ZobristKeys& keys = zobrist();
-        if (has_legal_en_passant_capture_mutable(state)) {
+        if (has_legal_en_passant_capture(state)) {
             state.key ^= keys.en_passant[state.en_passant.index() & 7];
         }
         state.key ^= keys.black_to_move;
@@ -1733,9 +1703,9 @@ public:
         // every public mutation refreshes the side-to-move mask (rebuild_derived
         // on set_fen and null transitions, apply_legal/make_generated_move after
         // the side flip, unapply from the undo record).  Board-mutating trial helpers
-        // (has_legal_en_passant_capture_in_place, resolve_move_legality,
-        // safe_king_step) call is_checked()/square_attacked() directly and never
-        // read this mask.  is_checked() reports true for an absent king, so keep
+        // Trial helpers (resolve_move_legality, safe_king_step) call
+        // is_checked()/square_attacked() directly and never read this mask.
+        // is_checked() reports true for an absent king, so keep
         // that guard; set_fen requires one king per side, making it defensive.
         if (king_square(state, state.side) < 0) return true;
         return state.checkers[state.side == Color::white ? 0U : 1U] != 0;
@@ -1903,6 +1873,19 @@ public:
 
     [[nodiscard]] DrawStatus draw_status() const noexcept {
         return draw_status(repetition_count());
+    }
+
+    [[nodiscard]] Position::NodeEntrySnapshot node_entry_snapshot() const noexcept {
+        Position::NodeEntrySnapshot out;
+        out.position_key = state.key;
+        out.halfmove_clock = state.halfmove;
+        out.side_to_move = state.side;
+        out.in_check = in_check();
+        out.repetition_history_suppressed = state.repetition_history_suppressed;
+        out.has_non_pawn_material = has_non_pawn_material(state.side);
+        out.repetition_count = repetition_count();
+        out.draw_status = draw_status(out.repetition_count);
+        return out;
     }
 
     [[nodiscard]] bool is_repetition_sensitive(std::size_t repetitions) const noexcept {
@@ -2896,7 +2879,7 @@ private:
         // instead of bouncing `state.key` back through memory per piece update.
         std::uint64_t next_key = previous_position_key ^ keys.black_to_move;
         if (slot->prior_en_passant < Square::kInvalid &&
-            has_legal_en_passant_capture_mutable(state)) {
+            has_legal_en_passant_capture(state)) {
             next_key ^= keys.en_passant[slot->prior_en_passant & 7];
         }
         const std::size_t mover_color_index = moving.color == Color::white ? 0U : 1U;
@@ -2986,7 +2969,7 @@ private:
         state.occupied = state.occupancy[0] | state.occupancy[1];
         if (double_push) [[unlikely]] {
             state.en_passant = Square::from_index(static_cast<std::uint8_t>((to + from) / 2));
-            if (has_legal_en_passant_capture_mutable(state)) {
+            if (has_legal_en_passant_capture(state)) {
                 next_key ^= keys.en_passant[state.en_passant.index() & 7];
             } else {
                 state.en_passant = {};
@@ -3246,6 +3229,10 @@ DrawStatus Position::draw_status() const noexcept {
 
 DrawStatus Position::draw_status(std::size_t repetitions) const noexcept {
     return impl_->position.draw_status(repetitions);
+}
+
+Position::NodeEntrySnapshot Position::node_entry_snapshot() const noexcept {
+    return impl_->position.node_entry_snapshot();
 }
 
 bool Position::is_claimable_draw() const noexcept {

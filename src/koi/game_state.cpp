@@ -2115,6 +2115,20 @@ DrawStatus GameState::draw_status(std::size_t repetitions) const noexcept {
     return impl_->native_position.draw_status(repetitions);
 }
 
+SearchNodeInfo GameState::search_node_info() const noexcept {
+    const Position::NodeEntrySnapshot snap = impl_->native_position.node_entry_snapshot();
+    return SearchNodeInfo{
+        snap.position_key,
+        snap.repetition_count,
+        snap.halfmove_clock,
+        snap.side_to_move,
+        snap.draw_status,
+        snap.in_check,
+        snap.repetition_history_suppressed,
+        snap.has_non_pawn_material,
+    };
+}
+
 bool GameState::is_claimable_draw() const noexcept {
     return impl_->native_position.is_claimable_draw();
 }

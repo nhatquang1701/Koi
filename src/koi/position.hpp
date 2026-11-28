@@ -139,6 +139,17 @@ public:
     // serve both the draw status and repetition sensitivity of the same
     // unchanged position.
     [[nodiscard]] DrawStatus draw_status(std::size_t repetitions) const noexcept;
+    struct NodeEntrySnapshot {
+        std::uint64_t position_key = 0;
+        std::size_t repetition_count = 0;
+        std::uint16_t halfmove_clock = 0;
+        Color side_to_move = Color::white;
+        DrawStatus draw_status{};
+        bool in_check = false;
+        bool repetition_history_suppressed = false;
+        bool has_non_pawn_material = false;
+    };
+    [[nodiscard]] NodeEntrySnapshot node_entry_snapshot() const noexcept;
     // A claimable draw is an option for the side to move, not an automatic
     // terminal result. Search must still consider legal continuations.
     [[nodiscard]] bool is_claimable_draw() const noexcept;

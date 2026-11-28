@@ -671,7 +671,8 @@ the search but cannot push it past the cap.
 - `observe_iteration` treats a best-move change, `|Δ| ≥ 75` cp score swing, or
   aspiration re-search as hard evidence (PV growth alone is ignored so
   `stable_observations_` can advance). `hard_position_` latches only at
-  `depth >= 4` on `best_move_changed`, `score_drop_cp_ >= 50`, or
+  `depth >= 4` (when not an overwhelming `>= +600` cp win with an unchanged
+  best move) on `best_move_changed`, `score_drop_cp_ >= 50`, or
   `aspiration_researched && score_drop_cp_ >= 25`. Stable means no change and
   `|Δ| <= 25`.
 - Continuous pacing (`effective_soft_budget`) scales the soft budget within
@@ -680,7 +681,8 @@ the search but cannot push it past the cap.
   `1.35×` during `<= 10 s + 0` sudden-death scrambles without `movestogo`, and
   `1.85×` otherwise) using `best_move_effort_permille_`, `best_move_stability_`,
   decayed cumulative `instability_permille_`, inter-move and intra-search
-  `score_drop_cp_`, `score_gain_cp_`, `last_aspiration_researched_`,
+  `score_drop_cp_` (ignored when holding a stable `>= +600` cp win without
+  re-research), `score_gain_cp_`, `last_aspiration_researched_`,
   single-legal-move cap (`min(150 ms, soft / 8)`), confirmed forced-mate fast
   exit (`>= 2` stable deep mate iterations, capped at `250 ms`), asymmetric
   conversion speedup (`score >= +500` cp winning or `<= -700` cp decisively
@@ -705,9 +707,11 @@ the search but cannot push it past the cap.
   single-move exits, emergency pacing, forced-mate / single-move
   exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm
   `75%` soft-target cutoffs, adaptive EWMA branching-factor lookahead
-  (`1.3×..3.2×`, starting at `1.5×`, avoiding doomed partial iterations past
+  (`1.3×..3.2×`, starting at `1.5×`, `4 ms` sample floor in emergency pacing vs
+  `10 ms` otherwise, avoiding doomed partial iterations past
   `1.2×` soft target), and a doomed hard-ply guard once past `optimum_budget`
-  (`depth >= 6`, `score_drop < 60` cp, predicted next ply exceeding
+  (`depth >= 6`, `score_drop < 60` cp, `5 ms` sample floor in emergency pacing
+  vs `20 ms` otherwise, predicted next ply exceeding
   `hard_budget`), in addition to the hard deadline.
 - `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)
   and calls `reconfigure`: limits/root context are replaced while preserving
