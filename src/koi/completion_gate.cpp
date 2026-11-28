@@ -26,7 +26,7 @@ bool CompletionGate::contains_uci(const std::vector<std::string>& moves,
                                   const Move& move) noexcept {
     std::array<char, 5> buffer{};
     const std::string_view target = move.format_uci(buffer);
-    return std::find(moves.begin(), moves.end(), target) != moves.end();
+    return std::binary_search(moves.begin(), moves.end(), target);
 }
 
 bool CompletionGate::legal_pv(const GameState& root,
@@ -36,8 +36,9 @@ bool CompletionGate::legal_pv(const GameState& root,
     }
     try {
         GameState position = root;
+        position.detach_mirror();
         for (const Move& move : pv) {
-            if (!position.is_legal(move) || !position.make_move(move)) {
+            if (!position.make_move(move)) {
                 return false;
             }
         }
@@ -60,7 +61,10 @@ std::optional<Move> CompletionGate::common_fallback(
     });
     for (std::size_t index = 0; index < move_count; ++index) {
         const Move& move = legal[index];
-        if (!allowed_root_move(limits, move) || !contains_uci(snapshot.shadow_legal_moves, move)) {
+        if (!allowed_root_move(limits, move) ||
+            std::find(snapshot.shadow_legal_moves.begin(),
+                      snapshot.shadow_legal_moves.end(),
+                      move.uci()) == snapshot.shadow_legal_moves.end()) {
             continue;
         }
         GameState probe = root;
@@ -103,9 +107,16 @@ CompletionValidation CompletionGate::validate(
             result.terminal && candidate.pv.empty();
 
         if (candidate.best_move.has_value() && candidate.ponder_move.has_value()) {
-            GameState after_best = root;
-            result.ponder_legal = after_best.make_move(*candidate.best_move) &&
-                after_best.is_legal(*candidate.ponder_move);
+            if (result.pv_legal && candidate.pv.size() >= 2 &&
+                candidate.pv[0] == *candidate.best_move &&
+                candidate.pv[1] == *candidate.ponder_move) {
+                result.ponder_legal = true;
+            } else {
+                GameState after_best = root;
+                after_best.detach_mirror();
+                result.ponder_legal = after_best.make_move(*candidate.best_move) &&
+                    after_best.is_legal(*candidate.ponder_move);
+            }
         }
 
         // A searched best move that is legal under both authorities and allowed

@@ -2408,6 +2408,79 @@ void test_scramble_and_emergency_depth4_effort_speedup() {
             "healthy clock must wait until depth 5 before applying node-effort optimum scaling");
 }
 
+void test_repeating_high_latency_net_increment_and_subsecond_multi_move() {
+    TimeManager laggy(clock_limits(milliseconds{20'000}, milliseconds{1'000}, 10U),
+                      koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                      {}, true, {}, 800);
+    TimeManager clean(clock_limits(milliseconds{20'000}, milliseconds{1'000}, 10U),
+                      koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                      {}, true, {}, 30);
+    require(laggy.diagnostics().soft_budget <=
+                laggy.diagnostics().usable / 10 + milliseconds{200} &&
+                laggy.diagnostics().soft_budget + milliseconds{500} < clean.diagnostics().soft_budget,
+            "high latency (>100ms) repeating movestogo clock must credit net increment only");
+
+    auto now_multi = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager mtg5(clock_limits(milliseconds{800}, milliseconds{0}, 5U),
+                     koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                     [now_multi] { return *now_multi; });
+    mtg5.observe_iteration({4, 50, true, false, true, 10'000, 2'500, milliseconds{5}});
+    mtg5.observe_iteration({5, 50, true, false, true, 10'000, 2'500, milliseconds{5}});
+    require(mtg5.diagnostics().optimum_budget <= mtg5.diagnostics().soft_budget,
+            "sub-second movestogo>=2 must clamp optimum_budget at 1.00x soft_budget");
+    *now_multi += mtg5.diagnostics().optimum_budget;
+    require(mtg5.should_stop_after_iteration() &&
+                !mtg5.should_start_next_iteration(milliseconds{1}),
+            "sub-second movestogo>=2 must decline hard extensions past optimum_budget");
+
+    TimeManager mtg1 = make_clock_manager(milliseconds{800}, milliseconds{0}, 1U, true);
+    require(mtg1.time_budget().value() > mtg1.diagnostics().usable / 2,
+            "sub-second movestogo=1 must preserve last-move budget headroom");
+}
+
+void test_decisive_loss_noise_immunity_preserves_defense_above_minus900() {
+    auto now_decided = std::make_shared<Clock::time_point>(Clock::now());
+    auto now_defense = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits clock = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    TimeManager decided_drop(clock, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                             [now_decided] { return *now_decided; });
+    TimeManager defense_drop(clock, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                             [now_defense] { return *now_defense; });
+
+    for (int depth = 4; depth <= 6; ++depth) {
+        decided_drop.observe_iteration(
+            {depth, depth == 6 ? -1'030 : -950, false, false, false, 10'000, 5'000, milliseconds{20}});
+        defense_drop.observe_iteration(
+            {depth, depth == 6 ? -830 : -750, false, false, false, 10'000, 5'000, milliseconds{20}});
+    }
+    require(decided_drop.diagnostics().optimum_budget < defense_drop.diagnostics().optimum_budget,
+            "eval noise <=-900 cp with unchanged best move must not inflate optimum_budget");
+
+    auto now_look_decided = std::make_shared<Clock::time_point>(Clock::now());
+    auto now_look_defense = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager look_decided(clock, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                             [now_look_decided] { return *now_look_decided; });
+    TimeManager look_defense(clock, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                             [now_look_defense] { return *now_look_defense; });
+    const std::array<int, 3> decided_scores{-950, -1'030, -995};
+    const std::array<int, 3> defense_scores{-750, -830, -795};
+    const std::array<milliseconds, 3> times{milliseconds{50}, milliseconds{150}, milliseconds{600}};
+    for (int i = 0; i < 3; ++i) {
+        look_decided.observe_iteration(
+            {4 + i, decided_scores[static_cast<std::size_t>(i)], false, false, false,
+             10'000, 5'000, times[static_cast<std::size_t>(i)]});
+        look_defense.observe_iteration(
+            {4 + i, defense_scores[static_cast<std::size_t>(i)], false, false, false,
+             10'000, 5'000, times[static_cast<std::size_t>(i)]});
+    }
+    *now_look_decided += (look_decided.diagnostics().optimum_budget * 60) / 100;
+    *now_look_defense += (look_defense.diagnostics().optimum_budget * 60) / 100;
+    require(!look_decided.should_start_next_iteration(milliseconds{1}),
+            "decisive loss (-950 -> -1030) must not latch hard_position_ when best move holds");
+    require(look_defense.should_start_next_iteration(milliseconds{1}),
+            "defensive drop above -900 cp (-750 -> -830) must retain hard_position_");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2510,6 +2583,10 @@ int main(int argc, char** argv) {
          test_high_latency_zero_net_increment_scramble_and_subsecond},
         {"scramble and emergency depth 4 effort speedup",
          test_scramble_and_emergency_depth4_effort_speedup},
+        {"repeating high latency net increment and subsecond multi move",
+         test_repeating_high_latency_net_increment_and_subsecond_multi_move},
+        {"decisive loss noise immunity preserves defense above minus900",
+         test_decisive_loss_noise_immunity_preserves_defense_above_minus900},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

@@ -925,7 +925,8 @@ void SearchRunner::run_impl() {
     try {
         RootTimingContext timing_context;
         timing_context.table_available = table_access.size_mb() != 0;
-        if (const auto entry = table_access.probe(search_transposition_key(root), 0);
+        const std::uint64_t root_tt_key = search_transposition_key(root);
+        if (const auto entry = table_access.probe(root_tt_key, 0);
             entry.has_value()) {
             timing_context.tt_hit = true;
             timing_context.tt_exact = entry->bound == TranspositionBound::exact;
@@ -1859,18 +1860,16 @@ void SearchRunner::run_impl() {
                     accumulate_stats(total_stats, root_context.stats);
                     break;
                 }
-                const std::optional<std::chrono::milliseconds> iteration_time_budget =
-                    time_manager.time_budget();
-                const bool short_timed_root = iteration_time_budget.has_value() &&
-                    *iteration_time_budget < kShortTimedFallbackMinimum;
-                const bool root_check_extension = root.in_check() &&
-                    depth < kMaximumSearchDepth && !short_timed_root;
+                const bool root_check_extension = root_in_check &&
+                    depth < kMaximumSearchDepth &&
+                    !(time_manager.time_budget().has_value() &&
+                      *time_manager.time_budget() < kShortTimedFallbackMinimum);
                 if (root_check_extension) {
                     ++root_context.stats.check_extensions;
                 }
 
                 std::optional<Move> tt_move;
-                if (const auto entry = table_access.probe(search_transposition_key(root), 0);
+                if (const auto entry = table_access.probe(root_tt_key, 0);
                     entry.has_value()) {
                     ++root_context.stats.tt_hits;
                     if (!entry->best_move.is_no_move()) {

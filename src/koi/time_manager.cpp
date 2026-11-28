@@ -374,11 +374,14 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     const auto net_increment = nonnegative_difference(clock->increment, overhead);
     net_increment_clock_ = net_increment;
     const auto low_inc_threshold = scale_fraction(clock->increment, 15, 1);
-    const auto raw_inc_credit =
-        (!limits_.moves_to_go.has_value() && has_increment &&
-         (remaining <= low_inc_threshold || overhead > std::chrono::milliseconds{100}))
-            ? three_quarters(net_increment)
-            : three_quarters(clock->increment);
+    const bool use_net_increment_credit = has_increment &&
+        (overhead > std::chrono::milliseconds{100} ||
+         (!limits_.moves_to_go.has_value() && remaining <= low_inc_threshold) ||
+         (limits_.moves_to_go.has_value() &&
+          remaining <= scale_fraction(clock->increment, *limits_.moves_to_go, 1)));
+    const auto raw_inc_credit = use_net_increment_credit
+        ? three_quarters(net_increment)
+        : three_quarters(clock->increment);
     const auto increment_credit = std::min(raw_inc_credit,
                                            scale_fraction(timing_.usable, 1, 4));
     const auto raw_soft = saturating_add(base_allocation, increment_credit);
@@ -664,9 +667,10 @@ void TimeManager::observe_iteration(const SearchIterationObservation& observatio
         // windows while move ordering warms up. Only treat deep instability or
         // a genuine score drop as latching hard-position evidence; shallow
         // turbulence is absorbed by the continuous optimum_budget scaling.
-        const bool still_overwhelmingly_won =
-            observation.score_cp >= 600 && !observation.best_move_changed;
-        if (observation.depth >= 4 && !still_overwhelmingly_won &&
+        const bool still_decided_eval =
+            (observation.score_cp >= 600 || observation.score_cp <= -900) &&
+            !observation.best_move_changed;
+        if (observation.depth >= 4 && !still_decided_eval &&
             (observation.best_move_changed || score_drop_cp_ >= 50 ||
              (observation.aspiration_researched && score_drop_cp_ >= 25))) {
             hard_position_ = true;
@@ -753,10 +757,11 @@ void TimeManager::update_optimum_budget() noexcept {
         scale_permille = std::min<std::uint64_t>(scale_permille, 1000);
     }
 
-    const bool stable_overwhelming_win =
-        previous_score_.has_value() && *previous_score_ >= 600 &&
+    const bool stable_decided_eval =
+        previous_score_.has_value() &&
+        (*previous_score_ >= 600 || *previous_score_ <= -900) &&
         best_move_stability_ >= 2 && !last_aspiration_researched_;
-    if (score_drop_cp_ > 15 && !stable_overwhelming_win) {
+    if (score_drop_cp_ > 15 && !stable_decided_eval) {
         // Falling evaluation demands extra defensive verification time, whereas
         // a rising score only needs a modest check if the jump was tactical.
         const std::uint64_t drop_bonus = static_cast<std::uint64_t>(
@@ -838,7 +843,7 @@ void TimeManager::update_optimum_budget() noexcept {
 bool TimeManager::is_subsecond_sudden_death() const noexcept {
     return clock_mode_ &&
         net_increment_clock_ <= std::chrono::milliseconds::zero() &&
-        !limits_.moves_to_go.has_value() &&
+        limits_.moves_to_go.value_or(2U) >= 2U &&
         (remaining_clock_ <= std::chrono::milliseconds{1'000} ||
          timing_.usable <= std::chrono::milliseconds{1'000});
 }

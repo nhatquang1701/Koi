@@ -638,10 +638,10 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      `usable <= 2000 ms`.
    - Base allocation: `usable / horizon`.
    - Increment credit: `min(3/4 × credit_inc, 1/4 × usable)`, where
-     `credit_inc` is `max(0, increment - overhead)` once `remaining <= 15 ×
-     increment` or `overhead > 100 ms` without `movestogo` (keeping
-     high-latency and low-clock incremental endgames sustainable) and
-     `increment` otherwise.
+     `credit_inc` is `max(0, increment - overhead)` when `overhead > 100 ms`,
+     without `movestogo` once `remaining <= 15 × increment`, or with `movestogo`
+     once `remaining <= movestogo × increment` (keeping high-latency and
+     low-clock incremental controls sustainable) and `increment` otherwise.
    - Raw soft: `base + increment_credit`.
    - Raw hard: `hard_units × base + 1.5 × increment_credit`, where
      `hard_units = 3` under emergency pacing and `2` otherwise (earlier builds
@@ -680,14 +680,14 @@ the search but cannot push it past the cap.
 - `observe_iteration` treats a best-move change, `|Δ| ≥ 75` cp score swing, or
   aspiration re-search as hard evidence (PV growth alone is ignored so
   `stable_observations_` can advance). `hard_position_` latches only at
-  `depth >= 4` (when not an overwhelming `>= +600` cp win with an unchanged
-  best move) on `best_move_changed`, `score_drop_cp_ >= 50`, or
-  `aspiration_researched && score_drop_cp_ >= 25`. Stable means no change and
-  `|Δ| <= 25`.
+  `depth >= 4` (when not an overwhelming `>= +600` cp win or `<= -900` cp
+  decisive loss with an unchanged best move) on `best_move_changed`,
+  `score_drop_cp_ >= 50`, or `aspiration_researched && score_drop_cp_ >= 25`.
+  Stable means no change and `|Δ| <= 25`.
 - Continuous pacing (`effective_soft_budget`) scales the soft budget within
   `[max(1 ms, soft / 3), hard]` (capping the scale multiplier at `1.00×`
-  during sub-second sudden-death scrambles without `movestogo`
-  (`remaining <= 1 s` or `usable <= 1 s` when `net_increment <= 0`, where
+  during sub-second scrambles (`remaining <= 1 s` or `usable <= 1 s` when
+  `net_increment <= 0` and either sudden death or `movestogo >= 2`, where
   `net_increment = max(0, increment - overhead)`),
   `1.35×` during sudden-death scrambles without `movestogo`
   (`remaining <= 10 s` or `usable <= 9 s` when `net_increment <= 0`), and
@@ -696,8 +696,9 @@ the search but cannot push it past the cap.
   `depth >= 5` otherwise), `best_move_stability_`,
   decayed cumulative `instability_permille_`, inter-move (gated on the same
   side-to-move game continuity check) and intra-search
-  `score_drop_cp_` (ignored when holding a stable `>= +600` cp win without
-  re-research), `score_gain_cp_`, `last_aspiration_researched_`,
+  `score_drop_cp_` (ignored when holding a stable decided eval `>= +600` cp or
+  `<= -900` cp without re-research), `score_gain_cp_`,
+  `last_aspiration_researched_`,
   single-legal-move cap (`min(150 ms, soft / 8)`), confirmed winning forced-mate
   fast exit (`>= 2` stable deep `+M` mate iterations, capped at `250 ms` with a
   `20 ms` floor on healthy clocks or `5 ms` under emergency pacing; getting
@@ -715,10 +716,10 @@ the search but cannot push it past the cap.
   scrambles, no aspiration
   re-research, `score_drop <= 15` cp, `!hard_position_`).
 - A hard position may exceed the soft budget only when not in a
-  sub-second sudden-death scramble without `movestogo`
-  (`remaining <= 1 s` or `usable <= 1 s` when `net_increment <= 0`), when more than five
-  overheads remain (`remaining_clock > 5 × overhead`), and when the remaining
-  usable clock is at least `2 × soft budget + overhead`
+  sub-second scramble (`remaining <= 1 s` or `usable <= 1 s` when
+  `net_increment <= 0` and either sudden death or `movestogo >= 2`), when more
+  than five overheads remain (`remaining_clock > 5 × overhead`), and when the
+  remaining usable clock is at least `2 × soft budget + overhead`
   (`hard_extension_affordable`). Near the end or on high-latency links the soft
   budget wins.
 - `should_stop_after_iteration` and `should_start_next_iteration` share
