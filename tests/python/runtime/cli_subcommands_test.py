@@ -60,6 +60,7 @@ class CliSubcommandsTest(unittest.TestCase):
         *,
         disable_nnue: bool = False,
         extra_env: dict[str, str] | None = None,
+        timeout: float = 30.0,
     ) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         if disable_nnue:
@@ -75,7 +76,7 @@ class CliSubcommandsTest(unittest.TestCase):
             encoding="utf-8",
             errors="replace",
             env=env,
-            timeout=30,
+            timeout=timeout,
         )
 
     def test_version_help_and_engine_json(self) -> None:
@@ -89,7 +90,7 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn("Usage: koi-engine", proc.stdout)
             self.assertIn("eval, --eval [fen]", proc.stdout)
-            self.assertIn("perft <depth> [fen]", proc.stdout)
+            self.assertIn("perft <depth|--suite> [fen]", proc.stdout)
 
         proc = self._run(["--engine-json"], disable_nnue=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
