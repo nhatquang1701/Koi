@@ -117,8 +117,7 @@ static int quiet_forcing_fallback_score(
         return *terminal;
     }
     MoveMetadataList opponent_moves;
-    after_move.legal_moves_with_metadata(
-        opponent_moves, true, false, CheckFlagMode::all_moves);
+    after_move.legal_moves_with_metadata(opponent_moves, false, false);
     if (opponent_moves.empty()) {
         // after_move is the position immediately after the root candidate,
         // so no legal reply while in check means the root side delivered
@@ -145,8 +144,7 @@ static int quiet_forcing_fallback_score(
         }
 
         MoveMetadataList responses;
-        after_opponent.legal_moves_with_metadata(
-            responses, true, false, CheckFlagMode::all_moves);
+        after_opponent.legal_moves_with_metadata(responses, false, false);
         if (responses.empty()) {
             worst_score = std::min(
                 worst_score, after_opponent.in_check() ? -kMateScore + 2 : 0);
@@ -200,8 +198,7 @@ static int checked_root_fallback_score(
         return *terminal;
     }
     MoveMetadataList evasions;
-    after_check.legal_moves_with_metadata(
-        evasions, true, true, CheckFlagMode::all_moves);
+    after_check.legal_moves_with_metadata(evasions, false, false);
     if (evasions.empty()) {
         return after_check.in_check() ? kMateScore - 1 : 0;
     }
@@ -229,8 +226,7 @@ static int checked_root_fallback_score(
         // root candidates.  This remains confined to the emergency short
         // fallback; the normal search and qsearch retain their usual depth.
         MoveMetadataList replies;
-        after_evasion.legal_moves_with_metadata(
-            replies, true, false, CheckFlagMode::all_moves);
+        after_evasion.legal_moves_with_metadata(replies, false, false);
         if (replies.empty()) {
             worst_evasion_score = std::min(
                 worst_evasion_score,
@@ -276,8 +272,7 @@ static bool hanging_major_piece_check(const GameState& after_check,
         return false;
     }
     MoveMetadataList evasions;
-    after_check.legal_moves_with_metadata(
-        evasions, true, false, CheckFlagMode::all_moves);
+    after_check.legal_moves_with_metadata(evasions, false, false);
     return std::any_of(evasions.begin(), evasions.end(),
                        [&checking_move](const MoveMetadata& evasion) {
                            return evasion.is_capture() &&
@@ -298,8 +293,7 @@ static int shallow_checked_root_fallback_score(
         return *terminal;
     }
     MoveMetadataList evasions;
-    after_check.legal_moves_with_metadata(
-        evasions, true, true, CheckFlagMode::all_moves);
+    after_check.legal_moves_with_metadata(evasions, false, false);
     if (evasions.empty()) {
         return after_check.in_check() ? kMateScore - 1 : 0;
     }
@@ -421,8 +415,7 @@ static int king_evasion_fallback_score(
         }
         found_check = true;
         MoveMetadataList evasions;
-        after_check.legal_moves_with_metadata(
-            evasions, true, true, CheckFlagMode::all_moves);
+        after_check.legal_moves_with_metadata(evasions, false, false);
         if (evasions.empty()) {
             const int check_score = after_check.in_check() ? -kMateScore + 1 : 0;
             worst_score = std::min(worst_score, check_score);
@@ -478,8 +471,7 @@ static int checked_reply_fallback_score(const GameState& after_check, const Colo
         return *terminal;
     }
     MoveMetadataList evasions;
-    after_check.legal_moves_with_metadata(
-        evasions, true, false, CheckFlagMode::all_moves);
+    after_check.legal_moves_with_metadata(evasions, false, false);
     if (evasions.empty()) {
         return after_check.in_check() ? -kMateScore + 2 : 0;
     }
@@ -503,10 +495,7 @@ static int checked_reply_fallback_score(const GameState& after_check, const Colo
         int evasion_score = short_fallback_evaluate(
             evaluator, after_evasion, root_color, evaluator_mutex);
         if (after_evasion.in_check()) {
-            MoveMetadataList replies;
-            after_evasion.legal_moves_with_metadata(
-                replies, true, false, CheckFlagMode::all_moves);
-            if (replies.empty()) {
+            if (!after_evasion.has_legal_move()) {
                 evasion_score = kMateScore - 2;
             }
         } else {
@@ -619,8 +608,7 @@ static int overdue_check_reply_fallback_score(
     }
 
     MoveMetadataList evasions;
-    after_check.legal_moves_with_metadata(
-        evasions, true, true, CheckFlagMode::all_moves);
+    after_check.legal_moves_with_metadata(evasions, false, false);
     if (evasions.empty()) {
         return after_check.in_check() ? -kMateScore + 2 : 0;
     }
@@ -675,8 +663,7 @@ static int overdue_check_reply_fallback_score(
         }
 
         MoveMetadataList replies;
-        after_evasion.legal_moves_with_metadata(
-            replies, true, true, CheckFlagMode::all_moves);
+        after_evasion.legal_moves_with_metadata(replies, false, false);
         std::array<const MoveMetadata*, kMaximumForcingReplies> selected_replies{
             nullptr};
         std::size_t selected_count = 0;
@@ -801,8 +788,7 @@ static int forcing_reply_fallback_score(const GameState& after_forcing_reply,
             // The interrupted-root fallback must not treat the material-winning
             // middle position as stable before seeing that one tactical reply.
             MoveMetadataList counter_responses;
-            after_response.legal_moves_with_metadata(
-                counter_responses, true, false, CheckFlagMode::all_moves);
+            after_response.legal_moves_with_metadata(counter_responses, false, false);
             for (const MoveMetadata& counter_response : counter_responses) {
                 if (control != nullptr && control->interrupted()) {
                     return -kInfinity;

@@ -701,8 +701,9 @@ the search but cannot push it past the cap.
   `0 <= game_phase <= 4`, `|score| <= 15` cp, `depth >= 10` / `stability >= 4`
   or `depth >= 6` / `stability >= 2` under emergency pacing, `score_drop <= 10`
   cp, and no aspiration re-research), and a 20% ponder-time-saved discount when a
-  `ponderhit` arrives with a calm deep line (`depth >= 6`, `stability >= 3`,
-  `!hard_position_`).
+  `ponderhit` arrives with a calm deep line (`depth >= 6`, `stability >= 3`, or
+  `depth >= 5`, `stability >= 2` under emergency pacing, no aspiration
+  re-research, `score_drop <= 15` cp, `!hard_position_`).
 - A hard position may exceed the soft budget only when not in a `<= 1 s + 0`
   sub-second sudden-death scramble without `movestogo`, when more than five
   overheads remain (`remaining_clock > 5 × overhead`), and when the remaining
@@ -720,7 +721,8 @@ the search but cannot push it past the cap.
   predicted next ply, on confirmed winning forced mates (`depth >= 4`) or
   single-legal moves after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
-  on deep (`depth >= 10`, `stability >= 4`) `>= 90%` best-move-share
+  on deep (`depth >= 10`, `stability >= 4`, or `depth >= 6`, `stability >= 2`
+  under emergency pacing) `>= 90%` best-move-share
   converted `ponderhit` searches past `25%` of the soft/optimum target,
   in calm high-effort positions (`>= 90%` best-move node share at
   `depth >= 6`, or `depth >= 5` under emergency pacing) past `60%` of the

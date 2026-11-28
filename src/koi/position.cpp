@@ -2263,8 +2263,7 @@ private:
         }
 
         if constexpr (is_metadata_sink_v<MoveSink>) {
-            {
-                if (king >= 0) {
+            if (king >= 0) {
                     const Square king_sq = Square::from_index(static_cast<std::uint8_t>(king));
                     const bool king_safe = !moves.dc_hits(king);
                     const std::uint64_t king_targets_mask = tactical_and_checks
@@ -2683,10 +2682,14 @@ private:
                         if (slider_mask == 0) continue;
                         std::uint64_t slider_targets = 0;
                         if constexpr (IsDiag) {
-                            slider_targets |= detail::bishop_attacks(from, state.occupied);
+                            if ((detail::bishop_pseudo_attacks(from) & slider_mask) != 0) {
+                                slider_targets |= detail::bishop_attacks(from, state.occupied);
+                            }
                         }
                         if constexpr (IsOrth) {
-                            slider_targets |= detail::rook_attacks(from, state.occupied);
+                            if ((detail::rook_pseudo_attacks(from) & slider_mask) != 0) {
+                                slider_targets |= detail::rook_attacks(from, state.occupied);
+                            }
                         }
                         slider_targets &= slider_mask;
                         if (slider_targets == 0) continue;
@@ -2712,151 +2715,101 @@ private:
                         direct_bishop_checks | direct_rook_checks)) {
                     return;
                 }
+        } else {
+            if constexpr (quiet_only) {
                 return;
             }
-        }
-
-        if constexpr (quiet_only) {
-            return;
-        }
-        std::uint64_t origins = double_check ?
-            state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::king)] :
-            friendly;
-        while (origins != 0) {
-            const int from = static_cast<int>(std::countr_zero(origins));
-            origins &= origins - 1;
-            const Piece piece = state.board[static_cast<std::size_t>(from)];
-            if (piece.empty() || piece.color != side) continue;
-            const bool is_pinned = (pinned & bit(from)) != 0;
-            const Square source = Square::from_index(static_cast<std::uint8_t>(from));
-            bool from_safe = true;
-            if constexpr (is_metadata_sink_v<MoveSink>) {
-                from_safe = !moves.dc_hits(from);
-            }
-            std::uint64_t dc_off_ray = 0;
-            if constexpr (tactical_and_checks) {
-                if ((dc_blockers & bit(from)) != 0) {
-                    dc_off_ray = ~detail::line_mask(ek, from);
+            std::uint64_t origins = double_check ?
+                state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::king)] :
+                friendly;
+            while (origins != 0) {
+                const int from = static_cast<int>(std::countr_zero(origins));
+                origins &= origins - 1;
+                const Piece piece = state.board[static_cast<std::size_t>(from)];
+                if (piece.empty() || piece.color != side) continue;
+                const bool is_pinned = (pinned & bit(from)) != 0;
+                const Square source = Square::from_index(static_cast<std::uint8_t>(from));
+                std::uint64_t dc_off_ray = 0;
+                if constexpr (tactical_and_checks) {
+                    if ((dc_blockers & bit(from)) != 0) {
+                        dc_off_ray = ~detail::line_mask(ek, from);
+                    }
                 }
-            }
 
-            if (piece.type == PieceType::pawn) {
-                const int file = file_of(from);
-                const int rank = rank_of(from);
-                const int direction = side == Color::white ? 1 : -1;
-                const std::uint64_t pawn_legal_targets =
-                    (is_pinned && checkers != 0) ? std::uint64_t{0} :
-                    (is_pinned && king >= 0 ?
-                        (single_check_targets & detail::line_mask(king, from)) :
-                        single_check_targets);
+                if (piece.type == PieceType::pawn) {
+                    const int file = file_of(from);
+                    const int rank = rank_of(from);
+                    const int direction = side == Color::white ? 1 : -1;
+                    const std::uint64_t pawn_legal_targets =
+                        (is_pinned && checkers != 0) ? std::uint64_t{0} :
+                        (is_pinned && king >= 0 ?
+                            (single_check_targets & detail::line_mask(king, from)) :
+                            single_check_targets);
 
-                const int one = from + direction * 8;
-                if (valid_square(one)) {
-                    const Piece one_target = state.board[static_cast<std::size_t>(one)];
-                    if (one_target.empty()) {
-                        if constexpr (!tactical_only) {
-                            const int promotion_rank = side == Color::white ? 7 : 0;
-                            const bool is_promotion = rank_of(one) == promotion_rank;
-                            const std::uint64_t pawn_quiet_mask =
-                                direct_pawn_checks | dc_off_ray;
-                            if ((pawn_legal_targets & bit(one)) != 0 &&
-                                (!tactical_and_checks || is_promotion ||
-                                 (pawn_quiet_mask & bit(one)) != 0)) {
-                                if constexpr (is_metadata_sink_v<MoveSink>) {
-                                    if (!moves.emit_pawn_move(source, from, one, is_promotion, one_target, from_safe)) return;
-                                } else {
+                    const int one = from + direction * 8;
+                    if (valid_square(one)) {
+                        const Piece one_target = state.board[static_cast<std::size_t>(one)];
+                        if (one_target.empty()) {
+                            if constexpr (!tactical_only) {
+                                const int promotion_rank = side == Color::white ? 7 : 0;
+                                const bool is_promotion = rank_of(one) == promotion_rank;
+                                const std::uint64_t pawn_quiet_mask =
+                                    direct_pawn_checks | dc_off_ray;
+                                if ((pawn_legal_targets & bit(one)) != 0 &&
+                                    (!tactical_and_checks || is_promotion ||
+                                     (pawn_quiet_mask & bit(one)) != 0)) {
                                     if (!push(moves, from, one, one_target)) return;
                                 }
-                            }
-                            const int two = from + direction * 16;
-                            const int start_rank = side == Color::white ? 1 : 6;
-                            if (rank == start_rank &&
-                                state.board[static_cast<std::size_t>(two)].empty() &&
-                                (pawn_legal_targets & bit(two)) != 0 &&
-                                (!tactical_and_checks || (pawn_quiet_mask & bit(two)) != 0)) {
-                                if constexpr (is_metadata_sink_v<MoveSink>) {
-                                    if (!moves.emit_piece_move(source, from, two, PieceType::pawn,
-                                                               PieceType::none, MoveKind::quiet,
-                                                               from_safe)) {
-                                        return;
-                                    }
-                                } else {
+                                const int two = from + direction * 16;
+                                const int start_rank = side == Color::white ? 1 : 6;
+                                if (rank == start_rank &&
+                                    state.board[static_cast<std::size_t>(two)].empty() &&
+                                    (pawn_legal_targets & bit(two)) != 0 &&
+                                    (!tactical_and_checks || (pawn_quiet_mask & bit(two)) != 0)) {
                                     if (!moves.emplace_back(
                                             source,
                                             Square::from_index(static_cast<std::uint8_t>(two)))) {
                                         return;
                                     }
                                 }
-                            }
-                        } else {
-                            const int promotion_rank = side == Color::white ? 7 : 0;
-                            if (rank_of(one) == promotion_rank &&
-                                (pawn_legal_targets & bit(one)) != 0) {
-                                if constexpr (is_metadata_sink_v<MoveSink>) {
-                                    if (!moves.emit_pawn_move(source, from, one, true, one_target, from_safe)) return;
-                                } else {
+                            } else {
+                                const int promotion_rank = side == Color::white ? 7 : 0;
+                                if (rank_of(one) == promotion_rank &&
+                                    (pawn_legal_targets & bit(one)) != 0) {
                                     if (!push(moves, from, one, one_target)) return;
                                 }
                             }
                         }
                     }
-                }
-                for (const int file_delta : {-1, 1}) {
-                    const int target_file = file + file_delta;
-                    const int target_rank = rank + direction;
-                    if (target_file < 0 || target_file >= 8 || target_rank < 0 || target_rank >= 8) continue;
-                    const int to = target_rank * 8 + target_file;
-                    const Piece target = state.board[static_cast<std::size_t>(to)];
-                    if (!target.empty() && target.color != side && target.type != PieceType::king) {
-                        if ((pawn_legal_targets & bit(to)) != 0) {
-                            if constexpr (is_metadata_sink_v<MoveSink>) {
-                                const int promotion_rank = side == Color::white ? 7 : 0;
-                                if (!moves.emit_pawn_move(source, from, to,
-                                                          target_rank == promotion_rank,
-                                                          target, from_safe)) {
-                                    return;
-                                }
-                            } else {
+                    for (const int file_delta : {-1, 1}) {
+                        const int target_file = file + file_delta;
+                        const int target_rank = rank + direction;
+                        if (target_file < 0 || target_file >= 8 || target_rank < 0 || target_rank >= 8) continue;
+                        const int to = target_rank * 8 + target_file;
+                        const Piece target = state.board[static_cast<std::size_t>(to)];
+                        if (!target.empty() && target.color != side && target.type != PieceType::king) {
+                            if ((pawn_legal_targets & bit(to)) != 0) {
                                 if (!push(moves, from, to, target)) return;
                             }
-                        }
-                    } else if (state.en_passant.index() == to && target.empty()) {
-                        const Square ep_sq = Square::from_index(static_cast<std::uint8_t>(to));
-                        const Move ep_move(source, ep_sq);
-                        if (resolve_move_legality(ep_move, side)) {
-                            if constexpr (is_metadata_sink_v<MoveSink>) {
-                                if (!moves.emit_en_passant(source, ep_sq, from, to)) return;
-                            } else {
+                        } else if (state.en_passant.index() == to && target.empty()) {
+                            const Square ep_sq = Square::from_index(static_cast<std::uint8_t>(to));
+                            const Move ep_move(source, ep_sq);
+                            if (resolve_move_legality(ep_move, side)) {
                                 if (!moves.emplace_back(ep_move)) return;
                             }
                         }
                     }
+                    continue;
                 }
-                continue;
-            }
-            if (piece.type == PieceType::knight) {
-                if (is_pinned) continue;
-                const std::uint64_t knight_targets_mask = tactical_and_checks
-                    ? (enemy_non_king |
-                       (~(friendly | enemy_king_bb) & (direct_knight_checks | dc_off_ray)))
-                    : valid_targets;
-                std::uint64_t targets =
-                    detail::knight_attacks(from) & knight_targets_mask & single_check_targets;
-                if (targets == 0) continue;
-                if constexpr (is_metadata_sink_v<MoveSink>) {
-                    while (targets != 0) {
-                        const int to = static_cast<int>(std::countr_zero(targets));
-                        targets &= targets - 1;
-                        const bool cap = tactical_only || ((enemy_non_king & bit(to)) != 0);
-                        const PieceType cap_pt = cap ?
-                            state.board[static_cast<std::size_t>(to)].type : PieceType::none;
-                        if (!moves.emit_piece_move(
-                                source, from, to, PieceType::knight, cap_pt,
-                                cap ? MoveKind::capture : MoveKind::quiet, from_safe)) {
-                            return;
-                        }
-                    }
-                } else {
+                if (piece.type == PieceType::knight) {
+                    if (is_pinned) continue;
+                    const std::uint64_t knight_targets_mask = tactical_and_checks
+                        ? (enemy_non_king |
+                           (~(friendly | enemy_king_bb) & (direct_knight_checks | dc_off_ray)))
+                        : valid_targets;
+                    const std::uint64_t targets =
+                        detail::knight_attacks(from) & knight_targets_mask & single_check_targets;
+                    if (targets == 0) continue;
                     static constexpr std::array<int, 8> kKnightStepDeltas{
                         17, 10, -6, -15, -17, -10, 6, 15};
                     for (const int delta : kKnightStepDeltas) {
@@ -2868,34 +2821,14 @@ private:
                             }
                         }
                     }
+                    continue;
                 }
-                continue;
-            }
-            if (piece.type == PieceType::king) {
-                const std::uint64_t king_targets_mask = tactical_and_checks
-                    ? (enemy_non_king | (~(friendly | enemy_king_bb) & dc_off_ray))
-                    : valid_targets;
-                std::uint64_t targets = detail::king_attacks(from) & king_targets_mask;
-                if (targets != 0) {
-                    if constexpr (is_metadata_sink_v<MoveSink>) {
-                        while (targets != 0) {
-                            const int to = static_cast<int>(std::countr_zero(targets));
-                            targets &= targets - 1;
-                            const Square dest_sq =
-                                Square::from_index(static_cast<std::uint8_t>(to));
-                            const Move candidate(source, dest_sq);
-                            if (king_move_is_legal(candidate)) {
-                                const bool cap = tactical_only || ((enemy_non_king & bit(to)) != 0);
-                                const PieceType cap_pt = cap ?
-                                    state.board[static_cast<std::size_t>(to)].type : PieceType::none;
-                                if (!moves.emit_piece_move(
-                                        source, from, to, PieceType::king, cap_pt,
-                                        cap ? MoveKind::capture : MoveKind::quiet, from_safe)) {
-                                    return;
-                                }
-                            }
-                        }
-                    } else {
+                if (piece.type == PieceType::king) {
+                    const std::uint64_t king_targets_mask = tactical_and_checks
+                        ? (enemy_non_king | (~(friendly | enemy_king_bb) & dc_off_ray))
+                        : valid_targets;
+                    const std::uint64_t targets = detail::king_attacks(from) & king_targets_mask;
+                    if (targets != 0) {
                         static constexpr std::array<int, 8> kKingStepDeltas{
                             9, 1, -7, -8, -9, -1, 7, 8};
                         for (const int delta : kKingStepDeltas) {
@@ -2910,146 +2843,104 @@ private:
                             }
                         }
                     }
-                }
-                if constexpr (!tactical_only) {
-                    if (king >= 0 && checkers == 0) {
-                        const int rank_base = side == Color::white ? 0 : 7;
-                        if (from == rank_base * 8 + 4) {
-                            const std::uint64_t rook_lines_empty =
-                                tactical_and_checks ? detail::rook_pseudo_attacks(ek) : 0ULL;
-                            const std::uint8_t king_right = side == Color::white ? kWhiteKingSide : kBlackKingSide;
-                            const std::uint8_t queen_right = side == Color::white ? kWhiteQueenSide : kBlackQueenSide;
-                            const bool allow_kingside = !tactical_and_checks ||
-                                ((rook_lines_empty & bit(rank_base * 8 + 5)) != 0) ||
-                                dc_off_ray != 0;
-                            if ((state.castling & king_right) != 0 &&
-                                allow_kingside &&
-                                state.board[static_cast<std::size_t>(rank_base * 8 + 5)].empty() &&
-                                state.board[static_cast<std::size_t>(rank_base * 8 + 6)].empty() &&
-                                safe_king_step(state, from, rank_base * 8 + 5, side) &&
-                                safe_king_step(state, from, rank_base * 8 + 6, side)) {
-                                const int to = rank_base * 8 + 6;
-                                const Square dest_sq = Square::from_index(static_cast<std::uint8_t>(to));
-                                if constexpr (is_metadata_sink_v<MoveSink>) {
-                                    if (!moves.emit_castling(source, dest_sq, from, to)) return;
-                                } else {
+                    if constexpr (!tactical_only) {
+                        if (king >= 0 && checkers == 0) {
+                            const int rank_base = side == Color::white ? 0 : 7;
+                            if (from == rank_base * 8 + 4) {
+                                const std::uint64_t rook_lines_empty =
+                                    tactical_and_checks ? detail::rook_pseudo_attacks(ek) : 0ULL;
+                                const std::uint8_t king_right = side == Color::white ? kWhiteKingSide : kBlackKingSide;
+                                const std::uint8_t queen_right = side == Color::white ? kWhiteQueenSide : kBlackQueenSide;
+                                const bool allow_kingside = !tactical_and_checks ||
+                                    ((rook_lines_empty & bit(rank_base * 8 + 5)) != 0) ||
+                                    dc_off_ray != 0;
+                                if ((state.castling & king_right) != 0 &&
+                                    allow_kingside &&
+                                    state.board[static_cast<std::size_t>(rank_base * 8 + 5)].empty() &&
+                                    state.board[static_cast<std::size_t>(rank_base * 8 + 6)].empty() &&
+                                    safe_king_step(state, from, rank_base * 8 + 5, side) &&
+                                    safe_king_step(state, from, rank_base * 8 + 6, side)) {
+                                    const int to = rank_base * 8 + 6;
+                                    const Square dest_sq = Square::from_index(static_cast<std::uint8_t>(to));
                                     if (!moves.emplace_back(source, dest_sq)) return;
                                 }
-                            }
-                            const bool allow_queenside = !tactical_and_checks ||
-                                ((rook_lines_empty & bit(rank_base * 8 + 3)) != 0) ||
-                                dc_off_ray != 0;
-                            if ((state.castling & queen_right) != 0 &&
-                                allow_queenside &&
-                                state.board[static_cast<std::size_t>(rank_base * 8 + 1)].empty() &&
-                                state.board[static_cast<std::size_t>(rank_base * 8 + 2)].empty() &&
-                                state.board[static_cast<std::size_t>(rank_base * 8 + 3)].empty() &&
-                                safe_king_step(state, from, rank_base * 8 + 3, side) &&
-                                safe_king_step(state, from, rank_base * 8 + 2, side)) {
-                                const int to = rank_base * 8 + 2;
-                                const Square dest_sq = Square::from_index(static_cast<std::uint8_t>(to));
-                                if constexpr (is_metadata_sink_v<MoveSink>) {
-                                    if (!moves.emit_castling(source, dest_sq, from, to)) return;
-                                } else {
+                                const bool allow_queenside = !tactical_and_checks ||
+                                    ((rook_lines_empty & bit(rank_base * 8 + 3)) != 0) ||
+                                    dc_off_ray != 0;
+                                if ((state.castling & queen_right) != 0 &&
+                                    allow_queenside &&
+                                    state.board[static_cast<std::size_t>(rank_base * 8 + 1)].empty() &&
+                                    state.board[static_cast<std::size_t>(rank_base * 8 + 2)].empty() &&
+                                    state.board[static_cast<std::size_t>(rank_base * 8 + 3)].empty() &&
+                                    safe_king_step(state, from, rank_base * 8 + 3, side) &&
+                                    safe_king_step(state, from, rank_base * 8 + 2, side)) {
+                                    const int to = rank_base * 8 + 2;
+                                    const Square dest_sq = Square::from_index(static_cast<std::uint8_t>(to));
                                     if (!moves.emplace_back(source, dest_sq)) return;
                                 }
                             }
                         }
                     }
+                    continue;
                 }
-                continue;
-            }
 
-            if (is_pinned && checkers != 0) continue;
-            std::uint64_t slider_base_targets = valid_targets;
-            if constexpr (tactical_and_checks) {
-                const std::uint64_t piece_direct_checks =
-                    piece.type == PieceType::bishop
-                        ? direct_bishop_checks
-                        : (piece.type == PieceType::rook
-                               ? direct_rook_checks
-                               : (direct_bishop_checks | direct_rook_checks));
-                slider_base_targets = enemy_non_king |
-                    (~(friendly | enemy_king_bb) & (piece_direct_checks | dc_off_ray));
-            }
-            std::uint64_t slider_mask = slider_base_targets & single_check_targets;
-            if (is_pinned && king >= 0) {
-                slider_mask &= detail::line_mask(king, from);
-            }
-            if (slider_mask == 0) continue;
+                if (is_pinned && checkers != 0) continue;
+                std::uint64_t slider_base_targets = valid_targets;
+                if constexpr (tactical_and_checks) {
+                    const std::uint64_t piece_direct_checks =
+                        piece.type == PieceType::bishop
+                            ? direct_bishop_checks
+                            : (piece.type == PieceType::rook
+                                   ? direct_rook_checks
+                                   : (direct_bishop_checks | direct_rook_checks));
+                    slider_base_targets = enemy_non_king |
+                        (~(friendly | enemy_king_bb) & (piece_direct_checks | dc_off_ray));
+                }
+                std::uint64_t slider_mask = slider_base_targets & single_check_targets;
+                if (is_pinned && king >= 0) {
+                    slider_mask &= detail::line_mask(king, from);
+                }
+                if (slider_mask == 0) continue;
 
-            const auto emit_ray_dir = [&](int dir, bool positive_step, std::uint64_t piece_targets) -> bool {
-                std::uint64_t ray_targets = piece_targets & detail::ray_attacks(from, dir);
-                while (ray_targets != 0) {
-                    const int to = positive_step ?
-                        static_cast<int>(std::countr_zero(ray_targets)) :
-                        63 - static_cast<int>(std::countl_zero(ray_targets));
-                    ray_targets &= ~bit(to);
-                    if constexpr (is_metadata_sink_v<MoveSink>) {
-                        const bool cap = tactical_only || ((enemy_non_king & bit(to)) != 0);
-                        const PieceType cap_pt = cap ?
-                            state.board[static_cast<std::size_t>(to)].type : PieceType::none;
-                        if (!moves.emit_piece_move(
-                                source, from, to, piece.type, cap_pt,
-                                cap ? MoveKind::capture : MoveKind::quiet, from_safe)) {
-                            return false;
-                        }
-                    } else {
+                const auto emit_ray_dir = [&](int dir, bool positive_step, std::uint64_t piece_targets) -> bool {
+                    std::uint64_t ray_targets = piece_targets & detail::ray_attacks(from, dir);
+                    while (ray_targets != 0) {
+                        const int to = positive_step ?
+                            static_cast<int>(std::countr_zero(ray_targets)) :
+                            63 - static_cast<int>(std::countl_zero(ray_targets));
+                        ray_targets &= ~bit(to);
                         if (!moves.emplace_back(
                                 source, Square::from_index(static_cast<std::uint8_t>(to)))) {
                             return false;
                         }
                     }
-                }
-                return true;
-            };
+                    return true;
+                };
 
-            const bool diagonal = piece.type == PieceType::bishop || piece.type == PieceType::queen;
-            const bool orthogonal = piece.type == PieceType::rook || piece.type == PieceType::queen;
-            if constexpr (is_metadata_sink_v<MoveSink>) {
-                std::uint64_t slider_targets = 0;
-                if (diagonal) {
-                    slider_targets |= detail::bishop_attacks(from, state.occupied);
-                }
-                if (orthogonal) {
-                    slider_targets |= detail::rook_attacks(from, state.occupied);
-                }
-                slider_targets &= slider_mask;
-                while (slider_targets != 0) {
-                    const int to = static_cast<int>(std::countr_zero(slider_targets));
-                    slider_targets &= slider_targets - 1;
-                    const bool cap = tactical_only || ((enemy_non_king & bit(to)) != 0);
-                    const PieceType cap_pt = cap ?
-                        state.board[static_cast<std::size_t>(to)].type : PieceType::none;
-                    if (!moves.emit_piece_move(
-                            source, from, to, piece.type, cap_pt,
-                            cap ? MoveKind::capture : MoveKind::quiet, from_safe)) {
-                        return;
+                const bool diagonal = piece.type == PieceType::bishop || piece.type == PieceType::queen;
+                const bool orthogonal = piece.type == PieceType::rook || piece.type == PieceType::queen;
+                if (diagonal && (detail::bishop_pseudo_attacks(from) & slider_mask) != 0) {
+                    const std::uint64_t diag_targets =
+                        detail::bishop_attacks(from, state.occupied) & slider_mask;
+                    if (diag_targets != 0) {
+                        if (!emit_ray_dir(1, true, diag_targets) ||
+                            !emit_ray_dir(3, false, diag_targets) ||
+                            !emit_ray_dir(5, false, diag_targets) ||
+                            !emit_ray_dir(7, true, diag_targets)) {
+                            return;
+                        }
                     }
                 }
-                continue;
-            }
-            if (diagonal) {
-                const std::uint64_t diag_targets =
-                    detail::bishop_attacks(from, state.occupied) & slider_mask;
-                if (diag_targets != 0) {
-                    if (!emit_ray_dir(1, true, diag_targets) ||
-                        !emit_ray_dir(3, false, diag_targets) ||
-                        !emit_ray_dir(5, false, diag_targets) ||
-                        !emit_ray_dir(7, true, diag_targets)) {
-                        return;
-                    }
-                }
-            }
-            if (orthogonal) {
-                const std::uint64_t orth_targets =
-                    detail::rook_attacks(from, state.occupied) & slider_mask;
-                if (orth_targets != 0) {
-                    if (!emit_ray_dir(2, true, orth_targets) ||
-                        !emit_ray_dir(0, true, orth_targets) ||
-                        !emit_ray_dir(6, false, orth_targets) ||
-                        !emit_ray_dir(4, false, orth_targets)) {
-                        return;
+                if (orthogonal && (detail::rook_pseudo_attacks(from) & slider_mask) != 0) {
+                    const std::uint64_t orth_targets =
+                        detail::rook_attacks(from, state.occupied) & slider_mask;
+                    if (orth_targets != 0) {
+                        if (!emit_ray_dir(2, true, orth_targets) ||
+                            !emit_ray_dir(0, true, orth_targets) ||
+                            !emit_ray_dir(6, false, orth_targets) ||
+                            !emit_ray_dir(4, false, orth_targets)) {
+                            return;
+                        }
                     }
                 }
             }

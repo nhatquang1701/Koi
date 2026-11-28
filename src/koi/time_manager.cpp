@@ -796,10 +796,15 @@ void TimeManager::update_optimum_budget() noexcept {
     }
 
     // Pondering already banked opponent think time: when the move arrives and
-    // our deep ponder search is calm and stable, save 20% on optimum_budget.
-    if (ponderhit_converted_ && !hard_position_ && last_observed_depth_ >= 6 &&
-        best_move_stability_ >= 3 && score_drop_cp_ <= 15 &&
-        !last_aspiration_researched_) {
+    // our ponder search is calm and stable (`depth >= 6, stability >= 3`, or
+    // `depth >= 5, stability >= 2` under emergency pacing), save 20% on
+    // optimum_budget.
+    const int min_ponderhit_discount_depth = emergency_pacing_ ? 5 : 6;
+    const std::uint32_t min_ponderhit_discount_stability = emergency_pacing_ ? 2U : 3U;
+    if (ponderhit_converted_ && !hard_position_ &&
+        last_observed_depth_ >= min_ponderhit_discount_depth &&
+        best_move_stability_ >= min_ponderhit_discount_stability &&
+        score_drop_cp_ <= 15 && !last_aspiration_researched_) {
         scale_permille = (scale_permille * 800ULL) / 1000ULL;
     }
 
@@ -883,9 +888,13 @@ bool TimeManager::clock_early_stop_reached(
                 return true;
             }
         }
+        const int min_ponderhit_effort_depth = emergency_pacing_ ? 6 : 10;
+        const std::uint32_t min_ponderhit_effort_stability = emergency_pacing_ ? 2U : 4U;
         if (ponderhit_converted_ && has_effort_sample_ &&
-            best_move_effort_permille_ >= 900U && last_observed_depth_ >= 10 &&
-            stable_observations_ >= 2 && best_move_stability_ >= 4 &&
+            best_move_effort_permille_ >= 900U &&
+            last_observed_depth_ >= min_ponderhit_effort_depth &&
+            stable_observations_ >= 2 &&
+            best_move_stability_ >= min_ponderhit_effort_stability &&
             score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
             elapsed >= scale_fraction(soft_target, 25, 100)) {
             return true;

@@ -1742,6 +1742,85 @@ void test_emergency_depth6_ponderhit_doomed_ply_bank() {
             "healthy clock ponderhit at depth 6 must retain depth>=8/stability>=3 doomed bank threshold");
 }
 
+void test_emergency_ponderhit_discount_and_high_effort_fast_exit() {
+    auto now_emg_p = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits emg_ponder = clock_limits(milliseconds{2'000}, milliseconds{0});
+    emg_ponder.ponder = true;
+    const SearchLimits emg_live = clock_limits(milliseconds{2'000}, milliseconds{0});
+
+    TimeManager emg_ponderhit(emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              warm_context(), [now_emg_p] { return *now_emg_p; });
+    TimeManager emg_direct(emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                           warm_context());
+    for (TimeManager* tm : {&emg_ponderhit, &emg_direct}) {
+        tm->observe_iteration({4, 25, false, false, false, 10'000, 5'000, milliseconds{4}});
+        tm->observe_iteration({5, 25, false, false, false, 10'000, 5'000, milliseconds{5}});
+    }
+    emg_ponderhit.reconfigure(emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              warm_context(), false, *now_emg_p, 0);
+    require(emg_ponderhit.diagnostics().emergency_pacing &&
+                emg_ponderhit.diagnostics().optimum_budget < emg_direct.diagnostics().optimum_budget,
+            "emergency calm ponderhit at depth 5/stability 2 must apply 20% budget discount");
+
+    auto now_healthy_p = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits healthy_ponder = clock_limits(milliseconds{20'000}, milliseconds{0});
+    healthy_ponder.ponder = true;
+    const SearchLimits healthy_live = clock_limits(milliseconds{20'000}, milliseconds{0});
+    TimeManager healthy_ponderhit(healthy_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                                  warm_context(), [now_healthy_p] { return *now_healthy_p; });
+    TimeManager healthy_direct(healthy_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                               warm_context());
+    for (TimeManager* tm : {&healthy_ponderhit, &healthy_direct}) {
+        tm->observe_iteration({4, 25, false, false, false, 10'000, 5'000, milliseconds{10}});
+        tm->observe_iteration({5, 25, false, false, false, 10'000, 5'000, milliseconds{20}});
+    }
+    healthy_ponderhit.reconfigure(healthy_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                                  warm_context(), false, *now_healthy_p, 0);
+    require(!healthy_ponderhit.diagnostics().emergency_pacing &&
+                healthy_ponderhit.diagnostics().optimum_budget ==
+                    healthy_direct.diagnostics().optimum_budget,
+            "healthy calm ponderhit at depth 5/stability 2 must retain depth>=6/stability>=3 discount gate");
+
+    auto now_fast = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg_fast(emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                         warm_context(), [now_fast] { return *now_fast; });
+    emg_fast.observe_iteration({5, 25, false, false, false, 10'000, 9'500, milliseconds{4}});
+    emg_fast.observe_iteration({6, 25, false, false, false, 10'000, 9'500, milliseconds{5}});
+    emg_fast.reconfigure(emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                         warm_context(), false, *now_fast, 0);
+    require(!emg_fast.should_stop_after_iteration(),
+            "fast-sample emergency ponderhit must not trigger doomed bank before 25% elapsed");
+    *now_fast += (emg_fast.diagnostics().optimum_budget * 30) / 100;
+    require(emg_fast.should_stop_after_iteration() &&
+                !emg_fast.should_start_next_iteration(milliseconds{1}),
+            "emergency high-effort ponderhit at depth 6/stability 2 must exit at 25% target");
+
+    auto now_asp = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg_asp(emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), [now_asp] { return *now_asp; });
+    emg_asp.observe_iteration({5, 25, false, false, false, 10'000, 9'500, milliseconds{4}});
+    emg_asp.observe_iteration({6, 25, false, true, false, 10'000, 9'500, milliseconds{5}});
+    emg_asp.reconfigure(emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), false, *now_asp, 0);
+    *now_asp += (emg_asp.diagnostics().optimum_budget * 30) / 100;
+    require(!emg_asp.should_stop_after_iteration() &&
+                emg_asp.should_start_next_iteration(milliseconds{1}),
+            "emergency high-effort ponderhit after aspiration re-search must not exit at 25%");
+
+    auto now_healthy_eff = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager healthy_eff(healthy_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                            warm_context(), [now_healthy_eff] { return *now_healthy_eff; });
+    healthy_eff.observe_iteration({5, 25, false, false, false, 10'000, 9'500, milliseconds{10}});
+    healthy_eff.observe_iteration({6, 25, false, false, false, 10'000, 9'500, milliseconds{15}});
+    healthy_eff.reconfigure(healthy_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                            warm_context(), false, *now_healthy_eff, 0);
+    *now_healthy_eff += (healthy_eff.diagnostics().optimum_budget * 30) / 100;
+    require(!healthy_eff.diagnostics().emergency_pacing &&
+                !healthy_eff.should_stop_after_iteration() &&
+                healthy_eff.should_start_next_iteration(milliseconds{1}),
+            "healthy high-effort ponderhit at depth 6/stability 2 must retain depth>=10/stability>=4 gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1824,6 +1903,8 @@ int main(int argc, char** argv) {
          test_emergency_depth6_dead_drawn_endgame_speedup},
         {"emergency depth 6 ponderhit doomed ply bank",
          test_emergency_depth6_ponderhit_doomed_ply_bank},
+        {"emergency ponderhit discount and high effort exit",
+         test_emergency_ponderhit_discount_and_high_effort_fast_exit},
     };
     return koi::test::run_tests(tests, argc, argv);
 }
