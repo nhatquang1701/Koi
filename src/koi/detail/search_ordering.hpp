@@ -56,7 +56,9 @@ public:
                                 const SearchHistoryContext& history_context, int depth) noexcept;
     void record_parent_refuted(Color side, Move move, PieceType piece, int parent_ply,
                                const SearchHistoryContext& history_context, int depth) noexcept;
-    [[nodiscard]] bool is_killer(Move move, int ply) const noexcept;
+    [[nodiscard]] bool is_killer(const Move move, const int ply) const noexcept {
+        return tables_.is_killer(move, ply);
+    }
     [[nodiscard]] int quiet_history_score(Color side, Move move,
                                           std::optional<Move> previous_move = std::nullopt) const noexcept;
     [[nodiscard]] int quiet_history_score(Color side, const MoveMetadata& metadata,
@@ -66,9 +68,13 @@ public:
     [[nodiscard]] QuietAndContinuationScores quiet_and_continuation_scores(
         Color side, const MoveMetadata& metadata,
         const SearchHistoryContext& history_context) const noexcept;
-    [[nodiscard]] int capture_history_score(const MoveMetadata& metadata) const noexcept;
+    [[nodiscard]] int capture_history_score(const MoveMetadata& metadata) const noexcept {
+        return tables_.capture_history_score(metadata);
+    }
     [[nodiscard]] bool is_proven_counter_move(
-        Color side, Move previous_move, Move move) const noexcept;
+        const Color side, const Move previous_move, const Move move) const noexcept {
+        return tables_.is_proven_counter_move(side, previous_move, move);
+    }
 #if defined(__clang__) || defined(__GNUC__)
 #define KOI_ORD_CORR_INLINE __attribute__((always_inline)) inline
 #elif defined(_MSC_VER)

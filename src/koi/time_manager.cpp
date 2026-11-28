@@ -312,6 +312,19 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     const bool has_increment = clock->increment > std::chrono::milliseconds::zero();
     std::uint32_t default_horizon = continuous_horizon(
         has_increment, root_context_.game_phase, root_context_.fullmove_number);
+    if (!limits_.moves_to_go.has_value() && !has_increment &&
+        remaining > std::chrono::milliseconds{3'000} &&
+        remaining < std::chrono::milliseconds{15'000}) {
+        // Sudden-death pre-emergency ramp (3..15 s): smoothly stretch the
+        // horizon up to +12% before emergency pacing engages so rapid clocks do
+        // not hit the 3 s threshold at full middlegame burn rate.
+        const std::uint64_t deficit_ms =
+            static_cast<std::uint64_t>(15'000 - remaining.count());
+        const std::uint64_t stretch_permille =
+            1000ULL + (deficit_ms * 120ULL) / 12'000ULL;
+        default_horizon = static_cast<std::uint32_t>(
+            (static_cast<std::uint64_t>(default_horizon) * stretch_permille + 500ULL) / 1000ULL);
+    }
     if (!limits_.moves_to_go.has_value()) {
         const std::optional<ClockLimit>& opponent_clock = side_to_move == Color::white ?
             limits_.black_clock : limits_.white_clock;
@@ -407,8 +420,15 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
         saturating_add(overhead, saturating_add(overhead, std::chrono::milliseconds{15})),
         std::min(std::chrono::milliseconds{50}, remaining / 20));
     const auto usable_ceiling = nonnegative_difference(timing_.usable, hard_safety);
-    const auto fraction_ceiling = std::max(std::chrono::milliseconds{5},
-                                           scale_fraction(timing_.usable, 1, 4));
+    const std::uint64_t max_fraction_den =
+        (limits_.moves_to_go.has_value() && *limits_.moves_to_go <= 3U)
+            ? (*limits_.moves_to_go == 1U ? 4ULL : (*limits_.moves_to_go == 2U ? 2ULL : 3ULL))
+            : 4ULL;
+    const std::uint64_t max_fraction_num =
+        (limits_.moves_to_go.has_value() && *limits_.moves_to_go == 1U) ? 3ULL : 1ULL;
+    const auto fraction_ceiling = std::max(
+        std::chrono::milliseconds{5},
+        scale_fraction(timing_.usable, max_fraction_num, max_fraction_den));
     const auto capped_hard = std::min(std::min(timing_.hard_budget, fraction_ceiling),
                                       usable_ceiling);
     // A one-millisecond floor keeps the deadline comparable and still fires on

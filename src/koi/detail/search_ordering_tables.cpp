@@ -16,7 +16,6 @@ namespace {
 constexpr int kHistoryTableMaximum = 16'384;
 constexpr int kMaximumHistoryScore = kHistoryTableMaximum;
 constexpr int kCaptureHistoryMaximum = 16'384;
-constexpr int kCounterMoveMinimumConfidence = 7 * 7;
 
 // These priors match Stockfish 19's initial history bias and seed capture,
 // piece-to, low-ply, continuation, and pawn histories on worker construction
@@ -78,21 +77,8 @@ SearchOrderingTables::SearchOrderingTables()
 
 SearchOrderingTables::~SearchOrderingTables() = default;
 
-int SearchOrderingTables::piece_index(const PieceType type) noexcept {
-    const int index = static_cast<int>(type);
-    return index >= 0 && index < static_cast<int>(kPieceTypeCount) ? index : 0;
-}
-
 std::size_t SearchOrderingTables::move_index(const Move move) noexcept {
     return table_move_index(move);
-}
-
-std::size_t SearchOrderingTables::capture_index(const MoveMetadata& metadata) noexcept {
-    const std::size_t piece = static_cast<std::size_t>(piece_index(metadata.moving_piece));
-    const std::size_t to = metadata.move.to().index() < Square::kInvalid ?
-        static_cast<std::size_t>(metadata.move.to().index()) : 0U;
-    const std::size_t captured = static_cast<std::size_t>(piece_index(metadata.captured_piece));
-    return (piece * 64U + to) * kCapturedPieceCount + captured;
 }
 
 std::size_t SearchOrderingTables::piece_to_index(const PieceType piece,
@@ -118,10 +104,6 @@ std::size_t SearchOrderingTables::pawn_index(const SearchHistoryContext& context
         static_cast<std::uint64_t>(to.index() < Square::kInvalid ? to.index() : 0U);
     return static_cast<std::size_t>(mix64(context.pawn_key ^ dimensions) &
                                     (kPawnHistorySize - 1));
-}
-
-int SearchOrderingTables::normalized_ply(const int ply) noexcept {
-    return std::clamp(ply, 0, kMaximumKillerPly - 1);
 }
 
 void SearchOrderingTables::update_history(int& score, const int delta,
@@ -153,21 +135,6 @@ void SearchOrderingTables::clear() noexcept {
         large_->major_correction.fill(0);
         large_->continuation_correction.fill(0);
     }
-}
-
-int SearchOrderingTables::killer_rank(const Move move, const int ply) const noexcept {
-    const auto& killers = killers_[static_cast<std::size_t>(normalized_ply(ply))];
-    if (killers[0] == move) {
-        return 2;
-    }
-    if (killers[1] == move) {
-        return 1;
-    }
-    return 0;
-}
-
-bool SearchOrderingTables::is_killer(const Move move, const int ply) const noexcept {
-    return killer_rank(move, ply) != 0;
 }
 
 int SearchOrderingTables::quiet_history_score(
@@ -288,13 +255,6 @@ int SearchOrderingTables::continuation_history_score(
                          kMaximumHistoryScore);
 }
 
-int SearchOrderingTables::capture_history_score(const MoveMetadata& metadata) const noexcept {
-    if (!metadata.is_capture()) {
-        return 0;
-    }
-    return capture_history_[capture_index(metadata)];
-}
-
 SearchOrderingTables::QuietHistoryBatch SearchOrderingTables::prepare_quiet_history_batch(
     const Color side, const SearchHistoryContext& context) const noexcept {
     static_assert(QuietHistoryBatch::kContSize == kContinuationHistorySize);
@@ -341,17 +301,6 @@ Move SearchOrderingTables::proven_counter_move(
         return Move::no_move();
     }
     return counter_moves_[side_index][previous_index];
-}
-
-bool SearchOrderingTables::is_proven_counter_move(
-    const Color side, const Move previous_move, const Move move) const noexcept {
-    if (previous_move.is_no_move() || move.is_no_move()) {
-        return false;
-    }
-    const std::size_t side_index = static_cast<std::size_t>(color_index(side));
-    const std::size_t previous_index = move_index(previous_move);
-    return counter_moves_[side_index][previous_index] == move &&
-        counter_confidence_[side_index][previous_index] >= kCounterMoveMinimumConfidence;
 }
 
 void SearchOrderingTables::update_correction(const std::uint64_t pawn_key,

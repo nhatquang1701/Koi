@@ -73,19 +73,26 @@ static_assert(((64U * 64U + 64U) * 5U + 4U) < (1ULL << 23U),
         ~static_cast<std::uint32_t>(candidate >> 32U) ^ 0x80000000U));
 }
 
-[[nodiscard]] int capture_priority_no_tt(
-    const SearchOrderingTables& tables, const MoveMetadata& metadata) noexcept {
+[[nodiscard]] int capture_priority_with_see(
+    const SearchOrderingTables& tables, const MoveMetadata& metadata,
+    const bool has_see, const std::int16_t raw_see) noexcept {
     const int victim_value = piece_value(metadata.captured_piece);
     const int attacker_value = piece_value(metadata.moving_piece);
-    const int see = metadata.see_computed ? std::clamp(
-        static_cast<int>(metadata.see_score),
+    const int see = has_see ? std::clamp(
+        static_cast<int>(raw_see),
         -piece_value(PieceType::queen), piece_value(PieceType::queen)) : 0;
     const int capture_history = tables.capture_history_score(metadata);
-    const int bad_capture_penalty = metadata.see_computed && see < 0 && !metadata.gives_check ?
+    const int bad_capture_penalty = has_see && see < 0 && !metadata.gives_check ?
         kBadCapturePenalty : 0;
     return kCapturePriority - bad_capture_penalty + (victim_value * 16) - attacker_value +
         promotion_value(metadata.move.promotion()) + see * kSeeOrderingWeight +
         capture_history * kCaptureHistoryWeight;
+}
+
+[[nodiscard]] int capture_priority_no_tt(
+    const SearchOrderingTables& tables, const MoveMetadata& metadata) noexcept {
+    return capture_priority_with_see(
+        tables, metadata, metadata.see_computed, metadata.see_score);
 }
 
 #if defined(__clang__) || defined(__GNUC__)
@@ -138,6 +145,22 @@ template <typename Scorer>
     return metadata.gives_check ?
         (kCheckingMovePriority + std::clamp(history / 32, -8'192, 8'192)) :
         history;
+}
+
+[[nodiscard]] KOI_ORD_ALWAYS_INLINE int legal_quiet_priority(
+    const MoveMetadata& metadata,
+    const Move killer0,
+    const Move killer1,
+    const Move proven_counter,
+    const SearchOrderingTables::QuietHistoryBatch& batch) noexcept {
+    if (batch.all_cont && batch.low_ply_row == nullptr) {
+        return quiet_priority_core(
+            metadata, killer0, killer1, proven_counter,
+            LegalBatchQuietScorer<true, true>{batch});
+    }
+    return quiet_priority_core(
+        metadata, killer0, killer1, proven_counter,
+        LegalBatchQuietScorer<false, false>{batch});
 }
 
 [[nodiscard]] int quiet_priority_preloaded(
@@ -243,10 +266,6 @@ void SearchMoveOrdering::update_correction(const std::uint64_t pawn_key,
                                            const bool has_continuation) noexcept {
     tables_.update_correction(pawn_key, material_key, king_key, minor_key,
                               major_key, bonus, continuation_key, has_continuation);
-}
-
-bool SearchMoveOrdering::is_killer(const Move move, const int ply) const noexcept {
-    return tables_.is_killer(move, ply);
 }
 
 void SearchMoveOrdering::order(const GameState& state, std::vector<Move>& moves,
@@ -403,16 +422,6 @@ QuietAndContinuationScores SearchMoveOrdering::quiet_and_continuation_scores(
     const Color side, const MoveMetadata& metadata,
     const SearchHistoryContext& history_context) const noexcept {
     return tables_.quiet_and_continuation_scores(side, metadata, history_context);
-}
-
-int SearchMoveOrdering::capture_history_score(
-    const MoveMetadata& metadata) const noexcept {
-    return tables_.capture_history_score(metadata);
-}
-
-bool SearchMoveOrdering::is_proven_counter_move(
-    const Color side, const Move previous_move, const Move move) const noexcept {
-    return tables_.is_proven_counter_move(side, previous_move, move);
 }
 
 void SearchMoveOrdering::record_quiet_cutoff(
@@ -593,24 +602,22 @@ void SearchMovePicker::prepare_quiescence_candidates() {
         }
         int priority = 0;
         if (source.is_capture()) {
-            MoveMetadata materialized = source;
             if (!see_computed_[index]) {
-                if (materialized.see_computed) {
-                    see_scores_[index] = materialized.see_score;
+                if (source.see_computed) {
+                    see_scores_[index] = source.see_score;
                 } else {
                     if (!see_context_.has_value()) {
                         see_context_ = exchange_context_from(state_);
                     }
                     see_scores_[index] = static_cast<std::int16_t>(std::clamp(
-                        static_exchange_gain(*see_context_, materialized),
+                        static_exchange_gain(*see_context_, source),
                         static_cast<int>(std::numeric_limits<std::int16_t>::min()),
                         static_cast<int>(std::numeric_limits<std::int16_t>::max())));
                 }
                 see_computed_.set(index);
             }
-            materialized.see_score = see_scores_[index];
-            materialized.see_computed = true;
-            priority = capture_priority_no_tt(ordering_.tables_, materialized);
+            priority = capture_priority_with_see(
+                ordering_.tables_, source, true, see_scores_[index]);
         } else {
             priority = kPromotionPriority + promotion_value(source.move.promotion());
         }
@@ -649,7 +656,7 @@ void SearchMovePicker::prepare_evasion_candidates() {
             capture_priority_no_tt(ordering_.tables_, metadata) :
             (metadata.move.promotion() != Promotion::none ?
                 kPromotionPriority + promotion_value(metadata.move.promotion()) :
-                quiet_priority_core(metadata, killer0, killer1, proven_counter, quiet_batch));
+                legal_quiet_priority(metadata, killer0, killer1, proven_counter, quiet_batch));
         staged_[evasion_count++] = pack_candidate(
             priority, generated_move_tie_break_key(metadata.move), index);
     }
@@ -748,7 +755,7 @@ void SearchMovePicker::score_quiescence_quiet_checks() {
     for (std::size_t s = stage_begin_[rank]; s < stage_end_[rank]; ++s) {
         const std::size_t src = candidate_source_index(staged_[s]);
         const MoveMetadata& check_meta = moves_[src];
-        const int priority = quiet_priority_core(
+        const int priority = legal_quiet_priority(
             check_meta, Move::no_move(), Move::no_move(), Move::no_move(), quiet_batch);
         staged_[s] = pack_candidate(priority, generated_move_tie_break_key(check_meta.move), src);
     }

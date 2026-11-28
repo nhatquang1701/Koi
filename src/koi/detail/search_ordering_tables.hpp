@@ -79,8 +79,19 @@ public:
 
     void clear() noexcept;
 
-    [[nodiscard]] bool is_killer(Move move, int ply) const noexcept;
-    [[nodiscard]] int killer_rank(Move move, int ply) const noexcept;
+    [[nodiscard]] bool is_killer(const Move move, const int ply) const noexcept {
+        return killer_rank(move, ply) != 0;
+    }
+    [[nodiscard]] int killer_rank(const Move move, const int ply) const noexcept {
+        const auto& killers = killers_[static_cast<std::size_t>(normalized_ply(ply))];
+        if (killers[0] == move) {
+            return 2;
+        }
+        if (killers[1] == move) {
+            return 1;
+        }
+        return 0;
+    }
     [[nodiscard]] std::pair<Move, Move> killers_at_ply(int ply) const noexcept {
         const auto& killers = killers_[static_cast<std::size_t>(normalized_ply(ply))];
         return {killers[0], killers[1]};
@@ -96,7 +107,12 @@ public:
     [[nodiscard]] QuietAndContinuationScores quiet_and_continuation_scores(
         Color side, const MoveMetadata& metadata,
         const SearchHistoryContext& context) const noexcept;
-    [[nodiscard]] int capture_history_score(const MoveMetadata& metadata) const noexcept;
+    [[nodiscard]] int capture_history_score(const MoveMetadata& metadata) const noexcept {
+        if (!metadata.is_capture()) {
+            return 0;
+        }
+        return capture_history_[capture_index(metadata)];
+    }
 
     struct QuietHistoryBatch {
         static constexpr std::uint16_t kInvalidOffset = 0xFFFFU;
@@ -203,7 +219,15 @@ public:
     [[nodiscard]] QuietHistoryBatch prepare_quiet_history_batch(
         Color side, const SearchHistoryContext& context) const noexcept;
     [[nodiscard]] bool is_proven_counter_move(
-        Color side, Move previous_move, Move move) const noexcept;
+        const Color side, const Move previous_move, const Move move) const noexcept {
+        if (previous_move.is_no_move() || move.is_no_move()) {
+            return false;
+        }
+        const std::size_t side_index = side == Color::white ? 0U : 1U;
+        const std::size_t previous_index = table_move_index(previous_move);
+        return counter_moves_[side_index][previous_index] == move &&
+            counter_confidence_[side_index][previous_index] >= kCounterMoveMinimumConfidence;
+    }
 
 #if defined(__clang__) || defined(__GNUC__)
 #define KOI_TABLES_CORR_INLINE __attribute__((always_inline)) inline
@@ -320,20 +344,34 @@ private:
     // bounded residual adjustment rather than replacing the evaluator.
     static constexpr int kCorrectionEntryLimit = 192;
     static constexpr int kCorrectionTotalLimit = 192;
+    static constexpr int kCounterMoveMinimumConfidence = 7 * 7;
 
-    [[nodiscard]] static int piece_index(PieceType type) noexcept;
+    [[nodiscard]] static constexpr int piece_index(const PieceType type) noexcept {
+        const int index = static_cast<int>(type);
+        return index >= 0 && index < static_cast<int>(kPieceTypeCount) ? index : 0;
+    }
     [[nodiscard]] static std::size_t move_index(Move move) noexcept;
-    [[nodiscard]] static std::size_t capture_index(const MoveMetadata& metadata) noexcept;
+    [[nodiscard]] static constexpr std::size_t capture_index(
+        const MoveMetadata& metadata) noexcept {
+        const std::size_t piece = static_cast<std::size_t>(piece_index(metadata.moving_piece));
+        const std::size_t to = metadata.move.to().index() < Square::kInvalid ?
+            static_cast<std::size_t>(metadata.move.to().index()) : 0U;
+        const std::size_t captured =
+            static_cast<std::size_t>(piece_index(metadata.captured_piece));
+        return (piece * 64U + to) * kCapturedPieceCount + captured;
+    }
     [[nodiscard]] static std::size_t piece_to_index(PieceType piece, Square to) noexcept;
     [[nodiscard]] static std::size_t continuation_index(Move previous_move,
-                                                         Move move) noexcept;
+                                                        Move move) noexcept;
     [[nodiscard]] static std::size_t pawn_index(const SearchHistoryContext& context,
-                                                 PieceType piece, Square to) noexcept;
+                                                PieceType piece, Square to) noexcept;
     [[nodiscard]] static constexpr std::size_t correction_slot(
         const std::uint64_t key, const std::size_t size) noexcept {
         return static_cast<std::size_t>(ordering_mix64(key) & (size - 1U));
     }
-    [[nodiscard]] static int normalized_ply(int ply) noexcept;
+    [[nodiscard]] static constexpr int normalized_ply(const int ply) noexcept {
+        return std::clamp(ply, 0, kMaximumKillerPly - 1);
+    }
     [[nodiscard]] std::int64_t continuation_history_raw(
         std::size_t move_idx, const SearchHistoryContext& context) const noexcept;
     static void update_history(int& score, int delta, int maximum) noexcept;

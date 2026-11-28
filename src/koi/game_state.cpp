@@ -1791,14 +1791,11 @@ TablebaseSnapshot GameState::tablebase_snapshot() const noexcept {
     snapshot.halfmove_clock = halfmove_clock();
     snapshot.castling_rights = castling_rights();
     snapshot.en_passant_square = en_passant_square();
-    for (std::uint8_t square = 0; square < Square::kInvalid; ++square) {
-        const Piece piece = piece_at(Square::from_index(square));
-        if (piece.empty()) {
-            continue;
+    const auto& bitboards = impl_->native_position.piece_bitboards();
+    for (std::size_t color = 0; color < 2U; ++color) {
+        for (std::size_t type = 1U; type <= 6U; ++type) {
+            snapshot.piece_bitboards[color][type - 1U] = bitboards[color][type];
         }
-        const std::size_t color = piece.color == Color::white ? 0 : 1;
-        const std::size_t type = static_cast<std::size_t>(piece.type) - 1;
-        snapshot.piece_bitboards[color][type] |= std::uint64_t{1} << square;
     }
     return snapshot;
 }
@@ -2027,14 +2024,18 @@ int GameState::game_phase() const noexcept {
 
 std::uint64_t GameState::polyglot_key() const noexcept {
     std::uint64_t key = 0;
-    for (std::uint8_t index = 0; index < 64; ++index) {
-        const Piece piece = piece_at(Square::from_index(index));
-        if (piece.empty()) {
-            continue;
+    const auto& bitboards = impl_->native_position.piece_bitboards();
+    for (std::size_t color = 0; color < 2U; ++color) {
+        for (std::size_t type = 1U; type <= 6U; ++type) {
+            const std::size_t piece_offset =
+                ((type - 1U) * 2U + (color == 0U ? 1U : 0U)) * 64U;
+            std::uint64_t bb = bitboards[color][type];
+            while (bb != 0ULL) {
+                const std::size_t index = static_cast<std::size_t>(std::countr_zero(bb));
+                bb &= bb - 1ULL;
+                key ^= kPolyglotRandom[piece_offset + index];
+            }
         }
-        const std::size_t piece_index = (static_cast<std::size_t>(piece.type) - 1) * 2 +
-            (piece.color == Color::black ? 0 : 1);
-        key ^= kPolyglotRandom[piece_index * 64 + index];
     }
 
     const std::uint8_t rights = impl_->native_position.castling_rights();

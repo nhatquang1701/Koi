@@ -928,6 +928,45 @@ void test_ponderhit_discount_scramble_cap_and_doomed_hard_ply_guard() {
             "severe score drop (>=60 cp) must still allow attempting the emergency ply inside hard_budget");
 }
 
+void test_repeating_movestogo_end_of_control_and_sudden_death_ramp() {
+    // Repeating time-control end (`movestogo == 1..3`) relaxes the 1/4 usable
+    // cap to 3/4, 1/2, 1/3 respectively while still protecting hard_safety.
+    const auto mtg_manager = [](std::uint32_t mtg) {
+        return make_clock_manager(milliseconds{20'000}, milliseconds{0}, mtg, false);
+    };
+    const TimeManager mtg1 = mtg_manager(1);
+    const TimeManager mtg2 = mtg_manager(2);
+    const TimeManager mtg4 = mtg_manager(4);
+    const auto usable1 = mtg1.diagnostics().usable;
+    const auto safety20 = expected_hard_safety(milliseconds{20'000});
+    require(mtg1.time_budget().value() > usable1 / 2 &&
+                mtg1.time_budget().value() <= (usable1 * 3) / 4 &&
+                mtg1.time_budget().value() <= nonnegative_difference(usable1, safety20),
+            "movestogo=1 must unlock up to 3/4 usable while keeping hard safety margin");
+    require(mtg2.time_budget().value() > mtg4.time_budget().value() &&
+                mtg2.time_budget().value() <= usable1 / 2,
+            "movestogo=2 must exceed movestogo=4 and stay capped at 1/2 usable");
+
+    // Sudden-death 3..15s ramp stretches horizon monotonically below 15s,
+    // while incremental controls leave the base horizon unchanged.
+    RootTimingContext mid_ctx = warm_context();
+    mid_ctx.game_phase = 16;
+    mid_ctx.fullmove_number = 25;
+    TimeManager sd_6s(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                      koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx);
+    TimeManager sd_20s(clock_limits(milliseconds{20'000}, milliseconds{0}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx);
+    require(sd_6s.diagnostics().horizon > sd_20s.diagnostics().horizon,
+            "sudden-death 6s+0 must stretch horizon compared to 20s+0");
+
+    TimeManager inc_6s(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx);
+    TimeManager inc_20s(clock_limits(milliseconds{20'000}, milliseconds{1'000}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx);
+    require(inc_6s.diagnostics().horizon == inc_20s.diagnostics().horizon,
+            "incremental controls must not apply the sudden-death pre-emergency horizon ramp");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -964,6 +1003,8 @@ int main(int argc, char** argv) {
          test_high_latency_hard_extension_guard_and_symmetric_effort_stop},
         {"ponderhit discount, scramble cap, and doomed hard-ply guard",
          test_ponderhit_discount_scramble_cap_and_doomed_hard_ply_guard},
+        {"repeating movestogo and sudden-death ramp",
+         test_repeating_movestogo_end_of_control_and_sudden_death_ramp},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

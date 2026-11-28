@@ -622,8 +622,9 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      `game_phase` in middlegames, and interpolating across `30..42` toward
      `32..34` in endgames) and **50** for sudden death (`56` through
      `fullmove 8`, smoothly interpolating to `46..50` in middlegames and
-     `42..48` in endgames), with bounded opponent-clock asymmetry scaling when
-     one side has more than double the other's clock.
+     `42..48` in endgames), with up to `+12%` sudden-death stretching across
+     `3..15 s` remaining and bounded opponent-clock asymmetry scaling when one
+     side has more than double the other's clock.
    - Reserve: `min(remaining, max(min(750 ms, max(50 ms, 3% of remaining)),
      2 × overhead))` so two effective overheads are always protected.
    - Usable: `remaining - reserve`.
@@ -648,8 +649,9 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      and raised to at least soft.
    - Flag-safety caps are applied last: safety margin
      `max(2 × overhead + 15 ms, min(50 ms, remaining / 20))`; hard is capped at
-     `usable - safety` and at `max(5 ms, usable / 4)`; hard has a 1 ms floor and
-     soft is capped at hard.
+     `usable - safety` and at `max(5 ms, usable * ceiling)` (`3/4`, `1/2`, or
+     `1/3` when `movestogo` is `1`, `2`, or `3` respectively, otherwise `1/4`);
+     hard has a 1 ms floor and soft is capped at hard.
    - Every bounded timed search (both clock searches and `movetime`, including
      converted `ponderhit` searches) arms a wall-clock `stop_after` watchdog on
      its `SearchSession`, and `SearchContext` adapts its node clock-poll
