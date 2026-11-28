@@ -1353,6 +1353,58 @@ public:
         sink.finish();
     }
 
+    [[nodiscard]] bool has_quick_unpinned_legal_move() const noexcept {
+        const Color side = state.side;
+        const std::size_t side_index = side == Color::white ? 0U : 1U;
+        const std::size_t enemy_index = 1U - side_index;
+        if (state.checkers[side_index] != 0 || king_square(state, side) < 0) {
+            return false;
+        }
+        constexpr std::uint64_t kFileAMask = 0x0101010101010101ULL;
+        constexpr std::uint64_t kFileHMask = 0x8080808080808080ULL;
+        const std::uint64_t pinned = state.pinned[side_index];
+        const std::uint64_t friendly = state.occupancy[side_index];
+        const std::uint64_t enemy_king_bb =
+            state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::king)];
+        const std::uint64_t valid_targets = ~(friendly | enemy_king_bb);
+
+        const std::uint64_t unpinned_pawns =
+            state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::pawn)] & ~pinned;
+        const std::uint64_t empty = ~state.occupied;
+        const std::uint64_t single_push = side == Color::white
+            ? ((unpinned_pawns << 8) & empty)
+            : ((unpinned_pawns >> 8) & empty);
+        if (single_push != 0) {
+            return true;
+        }
+        const std::uint64_t enemy_occupancy = state.occupancy[enemy_index] & ~enemy_king_bb;
+        const std::uint64_t pawn_captures = side == Color::white
+            ? ((((unpinned_pawns & ~kFileAMask) << 7) |
+                ((unpinned_pawns & ~kFileHMask) << 9)) & enemy_occupancy)
+            : ((((unpinned_pawns & ~kFileHMask) >> 7) |
+                ((unpinned_pawns & ~kFileAMask) >> 9)) & enemy_occupancy);
+        if (pawn_captures != 0) {
+            return true;
+        }
+
+        const std::uint64_t unpinned_ortho =
+            (state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::rook)] |
+             state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)]) & ~pinned;
+        if ((((unpinned_ortho << 8) | (unpinned_ortho >> 8) |
+              ((unpinned_ortho & ~kFileHMask) << 1) |
+              ((unpinned_ortho & ~kFileAMask) >> 1)) & valid_targets) != 0) {
+            return true;
+        }
+
+        const std::uint64_t unpinned_diag =
+            (state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::bishop)] |
+             state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)]) & ~pinned;
+        return ((((unpinned_diag & ~kFileHMask) << 9) |
+                 ((unpinned_diag & ~kFileAMask) << 7) |
+                 ((unpinned_diag & ~kFileHMask) >> 7) |
+                 ((unpinned_diag & ~kFileAMask) >> 9)) & valid_targets) != 0;
+    }
+
     // Stops at the first legal candidate instead of materializing the whole
     // list.  Quiescence only needs to know whether a legal reply exists before
     // deciding that a position is terminal.
@@ -1361,51 +1413,14 @@ public:
         const std::size_t side_index = side == Color::white ? 0U : 1U;
         const std::size_t enemy_index = 1U - side_index;
         if (state.checkers[side_index] == 0 && king_square(state, side) >= 0) {
-            constexpr std::uint64_t kFileAMask = 0x0101010101010101ULL;
-            constexpr std::uint64_t kFileHMask = 0x8080808080808080ULL;
+            if (has_quick_unpinned_legal_move()) {
+                return true;
+            }
             const std::uint64_t pinned = state.pinned[side_index];
             const std::uint64_t friendly = state.occupancy[side_index];
             const std::uint64_t enemy_king_bb =
                 state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::king)];
             const std::uint64_t valid_targets = ~(friendly | enemy_king_bb);
-
-            const std::uint64_t unpinned_pawns =
-                state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::pawn)] & ~pinned;
-            const std::uint64_t empty = ~state.occupied;
-            const std::uint64_t single_push = side == Color::white
-                ? ((unpinned_pawns << 8) & empty)
-                : ((unpinned_pawns >> 8) & empty);
-            if (single_push != 0) {
-                return true;
-            }
-            const std::uint64_t enemy_occupancy = state.occupancy[enemy_index];
-            const std::uint64_t pawn_captures = side == Color::white
-                ? ((((unpinned_pawns & ~kFileAMask) << 7) |
-                    ((unpinned_pawns & ~kFileHMask) << 9)) & enemy_occupancy)
-                : ((((unpinned_pawns & ~kFileHMask) >> 7) |
-                    ((unpinned_pawns & ~kFileAMask) >> 9)) & enemy_occupancy);
-            if (pawn_captures != 0) {
-                return true;
-            }
-
-            const std::uint64_t unpinned_ortho =
-                (state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::rook)] |
-                 state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)]) & ~pinned;
-            if ((((unpinned_ortho << 8) | (unpinned_ortho >> 8) |
-                  ((unpinned_ortho & ~kFileHMask) << 1) |
-                  ((unpinned_ortho & ~kFileAMask) >> 1)) & valid_targets) != 0) {
-                return true;
-            }
-
-            const std::uint64_t unpinned_diag =
-                (state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::bishop)] |
-                 state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)]) & ~pinned;
-            if (((((unpinned_diag & ~kFileHMask) << 9) |
-                  ((unpinned_diag & ~kFileAMask) << 7) |
-                  ((unpinned_diag & ~kFileHMask) >> 7) |
-                  ((unpinned_diag & ~kFileAMask) >> 9)) & valid_targets) != 0) {
-                return true;
-            }
 
             std::uint64_t unpinned_knights =
                 state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::knight)] & ~pinned;
@@ -1629,6 +1644,15 @@ public:
         return make_generated_move(move);
     }
 
+    bool make_generated_move_if_key(const Move& move, const std::uint64_t expected_key,
+                                    Position::KeyAndSide& child_out) noexcept {
+        if (!make_generated_move_if_key(move, expected_key)) {
+            return false;
+        }
+        child_out = Position::KeyAndSide{state.key, state.side};
+        return true;
+    }
+
     [[nodiscard]] Position::KeyAndSide position_key_and_side() const noexcept {
         return Position::KeyAndSide{state.key, state.side};
     }
@@ -1729,6 +1753,14 @@ public:
         // needs fresh checkers/pinned masks, and nothing else it rebuilt
         // (board-derived bitboards) can have changed.
         refresh_king_masks(state);
+        return true;
+    }
+
+    bool make_null_move(std::uint64_t& child_key) noexcept {
+        if (!make_null_move()) {
+            return false;
+        }
+        child_key = state.key;
         return true;
     }
 
@@ -1965,6 +1997,7 @@ public:
         out.side_to_move = state.side;
         out.piece_count = static_cast<std::uint8_t>(std::popcount(state.occupied));
         out.in_check = in_check();
+        out.has_quick_legal_move = !out.in_check && has_quick_unpinned_legal_move();
         out.repetition_history_suppressed = state.repetition_history_suppressed;
         out.has_non_pawn_material = has_non_pawn_material(state.side);
         out.opponent_has_non_pawn_material = has_non_pawn_material(opposite(state.side));
@@ -3200,6 +3233,12 @@ bool Position::make_generated_move_if_key(const Move& move,
     return impl_->position.make_generated_move_if_key(move, expected_key);
 }
 
+bool Position::make_generated_move_if_key(const Move& move,
+                                          const std::uint64_t expected_key,
+                                          KeyAndSide& child_out) noexcept {
+    return impl_->position.make_generated_move_if_key(move, expected_key, child_out);
+}
+
 Position::KeyAndSide Position::position_key_and_side() const noexcept {
     return impl_->position.position_key_and_side();
 }
@@ -3211,6 +3250,10 @@ Position::ExchangeSnapshot Position::exchange_snapshot() const noexcept {
 bool Position::unmake_move() noexcept { return impl_->position.unmake_move(); }
 
 bool Position::make_null_move() noexcept { return impl_->position.make_null_move(); }
+
+bool Position::make_null_move(std::uint64_t& child_key) noexcept {
+    return impl_->position.make_null_move(child_key);
+}
 
 bool Position::unmake_null_move() noexcept { return impl_->position.unmake_null_move(); }
 

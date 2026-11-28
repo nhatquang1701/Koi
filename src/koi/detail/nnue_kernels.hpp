@@ -575,19 +575,30 @@ void fill_v4_activations_t(std::span<const SumT> hidden_sums,
     fill_v4_activations_span_t<SumT>(hidden_sums, accumulator.values);
 }
 
-template <typename SumT>
+template <typename SumT, bool WriteAccumulator = true>
 [[nodiscard]] int finish_inference_v4_scalar_t(const NnueNetwork& network,
                                                std::span<const SumT> hidden_sums,
                                                const std::size_t bucket,
                                                NnueAccumulator& accumulator) noexcept {
     const std::size_t pair_count = network.manifest.layer_sizes[1] / 2U;
-    fill_v4_activations_t<SumT>(hidden_sums, accumulator);
+    if constexpr (WriteAccumulator) {
+        fill_v4_activations_t<SumT>(hidden_sums, accumulator);
+    }
     const auto* weights = network.bottleneck_weights.data() + bucket * pair_count;
     std::int64_t output = network.bottleneck_bias[bucket];
     for (std::size_t pair = 0; pair < pair_count; ++pair) {
-        const std::int16_t pair_product = static_cast<std::int16_t>(
-            accumulator.values[pair] * accumulator.values[pair + pair_count]);
-        accumulator.bottleneck_values[pair] = pair_product;
+        std::int16_t pair_product = 0;
+        if constexpr (WriteAccumulator) {
+            pair_product = static_cast<std::int16_t>(
+                accumulator.values[pair] * accumulator.values[pair + pair_count]);
+            accumulator.bottleneck_values[pair] = pair_product;
+        } else {
+            const std::int16_t a0 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+                hidden_sums[pair], 0, kKoiNnueClippedReluMaximum));
+            const std::int16_t a1 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+                hidden_sums[pair + pair_count], 0, kKoiNnueClippedReluMaximum));
+            pair_product = static_cast<std::int16_t>(a0 * a1);
+        }
         output += static_cast<std::int64_t>(weights[pair]) * pair_product;
     }
     if (network.output_shift > 0) {
@@ -604,7 +615,7 @@ template <typename SumT>
         network, hidden_sums, bucket, accumulator);
 }
 
-template <typename SumT>
+template <typename SumT, bool WriteAccumulator = true>
 [[nodiscard]] int finish_inference_v4_dual_scalar_t(const NnueNetwork& network,
                                                     std::span<const SumT> own_sums,
                                                     std::span<const SumT> opp_sums,
@@ -612,19 +623,36 @@ template <typename SumT>
                                                     NnueAccumulator& accumulator) noexcept {
     const std::size_t hidden_units = network.manifest.layer_sizes[1];
     const std::size_t pair_count = hidden_units / 2U;
-    std::span<std::int16_t> own_act(accumulator.values.data(), hidden_units);
-    std::span<std::int16_t> opp_act(accumulator.values.data() + hidden_units, hidden_units);
-    fill_v4_activations_span_t<SumT>(own_sums, own_act);
-    fill_v4_activations_span_t<SumT>(opp_sums, opp_act);
+    std::span<std::int16_t> own_act;
+    std::span<std::int16_t> opp_act;
+    if constexpr (WriteAccumulator) {
+        own_act = std::span<std::int16_t>(accumulator.values.data(), hidden_units);
+        opp_act = std::span<std::int16_t>(accumulator.values.data() + hidden_units, hidden_units);
+        fill_v4_activations_span_t<SumT>(own_sums, own_act);
+        fill_v4_activations_span_t<SumT>(opp_sums, opp_act);
+    }
     const auto* weights = network.bottleneck_weights.data() + bucket * hidden_units;
     std::int64_t output = network.bottleneck_bias[bucket];
     for (std::size_t pair = 0; pair < pair_count; ++pair) {
-        const std::int16_t own_product = static_cast<std::int16_t>(
-            own_act[pair] * own_act[pair + pair_count]);
-        const std::int16_t opp_product = static_cast<std::int16_t>(
-            opp_act[pair] * opp_act[pair + pair_count]);
-        accumulator.bottleneck_values[pair] = own_product;
-        accumulator.bottleneck_values[pair + pair_count] = opp_product;
+        std::int16_t own_product = 0;
+        std::int16_t opp_product = 0;
+        if constexpr (WriteAccumulator) {
+            own_product = static_cast<std::int16_t>(own_act[pair] * own_act[pair + pair_count]);
+            opp_product = static_cast<std::int16_t>(opp_act[pair] * opp_act[pair + pair_count]);
+            accumulator.bottleneck_values[pair] = own_product;
+            accumulator.bottleneck_values[pair + pair_count] = opp_product;
+        } else {
+            const std::int16_t oa0 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+                own_sums[pair], 0, kKoiNnueClippedReluMaximum));
+            const std::int16_t oa1 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+                own_sums[pair + pair_count], 0, kKoiNnueClippedReluMaximum));
+            const std::int16_t pa0 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+                opp_sums[pair], 0, kKoiNnueClippedReluMaximum));
+            const std::int16_t pa1 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+                opp_sums[pair + pair_count], 0, kKoiNnueClippedReluMaximum));
+            own_product = static_cast<std::int16_t>(oa0 * oa1);
+            opp_product = static_cast<std::int16_t>(pa0 * pa1);
+        }
         output += static_cast<std::int64_t>(weights[pair]) * own_product;
         output += static_cast<std::int64_t>(weights[pair + pair_count]) * opp_product;
     }
@@ -769,7 +797,8 @@ template <typename SumT, bool WriteAccumulator = true>
     if ((hidden_sums.size() & 1U) != 0 ||
         static_cast<std::int64_t>(pair_count) * 127 * kMaximumPairProduct >
             std::numeric_limits<std::int32_t>::max()) {
-        return finish_inference_v4_scalar_t<SumT>(network, hidden_sums, bucket, accumulator);
+        return finish_inference_v4_scalar_t<SumT, WriteAccumulator>(
+            network, hidden_sums, bucket, accumulator);
     }
     const auto* weights = network.bottleneck_weights.data() + bucket * pair_count;
     int32x4_t acc_low = vdupq_n_s32(0);
@@ -808,7 +837,7 @@ template <typename SumT, bool WriteAccumulator = true>
     if ((hidden_units & 1U) != 0 ||
         static_cast<std::int64_t>(total_pairs) * 127 * kMaximumPairProduct >
             std::numeric_limits<std::int32_t>::max()) {
-        return finish_inference_v4_dual_scalar_t<SumT>(
+        return finish_inference_v4_dual_scalar_t<SumT, WriteAccumulator>(
             network, own_sums, opp_sums, bucket, accumulator);
     }
     const auto* weights = network.bottleneck_weights.data() + bucket * total_pairs;
@@ -994,7 +1023,8 @@ template <typename SumT, bool WriteAccumulator = true>
     if ((hidden_sums.size() & 1U) != 0 ||
         static_cast<std::int64_t>(pair_count) * 127 * kMaximumPairProduct >
             std::numeric_limits<std::int32_t>::max()) {
-        return finish_inference_v4_scalar_t<SumT>(network, hidden_sums, bucket, accumulator);
+        return finish_inference_v4_scalar_t<SumT, WriteAccumulator>(
+            network, hidden_sums, bucket, accumulator);
     }
     const auto* weights = network.bottleneck_weights.data() + bucket * pair_count;
     __m256i acc0 = _mm256_setzero_si256();
@@ -1037,7 +1067,7 @@ template <typename SumT, bool WriteAccumulator = true>
     if ((hidden_units & 1U) != 0 ||
         static_cast<std::int64_t>(total_pairs) * 127 * kMaximumPairProduct >
             std::numeric_limits<std::int32_t>::max()) {
-        return finish_inference_v4_dual_scalar_t<SumT>(
+        return finish_inference_v4_dual_scalar_t<SumT, WriteAccumulator>(
             network, own_sums, opp_sums, bucket, accumulator);
     }
     const auto* weights = network.bottleneck_weights.data() + bucket * total_pairs;

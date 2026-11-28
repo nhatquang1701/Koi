@@ -190,6 +190,9 @@ public:
     // skipping dead scratch stores into accumulator_.
     [[nodiscard]] int evaluate_score_only(const GameState&, Color perspective,
                                           NnueInferencePath path = NnueInferencePath::automatic);
+    [[nodiscard]] int evaluate_score_only(const GameState&, Color perspective,
+                                          Color side_to_move, std::uint64_t position_key,
+                                          NnueInferencePath path = NnueInferencePath::automatic);
     [[nodiscard]] const NnueAccumulator& accumulator() const noexcept { return accumulator_; }
 
     // Advisory lifecycle hooks.  For v4 networks the worker keeps one hidden
@@ -199,8 +202,12 @@ public:
     // force a full refresh, never an incorrect score.
     void on_make_move(const GameState&, const MoveMetadata&, int ply,
                       std::uint64_t parent_key);
+    void on_make_move_with_key(const GameState&, const MoveMetadata&, int ply,
+                               std::uint64_t parent_key, PositionKeyAndSide child_ks);
     void on_unmake_move(int child_ply);
     void on_make_null_move(const GameState&, int ply, std::uint64_t parent_key);
+    void on_make_null_move_with_key(const GameState&, int ply, std::uint64_t parent_key,
+                                    std::uint64_t child_key);
     void on_unmake_null_move(int child_ply);
 
     [[nodiscard]] std::size_t incremental_fallback_count() const noexcept {
@@ -227,9 +234,11 @@ private:
     }
     template <bool WriteAccumulator>
     [[nodiscard]] int evaluate_state_impl(const GameState&, Color perspective,
+                                          PositionKeyAndSide ks,
                                           NnueInferencePath path);
     template <bool WriteAccumulator>
     [[nodiscard]] int evaluate_state_fallback_impl(const GameState&, Color perspective,
+                                                   PositionKeyAndSide ks,
                                                    NnueInferencePath path);
     void ensure_incremental_storage();
     void ensure_accumulator_storage();
@@ -269,7 +278,8 @@ private:
                                          std::size_t slot);
     void apply_move_deltas(
         const GameState&, const MoveMetadata&, std::size_t slot,
-        const std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values);
+        const std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values,
+        Color mover);
     // v5 only: stores one perspective's sorted group B set for a slot.
     void store_threat_list(std::size_t perspective, std::size_t slot,
                            const NnueSparseFeaturesThreatV1& list);

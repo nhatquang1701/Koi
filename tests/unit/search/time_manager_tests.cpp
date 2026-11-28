@@ -1424,6 +1424,47 @@ void test_emergency_high_effort_depth5_recapture_cutoff() {
             "healthy clock at depth 5 and 65% optimum_budget must keep depth-6 effort gate");
 }
 
+void test_emergency_doomed_depth5_ply_guard() {
+    auto emg_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg(clock_limits(milliseconds{2'000}, milliseconds{0}),
+                    koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                    [emg_now] { return *emg_now; });
+    // Soft budget is tight (~80 ms); complete depth 5 right past optimum_budget
+    // with a sample >= 5 ms whose 1.5x predicted depth 6 pushes past hard_budget.
+    emg.observe_iteration({4, 25, true, false, false, 10'000, 5'000, milliseconds{60}});
+    emg.observe_iteration({5, 25, true, false, false, 10'000, 5'000, milliseconds{120}});
+    const auto emg_hard = emg.diagnostics().hard_budget;
+    const auto emg_opt = emg.diagnostics().optimum_budget;
+    const auto emg_check = std::max(emg_opt + milliseconds{1}, emg_hard - milliseconds{40});
+    *emg_now += std::min(emg_hard - milliseconds{5}, emg_check);
+    require(emg.diagnostics().emergency_pacing &&
+                !emg.should_start_next_iteration(milliseconds{1}),
+            "emergency pacing at depth 5 past optimum_budget with doomed next ply must bank clock");
+
+    auto drop_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg_drop(clock_limits(milliseconds{2'000}, milliseconds{0}),
+                         koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                         [drop_now] { return *drop_now; });
+    emg_drop.observe_iteration({4, 100, true, false, false, 10'000, 5'000, milliseconds{60}});
+    emg_drop.observe_iteration({5, 30, true, false, false, 10'000, 5'000, milliseconds{120}});
+    *drop_now += std::min(emg_drop.diagnostics().hard_budget - milliseconds{5},
+                          std::max(emg_drop.diagnostics().optimum_budget + milliseconds{1},
+                                   emg_drop.diagnostics().hard_budget - milliseconds{40}));
+    require(emg_drop.should_start_next_iteration(milliseconds{1}),
+            "emergency pacing with >=60 cp drop at depth 5 must still attempt depth 6 inside hard_budget");
+
+    auto healthy_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager healthy(clock_limits(milliseconds{60'000}, milliseconds{1'000}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [healthy_now] { return *healthy_now; });
+    healthy.observe_iteration({4, 25, true, false, false, 10'000, 5'000, milliseconds{500}});
+    healthy.observe_iteration({5, 25, true, false, false, 10'000, 5'000, milliseconds{1'800}});
+    *healthy_now += healthy.diagnostics().optimum_budget + milliseconds{1};
+    require(!healthy.diagnostics().emergency_pacing &&
+                healthy.should_start_next_iteration(milliseconds{1}),
+            "healthy clock at depth 5 past optimum_budget must retain depth>=6 doomed-ply threshold");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1490,6 +1531,8 @@ int main(int argc, char** argv) {
          test_high_latency_usable_clock_engages_emergency_pacing},
         {"emergency high effort depth 5 recapture cutoff",
          test_emergency_high_effort_depth5_recapture_cutoff},
+        {"emergency doomed depth 5 ply guard",
+         test_emergency_doomed_depth5_ply_guard},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

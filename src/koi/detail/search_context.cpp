@@ -733,7 +733,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             best_lower_bound = true;
             if (best >= beta) {
                 ++stats.has_legal_move_calls;
-                if (!state.has_legal_move()) {
+                if (!node_info.has_quick_legal_move && !state.has_legal_move()) {
                     // Stand-pat is not a legal continuation without a legal
                     // move: this is the terminal position the generation-first
                     // order detected before the cutoff, cached the same way.
@@ -1267,7 +1267,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     (excluded_search ? alpha : terminal_score(checked, side_to_move, ply));
             }
         } else {
-            bool has_legal_moves_verified = false;
+            bool has_legal_moves_verified = node_info.has_quick_legal_move;
             const auto ensure_has_legal_move = [&]() -> bool {
                 if (has_legal_moves_verified) {
                     return true;
@@ -1326,7 +1326,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // mate window can discard the very checking line the extension is
         // meant to inspect.
         if (!excluded_search && ply > 0) {
-            if (!checked && !claimable_draw && !moves_generated && !state.has_legal_move()) {
+            if (!checked && !claimable_draw && !moves_generated &&
+                !node_info.has_quick_legal_move && !state.has_legal_move()) {
                 return terminal_score(checked, side_to_move, ply);
             }
             alpha = std::max(alpha, -kMateScore + ply);

@@ -19,6 +19,8 @@ public:
     ~EvaluationContext();
 
     [[nodiscard]] int evaluate(const GameState&, Color perspective);
+    [[nodiscard]] int evaluate_with_key(const GameState&, Color perspective,
+                                        Color side_to_move, std::uint64_t position_key);
     [[nodiscard]] bool has_private_worker() const noexcept {
         return static_cast<bool>(worker_);
     }
@@ -30,6 +32,13 @@ public:
             worker_->on_make_move(state, metadata, ply, parent_key);
         }
     }
+    void notify_make_move(const GameState& state, const MoveMetadata& metadata,
+                          int ply, std::uint64_t parent_key,
+                          PositionKeyAndSide child_ks) {
+        if (worker_) {
+            worker_->on_make_move_with_key(state, metadata, ply, parent_key, child_ks);
+        }
+    }
     void notify_unmake_move(int child_ply) {
         if (worker_) {
             worker_->on_unmake_move(child_ply);
@@ -39,6 +48,12 @@ public:
                                std::uint64_t parent_key) {
         if (worker_) {
             worker_->on_make_null_move(state, ply, parent_key);
+        }
+    }
+    void notify_make_null_move(const GameState& state, int ply,
+                               std::uint64_t parent_key, std::uint64_t child_key) {
+        if (worker_) {
+            worker_->on_make_null_move_with_key(state, ply, parent_key, child_key);
         }
     }
     void notify_unmake_null_move(int child_ply) {

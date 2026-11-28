@@ -45,6 +45,7 @@ struct SearchNodeInfo {
     DrawStatus draw_status = DrawStatus::none;
     std::uint8_t piece_count = 0;
     bool in_check = false;
+    bool has_quick_legal_move = false;
     bool repetition_history_suppressed = false;
     bool has_non_pawn_material = false;
     bool opponent_has_non_pawn_material = false;
@@ -376,6 +377,7 @@ public:
     // is performed at search boundaries to avoid repeating the same 12-piece
     // comparison at every interior node.
     bool make_search_move(const MoveMetadata& metadata) noexcept;
+    bool make_search_move(const MoveMetadata& metadata, PositionKeyAndSide& child_out) noexcept;
     // Search-only: stop maintaining the vendored compatibility board for this
     // state and every state copied from it. Search never reads the shadow, so
     // detaching removes a second board copy from each interior make/unmake.
@@ -384,6 +386,7 @@ public:
     void detach_mirror() noexcept;
     bool unmake_move() noexcept;
     bool make_null_move() noexcept;
+    bool make_null_move(std::uint64_t& child_key) noexcept;
     bool unmake_null_move() noexcept;
     [[nodiscard]] bool is_capture(const Move& move) const noexcept;
     // Fast native check probe used by the search when regular move metadata

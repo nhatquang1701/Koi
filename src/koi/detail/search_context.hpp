@@ -530,7 +530,7 @@ struct SearchContext {
     }
 
     [[nodiscard]] int evaluate_with_key(const GameState& state, Color perspective,
-                                        std::uint64_t position_key) {
+                                        Color side_to_move, std::uint64_t position_key) {
         const std::uint64_t key = position_key ^
             (perspective == Color::black ? 0xD6E8FEB86659FD93ULL : 0ULL);
         EvaluationCacheEntry& entry =
@@ -541,13 +541,20 @@ struct SearchContext {
         }
 
         ++stats.evaluation_cache_misses;
-        const int score = evaluation.evaluate(state, perspective);
+        const int score = evaluation.evaluate_with_key(
+            state, perspective, side_to_move, position_key);
         entry = EvaluationCacheEntry{key, score, true};
         return score;
     }
 
+    [[nodiscard]] int evaluate_with_key(const GameState& state, Color perspective,
+                                        std::uint64_t position_key) {
+        return evaluate_with_key(state, perspective, perspective, position_key);
+    }
+
     [[nodiscard]] int evaluate(const GameState& state, Color perspective) {
-        return evaluate_with_key(state, perspective, state.position_key());
+        const PositionKeyAndSide ks = state.position_key_and_side();
+        return evaluate_with_key(state, perspective, ks.side_to_move, ks.position_key);
     }
 
     // Bounded static-eval correction history.  The keys are cheap structural
@@ -670,7 +677,13 @@ struct SearchContext {
     // here can only cost a refresh, never a wrong score.
     [[nodiscard]] bool make_observed(GameState& state, const MoveMetadata& metadata,
                                      const int ply, const std::uint64_t parent_key) {
-        if (!state.make_search_move(metadata)) {
+        const bool has_worker = evaluation.has_private_worker();
+        PositionKeyAndSide child_ks{};
+        if (has_worker) {
+            if (!state.make_search_move(metadata, child_ks)) {
+                return false;
+            }
+        } else if (!state.make_search_move(metadata)) {
             return false;
         }
         if (ply >= 0 && static_cast<std::size_t>(ply + 1) < SearchStack::kCapacity) {
@@ -683,8 +696,9 @@ struct SearchContext {
                 child.material_signature_valid = false;
             }
         }
-        evaluation.notify_make_move(
-            state, metadata, ply, evaluation.has_private_worker() ? parent_key : 0ULL);
+        if (has_worker) {
+            evaluation.notify_make_move(state, metadata, ply, parent_key, child_ks);
+        }
         return true;
     }
 
@@ -704,7 +718,13 @@ struct SearchContext {
 
     [[nodiscard]] bool make_null_observed(GameState& state, const int ply,
                                           const std::uint64_t parent_key) {
-        if (!state.make_null_move()) {
+        const bool has_worker = evaluation.has_private_worker();
+        std::uint64_t child_key = 0;
+        if (has_worker) {
+            if (!state.make_null_move(child_key)) {
+                return false;
+            }
+        } else if (!state.make_null_move()) {
             return false;
         }
         if (ply >= 0 && static_cast<std::size_t>(ply + 1) < SearchStack::kCapacity) {
@@ -713,8 +733,9 @@ struct SearchContext {
             child.material_signature = parent.material_signature;
             child.material_signature_valid = parent.material_signature_valid;
         }
-        evaluation.notify_make_null_move(
-            state, ply, evaluation.has_private_worker() ? parent_key : 0ULL);
+        if (has_worker) {
+            evaluation.notify_make_null_move(state, ply, parent_key, child_key);
+        }
         return true;
     }
 

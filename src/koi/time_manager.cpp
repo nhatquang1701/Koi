@@ -976,7 +976,8 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
     const auto min_doomed_sample = emergency_pacing_
         ? std::chrono::milliseconds{5}
         : std::chrono::milliseconds{20};
-    if (clock_mode_ && last_observed_depth_ >= 6 &&
+    const int min_doomed_depth = emergency_pacing_ ? 5 : 6;
+    if (clock_mode_ && last_observed_depth_ >= min_doomed_depth &&
         score_drop_cp_ < 60 &&
         last_iteration_elapsed_ >= min_doomed_sample &&
         elapsed >= soft_target) {

@@ -207,26 +207,25 @@ int NnueWorker::evaluate(const EvaluationFeatures& features, const Color perspec
 template <bool WriteAccumulator>
 KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
     const GameState& state, const Color perspective,
-    const NnueInferencePath path) {
+    const PositionKeyAndSide ks, const NnueInferencePath path) {
     if (!supports_incremental()) {
         return evaluate(EvaluationFeatureExtractor::extract(state), perspective, path);
     }
     if constexpr (WriteAccumulator) {
         ensure_accumulator_storage();
-    } else if (!halfka_hm_v9_) {
-        // Only v9 (`dispatch_finish_inference_v9_t`) skips accumulator_ scratch
-        // writes across every ISA/scalar backend; v4/v5/v6 AVX2 and scalar
-        // kernels still use accumulator_.values and bottleneck_values as scratch.
+    } else if (threat_features_) {
+        // v4/v9 score-only paths skip accumulator_ writes across every
+        // ISA/scalar backend; v5/v6 still use accumulator_.values and
+        // bottleneck_values as L1/pair scratch.
         ensure_accumulator_storage();
     }
     if (!storage_ready_) {
         ensure_incremental_storage();
         if (int16_safe_) {
-            return evaluate_state_impl<WriteAccumulator>(state, perspective, path);
+            return evaluate_state_impl<WriteAccumulator>(state, perspective, ks, path);
         }
     }
     const bool threat = threat_features_;
-    const PositionKeyAndSide ks = state.position_key_and_side();
     const Color mover = ks.side_to_move;
     const std::size_t mover_index = mover == Color::white ? 0U : 1U;
     const std::size_t opponent_index = 1U - mover_index;
@@ -333,33 +332,36 @@ KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
     } else if (dual_v4_) {
 #if KOI_NNUE_COMPILED_AVX2
         if (use_avx2) {
-            score = finish_inference_v4_dual_avx2(*weights_, mover_sums, opponent_sums,
-                                                  bucket, accumulator_);
+            score = finish_inference_v4_dual_avx2_t<std::int32_t, WriteAccumulator>(
+                *weights_, mover_sums, opponent_sums, bucket, accumulator_);
         } else
 #endif
 #if KOI_NNUE_COMPILED_NEON
         if (use_simd) {
-            score = finish_inference_v4_dual_neon(*weights_, mover_sums, opponent_sums,
-                                                  bucket, accumulator_);
+            score = finish_inference_v4_dual_neon_t<std::int32_t, WriteAccumulator>(
+                *weights_, mover_sums, opponent_sums, bucket, accumulator_);
         } else
 #endif
         {
-            score = finish_inference_v4_dual_scalar(*weights_, mover_sums, opponent_sums,
-                                                    bucket, accumulator_);
+            score = finish_inference_v4_dual_scalar_t<std::int32_t, WriteAccumulator>(
+                *weights_, mover_sums, opponent_sums, bucket, accumulator_);
         }
     } else {
 #if KOI_NNUE_COMPILED_AVX2
         if (use_avx2) {
-            score = finish_inference_v4_avx2(*weights_, mover_sums, bucket, accumulator_);
+            score = finish_inference_v4_avx2_t<std::int32_t, WriteAccumulator>(
+                *weights_, mover_sums, bucket, accumulator_);
         } else
 #endif
 #if KOI_NNUE_COMPILED_NEON
         if (use_simd) {
-            score = finish_inference_v4_neon(*weights_, mover_sums, bucket, accumulator_);
+            score = finish_inference_v4_neon_t<std::int32_t, WriteAccumulator>(
+                *weights_, mover_sums, bucket, accumulator_);
         } else
 #endif
         {
-            score = finish_inference_v4_scalar(*weights_, mover_sums, bucket, accumulator_);
+            score = finish_inference_v4_scalar_t<std::int32_t, WriteAccumulator>(
+                *weights_, mover_sums, bucket, accumulator_);
         }
     }
     return perspective == mover ? score : -score;
@@ -369,19 +371,14 @@ KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
 
 template <bool WriteAccumulator>
 int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspective,
+                                    const PositionKeyAndSide ks,
                                     const NnueInferencePath path) {
     if (!supports_incremental() || !storage_ready_ || !int16_safe_) [[unlikely]] {
-        return evaluate_state_fallback_impl<WriteAccumulator>(state, perspective, path);
+        return evaluate_state_fallback_impl<WriteAccumulator>(state, perspective, ks, path);
     }
     if constexpr (WriteAccumulator) {
         ensure_accumulator_storage();
-    } else if (!halfka_hm_v9_) {
-        // Only v9 (`dispatch_finish_inference_v9_t`) skips accumulator_ scratch
-        // writes across every ISA/scalar backend; v4/v5/v6 AVX2 and scalar
-        // kernels still use accumulator_.values and bottleneck_values as scratch.
-        ensure_accumulator_storage();
     }
-    const PositionKeyAndSide ks = state.position_key_and_side();
     const Color mover = ks.side_to_move;
     const std::size_t mover_index = mover == Color::white ? 0U : 1U;
     const std::size_t opponent_index = 1U - mover_index;
@@ -462,7 +459,7 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
         } else
 #endif
         {
-            score = finish_inference_v4_dual_scalar_t<std::int16_t>(
+            score = finish_inference_v4_dual_scalar_t<std::int16_t, WriteAccumulator>(
                 *weights_, mover_sums_16, opponent_sums_16, bucket, accumulator_);
         }
     } else {
@@ -479,7 +476,7 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
         } else
 #endif
         {
-            score = finish_inference_v4_scalar_t<std::int16_t>(
+            score = finish_inference_v4_scalar_t<std::int16_t, WriteAccumulator>(
                 *weights_, mover_sums_16, bucket, accumulator_);
         }
     }
@@ -488,12 +485,19 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
 
 int NnueWorker::evaluate(const GameState& state, const Color perspective,
                          const NnueInferencePath path) {
-    return evaluate_state_impl<true>(state, perspective, path);
+    return evaluate_state_impl<true>(state, perspective, state.position_key_and_side(), path);
 }
 
 int NnueWorker::evaluate_score_only(const GameState& state, const Color perspective,
                                     const NnueInferencePath path) {
-    return evaluate_state_impl<false>(state, perspective, path);
+    return evaluate_state_impl<false>(state, perspective, state.position_key_and_side(), path);
+}
+
+int NnueWorker::evaluate_score_only(const GameState& state, const Color perspective,
+                                    const Color side_to_move, const std::uint64_t position_key,
+                                    const NnueInferencePath path) {
+    return evaluate_state_impl<false>(
+        state, perspective, PositionKeyAndSide{position_key, side_to_move}, path);
 }
 
 void NnueWorker::ensure_incremental_storage() {
@@ -1442,12 +1446,12 @@ void NnueWorker::apply_move_deltas(
     const GameState& child,
     const MoveMetadata& metadata,
     const std::size_t slot,
-    const std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values) {
+    const std::array<const std::int32_t*, kIncrementalPerspectives>& parent_values,
+    const Color mover) {
     // The child's feature view is needed when a perspective's own king
     // crosses a bucket boundary and, for v5, to diff the threat feature set.
     // Everything else is derived from the move metadata, which keeps the hot
     // make path allocation- and scan-free for v4.
-    const Color mover = opposite(child.side_to_move());
     const Square from = metadata.move.from();
     const Square to = metadata.move.to();
     const MoveKind kind = metadata.kind;
@@ -1776,6 +1780,15 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
     if (!supports_incremental()) {
         return;
     }
+    on_make_move_with_key(child, metadata, ply, parent_key, child.position_key_and_side());
+}
+
+void NnueWorker::on_make_move_with_key(const GameState& child, const MoveMetadata& metadata,
+                                       const int ply, const std::uint64_t parent_key,
+                                       const PositionKeyAndSide child_ks) {
+    if (!supports_incremental()) {
+        return;
+    }
     if (!storage_ready_) [[unlikely]] {
         ensure_incremental_storage();
     }
@@ -1795,7 +1808,6 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
                 return;
             }
         }
-        const PositionKeyAndSide child_ks = child.position_key_and_side();
         const Color mover = opposite(child_ks.side_to_move);
         const PieceType moving = metadata.moving_piece;
         if (moving == PieceType::king) {
@@ -1832,8 +1844,8 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
     if (!prepare_child_slot_metadata(ply, child_slot, parent_key, parent_values)) {
         return;
     }
-    apply_move_deltas(child, metadata, child_idx, parent_values);
-    slot_keys_[child_idx] = child.position_key();
+    apply_move_deltas(child, metadata, child_idx, parent_values, opposite(child_ks.side_to_move));
+    slot_keys_[child_idx] = child_ks.position_key;
     slot_valid_[child_idx] = 1;
     slot_cursor_ = child_slot;
 }
@@ -1850,6 +1862,15 @@ void NnueWorker::on_unmake_move(const int child_ply) {
 
 void NnueWorker::on_make_null_move(const GameState& child, const int ply,
                                    const std::uint64_t parent_key) {
+    if (!supports_incremental()) {
+        return;
+    }
+    on_make_null_move_with_key(child, ply, parent_key, child.position_key());
+}
+
+void NnueWorker::on_make_null_move_with_key(const GameState& /*child*/, const int ply,
+                                            const std::uint64_t parent_key,
+                                            const std::uint64_t child_key) {
     if (!supports_incremental()) {
         return;
     }
@@ -1878,7 +1899,7 @@ void NnueWorker::on_make_null_move(const GameState& child, const int ply,
         slot_computed_[1][child_idx] = 0;
         slot_pending_move_[child_idx].is_null = true;
         slot_pieces_[child_idx] = slot_pieces_[from_slot];
-        slot_keys_[child_idx] = child.position_key();
+        slot_keys_[child_idx] = child_key;
         slot_valid_[child_idx] = 1;
         slot_cursor_ = child_slot;
         return;
@@ -1886,7 +1907,7 @@ void NnueWorker::on_make_null_move(const GameState& child, const int ply,
     if (!prepare_child_slot(ply, child_slot, parent_key)) {
         return;
     }
-    slot_keys_[child_idx] = child.position_key();
+    slot_keys_[child_idx] = child_key;
     slot_valid_[child_idx] = 1;
     slot_cursor_ = child_slot;
 }
@@ -1907,9 +1928,20 @@ public:
         return worker_.evaluate_score_only(state, perspective);
     }
 
+    [[nodiscard]] int evaluate_with_key(const GameState& state, const Color perspective,
+                                        const Color side_to_move,
+                                        const std::uint64_t position_key) override {
+        return worker_.evaluate_score_only(state, perspective, side_to_move, position_key);
+    }
+
     void on_make_move(const GameState& state, const MoveMetadata& metadata, const int ply,
                       const std::uint64_t parent_key) override {
         worker_.on_make_move(state, metadata, ply, parent_key);
+    }
+    void on_make_move_with_key(const GameState& state, const MoveMetadata& metadata,
+                               const int ply, const std::uint64_t parent_key,
+                               const PositionKeyAndSide child_ks) override {
+        worker_.on_make_move_with_key(state, metadata, ply, parent_key, child_ks);
     }
     void on_unmake_move(const int child_ply) override {
         worker_.on_unmake_move(child_ply);
@@ -1917,6 +1949,11 @@ public:
     void on_make_null_move(const GameState& state, const int ply,
                            const std::uint64_t parent_key) override {
         worker_.on_make_null_move(state, ply, parent_key);
+    }
+    void on_make_null_move_with_key(const GameState& state, const int ply,
+                                    const std::uint64_t parent_key,
+                                    const std::uint64_t child_key) override {
+        worker_.on_make_null_move_with_key(state, ply, parent_key, child_key);
     }
     void on_unmake_null_move(const int child_ply) override {
         worker_.on_unmake_null_move(child_ply);

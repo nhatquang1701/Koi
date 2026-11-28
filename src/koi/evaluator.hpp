@@ -11,6 +11,11 @@ class EvaluatorWorker {
 public:
     virtual ~EvaluatorWorker() = default;
     [[nodiscard]] virtual int evaluate(const GameState&, Color) = 0;
+    [[nodiscard]] virtual int evaluate_with_key(const GameState& state, Color perspective,
+                                                Color /*side_to_move*/,
+                                                std::uint64_t /*position_key*/) {
+        return evaluate(state, perspective);
+    }
 
     // Advisory search-lifecycle notifications. Stateful evaluators can use
     // them to maintain incremental state instead of recomputing from scratch.
@@ -21,9 +26,19 @@ public:
     // is the ply of the parent position, and the child ply is `ply + 1`.
     virtual void on_make_move(const GameState&, const MoveMetadata&, int /*ply*/,
                               std::uint64_t /*parent_key*/) {}
+    virtual void on_make_move_with_key(const GameState& state, const MoveMetadata& metadata,
+                                       int ply, std::uint64_t parent_key,
+                                       PositionKeyAndSide /*child_ks*/) {
+        on_make_move(state, metadata, ply, parent_key);
+    }
     virtual void on_unmake_move(int /*child_ply*/) {}
     virtual void on_make_null_move(const GameState&, int /*ply*/,
                                    std::uint64_t /*parent_key*/) {}
+    virtual void on_make_null_move_with_key(const GameState& state, int ply,
+                                            std::uint64_t parent_key,
+                                            std::uint64_t /*child_key*/) {
+        on_make_null_move(state, ply, parent_key);
+    }
     virtual void on_unmake_null_move(int /*child_ply*/) {}
 };
 

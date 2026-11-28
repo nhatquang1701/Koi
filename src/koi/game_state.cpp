@@ -1901,6 +1901,24 @@ bool GameState::make_search_move(const MoveMetadata& metadata) noexcept {
     return apply_generated_move(metadata, false, false);
 }
 
+bool GameState::make_search_move(const MoveMetadata& metadata,
+                                 PositionKeyAndSide& child_out) noexcept {
+    if (!impl_->mirror_tracking) {
+        Position::KeyAndSide ks{};
+        if (!impl_->native_position.make_generated_move_if_key(
+                metadata.move, metadata.position_key, ks)) {
+            return false;
+        }
+        child_out = PositionKeyAndSide{ks.position_key, ks.side_to_move};
+        return true;
+    }
+    if (!make_search_move(metadata)) {
+        return false;
+    }
+    child_out = position_key_and_side();
+    return true;
+}
+
 void GameState::detach_mirror() noexcept {
     impl_->mirror_tracking = false;
 }
@@ -1926,6 +1944,17 @@ bool GameState::make_null_move() noexcept {
         (void)impl_->native_position.unmake_null_move();
         return false;
     }
+    return true;
+}
+
+bool GameState::make_null_move(std::uint64_t& child_key) noexcept {
+    if (!impl_->mirror_tracking) {
+        return impl_->native_position.make_null_move(child_key);
+    }
+    if (!make_null_move()) {
+        return false;
+    }
+    child_key = position_key();
     return true;
 }
 
@@ -2137,6 +2166,7 @@ SearchNodeInfo GameState::search_node_info() const noexcept {
         snap.draw_status,
         snap.piece_count,
         snap.in_check,
+        snap.has_quick_legal_move,
         snap.repetition_history_suppressed,
         snap.has_non_pawn_material,
         snap.opponent_has_non_pawn_material,
