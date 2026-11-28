@@ -124,155 +124,169 @@ constexpr std::uint64_t kCenterMask =
 // Texel-tuned tapered material, piece-square, safe-mobility, and feature tables
 // (rank 1 first, White perspective; Black mirrored via square ^ 56).
 inline constexpr std::array<Score, 7> kMaterialWeights{{
-    {0, 0}, {24, 182}, {422, 445}, {564, 494}, {513, 864}, {1531, 1486}, {0, 0}
+    {0, 0}, {27, 182}, {414, 420}, {563, 475}, {517, 836}, {1525, 1407}, {0, 0}
 }};
 
 inline constexpr std::array<Score, 64> kPawnPst{{
     {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0},
-    {-33, 5}, {-16, -1}, {-24, -2}, {-31, -14}, {-19, 10}, {-2, -2}, {22, -10}, {-24, -17},
-    {-31, -9}, {-39, -10}, {-14, -25}, {-35, -20}, {-7, -22}, {-36, -17}, {1, -25}, {-32, -24},
-    {-26, -4}, {-26, -7}, {-15, -28}, {8, -36}, {12, -39}, {-1, -32}, {-9, -17}, {-17, -27},
-    {-9, 5}, {-5, 0}, {4, -16}, {5, -33}, {31, -35}, {20, -23}, {15, -11}, {9, -13},
-    {2, 23}, {20, 23}, {26, 21}, {53, 4}, {40, 23}, {75, 21}, {28, 41}, {31, 16},
-    {8, 11}, {24, 38}, {21, 71}, {49, 79}, {40, 64}, {21, 67}, {-43, 53}, {-34, 50},
+    {-36, 2}, {-20, -3}, {-25, -7}, {-33, -16}, {-29, 9}, {-5, -5}, {20, -13}, {-24, -18},
+    {-36, -11}, {-40, -15}, {-20, -27}, {-22, -29}, {-9, -26}, {-18, -26}, {4, -30}, {-23, -28},
+    {-28, -6}, {-26, -10}, {-13, -30}, {8, -36}, {11, -38}, {-4, -30}, {-7, -17}, {-17, -26},
+    {-12, 3}, {-4, -3}, {2, -17}, {6, -33}, {29, -34}, {12, -19}, {12, -10}, {6, -12},
+    {-2, 22}, {19, 22}, {28, 22}, {49, 9}, {48, 27}, {71, 29}, {38, 44}, {23, 20},
+    {6, 13}, {25, 43}, {22, 76}, {47, 86}, {40, 74}, {26, 79}, {-32, 62}, {-32, 58},
     {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}
 }};
 
 inline constexpr std::array<Score, 64> kKnightPst{{
-    {-30, -17}, {-28, -42}, {-33, 11}, {-15, 1}, {-4, 0}, {-14, -9}, {-27, -33}, {-26, -21},
-    {-52, -4}, {-23, -9}, {-15, 2}, {-6, 0}, {-1, 2}, {0, -3}, {-15, -3}, {-17, -2},
-    {-49, -9}, {-13, -1}, {-1, 7}, {8, 21}, {31, 19}, {5, 3}, {23, 2}, {-33, 0},
-    {-17, -6}, {-15, 1}, {22, 20}, {18, 36}, {39, 32}, {34, 16}, {24, 13}, {12, -5},
-    {11, 1}, {11, 7}, {18, 32}, {70, 33}, {21, 40}, {75, 31}, {9, 21}, {39, 0},
-    {-7, -20}, {21, -6}, {-1, 35}, {52, 20}, {82, 6}, {26, 19}, {28, -5}, {-3, -12},
-    {-12, -28}, {-28, -5}, {26, 9}, {22, 29}, {8, 10}, {67, -1}, {-4, -24}, {24, -27},
-    {-140, -75}, {-10, -10}, {-15, 0}, {-22, 3}, {-18, -9}, {-31, -9}, {-11, -20}, {-91, -65}
+    {-26, -12}, {-24, -36}, {-27, 15}, {-13, 9}, {0, 5}, {-12, -7}, {-24, -23}, {-24, -17},
+    {-49, 3}, {-20, -6}, {-10, 8}, {-6, 8}, {4, 5}, {1, -1}, {-7, 0}, {-11, 2},
+    {-43, -3}, {-8, 4}, {-2, 14}, {14, 20}, {34, 16}, {9, 4}, {24, 2}, {-28, 2},
+    {-12, -3}, {-11, 5}, {17, 22}, {13, 35}, {22, 27}, {20, 11}, {7, 10}, {4, -4},
+    {11, 5}, {4, 9}, {17, 30}, {57, 22}, {20, 23}, {55, 19}, {5, 14}, {23, -2},
+    {-5, -15}, {23, -4}, {4, 32}, {49, 10}, {83, -7}, {34, 8}, {35, -13}, {4, -15},
+    {-12, -22}, {-28, -2}, {31, 10}, {21, 23}, {12, 4}, {66, -5}, {-2, -25}, {22, -26},
+    {-137, -74}, {-9, -9}, {-15, 0}, {-23, -1}, {-20, -13}, {-31, -9}, {-11, -19}, {-97, -63}
 }};
 
 inline constexpr std::array<Score, 64> kBishopPst{{
-    {-19, -19}, {36, -9}, {-5, -11}, {-6, -3}, {-12, -6}, {-31, 3}, {1, 3}, {-30, -27},
-    {15, -4}, {6, -29}, {27, -1}, {-3, 7}, {-1, 4}, {23, -9}, {16, -25}, {24, -33},
-    {-6, -4}, {28, 15}, {-2, 10}, {2, 25}, {15, 27}, {-3, -3}, {35, -4}, {-1, 0},
-    {-13, -6}, {0, 10}, {-10, 32}, {39, 21}, {24, 22}, {6, 22}, {-8, 3}, {42, -34},
-    {-7, -8}, {3, 13}, {14, 18}, {24, 25}, {40, 25}, {23, 7}, {16, 9}, {-25, 0},
-    {-22, -2}, {10, -2}, {-20, -7}, {29, 2}, {19, 14}, {20, 11}, {29, 7}, {21, -4},
-    {-11, -13}, {-7, -17}, {-6, 15}, {-21, -6}, {-25, 13}, {-32, 1}, {-7, -16}, {-20, -16},
-    {-47, -19}, {-20, 5}, {-26, 1}, {-26, -7}, {-17, -5}, {-34, -1}, {-17, -9}, {-47, -8}
+    {-22, -16}, {30, -10}, {-8, -9}, {-5, -1}, {-11, -3}, {-31, 5}, {1, 3}, {-31, -24},
+    {12, -4}, {5, -26}, {27, 0}, {-5, 9}, {2, 5}, {23, -8}, {22, -24}, {22, -31},
+    {-2, -4}, {26, 15}, {-5, 10}, {3, 21}, {13, 25}, {0, -3}, {31, -2}, {1, 0},
+    {-12, -4}, {3, 8}, {-15, 30}, {32, 16}, {18, 17}, {1, 21}, {-8, 2}, {31, -30},
+    {-8, -4}, {8, 14}, {18, 13}, {21, 19}, {34, 18}, {20, 3}, {14, 7}, {-22, -4},
+    {-20, 3}, {9, 1}, {-14, -4}, {31, -2}, {23, 9}, {19, 8}, {31, 5}, {19, -5},
+    {-13, -9}, {-1, -11}, {-4, 17}, {-18, -5}, {-23, 11}, {-18, -1}, {-3, -13}, {-22, -16},
+    {-46, -15}, {-18, 7}, {-22, 1}, {-24, -7}, {-17, -6}, {-33, -3}, {-19, -10}, {-48, -8}
 }};
 
 inline constexpr std::array<Score, 64> kRookPst{{
-    {-22, -15}, {-18, -17}, {-19, -8}, {-22, -9}, {2, -26}, {-10, -16}, {17, -24}, {-1, -29},
-    {-31, -15}, {-28, -13}, {-27, -5}, {-26, -10}, {-12, -16}, {-9, -24}, {0, -33}, {-20, -31},
-    {-31, -6}, {-7, -14}, {-6, -8}, {-33, -7}, {-23, -13}, {-12, -6}, {35, -31}, {11, -31},
-    {-20, 4}, {-15, 2}, {-16, 5}, {-16, -1}, {-17, -6}, {-13, -5}, {13, -14}, {-10, -13},
-    {-7, 19}, {-15, 15}, {-5, 23}, {0, 9}, {12, 0}, {9, 10}, {18, 3}, {33, -6},
-    {-2, 24}, {7, 23}, {12, 22}, {12, 13}, {33, 0}, {33, 12}, {36, 14}, {36, 9},
-    {0, 3}, {-30, 19}, {-8, 23}, {13, 12}, {15, 5}, {28, 5}, {31, 3}, {28, 8},
-    {3, 16}, {5, 24}, {1, 29}, {-2, 25}, {33, 12}, {20, 17}, {15, 19}, {22, 23}
+    {-26, -5}, {-22, -8}, {-23, -2}, {-23, -4}, {0, -21}, {-12, -17}, {4, -20}, {-13, -14},
+    {-36, -6}, {-30, -6}, {-29, 1}, {-25, -6}, {-15, -12}, {-14, -23}, {-8, -31}, {-29, -25},
+    {-32, 2}, {-11, -7}, {-8, -4}, {-28, -6}, {-21, -12}, {-13, -11}, {24, -32}, {3, -29},
+    {-21, 11}, {-16, 8}, {-17, 9}, {-12, 1}, {-13, -7}, {-16, -9}, {9, -16}, {-16, -12},
+    {-8, 23}, {-14, 18}, {-5, 26}, {6, 8}, {12, -2}, {10, 4}, {15, -1}, {25, -7},
+    {0, 21}, {7, 21}, {16, 18}, {17, 8}, {35, -3}, {35, 5}, {33, 10}, {29, 5},
+    {4, -1}, {-24, 14}, {0, 17}, {23, 7}, {22, 1}, {45, -1}, {38, 1}, {33, 3},
+    {9, 11}, {7, 19}, {6, 21}, {7, 19}, {43, 6}, {21, 10}, {14, 14}, {25, 19}
 }};
 
 inline constexpr std::array<Score, 64> kQueenPst{{
-    {-37, -44}, {-32, -45}, {-12, -48}, {7, -84}, {5, -60}, {-42, -46}, {-24, -37}, {-16, -25},
-    {-16, -32}, {-14, -35}, {14, -54}, {22, -58}, {20, -45}, {16, -58}, {17, -80}, {7, -38},
-    {-14, -15}, {2, -13}, {-12, 2}, {-8, 8}, {-2, 13}, {3, 13}, {14, -14}, {3, -20},
-    {14, -19}, {-26, 13}, {-17, 25}, {-12, 40}, {-5, 36}, {-8, 36}, {1, 8}, {14, 1},
-    {-13, -9}, {-19, 23}, {-3, 29}, {-13, 56}, {-23, 85}, {8, 59}, {-1, 47}, {21, 20},
-    {-11, -15}, {-1, 1}, {-4, 26}, {12, 37}, {27, 51}, {55, 66}, {47, 32}, {28, 26},
-    {-11, -20}, {-43, 20}, {-18, 37}, {-1, 35}, {-6, 34}, {36, 55}, {3, 26}, {36, 24},
-    {-39, -30}, {-13, -28}, {0, 0}, {26, 7}, {25, 17}, {34, 22}, {5, -31}, {-9, -28}
+    {-36, -38}, {-31, -43}, {-12, -45}, {10, -69}, {6, -53}, {-42, -44}, {-25, -35}, {-15, -22},
+    {-16, -29}, {-15, -30}, {15, -55}, {18, -58}, {21, -40}, {12, -52}, {13, -77}, {5, -33},
+    {-15, -10}, {-3, -4}, {-18, 5}, {-11, 8}, {-6, 10}, {-9, 15}, {4, -16}, {-10, -15},
+    {14, -11}, {-30, 16}, {-27, 30}, {-29, 40}, {-17, 24}, {-18, 33}, {-14, 11}, {4, 1},
+    {-11, 1}, {-16, 32}, {-5, 27}, {-14, 38}, {-28, 63}, {4, 46}, {-4, 42}, {7, 28},
+    {-7, -6}, {-1, 7}, {-2, 18}, {30, 23}, {42, 32}, {63, 49}, {55, 21}, {52, 18},
+    {-15, -7}, {-40, 14}, {-9, 27}, {1, 25}, {2, 26}, {50, 45}, {10, 25}, {29, 28},
+    {-31, -19}, {-11, -24}, {9, -1}, {34, 9}, {38, 20}, {36, 20}, {10, -26}, {1, -17}
 }};
 
 inline constexpr std::array<Score, 64> kKingPst{{
-    {-15, -59}, {96, -76}, {75, -56}, {-30, -43}, {39, -70}, {-17, -44}, {87, -79}, {59, -102},
-    {17, -39}, {57, -46}, {11, -22}, {-17, -19}, {-11, -17}, {1, -24}, {76, -45}, {47, -56},
-    {-24, -39}, {15, -38}, {-18, -17}, {-44, -7}, {-31, -6}, {-28, -13}, {13, -30}, {-60, -35},
-    {-32, -29}, {-26, -11}, {-21, -1}, {-37, 15}, {-59, 16}, {-25, 4}, {-30, -10}, {-50, -25},
-    {-6, -6}, {-4, 18}, {-15, 40}, {-26, 43}, {-28, 39}, {-27, 44}, {-6, 23}, {-25, 7},
-    {1, 17}, {9, 48}, {8, 62}, {1, 66}, {5, 67}, {9, 63}, {9, 52}, {-4, 26},
-    {-1, 9}, {15, 53}, {6, 64}, {9, 54}, {12, 63}, {1, 65}, {-2, 68}, {3, 28},
-    {5, -13}, {5, -3}, {8, 6}, {1, 15}, {5, 4}, {4, 1}, {4, 19}, {5, -20}
+    {-1, -60}, {93, -77}, {75, -53}, {-13, -31}, {50, -56}, {-12, -36}, {81, -77}, {73, -104},
+    {16, -45}, {36, -42}, {4, -14}, {-9, -10}, {-19, -4}, {-1, -17}, {46, -40}, {50, -67},
+    {-19, -42}, {3, -33}, {-21, -4}, {-44, 9}, {-31, 8}, {-31, -3}, {-9, -26}, {-46, -44},
+    {-22, -32}, {-29, -8}, {-26, 12}, {-29, 31}, {-51, 30}, {-35, 15}, {-46, -8}, {-43, -33},
+    {-1, -13}, {-3, 15}, {-8, 49}, {-18, 54}, {-26, 52}, {-29, 51}, {-15, 20}, {-21, -6},
+    {3, 3}, {10, 39}, {13, 61}, {7, 67}, {9, 68}, {8, 60}, {9, 41}, {-4, 9},
+    {0, -5}, {14, 41}, {8, 59}, {10, 50}, {12, 58}, {-1, 53}, {-3, 53}, {3, 12},
+    {4, -17}, {4, -9}, {7, 2}, {0, 11}, {6, 3}, {3, -6}, {3, 13}, {5, -25}
 }};
 
 inline constexpr std::array<Score, 9> kKnightMobility{{
-    {-31, -7}, {-31, -17}, {-18, -9}, {-12, -5}, {1, 1}, {13, 11}, {25, 11},
-    {34, 14}, {20, 2}
+    {-32, -7}, {-32, -17}, {-20, -8}, {-10, -5}, {1, 2}, {13, 11}, {26, 11},
+    {34, 12}, {20, 0}
 }};
 
 inline constexpr std::array<Score, 14> kBishopMobility{{
-    {-56, -18}, {-43, -16}, {-15, -19}, {-6, -7}, {6, 0}, {14, 5}, {19, 11},
-    {22, 13}, {24, 12}, {20, 11}, {11, 8}, {5, 3}, {0, 1}, {0, -2}
+    {-53, -16}, {-37, -16}, {-14, -18}, {-5, -5}, {5, 2}, {13, 7}, {17, 11},
+    {20, 13}, {22, 11}, {18, 9}, {10, 6}, {4, 1}, {0, 0}, {0, -2}
 }};
 
 inline constexpr std::array<Score, 15> kRookMobility{{
-    {-10, -5}, {-38, -23}, {-17, -23}, {-9, -15}, {-15, -6}, {-9, -5}, {-4, 0},
-    {1, 0}, {9, 5}, {15, 10}, {17, 11}, {17, 16}, {19, 17}, {14, 17},
-    {9, 2}
+    {-10, -5}, {-35, -22}, {-16, -18}, {-11, -11}, {-14, -4}, {-9, -3}, {-5, 1},
+    {0, 2}, {8, 6}, {15, 9}, {17, 9}, {17, 12}, {19, 13}, {14, 13},
+    {10, -3}
 }};
 
 inline constexpr std::array<Score, 28> kQueenMobility{{
-    {0, 0}, {-4, 0}, {-12, -1}, {-16, -2}, {-16, -4}, {-15, -5}, {-13, -9},
-    {-9, -9}, {-6, -7}, {-2, -6}, {2, -2}, {4, -3}, {5, 4}, {5, 3},
-    {9, 3}, {9, 8}, {11, 6}, {9, 8}, {8, 6}, {11, 7}, {8, 5},
-    {5, 0}, {4, 0}, {2, 0}, {1, -1}, {0, -1}, {0, 0}, {0, -1}
+    {0, 0}, {-3, 0}, {-8, -1}, {-9, -2}, {-9, -4}, {-11, -5}, {-9, -8},
+    {-7, -7}, {-5, -4}, {-2, -3}, {1, 2}, {3, 0}, {3, 7}, {4, 5},
+    {7, 5}, {7, 9}, {9, 5}, {6, 6}, {6, 4}, {8, 3}, {5, 1},
+    {3, -3}, {2, -2}, {1, -2}, {0, -2}, {0, -2}, {0, 0}, {0, -1}
 }};
 
-inline constexpr Score kDoubledPawnPenalty{-2, -28};
-inline constexpr Score kIsolatedOpenPenalty{-23, -12};
-inline constexpr Score kIsolatedClosedPenalty{-12, -3};
-inline constexpr Score kBackwardOpenPenalty{-18, -15};
-inline constexpr Score kBackwardClosedPenalty{1, -1};
+inline constexpr Score kDoubledPawnPenalty{-8, -32};
+inline constexpr Score kIsolatedOpenPenalty{-22, -12};
+inline constexpr Score kIsolatedClosedPenalty{-11, -3};
+inline constexpr Score kBackwardOpenPenalty{-18, -14};
+inline constexpr Score kBackwardClosedPenalty{-1, 0};
 inline constexpr std::array<Score, 6> kPhalanxPawnRankBonus{{
-    {4, 0}, {13, 4}, {17, 10}, {23, 25}, {6, 22}, {2, 6}
+    {4, 0}, {14, 4}, {17, 9}, {23, 26}, {6, 23}, {2, 6}
 }};
 inline constexpr std::array<Score, 6> kSupportedPawnRankBonus{{
-    {0, 0}, {18, 12}, {17, 8}, {33, 19}, {26, 30}, {4, 14}
+    {0, 0}, {20, 11}, {16, 8}, {33, 18}, {26, 30}, {4, 14}
 }};
 inline constexpr std::array<Score, 6> kCandidatePasserRankBonus{{
-    {5, -11}, {9, 0}, {8, 16}, {5, 21}, {0, 4}, {0, 0}
+    {6, -10}, {9, 0}, {9, 16}, {2, 24}, {1, 5}, {0, 0}
 }};
 inline constexpr std::array<Score, 8> kPassedPawnRankBonus{{
-    {0, 0}, {1, -13}, {1, 1}, {-10, 16}, {-3, 21}, {-1, 24}, {4, 22}, {0, 0}
+    {0, 0}, {-1, -17}, {-1, -3}, {-9, 13}, {-2, 22}, {1, 28}, {5, 25}, {0, 0}
 }};
-inline constexpr Score kPassedOwnKingDist{6, -9};
-inline constexpr Score kPassedEnemyKingDist{-1, -3};
+inline constexpr Score kPassedOwnKingDist{5, -8};
+inline constexpr Score kPassedEnemyKingDist{0, -2};
 inline constexpr Score kPassedOwnKingRankDist{2, -3};
 inline constexpr Score kPassedEnemyKingRankDist{-2, 10};
-inline constexpr Score kPassedBlockedBonus{-7, 6};
-inline constexpr Score kPassedSafeAdvanceBonus{-1, 37};
-inline constexpr Score kPassedUnsafeAdvanceBonus{1, 28};
-inline constexpr Score kPassedFreeSafePathBonus{-32, 54};
+inline constexpr Score kPassedBlockedBonus{-5, 3};
+inline constexpr Score kPassedSafeAdvanceBonus{-3, 37};
+inline constexpr Score kPassedUnsafeAdvanceBonus{1, 29};
+inline constexpr Score kPassedFreeSafePathBonus{-33, 53};
 inline constexpr Score kConnectedPasserBonus{7, -4};
-inline constexpr Score kRookBehindOwnPasser{6, 13};
-inline constexpr Score kRookBehindEnemyPasser{-12, -53};
-inline constexpr Score kUnstoppablePasserBonus{-1, 91};
-inline constexpr Score kKingAttackerWeight{2, 13};
-inline constexpr Score kKingAttackerSqWeight{-10, 1};
-inline constexpr Score kKingAttackerGe3Weight{-17, -8};
-inline constexpr Score kKingMissingShieldPenalty{-23, 16};
-inline constexpr Score kKingOpenFilePenalty{-34, -15};
+inline constexpr Score kRookBehindOwnPasser{5, 14};
+inline constexpr Score kRookBehindEnemyPasser{-12, -51};
+inline constexpr Score kUnstoppablePasserBonus{-1, 92};
+inline constexpr int kKingDangerBase = 90;
+inline constexpr std::array<int, 4> kKingDangerRingWeight{{68, 43, 49, 64}};
+inline constexpr std::array<int, 4> kKingDangerSafeCheckWeight{{108, 56, 115, 108}};
+inline constexpr int kKingDangerWeakRingWeight = 43;
+inline constexpr int kKingDangerNoQueenWeight = -26;
+inline constexpr Score kKingOpenFilePenalty{-27, -32};
+inline constexpr Score kKingSemiOpenFilePenalty{6, -18};
+inline constexpr std::array<Score, 5> kKingShelterOwnFile{{
+    {-40, 25}, {0, 0}, {30, -6}, {19, -6}, {-9, -12}
+}};
+inline constexpr std::array<Score, 5> kKingShelterAdjFile{{
+    {-33, 26}, {11, 5}, {18, -8}, {6, -8}, {-2, -16}
+}};
+inline constexpr std::array<Score, 5> kKingStormBlocked{{
+    {0, 0}, {-11, -4}, {-6, -14}, {15, -19}, {13, -13}
+}};
+inline constexpr std::array<Score, 5> kKingStormUnblocked{{
+    {10, 14}, {0, 19}, {-22, 6}, {-6, -4}, {9, -11}
+}};
 inline constexpr std::array<Score, 4> kHangingBonus{{
-    {42, 29}, {51, 32}, {44, 27}, {39, -4}
+    {42, 32}, {51, 33}, {40, 30}, {38, -3}
 }};
 inline constexpr Score kPawnAttackDefendedBonus{73, 24};
-inline constexpr Score kBishopPairBonus{49, 41};
-inline constexpr Score kKnightOutpostSupported{42, 17};
+inline constexpr Score kBishopPairBonus{49, 40};
+inline constexpr Score kKnightOutpostSupported{44, 15};
 inline constexpr Score kKnightOutpostUnsupported{29, 1};
-inline constexpr Score kBishopOutpostSupported{26, 4};
-inline constexpr Score kBishopOutpostUnsupported{20, 3};
-inline constexpr Score kMinorBehindPawn{10, 2};
-inline constexpr Score kBishopSameColorPawn{-2, -10};
-inline constexpr Score kBishopLongDiagonal{31, 13};
-inline constexpr Score kRookOpenFileBonus{64, 1};
-inline constexpr Score kRookSemiOpenFileBonus{29, 10};
-inline constexpr Score kRookOnQueenFileBonus{20, 6};
-inline constexpr Score kRookSeventhBonus{11, 34};
-inline constexpr Score kRookConnectedBonus{1, -3};
-inline constexpr Score kTrappedRookPenalty{-13, -13};
-inline constexpr Score kKnightPerOwnPawn{17, 3};
-inline constexpr Score kRookPerOwnPawn{32, -3};
-inline constexpr Score kCenterControlBonus{5, 3};
-inline constexpr Score kDevelopmentBonus{8, 6};
-inline constexpr Score kTempoBonus{55, 34};
+inline constexpr Score kBishopOutpostSupported{27, 4};
+inline constexpr Score kBishopOutpostUnsupported{23, 2};
+inline constexpr Score kMinorBehindPawn{11, 3};
+inline constexpr Score kBishopSameColorPawn{-1, -9};
+inline constexpr Score kBishopLongDiagonal{30, 12};
+inline constexpr Score kRookOpenFileBonus{65, -1};
+inline constexpr Score kRookSemiOpenFileBonus{27, 10};
+inline constexpr Score kRookOnQueenFileBonus{18, 5};
+inline constexpr Score kRookSeventhBonus{12, 27};
+inline constexpr Score kRookConnectedBonus{2, 0};
+inline constexpr Score kTrappedRookPenalty{-16, -12};
+inline constexpr Score kKnightPerOwnPawn{17, 5};
+inline constexpr Score kRookPerOwnPawn{32, -2};
+inline constexpr Score kCenterControlBonus{4, 2};
+inline constexpr Score kDevelopmentBonus{7, 4};
+inline constexpr Score kTempoBonus{56, 33};
 
 [[nodiscard]] constexpr const std::array<Score, 64>& piece_square_table(
     const PieceType type) noexcept {
@@ -425,8 +439,11 @@ struct EvalBoard {
     Color side_to_move = Color::white;
     std::uint8_t development[2]{};
     std::uint8_t center_control[2]{};
-    std::uint8_t king_zone_attacks[2]{};
+    std::array<std::uint64_t, 2> king_ring{};
     std::array<std::uint64_t, 2> attacked_squares{};
+    std::array<std::uint64_t, 2> attacked_by2{};
+    std::array<std::array<std::uint64_t, 7>, 2> attacks_by{};
+    std::array<std::array<std::uint8_t, 4>, 2> king_ring_attackers{};
 };
 
 [[nodiscard]] EvalBoard make_eval_board(const GameState& state) noexcept {
@@ -436,6 +453,7 @@ struct EvalBoard {
     eval.occupied = snap.occupied;
     eval.side_to_move = snap.side_to_move;
 
+    std::array<std::uint64_t, 2> ext_ring{};
     for (std::size_t color = 0; color < 2; ++color) {
         std::uint64_t occ_color = 0;
         for (std::size_t pt = 1; pt <= 6; ++pt) {
@@ -444,6 +462,12 @@ struct EvalBoard {
         eval.colors[color] = occ_color;
         const std::uint64_t king_bb = eval.pieces[color][type_index(PieceType::king)];
         eval.kings[color] = king_bb != 0 ? std::countr_zero(king_bb) : -1;
+        if (eval.kings[color] >= 0) {
+            const std::uint64_t kr =
+                detail::king_attacks(eval.kings[color]) | bit_of(eval.kings[color]);
+            eval.king_ring[color] = kr;
+            ext_ring[color] = kr | (color == kWhite ? (kr << 8) : (kr >> 8));
+        }
     }
 
     const int phase =
@@ -479,6 +503,7 @@ struct EvalBoard {
 
     for (std::size_t color = 0; color < 2; ++color) {
         const bool white = color == kWhite;
+        const std::size_t enemy = 1 - color;
         const std::uint64_t own_pawns = eval.pieces[color][type_index(PieceType::pawn)];
         const std::uint64_t low_ranks = white ? 0x0000000000FFFF00ULL : 0x00FFFF0000000000ULL;
         const std::uint64_t blocked_pawns =
@@ -488,15 +513,25 @@ struct EvalBoard {
             eval.pieces[color][type_index(PieceType::king)] |
             eval.pieces[color][type_index(PieceType::queen)] |
             excluded_pawns |
-            eval.pawn_attacks[1 - color]);
+            eval.pawn_attacks[enemy]);
 
+        const std::uint64_t double_pawn_att = white
+            ? (((own_pawns & kNotFileA) << 7) & ((own_pawns & kNotFileH) << 9))
+            : (((own_pawns & kNotFileA) >> 9) & ((own_pawns & kNotFileH) >> 7));
         std::uint64_t attacks = eval.pawn_attacks[color];
+        std::uint64_t by2 = double_pawn_att;
+        eval.attacks_by[color][type_index(PieceType::pawn)] = eval.pawn_attacks[color];
 
         for (std::uint64_t bb = eval.pieces[color][type_index(PieceType::knight)]; bb != 0;) {
             const int sq = std::countr_zero(bb);
             bb &= bb - 1;
             const std::uint64_t pa = detail::knight_attacks(sq);
+            by2 |= attacks & pa;
             attacks |= pa;
+            eval.attacks_by[color][type_index(PieceType::knight)] |= pa;
+            if ((pa & ext_ring[enemy]) != 0) {
+                ++eval.king_ring_attackers[enemy][0];
+            }
             const int mob = std::min(8, std::popcount(pa & mob_area));
             eval.mobility_scores[color][0] += kKnightMobility[static_cast<std::size_t>(mob)];
         }
@@ -506,7 +541,13 @@ struct EvalBoard {
         for (std::uint64_t bb = eval.pieces[color][type_index(PieceType::bishop)]; bb != 0;) {
             const int sq = std::countr_zero(bb);
             bb &= bb - 1;
-            attacks |= detail::bishop_attacks(sq, eval.occupied);
+            const std::uint64_t pa = detail::bishop_attacks(sq, eval.occupied);
+            by2 |= attacks & pa;
+            attacks |= pa;
+            eval.attacks_by[color][type_index(PieceType::bishop)] |= pa;
+            if ((pa & ext_ring[enemy]) != 0) {
+                ++eval.king_ring_attackers[enemy][1];
+            }
             const std::uint64_t mob_bb = detail::bishop_attacks(sq, bishop_xray_occ);
             const int mob = std::min(13, std::popcount(mob_bb & mob_area));
             eval.mobility_scores[color][1] += kBishopMobility[static_cast<std::size_t>(mob)];
@@ -517,7 +558,13 @@ struct EvalBoard {
         for (std::uint64_t bb = eval.pieces[color][type_index(PieceType::rook)]; bb != 0;) {
             const int sq = std::countr_zero(bb);
             bb &= bb - 1;
-            attacks |= detail::rook_attacks(sq, eval.occupied);
+            const std::uint64_t pa = detail::rook_attacks(sq, eval.occupied);
+            by2 |= attacks & pa;
+            attacks |= pa;
+            eval.attacks_by[color][type_index(PieceType::rook)] |= pa;
+            if ((pa & ext_ring[enemy]) != 0) {
+                ++eval.king_ring_attackers[enemy][2];
+            }
             const std::uint64_t mob_bb = detail::rook_attacks(sq, rook_xray_occ);
             const int mob = std::min(14, std::popcount(mob_bb & mob_area));
             eval.mobility_scores[color][2] += kRookMobility[static_cast<std::size_t>(mob)];
@@ -527,28 +574,26 @@ struct EvalBoard {
             const int sq = std::countr_zero(bb);
             bb &= bb - 1;
             const std::uint64_t pa = detail::queen_attacks(sq, eval.occupied);
+            by2 |= attacks & pa;
             attacks |= pa;
+            eval.attacks_by[color][type_index(PieceType::queen)] |= pa;
+            if ((pa & ext_ring[enemy]) != 0) {
+                ++eval.king_ring_attackers[enemy][3];
+            }
             const int mob = std::min(27, std::popcount(pa & mob_area));
             eval.mobility_scores[color][3] += kQueenMobility[static_cast<std::size_t>(mob)];
         }
 
         if (eval.kings[color] >= 0) {
-            attacks |= detail::king_attacks(eval.kings[color]);
+            const std::uint64_t ka = detail::king_attacks(eval.kings[color]);
+            by2 |= attacks & ka;
+            attacks |= ka;
+            eval.attacks_by[color][type_index(PieceType::king)] = ka;
         }
         eval.attacked_squares[color] = attacks;
+        eval.attacked_by2[color] = by2;
         eval.center_control[color] =
             static_cast<std::uint8_t>(std::popcount(attacks & kCenterMask));
-    }
-
-    for (std::size_t color = 0; color < 2; ++color) {
-        if (eval.kings[color] < 0) {
-            eval.king_zone_attacks[color] = 0;
-            continue;
-        }
-        const std::uint64_t zone =
-            detail::king_attacks(eval.kings[color]) | bit_of(eval.kings[color]);
-        eval.king_zone_attacks[color] = static_cast<std::uint8_t>(
-            std::popcount(eval.attacked_squares[1 - color] & zone));
     }
     return eval;
 }
@@ -690,33 +735,96 @@ struct EvalBoard {
     const int king_file = file_of(king);
     const int king_rank = rank_of(king);
     const bool white = color == kWhite;
+    const std::size_t enemy = 1 - color;
     const std::uint64_t own_pawns = eval.pieces[color][type_index(PieceType::pawn)];
+    const std::uint64_t enemy_pawns = eval.pieces[enemy][type_index(PieceType::pawn)];
 
-    const int attacker_count = eval.king_zone_attacks[color];
-    score += scaled(kKingAttackerWeight, attacker_count, attacker_count);
-    const int attacker_sq = attacker_count * attacker_count;
-    score += scaled(kKingAttackerSqWeight, attacker_sq, attacker_sq);
-    if (attacker_count >= 3) {
-        score += kKingAttackerGe3Weight;
+    const bool enemy_has_pieces =
+        (eval.pieces[enemy][type_index(PieceType::knight)] |
+         eval.pieces[enemy][type_index(PieceType::bishop)] |
+         eval.pieces[enemy][type_index(PieceType::rook)] |
+         eval.pieces[enemy][type_index(PieceType::queen)]) != 0;
+    if (enemy_has_pieces) {
+        const std::uint64_t def_non_king =
+            eval.attacks_by[color][type_index(PieceType::pawn)] |
+            eval.attacks_by[color][type_index(PieceType::knight)] |
+            eval.attacks_by[color][type_index(PieceType::bishop)] |
+            eval.attacks_by[color][type_index(PieceType::rook)] |
+            eval.attacks_by[color][type_index(PieceType::queen)];
+        const std::uint64_t weak =
+            eval.king_ring[color] & eval.attacked_squares[enemy] & ~def_non_king;
+        const std::uint64_t king_only_def =
+            eval.attacks_by[color][type_index(PieceType::king)] & ~def_non_king;
+        const std::uint64_t safe_sq = ~eval.colors[enemy] &
+            (~eval.attacked_squares[color] | (king_only_def & eval.attacked_by2[enemy]));
+        const std::uint64_t b_chk = detail::bishop_attacks(king, eval.occupied);
+        const std::uint64_t r_chk = detail::rook_attacks(king, eval.occupied);
+        const std::uint64_t n_chk = detail::knight_attacks(king);
+        const std::uint64_t q_chk = b_chk | r_chk;
+
+        int danger = kKingDangerBase;
+        for (std::size_t idx = 0; idx < 4; ++idx) {
+            danger += kKingDangerRingWeight[idx] * eval.king_ring_attackers[color][idx];
+        }
+        danger += kKingDangerSafeCheckWeight[0] *
+            std::popcount(n_chk & eval.attacks_by[enemy][type_index(PieceType::knight)] & safe_sq);
+        danger += kKingDangerSafeCheckWeight[1] *
+            std::popcount(b_chk & eval.attacks_by[enemy][type_index(PieceType::bishop)] & safe_sq);
+        danger += kKingDangerSafeCheckWeight[2] *
+            std::popcount(r_chk & eval.attacks_by[enemy][type_index(PieceType::rook)] & safe_sq);
+        danger += kKingDangerSafeCheckWeight[3] *
+            std::popcount(q_chk & eval.attacks_by[enemy][type_index(PieceType::queen)] & safe_sq);
+        danger += kKingDangerWeakRingWeight * std::popcount(weak);
+        if (eval.pieces[enemy][type_index(PieceType::queen)] == 0) {
+            danger += kKingDangerNoQueenWeight;
+        }
+        if (danger > 0) {
+            score.mg -= (danger * danger) / 1024;
+            score.eg -= danger / 16;
+        }
     }
 
-    for (int file = std::max(0, king_file - 1); file <= std::min(7, king_file + 1); ++file) {
-        bool shield_pawn = false;
-        for (int delta = 1; delta <= 2; ++delta) {
-            const int rank = king_rank + (white ? delta : -delta);
-            if (rank < 0 || rank > 7) {
-                continue;
-            }
-            if (((own_pawns >> (rank * 8 + file)) & 1U) != 0) {
-                shield_pawn = true;
-            }
-        }
-        if (!shield_pawn) {
-            score += kKingMissingShieldPenalty;
-        }
+    const int king_own_rank = white ? king_rank : 7 - king_rank;
+    const int center_file = std::clamp(king_file, 1, 6);
+    for (int file = center_file - 1; file <= center_file + 1; ++file) {
         const std::uint64_t file_mask = 0x0101010101010101ULL << static_cast<unsigned>(file);
-        if ((own_pawns & file_mask) == 0) {
-            score += kKingOpenFilePenalty;
+        const std::uint64_t own_on = own_pawns & file_mask;
+        const std::uint64_t enemy_on = enemy_pawns & file_mask;
+        if (own_on == 0) {
+            score += enemy_on == 0 ? kKingOpenFilePenalty : kKingSemiOpenFilePenalty;
+        }
+
+        int best_delta = 99;
+        for (std::uint64_t bb = own_on; bb != 0;) {
+            const int sq = std::countr_zero(bb);
+            bb &= bb - 1;
+            const int pr = white ? rank_of(sq) : 7 - rank_of(sq);
+            if (pr >= king_own_rank && pr - king_own_rank < best_delta) {
+                best_delta = pr - king_own_rank;
+            }
+        }
+        const int own_d = best_delta < 99 ? (std::min(3, best_delta) + 1) : 0;
+        const auto& shelter_table =
+            file == king_file ? kKingShelterOwnFile : kKingShelterAdjFile;
+        score += shelter_table[static_cast<std::size_t>(own_d)];
+
+        int best_er = 99;
+        int best_esq = -1;
+        for (std::uint64_t bb = enemy_on; bb != 0;) {
+            const int sq = std::countr_zero(bb);
+            bb &= bb - 1;
+            const int pr = white ? rank_of(sq) : 7 - rank_of(sq);
+            if (pr > king_own_rank && pr <= 5 && pr < best_er) {
+                best_er = pr;
+                best_esq = sq;
+            }
+        }
+        if (best_er <= 5) {
+            const int front_sq = best_esq + (white ? -8 : 8);
+            const bool blocked =
+                front_sq >= 0 && front_sq < 64 && ((own_pawns & bit_of(front_sq)) != 0);
+            const auto& storm_table = blocked ? kKingStormBlocked : kKingStormUnblocked;
+            score += storm_table[static_cast<std::size_t>(best_er - 1)];
         }
     }
     return score;
