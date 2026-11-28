@@ -626,6 +626,48 @@ void test_stop_after_and_ponderhit_races_complete_cleanly() {
     }
 }
 
+void test_concurrent_stop_after_rearm_is_race_free() {
+    SearchService service(std::make_shared<koi::test::MaterialEvaluator>(), {}, 16);
+    const GameState root = GameState::startpos();
+
+    for (int round = 0; round < 24; ++round) {
+        std::atomic<int> completions{0};
+        std::optional<SearchResult> result;
+        SearchEventSink sink;
+        sink.on_complete = [&completions, &result](const SearchResult& completed) {
+            result = completed;
+            completions.fetch_add(1, std::memory_order_relaxed);
+        };
+
+        SearchLimits limits;
+        limits.movetime = 120ms;
+        auto handle = service.start(root, limits, sink);
+
+        std::thread rearm_a([&handle] {
+            handle.stop_after(std::chrono::hours{1});
+            handle.stop_after(15ms);
+        });
+        std::thread rearm_b([&handle] {
+            handle.stop_after(60ms);
+            handle.stop_after(5ms);
+        });
+        rearm_a.join();
+        rearm_b.join();
+
+        const bool finished = wait_for([&handle] { return !handle.running(); }, 10s);
+        if (!finished) {
+            handle.stop();
+        }
+        handle.wait();
+
+        require(finished, "concurrent stop_after re-arming must never stall search completion");
+        require(completions.load() == 1 && result.has_value() && result->best_move.has_value(),
+                "each concurrent stop_after race must produce one completed legal result");
+        require(root.is_legal(*result->best_move),
+                "the best move produced under concurrent stop_after must be legal");
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -647,6 +689,7 @@ int main(int argc, char** argv) {
         {"interior tablebase default off", test_interior_tablebase_default_off_is_byte_identical},
         {"search service stop_after overflow", test_stop_after_extreme_duration_does_not_overflow},
         {"search service stop_after ponderhit races", test_stop_after_and_ponderhit_races_complete_cleanly},
+        {"search service concurrent stop_after race-free", test_concurrent_stop_after_rearm_is_race_free},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

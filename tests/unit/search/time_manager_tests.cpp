@@ -731,6 +731,56 @@ void test_continuous_horizon_and_opponent_clock_asymmetry() {
             "holding a large clock advantage may modestly compress horizon within safety bounds");
 }
 
+void test_asymmetric_conversion_and_high_effort_recapture_cutoff() {
+    const SearchLimits limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    const auto make_stable_at = [&](const int score_cp) {
+        TimeManager mgr(limits, koi::Color::white, 100, 30, 100, warm_context());
+        for (int depth = 5; depth <= 8; ++depth) {
+            SearchIterationObservation obs;
+            obs.depth = depth;
+            obs.score_cp = score_cp;
+            obs.nodes = 10'000;
+            obs.best_move_nodes = 5'000;
+            mgr.observe_iteration(obs);
+        }
+        return mgr.diagnostics().optimum_budget;
+    };
+
+    const auto neutral_opt = make_stable_at(0);
+    const auto winning_opt = make_stable_at(700);
+    const auto losing_defend_opt = make_stable_at(-550);
+    const auto hopeless_opt = make_stable_at(-800);
+    require(winning_opt < neutral_opt && hopeless_opt < neutral_opt,
+            "clearly winning (+500) and hopeless (-700) positions must trim optimum_budget");
+    require(losing_defend_opt == neutral_opt,
+            "borderline losing (-550) position must keep full defensive search time");
+
+    auto high_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager high_effort(limits, koi::Color::white, 100, 30, 100, warm_context(),
+                            [high_now] { return *high_now; });
+    auto mod_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager mod_effort(limits, koi::Color::white, 100, 30, 100, warm_context(),
+                           [mod_now] { return *mod_now; });
+    for (int depth = 4; depth <= 6; ++depth) {
+        SearchIterationObservation high_obs;
+        high_obs.depth = depth;
+        high_obs.score_cp = 40;
+        high_obs.nodes = 10'000;
+        high_obs.best_move_nodes = 9'200;
+        high_effort.observe_iteration(high_obs);
+
+        SearchIterationObservation mod_obs = high_obs;
+        mod_obs.best_move_nodes = 5'000;
+        mod_effort.observe_iteration(mod_obs);
+    }
+    *high_now += (high_effort.diagnostics().optimum_budget * 65) / 100;
+    *mod_now += (mod_effort.diagnostics().optimum_budget * 65) / 100;
+    require(!high_effort.should_start_next_iteration(milliseconds{1}),
+            "high best-move node dominance (>=90%) must stop early past 60% of optimum_budget");
+    require(mod_effort.should_start_next_iteration(milliseconds{1}),
+            "moderate best-move node share must continue past 65% of optimum_budget");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -759,6 +809,8 @@ int main(int argc, char** argv) {
          test_ponderhit_preserves_ponder_observations_and_mate_collapse},
         {"continuous horizon and opponent clock asymmetry",
          test_continuous_horizon_and_opponent_clock_asymmetry},
+        {"asymmetric conversion and high-effort cutoff",
+         test_asymmetric_conversion_and_high_effort_recapture_cutoff},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

@@ -675,8 +675,8 @@ the search but cannot push it past the cap.
   `best_move_stability_`, decayed cumulative `instability_permille_`, inter-move
   and intra-search `score_drop_cp_`, `score_gain_cp_`,
   `last_aspiration_researched_`, forced-mate fast exit (`>= 2` stable deep mate
-  iterations), and winning-endgame conversion speedup (`|score| >= 500` cp,
-  stable deep line).
+  iterations), and asymmetric conversion speedup (`score >= +500` cp winning
+  or `<= -700` cp decisively lost with a stable deep line).
 - A hard position may exceed the soft budget only while the remaining usable
   clock is at least `2 × soft budget + overhead` (`hard_extension_affordable`).
   Near the end the soft budget wins.
@@ -686,9 +686,10 @@ the search but cannot push it past the cap.
   and in clock mode at soft after at least 2 stable observations when the
   extension is unaffordable.
 - `should_start_next_iteration`: honors emergency pacing, forced-mate / single-move
-  exits, calm `75%` soft-target cutoff, and `1.5×` previous-iteration wall-clock
-  lookahead (avoiding doomed partial iterations past `1.2×` soft target), in
-  addition to the hard deadline.
+  exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm
+  `75%` soft-target cutoffs, and `1.5×` previous-iteration wall-clock lookahead
+  (avoiding doomed partial iterations past `1.2×` soft target), in addition to
+  the hard deadline.
 - `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)
   and calls `reconfigure`: limits/root context are replaced while preserving
   iteration observations gathered during pondering (recomputing `optimum_budget`

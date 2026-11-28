@@ -59,6 +59,7 @@ public:
 
 private:
     void mark_finished() noexcept;
+    void stop_internal(bool cancel_timer) noexcept;
 
     GameState root_;
     SearchLimits limits_;
@@ -73,6 +74,8 @@ private:
     std::mutex ponderhit_mutex_;
     std::optional<PonderhitConversion> ponderhit_conversion_;
     WorkerThread worker_;
+    std::mutex stop_timer_mutex_;
+    bool finished_ = false;
     std::jthread stop_timer_;
 };
 

@@ -698,15 +698,24 @@ void TimeManager::update_optimum_budget() noexcept {
         scale_permille = (scale_permille * 1120) / 1000;
     }
 
-    // Winning-position conversion speedup: when clearly ahead (>= 500 cp) with
-    // a stable deep best move and no score collapse, move faster — especially
-    // once the clock is below 20 seconds — so decided games never flag.
-    if (previous_score_.has_value() && std::abs(*previous_score_) >= 500 &&
-        last_observed_depth_ >= 8 && best_move_stability_ >= 2 &&
-        score_drop_cp_ <= 25 && !last_aspiration_researched_) {
-        const std::uint64_t conversion_scale =
-            remaining_clock_ <= std::chrono::milliseconds{20'000} ? 580ULL : 760ULL;
-        scale_permille = (scale_permille * conversion_scale) / 1000;
+    // Asymmetric conversion speedup: clearly winning positions (>= +500 cp) and
+    // decisively hopeless positions (<= -700 cp) with a stable deep best move
+    // move faster so won games never flag, while -500..-699 cp still gets full
+    // defensive search time.
+    if (previous_score_.has_value() && last_observed_depth_ >= 8 &&
+        best_move_stability_ >= 2 && score_drop_cp_ <= 25 &&
+        !last_aspiration_researched_) {
+        std::uint64_t conversion_scale = 1000ULL;
+        if (*previous_score_ >= 500) {
+            conversion_scale =
+                remaining_clock_ <= std::chrono::milliseconds{20'000} ? 580ULL : 760ULL;
+        } else if (*previous_score_ <= -700) {
+            conversion_scale =
+                remaining_clock_ <= std::chrono::milliseconds{20'000} ? 620ULL : 800ULL;
+        }
+        if (conversion_scale != 1000ULL) {
+            scale_permille = (scale_permille * conversion_scale) / 1000;
+        }
     }
 
     scale_permille = std::clamp<std::uint64_t>(scale_permille, 380, 1850);
@@ -795,11 +804,17 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         elapsed >= soft_target) {
         return false;
     }
-    // Pre-iteration lookahead for stable clock searches: when we have already
-    // spent >= 75% of the dynamic soft target (or when the previous iteration
-    // duration indicates a 1.5x next ply would blow past 1.2x soft_target),
-    // skip starting a doomed partial iteration.
+    // Pre-iteration lookahead for stable clock searches: when high best-move node
+    // concentration (>= 90%), calm stability (>= 75%), or a 1.5x iteration-time
+    // projection shows a new ply is unlikely to pay off, skip starting it.
     if (clock_mode_ && !hard_position_) {
+        if (has_effort_sample_ && best_move_effort_permille_ >= 900U &&
+            last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
+            best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
+            !last_aspiration_researched_ &&
+            elapsed >= scale_fraction(soft_target, 60, 100)) {
+            return false;
+        }
         if (last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
             best_move_stability_ >= 3 && score_drop_cp_ <= 15 &&
             elapsed >= scale_fraction(soft_target, 75, 100)) {

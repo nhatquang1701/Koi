@@ -14,6 +14,12 @@ SearchSession::SearchSession(GameState root, SearchLimits limits, SearchOptions 
 SearchSession::~SearchSession() {
     stop();
     wait();
+    std::jthread timer_to_join;
+    {
+        std::lock_guard lock(stop_timer_mutex_);
+        finished_ = true;
+        timer_to_join = std::move(stop_timer_);
+    }
 }
 
 void SearchSession::launch(std::function<void()> work) {
@@ -41,6 +47,10 @@ void SearchSession::launch(std::function<void()> work) {
 }
 
 void SearchSession::stop() noexcept {
+    stop_internal(true);
+}
+
+void SearchSession::stop_internal(const bool cancel_timer) noexcept {
     // The stop mutex serializes with the wait predicates so the store cannot
     // land between a waiter's predicate check and its block, which would lose
     // the wakeup and hang the joining caller (and with it the UCI loop).
@@ -54,6 +64,15 @@ void SearchSession::stop() noexcept {
         // next predicate evaluation observes the stop.
         stop_requested_.store(true, std::memory_order_relaxed);
         stop_condition_.notify_all();
+    }
+    if (cancel_timer) {
+        try {
+            std::lock_guard timer_lock(stop_timer_mutex_);
+            if (stop_timer_.joinable()) {
+                stop_timer_.request_stop();
+            }
+        } catch (...) {
+        }
     }
 }
 
@@ -95,7 +114,7 @@ void SearchSession::request_stop_after(std::chrono::milliseconds delay) {
     if (delay <= std::chrono::milliseconds::zero()) {
         return;
     }
-    stop_timer_ = std::jthread([this, delay](std::stop_token token) {
+    std::jthread next_timer([this, delay](std::stop_token token) {
         std::mutex wait_mutex;
         std::condition_variable_any wait_cv;
         auto remaining = delay;
@@ -117,8 +136,18 @@ void SearchSession::request_stop_after(std::chrono::milliseconds delay) {
         if (token.stop_requested()) {
             return;
         }
-        stop();
+        stop_internal(false);
     });
+    std::jthread old_timer;
+    {
+        std::lock_guard lock(stop_timer_mutex_);
+        if (finished_ || stop_requested_.load(std::memory_order_acquire)) {
+            next_timer.request_stop();
+            return;
+        }
+        old_timer = std::move(stop_timer_);
+        stop_timer_ = std::move(next_timer);
+    }
 }
 
 std::optional<PonderhitConversion> SearchSession::take_ponderhit() {
@@ -149,6 +178,14 @@ bool SearchSession::publish_completion(const SearchEventSink& sink,
 void SearchSession::mark_finished() noexcept {
     running_.store(false, std::memory_order_release);
     stop_condition_.notify_all();
+    try {
+        std::lock_guard lock(stop_timer_mutex_);
+        finished_ = true;
+        if (stop_timer_.joinable()) {
+            stop_timer_.request_stop();
+        }
+    } catch (...) {
+    }
 }
 
 } // namespace koi::detail

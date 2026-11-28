@@ -239,18 +239,27 @@ private:
             for (;;) {
                 PrincipalVariation pv;
                 context.begin_iteration(&helper_abort_);
-                SearchStats flushed{};
-                context.progress_probe = [this, &context, &flushed]() noexcept {
+                std::uint64_t flushed_nodes = 0;
+                std::uint64_t flushed_qnodes = 0;
+                std::uint64_t flushed_tt_hits = 0;
+                std::uint64_t flushed_tbhits = 0;
+                context.progress_probe = [this, &context, &flushed_nodes, &flushed_qnodes,
+                                          &flushed_tt_hits, &flushed_tbhits]() noexcept {
+                    const std::uint64_t delta_nodes = context.stats.nodes - flushed_nodes;
+                    const std::uint64_t delta_qnodes = context.stats.qnodes - flushed_qnodes;
+                    if (delta_nodes + delta_qnodes < 4096ULL) {
+                        return;
+                    }
                     SearchStats delta_stats{};
-                    delta_stats.nodes = context.stats.nodes - flushed.nodes;
-                    delta_stats.qnodes = context.stats.qnodes - flushed.qnodes;
-                    delta_stats.tt_hits = context.stats.tt_hits - flushed.tt_hits;
-                    delta_stats.tbhits = context.stats.tbhits - flushed.tbhits;
+                    delta_stats.nodes = delta_nodes;
+                    delta_stats.qnodes = delta_qnodes;
+                    delta_stats.tt_hits = context.stats.tt_hits - flushed_tt_hits;
+                    delta_stats.tbhits = context.stats.tbhits - flushed_tbhits;
                     delta_stats.seldepth = context.stats.seldepth;
-                    flushed.nodes = context.stats.nodes;
-                    flushed.qnodes = context.stats.qnodes;
-                    flushed.tt_hits = context.stats.tt_hits;
-                    flushed.tbhits = context.stats.tbhits;
+                    flushed_nodes = context.stats.nodes;
+                    flushed_qnodes = context.stats.qnodes;
+                    flushed_tt_hits = context.stats.tt_hits;
+                    flushed_tbhits = context.stats.tbhits;
                     publish_iteration_stats(delta_stats);
                 };
                 const int attempt_depth = depth >= 8 ?
@@ -260,10 +269,10 @@ private:
                     state, attempt_depth, aspiration.alpha, aspiration.beta, 0, pv);
                 {
                     SearchStats rem_stats{};
-                    rem_stats.nodes = context.stats.nodes - flushed.nodes;
-                    rem_stats.qnodes = context.stats.qnodes - flushed.qnodes;
-                    rem_stats.tt_hits = context.stats.tt_hits - flushed.tt_hits;
-                    rem_stats.tbhits = context.stats.tbhits - flushed.tbhits;
+                    rem_stats.nodes = context.stats.nodes - flushed_nodes;
+                    rem_stats.qnodes = context.stats.qnodes - flushed_qnodes;
+                    rem_stats.tt_hits = context.stats.tt_hits - flushed_tt_hits;
+                    rem_stats.tbhits = context.stats.tbhits - flushed_tbhits;
                     rem_stats.seldepth = context.stats.seldepth;
                     publish_iteration_stats(rem_stats);
                 }

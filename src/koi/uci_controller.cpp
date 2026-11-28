@@ -2249,31 +2249,12 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
     options.syzygy = syzygy_;
     options.syzygy_interior_depth = syzygy_interior_depth_;
     options.search_started = search_started;
-    std::optional<std::chrono::milliseconds> movetime_watchdog_budget;
-    if (limits.movetime.has_value() && !limits.infinite && !limits.ponder) {
-        const TimeManager preview(
-            limits, search_root.side_to_move(), kFixedSpeedPercent,
-            options.move_overhead_ms, options.slow_mover_percent,
-            RootTimingContext{}, {}, options.dynamic_move_overhead, search_started,
-            options.observed_overhead_ms);
-        movetime_watchdog_budget = preview.time_budget();
-    }
     const bool has_search_moves = limits.search_moves_specified;
     const std::vector<Move> fallback_search_moves =
         has_search_moves ? limits.search_moves : std::vector<Move>{};
     try {
         active_search_.emplace(
             search_service_.start(std::move(root), std::move(limits), std::move(sink), options));
-        if (movetime_watchdog_budget.has_value() &&
-            *movetime_watchdog_budget >= std::chrono::milliseconds{100}) {
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - search_started);
-            if (elapsed >= *movetime_watchdog_budget) {
-                active_search_->stop();
-            } else {
-                active_search_->stop_after(*movetime_watchdog_budget - elapsed);
-            }
-        }
     } catch (const std::exception& error) {
         // Defer root legal move generation to the rare setup-failure path so
         // normal timed searches do not spend start latency building moves twice.

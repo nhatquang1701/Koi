@@ -84,7 +84,7 @@ struct TimeManagementStats {
     std::chrono::milliseconds usable{0};
     std::chrono::milliseconds soft_budget{0};
     // Dynamic soft target after best-move stability, node-effort, and falling
-    // evaluation scaling (clamped inside [soft_budget / 2, hard_budget]).
+    // evaluation scaling (clamped inside [max(1 ms, soft_budget / 3), hard_budget]).
     std::chrono::milliseconds optimum_budget{0};
     std::chrono::milliseconds hard_budget{0};
     std::uint32_t horizon = 20;
