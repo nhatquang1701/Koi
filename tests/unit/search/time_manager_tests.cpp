@@ -1276,6 +1276,47 @@ void test_deep_ponderhit_doomed_over_budget_ply_bank() {
             "ponderhit with a >15 cp score drop must not exit early even on expensive next ply");
 }
 
+void test_defensive_mate_preserves_budget_and_unified_stop_start_symmetry() {
+    auto neg_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto pos_now = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits ponder_limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    ponder_limits.ponder = true;
+    const SearchLimits live_limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+
+    TimeManager getting_mated(ponder_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              warm_context(), [neg_now] { return *neg_now; });
+    TimeManager delivering_mate(ponder_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                                warm_context(), [pos_now] { return *pos_now; });
+    for (int depth = 5; depth <= 6; ++depth) {
+        getting_mated.observe_iteration(
+            {depth, -99'500, false, false, false, 10'000, 9'000, milliseconds{15}});
+        delivering_mate.observe_iteration(
+            {depth, 99'500, false, false, false, 10'000, 9'000, milliseconds{15}});
+    }
+    getting_mated.reconfigure(live_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              warm_context(), false, *neg_now, 0);
+    delivering_mate.reconfigure(live_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                                warm_context(), false, *pos_now, 0);
+    require(getting_mated.diagnostics().optimum_budget > milliseconds{250} &&
+                !getting_mated.should_stop_after_iteration() &&
+                getting_mated.should_start_next_iteration(milliseconds{1}),
+            "getting mated (-M) must preserve defensive budget instead of fast-exiting at 0 ms");
+    require(delivering_mate.diagnostics().optimum_budget <= milliseconds{250} &&
+                delivering_mate.should_stop_after_iteration() &&
+                !delivering_mate.should_start_next_iteration(milliseconds{1}),
+            "delivering mate (+M) must retain fast-exit budget cap and instant ponderhit exit");
+
+    auto sym_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager sym(live_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                    warm_context(), [sym_now] { return *sym_now; });
+    sym.observe_iteration({4, 30, true, false, false, 10'000, 5'000, milliseconds{20}});
+    sym.observe_iteration({5, 20, false, false, false, 10'000, 5'000, milliseconds{25}});
+    *sym_now += sym.diagnostics().optimum_budget;
+    require(sym.should_stop_after_iteration() &&
+                !sym.should_start_next_iteration(milliseconds{1}),
+            "non-collapsing depth-5 fallback must stay symmetric between stop and start checks");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1332,6 +1373,8 @@ int main(int argc, char** argv) {
          test_sudden_death_scramble_calm_depth5_cutoff},
         {"deep ponderhit doomed over-budget ply bank",
          test_deep_ponderhit_doomed_over_budget_ply_bank},
+        {"defensive mate preserves budget and unified stop/start symmetry",
+         test_defensive_mate_preserves_budget_and_unified_stop_start_symmetry},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

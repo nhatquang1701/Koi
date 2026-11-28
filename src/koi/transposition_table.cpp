@@ -64,21 +64,6 @@ struct AtomicSlot {
 static_assert(sizeof(AtomicSlot) == sizeof(TranspositionEntry),
               "AtomicSlot must preserve TranspositionEntry cache footprint");
 
-struct UnpackedSlot {
-    std::uint64_t key = 0;
-    std::uint64_t word1 = 0;
-    std::uint64_t word2 = 0;
-    int score = 0;
-    Move best_move = Move::no_move();
-    std::int16_t eval = kNoEvaluation;
-    std::int8_t depth = 0;
-    std::uint8_t generation = 0;
-    std::uint8_t generation_age = 0;
-    TranspositionBound bound = TranspositionBound::exact;
-    bool occupied = false;
-    bool pv = false;
-};
-
 [[nodiscard]] bool slot_occupied(const std::uint64_t word2) noexcept {
     return ((word2 >> 48U) & 0xFFU) != 0U;
 }
@@ -749,23 +734,21 @@ void TranspositionTable::store_storage(Storage* storage, std::uint64_t key, int 
         if (slot_key == key) {
             const std::int8_t slot_depth =
                 static_cast<std::int8_t>(static_cast<std::uint8_t>(w2 >> 16U));
-            const std::uint8_t bound_raw = static_cast<std::uint8_t>(w2 >> 40U);
-            const TranspositionBound slot_bound =
-                bound_raw <= static_cast<std::uint8_t>(TranspositionBound::upper) ?
-                    static_cast<TranspositionBound>(bound_raw) :
-                    TranspositionBound::exact;
             const bool keeps_deeper_entry = slot_depth > depth;
-            const bool keeps_equal_exact_entry = slot_depth == depth &&
-                slot_bound == TranspositionBound::exact &&
-                bound != TranspositionBound::exact;
+            bool keeps_equal_exact_entry = false;
+            if (!keeps_deeper_entry && slot_depth == depth &&
+                bound != TranspositionBound::exact) {
+                const std::uint8_t bound_raw = static_cast<std::uint8_t>(w2 >> 40U);
+                keeps_equal_exact_entry =
+                    bound_raw <= static_cast<std::uint8_t>(TranspositionBound::upper) &&
+                    static_cast<TranspositionBound>(bound_raw) == TranspositionBound::exact;
+            }
             if (keeps_deeper_entry || keeps_equal_exact_entry) {
                 const std::uint8_t slot_gen = static_cast<std::uint8_t>(w2 >> 24U);
                 if (slot_gen != gen) {
-                    const std::int16_t slot_eval = static_cast<std::int16_t>(
-                        static_cast<std::uint16_t>(w2));
-                    const bool slot_pv = ((w2 >> 56U) & 0xFFU) != 0U;
-                    const std::uint64_t refreshed_w2 = pack_word2(
-                        slot_eval, slot_depth, gen, epoch, slot_bound, slot_pv);
+                    const std::uint64_t refreshed_w2 =
+                        (w2 & ~(std::uint64_t{0xFFU} << 24U)) |
+                        (static_cast<std::uint64_t>(gen) << 24U);
                     write_slot(cluster_entries[offset], key, w1, refreshed_w2);
                 }
                 return;

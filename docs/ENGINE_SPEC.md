@@ -687,8 +687,9 @@ the search but cannot push it past the cap.
   decayed cumulative `instability_permille_`, inter-move and intra-search
   `score_drop_cp_` (ignored when holding a stable `>= +600` cp win without
   re-research), `score_gain_cp_`, `last_aspiration_researched_`,
-  single-legal-move cap (`min(150 ms, soft / 8)`), confirmed forced-mate fast
-  exit (`>= 2` stable deep mate iterations, capped at `250 ms`), asymmetric
+  single-legal-move cap (`min(150 ms, soft / 8)`), confirmed winning forced-mate
+  fast exit (`>= 2` stable deep `+M` mate iterations, capped at `250 ms`; getting
+  mated `-M` retains defensive search time), asymmetric
   conversion speedup (`score >= +500` cp winning or `<= -700` cp decisively
   lost with a stable deep line), and a 20% ponder-time-saved discount when a
   `ponderhit` arrives with a calm deep line (`depth >= 6`, `stability >= 3`,
@@ -699,12 +700,14 @@ the search but cannot push it past the cap.
   usable clock is at least `2 × soft budget + overhead`
   (`hard_extension_affordable`). Near the end or on high-latency links the soft
   budget wins.
-- `should_stop_after_iteration`: stops at the hard deadline, immediately on a
+- `should_stop_after_iteration` and `should_start_next_iteration` share
+  `clock_early_stop_reached`: stops at the hard deadline, immediately on a
   converted `ponderhit` with a verified single legal reply (`depth >= 4`) or
-  twice-confirmed forced mate (`depth >= 6`), immediately when a calm deep
+  twice-confirmed winning forced mate (`last_mate_sign_ > 0`, `depth >= 6`),
+  immediately when a calm deep
   (`depth >= 8`, `stability >= 3`, no aspiration re-research, `>= 20 ms` sample)
   `ponderhit` would require more than `2× hard_budget` for its predicted next
-  ply, on confirmed forced mates or
+  ply, on confirmed winning forced mates (`depth >= 4`) or
   single-legal moves after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
   on deep (`depth >= 10`, `stability >= 4`) `>= 90%` best-move-share
@@ -719,18 +722,14 @@ the search but cannot push it past the cap.
   once `depth >= 5` (or `depth >= 4` during emergency pacing) with
   `best_move_stability >= 1`, `score_drop < 40` cp, and no aspiration
   re-research on the last iteration.
-- `should_start_next_iteration`: honors instant post-`ponderhit` forced-mate /
-  single-move / doomed `2× hard_budget` exits, emergency pacing, forced-mate /
-  single-move exits, `25%` deep (`depth >= 10`, `stability >= 4`, `>= 90%` effort)
-  converted-`ponderhit` exits, `60%` high-effort dominance (`>= 90%` best-move
-  node share), `70%` sudden-death scramble depth-5 calm exits, and calm `75%`
-  soft-target cutoffs (symmetrically suppressed after an aspiration re-search), adaptive EWMA branching-factor lookahead (`1.3×..3.2×`, starting at
-  `1.5×`, `4 ms` sample floor in emergency pacing vs `10 ms` otherwise, used
-  uniformly across both serial and parallel iterative-deepening drivers to
-  avoid doomed partial iterations past `1.2×` soft target), and a doomed
-  hard-ply guard once past `optimum_budget`
-  (`depth >= 6`, `score_drop < 60` cp, `5 ms` sample floor in emergency pacing
-  vs `20 ms` otherwise, predicted next ply exceeding
+- `should_start_next_iteration`: honors the shared `clock_early_stop_reached`
+  rules (including `!last_aspiration_researched`), plus adaptive EWMA
+  branching-factor lookahead (`1.3×..3.2×`, starting at `1.5×`, `4 ms` sample
+  floor in emergency pacing vs `10 ms` otherwise, used uniformly across both
+  serial and parallel iterative-deepening drivers to avoid doomed partial
+  iterations past `1.2×` soft target), and a doomed hard-ply guard once past
+  `optimum_budget` (`depth >= 6`, `score_drop < 60` cp, `5 ms` sample floor in
+  emergency pacing vs `20 ms` otherwise, predicted next ply exceeding
   `hard_budget`), in addition to the hard deadline.
 - `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)
   and calls `reconfigure`: limits/root context are replaced while preserving

@@ -696,7 +696,7 @@ void TimeManager::update_optimum_budget() noexcept {
                      std::max(std::chrono::milliseconds{2}, timing_.soft_budget / 8)));
         return;
     }
-    if (mate_stable_observations_ >= 2 && last_observed_depth_ >= 4) {
+    if (last_mate_sign_ > 0 && mate_stable_observations_ >= 2 && last_observed_depth_ >= 4) {
         timing_.optimum_budget = std::min(
             timing_.soft_budget,
             std::min(kConfirmedMateOptimumCap,
@@ -827,82 +827,64 @@ bool TimeManager::hard_extension_affordable() const noexcept {
     return remaining >= required;
 }
 
-bool TimeManager::should_stop_after_iteration() const noexcept {
-    const std::int64_t budget_ms = budget_ms_.load(std::memory_order_relaxed);
-    if (unbounded_.load(std::memory_order_relaxed) || budget_ms < 0) {
-        return false;
-    }
-    const auto elapsed = std::chrono::milliseconds{
-        (now_nanoseconds() - started_ns_.load(std::memory_order_relaxed)) / 1'000'000};
-    if (elapsed >= std::chrono::milliseconds{budget_ms}) {
-        hard_deadline_reached_.store(true, std::memory_order_relaxed);
+bool TimeManager::clock_early_stop_reached(
+    const std::chrono::milliseconds elapsed,
+    const std::chrono::milliseconds budget,
+    const std::chrono::milliseconds soft_target) const noexcept {
+    if (ponderhit_converted_ &&
+        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
+         (last_mate_sign_ > 0 && mate_stable_observations_ >= 2 &&
+          last_observed_depth_ >= 6))) {
         return true;
     }
-    const auto soft_target = effective_soft_budget();
-    if (clock_mode_ && ponderhit_converted_ &&
-        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
-         (mate_stable_observations_ >= 2 && last_observed_depth_ >= 6))) {
-        return true;
-    }
-    if (clock_mode_ &&
-        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
-         (mate_stable_observations_ >= 2 && last_observed_depth_ >= 4)) &&
+    if (((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
+         (last_mate_sign_ > 0 && mate_stable_observations_ >= 2 &&
+          last_observed_depth_ >= 4)) &&
         elapsed >= soft_target) {
         return true;
-    }
-    // At a low clock the cold-TT "hard" classification is intentionally not
-    // trusted; stop at soft only when the clock can no longer afford the
-    // extension (a root forcing extension / worker startup needs the hard
-    // budget even in a quiet-looking position).
-    if (emergency_pacing_ && !hard_extension_affordable() &&
-        elapsed >= soft_target) {
-        return true;
-    }
-    if (!clock_mode_) {
-        return false;
     }
     if (stable_observations_ >= 2 && (!hard_position_ || !hard_extension_affordable()) &&
         elapsed >= soft_target) {
         return true;
     }
-    if (ponderhit_converted_ && !hard_position_ && has_effort_sample_ &&
-        best_move_effort_permille_ >= 900U && last_observed_depth_ >= 10 &&
-        stable_observations_ >= 2 && best_move_stability_ >= 4 &&
-        score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
-        elapsed >= scale_fraction(soft_target, 25, 100)) {
-        return true;
-    }
-    if (!hard_position_ && has_effort_sample_ && best_move_effort_permille_ >= 900U &&
-        last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
-        best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
-        !last_aspiration_researched_ &&
-        elapsed >= scale_fraction(soft_target, 60, 100)) {
-        return true;
-    }
-    if (!hard_position_ && last_observed_depth_ >= 6 &&
-        stable_observations_ >= 2 && best_move_stability_ >= 3 &&
-        score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
-        elapsed >= scale_fraction(soft_target, 75, 100)) {
-        return true;
-    }
-    if (!hard_position_ &&
-        increment_clock_ <= std::chrono::milliseconds::zero() &&
-        !limits_.moves_to_go.has_value() &&
-        remaining_clock_ <= std::chrono::milliseconds{10'000} &&
-        last_observed_depth_ >= 5 && stable_observations_ >= 2 &&
-        best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
-        !last_aspiration_researched_ &&
-        elapsed >= scale_fraction(soft_target, 70, 100)) {
-        return true;
-    }
-    if (ponderhit_converted_ && !hard_position_ &&
-        last_observed_depth_ >= 8 && best_move_stability_ >= 3 &&
-        score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
-        last_iteration_elapsed_ >= std::chrono::milliseconds{20}) {
-        const auto predicted_next = scale_fraction(
-            last_iteration_elapsed_, branching_permille_, 1000);
-        const auto budget = std::chrono::milliseconds{budget_ms};
-        if (saturating_add(elapsed, predicted_next) > saturating_add(budget, budget)) {
+    if (!hard_position_) {
+        if (ponderhit_converted_ &&
+            last_observed_depth_ >= 8 && best_move_stability_ >= 3 &&
+            score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
+            last_iteration_elapsed_ >= std::chrono::milliseconds{20}) {
+            const auto predicted_next = scale_fraction(
+                last_iteration_elapsed_, branching_permille_, 1000);
+            if (saturating_add(elapsed, predicted_next) > saturating_add(budget, budget)) {
+                return true;
+            }
+        }
+        if (ponderhit_converted_ && has_effort_sample_ &&
+            best_move_effort_permille_ >= 900U && last_observed_depth_ >= 10 &&
+            stable_observations_ >= 2 && best_move_stability_ >= 4 &&
+            score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
+            elapsed >= scale_fraction(soft_target, 25, 100)) {
+            return true;
+        }
+        if (has_effort_sample_ && best_move_effort_permille_ >= 900U &&
+            last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
+            best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
+            !last_aspiration_researched_ &&
+            elapsed >= scale_fraction(soft_target, 60, 100)) {
+            return true;
+        }
+        if (last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
+            best_move_stability_ >= 3 && score_drop_cp_ <= 15 &&
+            !last_aspiration_researched_ &&
+            elapsed >= scale_fraction(soft_target, 75, 100)) {
+            return true;
+        }
+        if (increment_clock_ <= std::chrono::milliseconds::zero() &&
+            !limits_.moves_to_go.has_value() &&
+            remaining_clock_ <= std::chrono::milliseconds{10'000} &&
+            last_observed_depth_ >= 5 && stable_observations_ >= 2 &&
+            best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
+            !last_aspiration_researched_ &&
+            elapsed >= scale_fraction(soft_target, 70, 100)) {
             return true;
         }
     }
@@ -919,6 +901,33 @@ bool TimeManager::should_stop_after_iteration() const noexcept {
     return false;
 }
 
+bool TimeManager::should_stop_after_iteration() const noexcept {
+    const std::int64_t budget_ms = budget_ms_.load(std::memory_order_relaxed);
+    if (unbounded_.load(std::memory_order_relaxed) || budget_ms < 0) {
+        return false;
+    }
+    const auto elapsed = std::chrono::milliseconds{
+        (now_nanoseconds() - started_ns_.load(std::memory_order_relaxed)) / 1'000'000};
+    const auto budget = std::chrono::milliseconds{budget_ms};
+    if (elapsed >= budget) {
+        hard_deadline_reached_.store(true, std::memory_order_relaxed);
+        return true;
+    }
+    const auto soft_target = effective_soft_budget();
+    // At a low clock the cold-TT "hard" classification is intentionally not
+    // trusted; stop at soft only when the clock can no longer afford the
+    // extension (a root forcing extension / worker startup needs the hard
+    // budget even in a quiet-looking position).
+    if (emergency_pacing_ && !hard_extension_affordable() &&
+        elapsed >= soft_target) {
+        return true;
+    }
+    if (!clock_mode_) {
+        return false;
+    }
+    return clock_early_stop_reached(elapsed, budget, soft_target);
+}
+
 bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimated_next_iteration) const noexcept {
     const std::int64_t budget_ms = budget_ms_.load(std::memory_order_relaxed);
     if (unbounded_.load(std::memory_order_relaxed) || budget_ms < 0) {
@@ -931,62 +940,15 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         elapsed >= soft_target) {
         return false;
     }
-    if (clock_mode_ && ponderhit_converted_ &&
-        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
-         (mate_stable_observations_ >= 2 && last_observed_depth_ >= 6))) {
-        return false;
-    }
-    if (clock_mode_ &&
-        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
-         (mate_stable_observations_ >= 2 && last_observed_depth_ >= 4)) &&
-        elapsed >= soft_target) {
-        return false;
-    }
-    // Pre-iteration lookahead for stable clock searches: when high best-move node
-    // concentration (>= 90%), calm stability (>= 75%), or a 1.5x iteration-time
-    // projection shows a new ply is unlikely to pay off, skip starting it.
     const auto budget = std::chrono::milliseconds{budget_ms};
-    if (clock_mode_ && !hard_position_) {
-        if (ponderhit_converted_ &&
-            last_observed_depth_ >= 8 && best_move_stability_ >= 3 &&
-            score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
-            last_iteration_elapsed_ >= std::chrono::milliseconds{20}) {
-            const auto predicted_next = scale_fraction(
-                last_iteration_elapsed_, branching_permille_, 1000);
-            if (saturating_add(elapsed, predicted_next) > saturating_add(budget, budget)) {
-                return false;
-            }
-        }
-        if (ponderhit_converted_ && has_effort_sample_ &&
-            best_move_effort_permille_ >= 900U && last_observed_depth_ >= 10 &&
-            stable_observations_ >= 2 && best_move_stability_ >= 4 &&
-            score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
-            elapsed >= scale_fraction(soft_target, 25, 100)) {
+    if (clock_mode_) {
+        if (clock_early_stop_reached(elapsed, budget, soft_target)) {
             return false;
         }
-        if (has_effort_sample_ && best_move_effort_permille_ >= 900U &&
-            last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
-            best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
-            !last_aspiration_researched_ &&
-            elapsed >= scale_fraction(soft_target, 60, 100)) {
-            return false;
-        }
-        if (last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
-            best_move_stability_ >= 3 && score_drop_cp_ <= 15 &&
-            !last_aspiration_researched_ &&
-            elapsed >= scale_fraction(soft_target, 75, 100)) {
-            return false;
-        }
-        if (increment_clock_ <= std::chrono::milliseconds::zero() &&
-            !limits_.moves_to_go.has_value() &&
-            remaining_clock_ <= std::chrono::milliseconds{10'000} &&
-            last_observed_depth_ >= 5 && stable_observations_ >= 2 &&
-            best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
-            !last_aspiration_researched_ &&
-            elapsed >= scale_fraction(soft_target, 70, 100)) {
-            return false;
-        }
-        if (last_observed_depth_ >= 5 && best_move_stability_ >= 2 &&
+        // Pre-iteration lookahead for stable clock searches: when adaptive
+        // branching shows the next ply will push past 1.2x soft_target after
+        // 55% elapsed, skip starting it.
+        if (!hard_position_ && last_observed_depth_ >= 5 && best_move_stability_ >= 2 &&
             score_drop_cp_ <= 20 && !last_aspiration_researched_ &&
             last_iteration_elapsed_ > std::chrono::milliseconds::zero()) {
             const auto predicted_next = scale_fraction(

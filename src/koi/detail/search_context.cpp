@@ -1927,9 +1927,6 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         const int quiet_skip_numerator = 3 + depth * depth;
         const int quiet_skip_threshold = improving ? quiet_skip_numerator :
             (quiet_skip_numerator >> 1);
-        const SearchHistoryContext& history = ensure_history();
-        const Move previous_history_move = history.count > 0 ?
-            history.continuation_moves[0] : Move::no_move();
         const int full_child_depth = depth - 1;
         const bool shallow_checked_root = ply == 1 && depth <= 3 &&
             stack.frame(0).in_check;
@@ -1985,7 +1982,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             int continuation_score = 0;
             if (need_lmr_history) {
                 const auto history_scores =
-                    ordering.quiet_and_continuation_scores(moving_side, metadata, history);
+                    ordering.quiet_and_continuation_scores(moving_side, metadata, ensure_history());
                 history_score = metadata.is_capture() ? 0 : history_scores.quiet;
                 continuation_score = history_scores.continuation;
             }
@@ -2004,9 +2001,14 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     move.promotion() != Promotion::none, is_tt_move,
                     is_killer_move, false,
                     negative_continuation_allowed) &&
-                (previous_history_move.is_no_move() ||
-                 !ordering.is_proven_counter_move(
-                     moving_side, previous_history_move, move))) {
+                [&]() noexcept {
+                    const SearchHistoryContext& history = ensure_history();
+                    const Move previous_history_move = history.count > 0 ?
+                        history.continuation_moves[0] : Move::no_move();
+                    return previous_history_move.is_no_move() ||
+                        !ordering.is_proven_counter_move(
+                            moving_side, previous_history_move, move);
+                }()) {
                 selective_pruning = true;
                 ++stats.continuation_history_prunes;
                 ++move_number;
@@ -2568,6 +2570,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // whose own child reached that horizon.  A verified fail-high remains
         // authoritative even when the cut node used quiet/SEE pruning, since
         // the cutoff itself is a valid lower-bound observation.
+        static const SearchHistoryContext kUnusedHistoryContext{};
         const bool complete_history_comparison = best_metadata_valid;
         const bool best_history_feedback =
             (best_move_cutoff && best_score_safe_lower_bound) ||
@@ -2575,12 +2578,13 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         if (ply > 0 && best_metadata_valid && best_history_feedback) {
             if (best_metadata.is_capture()) {
                 if (best_move_cutoff) {
-                    ordering.record_capture_cutoff(best_metadata, depth, history);
+                    ordering.record_capture_cutoff(best_metadata, depth, ensure_history());
                 } else {
-                    ordering.record_capture_best(best_metadata, depth, history);
+                    ordering.record_capture_best(best_metadata, depth, kUnusedHistoryContext);
                 }
                 ++stats.capture_history_updates;
             } else if (best_metadata.move.promotion() == Promotion::none) {
+                const SearchHistoryContext& history = ensure_history();
                 if (best_move_cutoff) {
                     ordering.record_quiet_cutoff(best_history_side, best_metadata, depth, history);
                 } else {
@@ -2595,14 +2599,15 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // Apply failure maluses whenever the node raised alpha or cut off, so
         // earlier searched moves that failed to beat alpha are penalized even
         // when later siblings were reduced or pruned.
-        if (ply > 0 && best_history_feedback) {
+        if (ply > 0 && best_history_feedback && failed_move_count > 0) {
             for (std::size_t index = 0; index < failed_move_count; ++index) {
                 const DeferredHistoryMove& failed = failed_moves[index];
                 const MoveMetadata failed_metadata = failed.metadata();
                 if (failed_metadata.is_capture()) {
-                    ordering.record_capture_fail(failed_metadata, depth, history);
+                    ordering.record_capture_fail(failed_metadata, depth, kUnusedHistoryContext);
                     ++stats.capture_history_updates;
                 } else if (failed_metadata.move.promotion() == Promotion::none) {
+                    const SearchHistoryContext& history = ensure_history();
                     ordering.record_quiet_fail(
                         failed.history_side, failed_metadata, depth, history);
                     ++stats.quiet_history_updates;
@@ -2618,29 +2623,33 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // finds a refutation says the parent's first non-TT quiet move was
         // bad.  Only complete comparisons contribute, and the parent capture
         // case is skipped because its captured piece is no longer visible.
-        if (ply > 0 && !excluded_search && complete_history_comparison &&
-            history.count > 0 && !history.continuation_moves[0].is_no_move()) {
-            const Move parent_move = history.continuation_moves[0];
-            const Piece parent_piece = state.piece_at(parent_move.to());
-            const Color parent_side = opposite(side_to_move);
-            if (parent_move.promotion() == Promotion::none && !parent_piece.empty() &&
-                parent_piece.color == parent_side) {
-                if (best_score <= original_alpha) {
-                    ordering.record_parent_fail_low(parent_side, parent_move, parent_piece.type,
-                                                    ply - 1, history, depth);
-                    ++stats.quiet_history_updates;
-                } else {
-                    const SearchFrame& parent_frame =
-                        stack.frame(static_cast<std::size_t>(ply - 1));
-                    const int first_non_tt_move = parent_frame.had_tt_move ? 2 : 1;
-                    // frame.move_count is published only after a child returns,
-                    // so while this child is being searched it holds the number
-                    // of earlier candidates (0-based).  Compare it with the
-                    // 1-based index of the parent's first non-TT move.
-                    if (parent_frame.move_count + 1 == first_non_tt_move) {
-                        ordering.record_parent_refuted(parent_side, parent_move, parent_piece.type,
-                                                       ply - 1, history, depth);
-                        ++stats.quiet_history_updates;
+        if (ply > 0 && !excluded_search && complete_history_comparison) {
+            const bool parent_fail_low = best_score <= original_alpha;
+            const int first_non_tt_move = parent_frame.had_tt_move ? 2 : 1;
+            // parent_frame.move_count holds the number of earlier candidates
+            // (0-based) while this child is searched; compare against the
+            // 1-based index of the parent's first non-TT move.
+            const bool parent_refuted = !parent_fail_low &&
+                parent_frame.move_count + 1 == first_non_tt_move;
+            if (parent_fail_low || parent_refuted) {
+                const SearchHistoryContext& history = ensure_history();
+                if (history.count > 0 && !history.continuation_moves[0].is_no_move()) {
+                    const Move parent_move = history.continuation_moves[0];
+                    if (parent_move.promotion() == Promotion::none) {
+                        const Piece parent_piece = state.piece_at(parent_move.to());
+                        const Color parent_side = opposite(side_to_move);
+                        if (!parent_piece.empty() && parent_piece.color == parent_side) {
+                            if (parent_fail_low) {
+                                ordering.record_parent_fail_low(
+                                    parent_side, parent_move, parent_piece.type,
+                                    ply - 1, history, depth);
+                            } else {
+                                ordering.record_parent_refuted(
+                                    parent_side, parent_move, parent_piece.type,
+                                    ply - 1, history, depth);
+                            }
+                            ++stats.quiet_history_updates;
+                        }
                     }
                 }
             }
