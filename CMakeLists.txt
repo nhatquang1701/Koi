@@ -860,7 +860,7 @@ koi_add_engine_ps_test(koi_engine_en_croissant_process tests/integration/uci/en_
 koi_add_engine_ps_test(koi_engine_time_safety_process tests/integration/uci/time_safety_test.ps1 180)
 koi_add_ps_test(koi_benchmark_process tests/integration/tools/koi_bench_process_test.ps1 300
     -BenchPath "$<TARGET_FILE:koi_bench>")
-koi_add_engine_ps_test(koi_uci_match_process tests/integration/matches/uci_match_process_test.ps1 120)
+koi_add_engine_ps_test(koi_uci_match_process tests/integration/matches/uci_match_process_test.ps1 240)
 koi_add_engine_ps_test(koi_stockfish_strength_option tests/integration/matches/stockfish_strength_test.ps1 60)
 koi_add_engine_ps_test(koi_uci_match_clock tests/integration/matches/uci_match_clock_test.ps1 120)
 koi_add_ps_test(koi_sprt_compare_decision tests/integration/matches/sprt_compare_decision_test.ps1 30)

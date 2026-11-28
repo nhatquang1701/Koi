@@ -41,27 +41,26 @@ public:
     void update(std::span<const std::uint8_t> bytes) noexcept {
         std::size_t offset = 0;
         if (buffer_size_ > 0) {
-            const std::size_t take = std::min(bytes.size(), buffer_.size() - buffer_size_);
+            const std::size_t take = std::min(bytes.size(), 64U - buffer_size_);
             if (take > 0) {
-                std::memcpy(buffer_.data() + buffer_size_, bytes.data(), take);
+                std::memcpy(buffer_ + buffer_size_, bytes.data(), take);
                 buffer_size_ += take;
                 offset += take;
             }
-            if (buffer_size_ == buffer_.size()) {
-                transform();
+            if (buffer_size_ == 64U) {
+                transform(buffer_);
                 bit_count_ += 512;
                 buffer_size_ = 0;
             }
         }
-        while (bytes.size() - offset >= buffer_.size()) {
-            std::memcpy(buffer_.data(), bytes.data() + offset, buffer_.size());
-            transform();
+        while (bytes.size() - offset >= 64U) {
+            transform(bytes.data() + offset);
             bit_count_ += 512;
-            offset += buffer_.size();
+            offset += 64U;
         }
         const std::size_t remaining = bytes.size() - offset;
         if (remaining > 0) {
-            std::memcpy(buffer_.data(), bytes.data() + offset, remaining);
+            std::memcpy(buffer_, bytes.data() + offset, remaining);
             buffer_size_ = remaining;
         }
     }
@@ -69,23 +68,23 @@ public:
     [[nodiscard]] std::array<std::uint8_t, 32> finish() noexcept {
         const std::uint64_t original_bits = bit_count_ + buffer_size_ * 8U;
         buffer_[buffer_size_++] = 0x80U;
-        if (buffer_size_ > 56) {
-            while (buffer_size_ < buffer_.size()) {
+        if (buffer_size_ > 56U) {
+            while (buffer_size_ < 64U) {
                 buffer_[buffer_size_++] = 0;
             }
-            transform();
+            transform(buffer_);
             buffer_size_ = 0;
         }
-        while (buffer_size_ < 56) {
+        while (buffer_size_ < 56U) {
             buffer_[buffer_size_++] = 0;
         }
         for (int shift = 56; shift >= 0; shift -= 8) {
             buffer_[buffer_size_++] = static_cast<std::uint8_t>(original_bits >> shift);
         }
-        transform();
+        transform(buffer_);
 
         std::array<std::uint8_t, 32> digest{};
-        for (std::size_t index = 0; index < state_.size(); ++index) {
+        for (std::size_t index = 0; index < 8U; ++index) {
             digest[index * 4] = static_cast<std::uint8_t>(state_[index] >> 24);
             digest[index * 4 + 1] = static_cast<std::uint8_t>(state_[index] >> 16);
             digest[index * 4 + 2] = static_cast<std::uint8_t>(state_[index] >> 8);
@@ -95,8 +94,8 @@ public:
     }
 
 private:
-    void transform() noexcept {
-        static constexpr std::array<std::uint32_t, 64> kRoundConstants{
+    void transform(const std::uint8_t* block) noexcept {
+        static constexpr std::uint32_t kRoundConstants[64]{
             0x428a2f98U, 0x71374491U, 0xb5c0fbcfU, 0xe9b5dba5U,
             0x3956c25bU, 0x59f111f1U, 0x923f82a4U, 0xab1c5ed5U,
             0xd807aa98U, 0x12835b01U, 0x243185beU, 0x550c7dc3U,
@@ -114,19 +113,21 @@ private:
             0x748f82eeU, 0x78a5636fU, 0x84c87814U, 0x8cc70208U,
             0x90befffaU, 0xa4506cebU, 0xbef9a3f7U, 0xc67178f2U,
         };
-        std::array<std::uint32_t, 64> schedule{};
-        for (std::size_t index = 0; index < 16; ++index) {
-            const std::size_t offset = index * 4;
-            schedule[index] = (static_cast<std::uint32_t>(buffer_[offset]) << 24) |
-                (static_cast<std::uint32_t>(buffer_[offset + 1]) << 16) |
-                (static_cast<std::uint32_t>(buffer_[offset + 2]) << 8) |
-                static_cast<std::uint32_t>(buffer_[offset + 3]);
+        std::uint32_t schedule[64]{};
+        for (std::size_t index = 0; index < 16U; ++index) {
+            const std::size_t offset = index * 4U;
+            schedule[index] = (static_cast<std::uint32_t>(block[offset]) << 24) |
+                (static_cast<std::uint32_t>(block[offset + 1]) << 16) |
+                (static_cast<std::uint32_t>(block[offset + 2]) << 8) |
+                static_cast<std::uint32_t>(block[offset + 3]);
         }
-        for (std::size_t index = 16; index < schedule.size(); ++index) {
+        for (std::size_t index = 16U; index < 64U; ++index) {
             const std::uint32_t first = schedule[index - 15];
             const std::uint32_t second = schedule[index - 2];
-            const std::uint32_t sigma0 = std::rotr(first, 7) ^ std::rotr(first, 18) ^ (first >> 3);
-            const std::uint32_t sigma1 = std::rotr(second, 17) ^ std::rotr(second, 19) ^ (second >> 10);
+            const std::uint32_t sigma0 =
+                ((first >> 7) | (first << 25)) ^ ((first >> 18) | (first << 14)) ^ (first >> 3);
+            const std::uint32_t sigma1 =
+                ((second >> 17) | (second << 15)) ^ ((second >> 19) | (second << 13)) ^ (second >> 10);
             schedule[index] = schedule[index - 16] + sigma0 + schedule[index - 7] + sigma1;
         }
 
@@ -138,11 +139,13 @@ private:
         std::uint32_t f = state_[5];
         std::uint32_t g = state_[6];
         std::uint32_t h = state_[7];
-        for (std::size_t index = 0; index < schedule.size(); ++index) {
-            const std::uint32_t sigma1 = std::rotr(e, 6) ^ std::rotr(e, 11) ^ std::rotr(e, 25);
+        for (std::size_t index = 0; index < 64U; ++index) {
+            const std::uint32_t sigma1 =
+                ((e >> 6) | (e << 26)) ^ ((e >> 11) | (e << 21)) ^ ((e >> 25) | (e << 7));
             const std::uint32_t choose = (e & f) ^ (~e & g);
             const std::uint32_t temporary1 = h + sigma1 + choose + kRoundConstants[index] + schedule[index];
-            const std::uint32_t sigma0 = std::rotr(a, 2) ^ std::rotr(a, 13) ^ std::rotr(a, 22);
+            const std::uint32_t sigma0 =
+                ((a >> 2) | (a << 30)) ^ ((a >> 13) | (a << 19)) ^ ((a >> 22) | (a << 10));
             const std::uint32_t majority = (a & b) ^ (a & c) ^ (b & c);
             const std::uint32_t temporary2 = sigma0 + majority;
             h = g;
@@ -164,8 +167,8 @@ private:
         state_[7] += h;
     }
 
-    std::array<std::uint32_t, 8> state_{};
-    std::array<std::uint8_t, 64> buffer_{};
+    std::uint32_t state_[8]{};
+    std::uint8_t buffer_[64]{};
     std::size_t buffer_size_ = 0;
     std::uint64_t bit_count_ = 0;
 };
