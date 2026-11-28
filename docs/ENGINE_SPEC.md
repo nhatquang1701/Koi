@@ -638,10 +638,10 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      `usable <= 2000 ms`.
    - Base allocation: `usable / horizon`.
    - Increment credit: `min(3/4 × credit_inc, 1/4 × usable)`, where
-     `credit_inc` is `max(0, increment - overhead)` when `overhead > 100 ms`,
-     without `movestogo` once `remaining <= 15 × increment`, or with `movestogo`
-     once `remaining <= movestogo × increment` (keeping high-latency and
-     low-clock incremental controls sustainable) and `increment` otherwise.
+     `credit_inc` is `max(0, increment - overhead)` when `overhead > 100 ms`
+     or without `movestogo` once `remaining <= 15 × increment` (keeping
+     high-latency and low-clock incremental controls sustainable) and
+     `increment` otherwise.
    - Raw soft: `base + increment_credit`.
    - Raw hard: `hard_units × base + 1.5 × increment_credit`, where
      `hard_units = 3` under emergency pacing and `2` otherwise (earlier builds

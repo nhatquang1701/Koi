@@ -376,9 +376,7 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     const auto low_inc_threshold = scale_fraction(clock->increment, 15, 1);
     const bool use_net_increment_credit = has_increment &&
         (overhead > std::chrono::milliseconds{100} ||
-         (!limits_.moves_to_go.has_value() && remaining <= low_inc_threshold) ||
-         (limits_.moves_to_go.has_value() &&
-          remaining <= scale_fraction(clock->increment, *limits_.moves_to_go, 1)));
+         (!limits_.moves_to_go.has_value() && remaining <= low_inc_threshold));
     const auto raw_inc_credit = use_net_increment_credit
         ? three_quarters(net_increment)
         : three_quarters(clock->increment);

@@ -2469,7 +2469,7 @@ void test_decisive_loss_noise_immunity_preserves_defense_above_minus900() {
                              [now_look_defense] { return *now_look_defense; });
     const std::array<int, 3> decided_scores{-950, -1'030, -995};
     const std::array<int, 3> defense_scores{-750, -830, -795};
-    const std::array<milliseconds, 3> times{milliseconds{50}, milliseconds{150}, milliseconds{600}};
+    const std::array<milliseconds, 3> times{milliseconds{100}, milliseconds{300}, milliseconds{900}};
     for (int i = 0; i < 3; ++i) {
         look_decided.observe_iteration(
             {4 + i, decided_scores[static_cast<std::size_t>(i)], false, false, false,
