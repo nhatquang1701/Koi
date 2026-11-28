@@ -7,7 +7,6 @@
 #include <array>
 #include <bit>
 #include <charconv>
-#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -117,10 +116,15 @@ bool valid_square(int square) noexcept { return square >= 0 && square < 64; }
 int file_of(int square) noexcept { return square & 7; }
 int rank_of(int square) noexcept { return square >> 3; }
 
+[[nodiscard]] constexpr bool is_ascii_space(const char ch) noexcept {
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f';
+}
+
 Piece piece_from_char(char value) noexcept {
-    const Color color = std::isupper(static_cast<unsigned char>(value)) ?
-        Color::white : Color::black;
-    switch (static_cast<char>(std::tolower(static_cast<unsigned char>(value)))) {
+    const bool upper = (value >= 'A' && value <= 'Z');
+    const Color color = upper ? Color::white : Color::black;
+    const char lower = upper ? static_cast<char>(value - 'A' + 'a') : value;
+    switch (lower) {
     case 'p': return {PieceType::pawn, color};
     case 'n': return {PieceType::knight, color};
     case 'b': return {PieceType::bishop, color};
@@ -142,7 +146,7 @@ char piece_to_char(Piece piece) noexcept {
     case PieceType::king: value = 'k'; break;
     case PieceType::none: return '1';
     }
-    return piece.color == Color::white ? static_cast<char>(std::toupper(value)) : value;
+    return piece.color == Color::white ? static_cast<char>(value - 'a' + 'A') : value;
 }
 
 bool parse_uint(std::string_view value, std::uint32_t& output, bool allow_zero,
@@ -162,11 +166,11 @@ bool split_fields(std::string_view fen, std::array<std::string_view, 6>& fields)
     std::size_t count = 0;
     std::size_t cursor = 0;
     while (cursor < fen.size()) {
-        while (cursor < fen.size() && std::isspace(static_cast<unsigned char>(fen[cursor]))) ++cursor;
+        while (cursor < fen.size() && is_ascii_space(fen[cursor])) ++cursor;
         if (cursor == fen.size()) break;
         if (count == fields.size()) return false;
         const std::size_t begin = cursor;
-        while (cursor < fen.size() && !std::isspace(static_cast<unsigned char>(fen[cursor]))) ++cursor;
+        while (cursor < fen.size() && !is_ascii_space(fen[cursor])) ++cursor;
         fields[count++] = fen.substr(begin, cursor - begin);
     }
     return count == fields.size();

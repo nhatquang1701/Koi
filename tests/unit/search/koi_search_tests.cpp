@@ -5078,8 +5078,12 @@ void test_move_annotation_classifications_and_metrics() {
     }
     require(koi::parse_move_annotation("BLUNDER") == MoveAnnotation::blunder,
             "parse_move_annotation should be ASCII case-insensitive");
+    require(koi::parse_move_annotation("InAcCuRaCy") == MoveAnnotation::inaccuracy,
+            "parse_move_annotation should accept mixed-case ASCII");
     require(!koi::parse_move_annotation("unknown").has_value(),
             "parse_move_annotation must reject unknown labels");
+    require(koi::move_annotation_name(static_cast<MoveAnnotation>(255)) == "good",
+            "out-of-range MoveAnnotation should fall back to good");
 
     require(koi::move_annotation_glyph(MoveAnnotation::brilliant) == "!!", "brilliant glyph");
     require(koi::move_annotation_nag(MoveAnnotation::brilliant) == 3, "brilliant NAG");

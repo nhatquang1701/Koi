@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -955,7 +954,7 @@ std::optional<int> run_zero_network_cli_command(
 
 std::string build_command_batch_script(const std::vector<std::string>& commands) {
     const auto is_space = [](const char ch) noexcept {
-        return std::isspace(static_cast<unsigned char>(ch)) != 0;
+        return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f';
     };
     std::string script;
     std::string_view last_line;

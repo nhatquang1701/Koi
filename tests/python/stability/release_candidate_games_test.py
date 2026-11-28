@@ -14,7 +14,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tests" / "support"))
 import unittest_progress  # noqa: E402,F401
 sys.path.insert(0, str(ROOT / "tools" / "stability"))
-from validate_release_candidate_games import chess, main, validate_match_artifacts  # noqa: E402
+from validate_release_candidate_games import (  # noqa: E402
+    GIT_SHA_HEX,
+    _opening_fens,
+    _opening_match,
+    chess,
+    main,
+    validate_match_artifacts,
+)
 
 
 class ReleaseCandidateGamesTest(unittest.TestCase):
@@ -529,6 +536,28 @@ class ReleaseCandidateGamesTest(unittest.TestCase):
         self.report.write_text(json.dumps(report), encoding="utf-8")
         errors = self.validate(expected_max_moves=1, expected_opening_count=2)
         self.assertEqual(errors, ["report does not cover curated openings: long-opening"])
+
+    def test_precomputed_opening_fen_lookup_and_git_sha_regex(self):
+        openings = {
+            "king-pawn": ("e2e4",),
+            "queens-gambit": ("d2d4", "d7d5"),
+        }
+        fen_to_opening = {fen: name for name, fen in _opening_fens(openings).items()}
+        with self.pgn.open("r", encoding="utf-8") as stream:
+            fen_game = chess.pgn.read_game(stream)
+        self.assertEqual(_opening_match(fen_game, openings, fen_to_opening), ("king-pawn", 0))
+
+        mainline_pgn = io.StringIO(
+            '[Event "mainline"]\n[White "Koi"]\n[Black "Stockfish"]\n[Result "*"]\n\n'
+            "1. d4 d5 2. c4 *\n"
+        )
+        mainline_game = chess.pgn.read_game(mainline_pgn)
+        self.assertEqual(_opening_match(mainline_game, openings, fen_to_opening), ("queens-gambit", 2))
+
+        self.assertIsNotNone(GIT_SHA_HEX.fullmatch("a" * 40))
+        self.assertIsNotNone(GIT_SHA_HEX.fullmatch("0123456789abcdef" * 4))
+        self.assertIsNone(GIT_SHA_HEX.fullmatch("a" * 39))
+        self.assertIsNone(GIT_SHA_HEX.fullmatch("a" * 63))
 
 
 if __name__ == "__main__":

@@ -28,6 +28,17 @@ UCI_MOVE = re.compile(r"^[a-h][1-8][a-h][1-8][nbrq]?$")
 NNUE_EVALUATOR_MODES = frozenset({"nnue-v4", "nnue-v5", "nnue-v6", "nnue-v8", "nnue-v9"})
 EVALUATOR_MODES = frozenset({"classical"}) | NNUE_EVALUATOR_MODES
 SHA256_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
+GIT_SHA_HEX = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
+
+
+def _opening_fens(openings: dict[str, tuple[str, ...]]) -> dict[str, str]:
+    fens: dict[str, str] = {}
+    for name, uci_moves in openings.items():
+        board = chess.Board()
+        for move_text in uci_moves:
+            board.push(chess.Move.from_uci(move_text))
+        fens[name] = board.fen()
+    return fens
 
 
 def _read_openings(path: pathlib.Path, errors: list[str]) -> dict[str, tuple[str, ...]]:
@@ -149,7 +160,7 @@ def _validate_package_binding(
         errors.append("package archive SHA-256 does not match the expected archive")
 
     source_commit = binding.get("source_commit")
-    if not isinstance(source_commit, str) or re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", source_commit) is None:
+    if not isinstance(source_commit, str) or GIT_SHA_HEX.fullmatch(source_commit) is None:
         errors.append("package binding has no valid source commit")
     elif (expected_source_commit is not None and
           source_commit.casefold() != expected_source_commit.casefold()):
@@ -370,6 +381,7 @@ def _validate_uci_match(
     if len(pgn_games) != len(games):
         errors.append(f"PGN/report game counts differ ({len(pgn_games)} versus {len(games)})")
 
+    opening_fens = _opening_fens(openings)
     opening_counts: Counter[str] = Counter()
     allowed_terminations = {
         "max plies", "checkmate", "stalemate", "threefold repetition",
@@ -409,10 +421,7 @@ def _validate_uci_match(
                 errors.append(f"report game {index} names an unknown curated opening {recorded_name!r}")
             else:
                 opening_moves = openings[recorded_name]
-                expected_board = chess.Board()
-                for move_text in opening_moves:
-                    expected_board.push(chess.Move.from_uci(move_text))
-                if initial_fen != "startpos" and board.fen() == expected_board.fen():
+                if initial_fen != "startpos" and board.fen() == opening_fens[recorded_name]:
                     opening_name = recorded_name
                 elif tuple(move_texts[: len(opening_moves)]) == opening_moves:
                     opening_name = recorded_name
@@ -473,15 +482,16 @@ def _validate_uci_match(
     return errors
 
 
-def _opening_match(game, openings: dict[str, tuple[str, ...]]) -> tuple[str, int] | None:
-    root = game.board()
-    root_fen = root.fen()
-    for name, uci_moves in openings.items():
-        expected = chess.Board()
-        for move_text in uci_moves:
-            expected.push(chess.Move.from_uci(move_text))
-        if root_fen == expected.fen():
-            return name, 0
+def _opening_match(
+    game,
+    openings: dict[str, tuple[str, ...]],
+    fen_to_opening: dict[str, str] | None = None,
+) -> tuple[str, int] | None:
+    if fen_to_opening is None:
+        fen_to_opening = {fen: name for name, fen in _opening_fens(openings).items()}
+    root_fen = game.board().fen()
+    if root_fen in fen_to_opening:
+        return fen_to_opening[root_fen], 0
 
     # Cute Chess/EPD versions differ in whether they keep the selected opening
     # in the PGN SetUp/FEN headers or replay its moves in the mainline.
@@ -615,6 +625,7 @@ def validate_match_artifacts(
                 f"expected white={expected_white}, black={expected_black}"
             )
 
+    fen_to_opening = {fen: name for name, fen in _opening_fens(openings).items()}
     opening_counts: Counter[str] = Counter()
     for index, game in enumerate(games, 1):
         actual_koi_color = (
@@ -632,7 +643,7 @@ def validate_match_artifacts(
             errors.append(f"PGN game {index} is unfinished or has invalid result {result!r}")
         opening_plies_in_movetext = 0
         if openings:
-            opening_match = _opening_match(game, openings)
+            opening_match = _opening_match(game, openings, fen_to_opening)
             if opening_match is None:
                 errors.append(f"PGN game {index} does not match a curated opening")
             else:
@@ -712,7 +723,7 @@ def main(argv: list[str] | None = None) -> int:
             not SHA256_HEX.fullmatch(args.expected_package_archive_sha256)):
         parser.error("--expected-package-archive-sha256 must contain 64 hexadecimal characters")
     if (args.expected_source_commit is not None and
-            re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", args.expected_source_commit) is None):
+            GIT_SHA_HEX.fullmatch(args.expected_source_commit) is None):
         parser.error("--expected-source-commit must contain a 40- or 64-character Git SHA")
 
     errors = validate_match_artifacts(

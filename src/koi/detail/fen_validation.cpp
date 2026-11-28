@@ -2,7 +2,6 @@
 
 #include <array>
 #include <charconv>
-#include <cctype>
 #include <cstdint>
 #include <string_view>
 
@@ -22,11 +21,15 @@ struct FenLayout {
     int black_pieces = 0;
 };
 
+[[nodiscard]] constexpr bool is_ascii_space(const char ch) noexcept {
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f';
+}
+
 bool split_fen_fields(std::string_view fen, std::array<std::string_view, 6>& fields) {
     std::size_t offset = 0;
     std::size_t count = 0;
     while (offset < fen.size()) {
-        while (offset < fen.size() && std::isspace(static_cast<unsigned char>(fen[offset]))) {
+        while (offset < fen.size() && is_ascii_space(fen[offset])) {
             ++offset;
         }
         if (offset == fen.size()) {
@@ -37,7 +40,7 @@ bool split_fen_fields(std::string_view fen, std::array<std::string_view, 6>& fie
         }
 
         const std::size_t start = offset;
-        while (offset < fen.size() && !std::isspace(static_cast<unsigned char>(fen[offset]))) {
+        while (offset < fen.size() && !is_ascii_space(fen[offset])) {
             ++offset;
         }
         fields[count++] = fen.substr(start, offset - start);

@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cmath>
 #include <limits>
 #include <mutex>
@@ -42,14 +41,43 @@ constexpr std::array<AnnotationMetadata, 11> kAnnotationTable{{
     {MoveAnnotation::blunder, "blunder", "??", 4},
 }};
 
-[[nodiscard]] const AnnotationMetadata& lookup_metadata(
-    const MoveAnnotation annotation) noexcept {
-    for (const auto& entry : kAnnotationTable) {
-        if (entry.value == annotation) {
-            return entry;
+[[nodiscard]] constexpr char ascii_lower(const char ch) noexcept {
+    return (ch >= 'A' && ch <= 'Z') ? static_cast<char>(ch - 'A' + 'a') : ch;
+}
+
+[[nodiscard]] constexpr bool annotation_table_valid() noexcept {
+    for (std::size_t i = 0; i < kAnnotationTable.size(); ++i) {
+        if (static_cast<std::size_t>(kAnnotationTable[i].value) != i) {
+            return false;
+        }
+        const std::string_view name = kAnnotationTable[i].name;
+        if (name.empty()) {
+            return false;
+        }
+        for (const char ch : name) {
+            if (ch < 'a' || ch > 'z') {
+                return false;
+            }
+        }
+        for (std::size_t j = i + 1; j < kAnnotationTable.size(); ++j) {
+            if (name == kAnnotationTable[j].name) {
+                return false;
+            }
         }
     }
-    return kAnnotationTable[4]; // good
+    return true;
+}
+
+static_assert(annotation_table_valid(),
+              "kAnnotationTable must be ordered by MoveAnnotation with unique non-empty lowercase ASCII names");
+
+[[nodiscard]] constexpr const AnnotationMetadata& lookup_metadata(
+    const MoveAnnotation annotation) noexcept {
+    const auto index = static_cast<std::size_t>(annotation);
+    if (index < kAnnotationTable.size()) {
+        return kAnnotationTable[index];
+    }
+    return kAnnotationTable[static_cast<std::size_t>(MoveAnnotation::good)];
 }
 
 [[nodiscard]] int effective_cp(const MoveScoreEval& eval) noexcept {
@@ -66,14 +94,13 @@ constexpr std::array<AnnotationMetadata, 11> kAnnotationTable{{
     return fullmoves * 2U + (state.side_to_move() == Color::black ? 1U : 0U);
 }
 
-[[nodiscard]] bool equals_ascii_ignore_case(std::string_view lhs,
-                                            std::string_view rhs) noexcept {
+[[nodiscard]] constexpr bool equals_ascii_ignore_case(std::string_view lhs,
+                                                      std::string_view rhs) noexcept {
     if (lhs.size() != rhs.size()) {
         return false;
     }
     for (std::size_t index = 0; index < lhs.size(); ++index) {
-        if (std::tolower(static_cast<unsigned char>(lhs[index])) !=
-            std::tolower(static_cast<unsigned char>(rhs[index]))) {
+        if (ascii_lower(lhs[index]) != ascii_lower(rhs[index])) {
             return false;
         }
     }

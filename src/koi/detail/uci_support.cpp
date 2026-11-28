@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <array>
 #include <bit>
-#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -138,11 +137,19 @@ std::string hex_bytes(const std::uint8_t* const data, const std::size_t count) {
     return hex;
 }
 
+[[nodiscard]] constexpr char ascii_lower(const char ch) noexcept {
+    return (ch >= 'A' && ch <= 'Z') ? static_cast<char>(ch - 'A' + 'a') : ch;
+}
+
+[[nodiscard]] constexpr bool is_ascii_space(const char ch) noexcept {
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f';
+}
+
 std::string_view trim_ascii(std::string_view value) noexcept {
-    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0) {
+    while (!value.empty() && is_ascii_space(value.front())) {
         value.remove_prefix(1);
     }
-    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0) {
+    while (!value.empty() && is_ascii_space(value.back())) {
         value.remove_suffix(1);
     }
     return value;
@@ -227,9 +234,7 @@ bool equals_ignore_case(const std::string_view left, const std::string_view righ
         return false;
     }
     for (std::size_t index = 0; index < left.size(); ++index) {
-        const auto left_character = static_cast<unsigned char>(left[index]);
-        const auto right_character = static_cast<unsigned char>(right[index]);
-        if (std::tolower(left_character) != std::tolower(right_character)) {
+        if (ascii_lower(left[index]) != ascii_lower(right[index])) {
             return false;
         }
     }
@@ -253,17 +258,11 @@ bool parse_uint64(const std::string_view value, std::uint64_t& parsed) noexcept 
 }
 
 bool parse_boolean(const std::string_view value, bool& parsed) {
-    std::string normalized;
-    normalized.reserve(value.size());
-    for (const unsigned char character : value) {
-        normalized.push_back(static_cast<char>(std::tolower(character)));
-    }
-
-    if (normalized == "true") {
+    if (equals_ignore_case(value, "true")) {
         parsed = true;
         return true;
     }
-    if (normalized == "false") {
+    if (equals_ignore_case(value, "false")) {
         parsed = false;
         return true;
     }
@@ -1315,8 +1314,7 @@ bool is_bare_coordinate_move_token(const std::string_view token) noexcept {
         return false;
     }
     if (token.size() == 5) {
-        const char promo =
-            static_cast<char>(std::tolower(static_cast<unsigned char>(token[4])));
+        const char promo = ascii_lower(token[4]);
         return promo == 'n' || promo == 'b' || promo == 'r' || promo == 'q';
     }
     return true;
@@ -1402,13 +1400,11 @@ std::optional<ParsedEpdPrefix> parse_epd_prefix(std::string_view line) {
     std::size_t cursor = 0;
     std::array<std::string_view, 4> fields{};
     for (std::size_t field_index = 0; field_index < fields.size(); ++field_index) {
-        while (cursor < line.size() &&
-               std::isspace(static_cast<unsigned char>(line[cursor])) != 0) {
+        while (cursor < line.size() && is_ascii_space(line[cursor])) {
             ++cursor;
         }
         const std::size_t start = cursor;
-        while (cursor < line.size() &&
-               std::isspace(static_cast<unsigned char>(line[cursor])) == 0) {
+        while (cursor < line.size() && !is_ascii_space(line[cursor])) {
             ++cursor;
         }
         if (start == cursor) {
@@ -1725,7 +1721,8 @@ std::optional<std::string> move_to_san(const GameState& state, const Move move) 
                 san.push_back('x');
             }
         }
-        san += move.to().uci();
+        san.push_back(move.to().file());
+        san.push_back(move.to().rank());
         if (const char promo = promotion_letter(move.promotion()); promo != '\0') {
             san.push_back('=');
             san.push_back(promo);
@@ -1797,27 +1794,25 @@ std::optional<Move> parse_move_uci_or_san(const GameState& state,
 
 namespace {
 
-std::string format_san_movetext(const GameState& origin, const std::vector<Move>& moves,
-                                GameState& final_state) {
-    final_state = origin;
-    final_state.detach_mirror();
+std::string format_san_movetext(GameState& state, const std::vector<Move>& moves) {
+    state.detach_mirror();
     std::ostringstream out;
     bool first = true;
     for (std::size_t index = 0; index < moves.size(); ++index) {
         const Move& move = moves[index];
-        const std::string token = move_to_san(final_state, move).value_or(move.uci());
+        const std::string token = move_to_san(state, move).value_or(move.uci());
         if (!first) {
             out << ' ';
         }
         first = false;
-        if (final_state.side_to_move() == Color::white) {
-            out << final_state.fullmove_number() << ". " << token;
+        if (state.side_to_move() == Color::white) {
+            out << state.fullmove_number() << ". " << token;
         } else if (index == 0) {
-            out << final_state.fullmove_number() << "... " << token;
+            out << state.fullmove_number() << "... " << token;
         } else {
             out << token;
         }
-        if (!final_state.make_move(move)) {
+        if (!state.make_move(move)) {
             break;
         }
     }
@@ -1828,7 +1823,7 @@ std::string format_san_movetext(const GameState& origin, const std::vector<Move>
 
 std::string format_move_history(const GameState& origin, const std::vector<Move>& moves) {
     const std::string origin_fen = origin.fen();
-    const bool is_startpos = (origin_fen == GameState::startpos().fen());
+    const bool is_startpos = (origin_fen == kStartposFen);
     std::ostringstream out;
     out << "Origin  : " << (is_startpos ? "startpos" : origin_fen) << '\n'
         << "Plies   : " << moves.size() << '\n'
@@ -1840,7 +1835,7 @@ std::string format_move_history(const GameState& origin, const std::vector<Move>
             out << ' ' << move.uci();
         }
         GameState final_state = origin;
-        out << "\nSAN     : " << format_san_movetext(origin, moves, final_state);
+        out << "\nSAN     : " << format_san_movetext(final_state, moves);
     }
     out << "\nCommand : position " << (is_startpos ? "startpos" : ("fen " + origin_fen));
     if (!moves.empty()) {
@@ -1855,7 +1850,7 @@ std::string format_move_history(const GameState& origin, const std::vector<Move>
 
 std::string format_pgn(const GameState& origin, const std::vector<Move>& moves) {
     GameState final_state = origin;
-    const std::string movetext = format_san_movetext(origin, moves, final_state);
+    const std::string movetext = format_san_movetext(final_state, moves);
     const char* result = "*";
     if (!final_state.has_legal_move()) {
         result = final_state.in_check()
@@ -1866,7 +1861,7 @@ std::string format_pgn(const GameState& origin, const std::vector<Move>& moves) 
     }
 
     const std::string origin_fen = origin.fen();
-    const bool is_startpos = (origin_fen == GameState::startpos().fen());
+    const bool is_startpos = (origin_fen == kStartposFen);
     std::ostringstream out;
     out << "[Event \"Koi Session\"]\n"
         << "[Site \"?\"]\n"
@@ -1889,13 +1884,11 @@ std::string format_epd(const GameState& position) {
     std::size_t count = 0;
     std::size_t cursor = 0;
     while (cursor < fen.size() && count < fields.size()) {
-        while (cursor < fen.size() &&
-               std::isspace(static_cast<unsigned char>(fen[cursor])) != 0) {
+        while (cursor < fen.size() && is_ascii_space(fen[cursor])) {
             ++cursor;
         }
         const std::size_t start = cursor;
-        while (cursor < fen.size() &&
-               std::isspace(static_cast<unsigned char>(fen[cursor])) == 0) {
+        while (cursor < fen.size() && !is_ascii_space(fen[cursor])) {
             ++cursor;
         }
         if (start < cursor) {
