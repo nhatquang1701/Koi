@@ -17,7 +17,7 @@ enum class CpuVariant {
 [[nodiscard]] std::optional<CpuVariant> parse_cpu_variant(std::string_view text) noexcept;
 
 // Names the executable that implements a variant, for example
-// "koi-engine-avx2.exe".
+// "koi-avx2.exe".
 [[nodiscard]] std::string_view cpu_variant_executable_name(CpuVariant variant) noexcept;
 
 // Picks the variant for the running host. `avx512_supported` and

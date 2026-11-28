@@ -15,7 +15,7 @@
 | Rules variant | Standard chess only; no Chess960 or other variants | `src/koi/position.cpp` |
 | Language | C++26 (`CMAKE_CXX_STANDARD 26`) | `CMakeLists.txt` |
 | License | GPL-3.0-or-later | `LICENSE` |
-| Current build version pin | `1.2.0` | `project(koi_engine VERSION 1.2.0 ...)`, `CMakeLists.txt:3` |
+| Current build version pin | `1.2.0` | `project(koi VERSION 1.2.0 ...)`, `CMakeLists.txt:3` |
 | Compiled build identity | `KOI_ENGINE_BUILD_VERSION="${PROJECT_VERSION}"` | `CMakeLists.txt` |
 | UCI identity/version | `id name Koi <version>` (CMake project pin), `id author`, and `info string build <commit>`; there is no separate `uci` version field | `src/koi/uci_controller.cpp` |
 
@@ -24,7 +24,7 @@ the core library and is consumed by `koi-bench` for its JSON
 `build` field (`tools/engine/koi_bench.cpp`). Release provenance
 instead comes from the external package manifest written by
 `tools/build/package_release.ps1` (`<package>.package.json` beside the
-archive): schema `koi-engine-package-v1`, hard-coded
+archive): schema `koi-package-v1`, hard-coded
 `version = '1.2.0'`, archive hash, per-file SHA-256 hashes, and a `provenance`
 object with `source_commit`, `source_dirty`, `source_ref`, and `created_utc`. A
 package archive also gets a local `.sha256` sidecar and `.package.json` manifest for CI/developer verification, while public GitHub Releases publish strictly the platform archives and standalone `koi.nnue` (relying on GitHub's built-in asset SHA-256 digests and SLSA attestations).
@@ -72,15 +72,15 @@ stack to 16 MiB in `main.cpp`.
 
 | Executable | Build | Purpose |
 | --- | --- | --- |
-| `koi-engine` | Baseline `koi_core_generic` | The single GUI entry point. On x86-64 it starts the fastest sibling it can use and otherwise runs the baseline in place. On macOS arm64 it is the only engine binary. |
-| `koi-engine-avx2` | x86-64 AVX2 Release core | Directly runnable; gates itself on AVX2 at startup and exits with code 3 if unsupported |
-| `koi-engine-avx512` | x86-64 AVX-512 (F/BW/CD/DQ/VL) Release core | Directly runnable; gates itself on AVX-512 at startup and exits with code 3 if unsupported |
+| `koi` | Baseline `koi_core_generic` | The single GUI entry point. On x86-64 it starts the fastest sibling it can use and otherwise runs the baseline in place. On macOS arm64 it is the only engine binary. |
+| `koi-avx2` | x86-64 AVX2 Release core | Directly runnable; gates itself on AVX2 at startup and exits with code 3 if unsupported |
+| `koi-avx512` | x86-64 AVX-512 (F/BW/CD/DQ/VL) Release core | Directly runnable; gates itself on AVX-512 at startup and exits with code 3 if unsupported |
 | `koi-bench` | AVX2 on x86-64; baseline on macOS arm64 | 64-position hard tactical suite and 128-position optional positional corpus; JSON profiles and speed reports |
 | `koi-perft`, `koi-replay`, `koi-eval-features`, `koi-nnue-fixture` | Same policy as `koi-bench` | Rules/perft, replay, evaluator-feature dump, NNUE fixture generator |
 
 CPU variant selection lives in `src/koi/cpu_variant.cpp` and `src/main.cpp`:
 
-- The selector is compiled only into the baseline `koi-engine` (`KOI_CPU_SELECTOR=1`).
+- The selector is compiled only into the baseline `koi` (`KOI_CPU_SELECTOR=1`).
 - `KOI_CPU_VARIANT` accepts `generic`, `avx2`, `avx512` case-insensitively; `auto`
   and unknown values mean no override (`parse_cpu_variant`).
 - A forced variant is honored only when its sibling executable exists; the target
@@ -1090,7 +1090,7 @@ measurement commands, never CTest thresholds.
 `tools/build/package_release.ps1`:
 
 1. Requires a Release build directory containing the platform-required engine
-   executables (`koi-engine`; plus AVX2/AVX-512 siblings on Windows/Linux).
+   executables (`koi`; plus AVX2/AVX-512 siblings on Windows/Linux).
    Developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`)
    and the test suite are intentionally **not** copied into release archives;
    developers build them from source.
@@ -1109,7 +1109,7 @@ measurement commands, never CTest thresholds.
    standalone `koi.nnue` alongside the archives on official releases.
 4. Creates `.zip` on Windows or `.tar.gz` elsewhere plus a local `.sha256`
    sidecar for build/CI verification and `<package>.package.json` manifest
-   (`koi-engine-package-v1` with archive hash, per-file size/SHA-256,
+   (`koi-package-v1` with archive hash, per-file size/SHA-256,
    NNUE inclusion flags, and provenance: `GITHUB_SHA` or `git rev-parse HEAD`,
    dirty flag computed with `core.autocrlf=false`). Public GitHub Releases
    published by `release.yml` attach only the platform archives and standalone

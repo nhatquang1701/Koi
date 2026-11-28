@@ -259,25 +259,25 @@ jobs:
           if errorlevel 1 exit /b 1
           pwsh -NoProfile -File tests/integration/packaging/package_release_test.ps1 -BuildDirectory build/ci-package -PackageScript tools/build/package_release.ps1
           if errorlevel 1 exit /b 1
-          for %%F in (koi-engine.exe koi-engine-avx2.exe koi-engine-avx512.exe) do (
-            dumpbin /nologo /headers artifacts\packages\koi-engine-v1.2.0\%%F | findstr /C:"Control Flow Guard" >nul
+          for %%F in (koi.exe koi-avx2.exe koi-avx512.exe) do (
+            dumpbin /nologo /headers artifacts\packages\koi-v1.2.0\%%F | findstr /C:"Control Flow Guard" >nul
             if errorlevel 1 exit /b 1
           )
-          for %%F in (koi-engine-avx2.exe koi-engine-avx512.exe) do (
-            dumpbin /nologo /imports artifacts\packages\koi-engine-v1.2.0\%%F | findstr /I "CreateProcess" >nul
+          for %%F in (koi-avx2.exe koi-avx512.exe) do (
+            dumpbin /nologo /imports artifacts\packages\koi-v1.2.0\%%F | findstr /I "CreateProcess" >nul
             if not errorlevel 1 exit /b 1
           )
-          certutil -hashfile artifacts\packages\koi-engine-v1.2.0.zip SHA256
+          certutil -hashfile artifacts\packages\koi-v1.2.0.zip SHA256
           if errorlevel 1 exit /b 1
           dir artifacts\packages
       - name: Upload the Windows package
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: koi-engine-windows-package
+          name: koi-windows-package
           path: |
-            artifacts/packages/koi-engine-v1.2.0.zip
-            artifacts/packages/koi-engine-v1.2.0.zip.sha256
-            artifacts/packages/koi-engine-v1.2.0.package.json
+            artifacts/packages/koi-v1.2.0.zip
+            artifacts/packages/koi-v1.2.0.zip.sha256
+            artifacts/packages/koi-v1.2.0.package.json
           if-no-files-found: ignore
           retention-days: 7

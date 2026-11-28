@@ -24,7 +24,7 @@ namespace {
 
 // Launches `variant` with the parent's standard handles and waits for it. The
 // child is placed in a job object that dies with the parent so a GUI that kills
-// `koi-engine.exe` cannot leave an orphaned search process behind. Returns the
+// `koi.exe` cannot leave an orphaned search process behind. Returns the
 // child's exit code, or -1 when the child could not be started at all.
 int launch_variant(const std::filesystem::path& directory, CpuVariant variant,
                    bool explicit_choice) noexcept {
@@ -94,7 +94,7 @@ int launch_variant(const std::filesystem::path& directory, CpuVariant variant,
                 (void)::SetConsoleCtrlHandler(nullptr, FALSE);
             }
             if (explicit_choice) {
-                std::fprintf(stderr, "koi-engine: could not start %s (error %lu).\n",
+                std::fprintf(stderr, "koi: could not start %s (error %lu).\n",
                              child_path.string().c_str(), static_cast<unsigned long>(error));
             }
             return -1;
@@ -138,7 +138,7 @@ int launch_variant(const std::filesystem::path& directory, CpuVariant variant,
         char* arguments[] = {path_text.data(), nullptr};
         ::execv(path_text.c_str(), arguments);
         if (explicit_choice) {
-            std::fprintf(stderr, "koi-engine: could not start %s.\n", path_text.c_str());
+            std::fprintf(stderr, "koi: could not start %s.\n", path_text.c_str());
         }
         return -1;
     } catch (...) {

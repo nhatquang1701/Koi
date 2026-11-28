@@ -42,8 +42,8 @@ chmod 600 ~/koi-bot/token
 ~/koi-bot/koi-bot.sh stop
 ```
 
-`install` downloads the latest release package (verifying the `.sha256` sidecar on older releases or GitHub's release-asset SHA-256 `digest` metadata on newer releases, plus `koi-engine nnue` payload checksum verification), installs
-`koi-engine` plus the shipped `.nnue` under `~/koi-bot/engines`, and writes
+`install` downloads the latest release package (verifying the `.sha256` sidecar on older releases or GitHub's release-asset SHA-256 `digest` metadata on newer releases, plus `koi nnue` payload checksum verification), installs
+`koi` plus the shipped `.nnue` under `~/koi-bot/engines`, and writes
 `~/koi-bot/config.yml` (mode 600) pointing `EvalFile` at that net with rated
 bot-vs-bot matchmaking enabled (`KOI_BOT_MATCHMAKING=true` by default,
 `KOI_BOT_MATCHMAKING_TIMEOUT=5` minutes).
@@ -72,7 +72,7 @@ bot-vs-bot matchmaking enabled (`KOI_BOT_MATCHMAKING=true` by default,
 release exists it downloads the macOS arm64 package, verifies its SHA-256 hash
 (using the `.sha256` sidecar on legacy releases or GitHub's asset `digest` field
 on v1.2.0+), extracts the engine, verifies the bundled network with
-`koi-engine nnue`, rewrites the config, and restarts the bot.
+`koi nnue`, rewrites the config, and restarts the bot.
 
 `install-launchd` registers three agents:
 
@@ -92,7 +92,7 @@ back to manual control.
   token               # OAuth token, mode 600
   config.yml          # generated, mode 600 - edits are overwritten
   python-bin          # interpreter used for the venv
-  engines/koi-engine  # release binary
+  engines/koi  # release binary
   engines/koi.nnue    # release network
   engines/VERSION     # installed release tag
   lichess-bot/        # upstream clone + .venv

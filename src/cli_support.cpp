@@ -86,7 +86,7 @@ void write_engine_json(int argc, char* argv[], std::string_view version,
 void write_help(std::string_view version, std::string_view commit) {
     std::cout << "Koi " << version << " (" << commit
               << ") - C++26 UCI chess engine\n\n"
-              << "Usage: koi-engine [options] [command]\n\n"
+              << "Usage: koi [options] [command]\n\n"
               << "Options & commands:\n"
               << "  version, -v, --version                   Print engine version and git commit\n"
               << "  help, -h, --help                         Show this help message\n"
@@ -127,7 +127,7 @@ std::optional<GameState> resolve_cli_position(const std::optional<std::string>& 
     std::string error;
     const auto parsed = detail::parse_cli_position_spec(*fen, error);
     if (!parsed.has_value()) {
-        std::cerr << "koi-engine: " << error << '\n';
+        std::cerr << "koi: " << error << '\n';
         return std::nullopt;
     }
     return *parsed;
@@ -411,7 +411,7 @@ std::optional<int> parse_cli_options(
         }
         if (arg == "see") {
             if (index + 1 >= argc) {
-                std::cerr << "koi-engine: missing move for see (e.g. see e4d5 [fen]).\n";
+                std::cerr << "koi: missing move for see (e.g. see e4d5 [fen]).\n";
                 return 2;
             }
             out.see_move = std::string(argv[++index]);
@@ -438,13 +438,13 @@ std::optional<int> parse_cli_options(
         }
         if (arg == "perft") {
             if (index + 1 >= argc) {
-                std::cerr << "koi-engine: missing depth for perft (expected integer 1..10 or --suite).\n";
+                std::cerr << "koi: missing depth for perft (expected integer 1..10 or --suite).\n";
                 return 2;
             }
             const std::string_view depth_arg(argv[++index]);
             if (depth_arg == "--suite" || depth_arg == "suite") {
                 if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
-                    std::cerr << "koi-engine: perft --suite does not accept a position argument.\n";
+                    std::cerr << "koi: perft --suite does not accept a position argument.\n";
                     return 2;
                 }
                 out.perft_suite = true;
@@ -453,7 +453,7 @@ std::optional<int> parse_cli_options(
             }
             std::size_t depth = 0;
             if (!parse_bounded_uint(depth_arg, 1, 10, depth)) {
-                std::cerr << "koi-engine: invalid perft depth '" << depth_arg
+                std::cerr << "koi: invalid perft depth '" << depth_arg
                           << "' (expected integer 1..10).\n";
                 return 2;
             }
@@ -473,7 +473,7 @@ std::optional<int> parse_cli_options(
             if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
                 const std::string_view next_arg(argv[++index]);
                 if (!parse_bounded_uint(next_arg, 1, 64, depth)) {
-                    std::cerr << "koi-engine: invalid bench depth '" << next_arg
+                    std::cerr << "koi: invalid bench depth '" << next_arg
                               << "' (expected integer 1..64).\n";
                     return 2;
                 }
@@ -481,7 +481,7 @@ std::optional<int> parse_cli_options(
             if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
                 const std::string_view next_arg(argv[++index]);
                 if (!parse_bounded_uint(next_arg, 1, kMaximumBenchHashMb, hash_mb)) {
-                    std::cerr << "koi-engine: invalid bench hash '" << next_arg
+                    std::cerr << "koi: invalid bench hash '" << next_arg
                               << "' (expected integer 1.." << kMaximumBenchHashMb << ").\n";
                     return 2;
                 }
@@ -490,7 +490,7 @@ std::optional<int> parse_cli_options(
             if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
                 const std::string_view next_arg(argv[++index]);
                 if (!parse_bounded_uint(next_arg, 1, max_bench_threads, threads)) {
-                    std::cerr << "koi-engine: invalid bench threads '" << next_arg
+                    std::cerr << "koi: invalid bench threads '" << next_arg
                               << "' (expected integer 1.." << max_bench_threads << ").\n";
                     return 2;
                 }
@@ -512,7 +512,7 @@ std::optional<int> parse_cli_options(
             if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
                 const std::string_view next_arg(argv[++index]);
                 if (!parse_bounded_uint(next_arg, 1, max_bench_threads, threads)) {
-                    std::cerr << "koi-engine: invalid speedtest threads '" << next_arg
+                    std::cerr << "koi: invalid speedtest threads '" << next_arg
                               << "' (expected integer 1.." << max_bench_threads << ").\n";
                     return 2;
                 }
@@ -521,7 +521,7 @@ std::optional<int> parse_cli_options(
             if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
                 const std::string_view next_arg(argv[++index]);
                 if (!parse_bounded_uint(next_arg, 1, kMaximumBenchHashMb, hash_mb)) {
-                    std::cerr << "koi-engine: invalid speedtest hash '" << next_arg
+                    std::cerr << "koi: invalid speedtest hash '" << next_arg
                               << "' (expected integer 1.." << kMaximumBenchHashMb << ").\n";
                     return 2;
                 }
@@ -530,7 +530,7 @@ std::optional<int> parse_cli_options(
             if (index + 1 < argc && !std::string_view(argv[index + 1]).starts_with('-')) {
                 const std::string_view next_arg(argv[++index]);
                 if (!parse_bounded_uint(next_arg, 1, 60, seconds)) {
-                    std::cerr << "koi-engine: invalid speedtest seconds '" << next_arg
+                    std::cerr << "koi: invalid speedtest seconds '" << next_arg
                               << "' (expected integer 1..60).\n";
                     return 2;
                 }
@@ -555,7 +555,7 @@ std::optional<int> parse_cli_options(
                 consume_value_flag(arg, index, argc, argv, "--nnue", "", flag_value);
             status != ValueFlagStatus::kNotMatched) {
             if (status == ValueFlagStatus::kMissing) {
-                std::cerr << "koi-engine: missing path for --nnue.\n";
+                std::cerr << "koi: missing path for --nnue.\n";
                 return 2;
             }
             cli_nnue = true;
@@ -567,7 +567,7 @@ std::optional<int> parse_cli_options(
                 consume_value_flag(arg, index, argc, argv, "--book", "", flag_value);
             status != ValueFlagStatus::kNotMatched) {
             if (status == ValueFlagStatus::kMissing) {
-                std::cerr << "koi-engine: missing path for --book.\n";
+                std::cerr << "koi: missing path for --book.\n";
                 return 2;
             }
             out.book_path = std::string(flag_value);
@@ -578,7 +578,7 @@ std::optional<int> parse_cli_options(
                 consume_value_flag(arg, index, argc, argv, "--syzygy", "", flag_value);
             status != ValueFlagStatus::kNotMatched) {
             if (status == ValueFlagStatus::kMissing) {
-                std::cerr << "koi-engine: missing path for --syzygy.\n";
+                std::cerr << "koi: missing path for --syzygy.\n";
                 return 2;
             }
             out.syzygy_path = std::string(flag_value);
@@ -589,7 +589,7 @@ std::optional<int> parse_cli_options(
                 consume_value_flag(arg, index, argc, argv, "--cmd", "-c", flag_value);
             status != ValueFlagStatus::kNotMatched) {
             if (status == ValueFlagStatus::kMissing) {
-                std::cerr << "koi-engine: missing command for --cmd.\n";
+                std::cerr << "koi: missing command for --cmd.\n";
                 return 2;
             }
             append_cli_command(flag_value);
@@ -599,12 +599,12 @@ std::optional<int> parse_cli_options(
                 consume_value_flag(arg, index, argc, argv, "--protocol", "", flag_value);
             status != ValueFlagStatus::kNotMatched) {
             if (status == ValueFlagStatus::kMissing) {
-                std::cerr << "koi-engine: missing argument for --protocol (expected uci, usi, "
+                std::cerr << "koi: missing argument for --protocol (expected uci, usi, "
                              "ucci, ucicyclone, or xboard).\n";
                 return 2;
             }
             if (!is_valid_protocol(flag_value)) {
-                std::cerr << "koi-engine: unknown protocol '" << flag_value
+                std::cerr << "koi: unknown protocol '" << flag_value
                           << "' (supported: uci, usi, ucci, ucicyclone, xboard).\n";
                 return 2;
             }
@@ -618,13 +618,13 @@ std::optional<int> parse_cli_options(
             const std::string_view flag = is_hash ? "--hash" : "--threads";
             if (consume_value_flag(arg, index, argc, argv, flag, "", flag_value) ==
                 ValueFlagStatus::kMissing) {
-                std::cerr << "koi-engine: missing value for " << flag << ".\n";
+                std::cerr << "koi: missing value for " << flag << ".\n";
                 return 2;
             }
             const std::size_t limit = is_hash ? kMaximumBenchHashMb : max_bench_threads;
             std::size_t parsed = 0;
             if (!parse_bounded_uint(flag_value, 1, limit, parsed)) {
-                std::cerr << "koi-engine: invalid " << (is_hash ? "hash" : "threads") << " '"
+                std::cerr << "koi: invalid " << (is_hash ? "hash" : "threads") << " '"
                           << flag_value << "' (expected integer 1.." << limit << ").\n";
                 return 2;
             }
@@ -637,7 +637,7 @@ std::optional<int> parse_cli_options(
             }
             continue;
         }
-        std::cerr << "koi-engine: unknown option '" << arg
+        std::cerr << "koi: unknown option '" << arg
                   << "' (supported: version/--version, help/--help, --engine-json, "
                      "--protocol <name>, --hash <mb>, --threads <n>, -c/--cmd <command>, "
                      "--hce, --nnue <path>, --book <path>, --syzygy <path>, "
@@ -650,7 +650,7 @@ std::optional<int> parse_cli_options(
     }
 
     if (cli_hce && cli_nnue) {
-        std::cerr << "koi-engine: --hce and --nnue cannot be combined.\n";
+        std::cerr << "koi: --hce and --nnue cannot be combined.\n";
         return 2;
     }
 
@@ -763,7 +763,7 @@ std::optional<int> parse_cli_options(
          out.display || out.fen || out.epd || out.key || out.moves || out.history || out.pgn ||
          out.flip || out.book || out.tb || out.see_move.has_value() || out.eval || out.options ||
          out.perft_depth.has_value() || out.perft_suite)) {
-        std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
+        std::cerr << "koi: --cmd cannot be combined with one-shot subcommands.\n";
         return 2;
     }
     return std::nullopt;
@@ -781,13 +781,13 @@ std::optional<int> run_zero_network_cli_command(
         const std::filesystem::path target_path =
             resolve_boot_nnue_path(engine_directory, options.nnue_info_path).path;
         if (target_path.empty()) {
-            std::cerr << "koi-engine: no NNUE network found to inspect "
+            std::cerr << "koi: no NNUE network found to inspect "
                          "(pass a path or set KOI_NNUE_PATH).\n";
             return 2;
         }
         const auto loaded = NnueLoader::load_file(target_path);
         if (!loaded.has_value()) {
-            std::cerr << "koi-engine: invalid NNUE network '" << target_path.string() << "' ("
+            std::cerr << "koi: invalid NNUE network '" << target_path.string() << "' ("
                       << loaded.error().message << ").\n";
             return 2;
         }
@@ -804,7 +804,7 @@ std::optional<int> run_zero_network_cli_command(
             const auto resolved =
                 detail::parse_cli_position_with_history(*options.inspect_fen, error);
             if (!resolved.has_value()) {
-                std::cerr << "koi-engine: " << error << '\n';
+                std::cerr << "koi: " << error << '\n';
                 return 2;
             }
             parsed = *resolved;
@@ -822,12 +822,12 @@ std::optional<int> run_zero_network_cli_command(
         }
         if (options.flip) {
             if (root->in_check()) {
-                std::cerr << "koi-engine: flip rejected: position cannot legally switch sides.\n";
+                std::cerr << "koi: flip rejected: position cannot legally switch sides.\n";
                 return 2;
             }
             const std::optional<std::string> flipped = detail::flip_position_fen(root->fen());
             if (!flipped.has_value() || !GameState::from_fen(*flipped).has_value()) {
-                std::cerr << "koi-engine: flip rejected: position cannot legally switch sides.\n";
+                std::cerr << "koi: flip rejected: position cannot legally switch sides.\n";
                 return 2;
             }
             std::cout << *flipped << '\n' << std::flush;
@@ -855,7 +855,7 @@ std::optional<int> run_zero_network_cli_command(
         }
         const std::optional<Move> move = detail::parse_move_uci_or_san(*root, *options.see_move);
         if (!move.has_value() || !root->is_legal(*move)) {
-            std::cerr << "koi-engine: illegal move '" << *options.see_move << "' for see.\n";
+            std::cerr << "koi: illegal move '" << *options.see_move << "' for see.\n";
             return 2;
         }
         const int gain = detail::static_exchange_gain(*root, *move);

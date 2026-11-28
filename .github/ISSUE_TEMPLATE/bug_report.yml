@@ -12,7 +12,7 @@ body:
     id: version
     attributes:
       label: Koi version and build commit
-      description: Output of `koi-engine --version`, `koi-engine compiler`, or the `id name` / `info string build` lines from `uci`
+      description: Output of `koi --version`, `koi compiler`, or the `id name` / `info string build` lines from `uci`
       placeholder: "Koi 1.2.0 (f1e6ca0a...)"
     validations:
       required: true

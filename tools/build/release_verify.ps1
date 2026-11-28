@@ -202,7 +202,7 @@ try {
         $releaseBin = $releaseConfigurationDirectory
     }
     $benchPath = Join-Path $releaseBin "koi-bench$binarySuffix"
-    $enginePath = Join-Path $releaseBin "koi-engine$binarySuffix"
+    $enginePath = Join-Path $releaseBin "koi$binarySuffix"
     $replayPath = Join-Path $releaseBin "koi-replay$binarySuffix"
     foreach ($path in @($benchPath, $enginePath, $replayPath)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {

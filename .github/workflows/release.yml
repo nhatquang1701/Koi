@@ -89,11 +89,11 @@ jobs:
           if errorlevel 1 exit /b 1
           cmake --build build/release --config Release
           if errorlevel 1 exit /b 1
-          for %%F in (koi-engine.exe koi-engine-avx2.exe koi-engine-avx512.exe) do (
+          for %%F in (koi.exe koi-avx2.exe koi-avx512.exe) do (
             dumpbin /nologo /headers build\release\%%F | findstr /C:"Control Flow Guard" >nul
             if errorlevel 1 exit /b 1
           )
-          for %%F in (koi-engine-avx2.exe koi-engine-avx512.exe) do (
+          for %%F in (koi-avx2.exe koi-avx512.exe) do (
             dumpbin /nologo /imports build\release\%%F | findstr /I "CreateProcess" >nul
             if not errorlevel 1 exit /b 1
           )
@@ -111,7 +111,7 @@ jobs:
             try {
               $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
               if (-not $signtool) { throw 'signtool.exe not found' }
-              foreach ($exe in @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe')) {
+              foreach ($exe in @('koi.exe', 'koi-avx2.exe', 'koi-avx512.exe')) {
                 & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 (Join-Path 'build/release' $exe)
                 if ($LASTEXITCODE -ne 0) { throw "signtool failed for $exe" }
               }
@@ -121,26 +121,26 @@ jobs:
           }
           pwsh -NoProfile -File tools/build/package_release.ps1 -BuildDirectory build/release -OutputDirectory artifacts/release -NnuePath artifacts/release-nnue/koi.nnue
           if ($LASTEXITCODE -ne 0) { throw "package_release.ps1 failed with exit code $LASTEXITCODE" }
-          $zip = Get-Item artifacts/release/koi-engine-*.zip | Select-Object -First 1
+          $zip = Get-Item artifacts/release/koi-*.zip | Select-Object -First 1
           $pkgDir = Join-Path artifacts/release ([System.IO.Path]::GetFileNameWithoutExtension($zip.Name))
-          foreach ($exe in @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe')) {
+          foreach ($exe in @('koi.exe', 'koi-avx2.exe', 'koi-avx512.exe')) {
             $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $pkgDir $exe))
             if ($vi.ProductName -cne 'Koi Chess Engine' -or $vi.CompanyName -cne 'Koi Chess Engine Contributors') {
               throw "Missing PE version metadata on $exe"
             }
           }
           $files = Get-ChildItem -LiteralPath $pkgDir -File -Recurse | ForEach-Object { $_.Name } | Sort-Object
-          $expected = @('koi-engine.exe', 'koi-engine-avx2.exe', 'koi-engine-avx512.exe', 'koi.nnue', 'book.bin', 'LICENSE') | Sort-Object
+          $expected = @('koi.exe', 'koi-avx2.exe', 'koi-avx512.exe', 'koi.nnue', 'book.bin', 'LICENSE') | Sort-Object
           if (($files -join ',') -cne ($expected -join ',')) {
             throw "Unexpected archive files: $($files -join ', ')"
           }
-          $nnueOutput = (& (Join-Path $pkgDir 'koi-engine.exe') nnue)
+          $nnueOutput = (& (Join-Path $pkgDir 'koi.exe') nnue)
           if ($LASTEXITCODE -ne 0 -or -not ($nnueOutput -match 'valid \(checksum verified\)')) {
-            throw "Packaged koi-engine.exe nnue verification failed"
+            throw "Packaged koi.exe nnue verification failed"
           }
-          $smokeOutput = (& (Join-Path $pkgDir 'koi-engine.exe') -c "uci" -c "isready" -c "position startpos" -c "go depth 2")
+          $smokeOutput = (& (Join-Path $pkgDir 'koi.exe') -c "uci" -c "isready" -c "position startpos" -c "go depth 2")
           if ($LASTEXITCODE -ne 0 -or -not ($smokeOutput -match '^bestmove ')) {
-            throw "Packaged koi-engine.exe smoke test failed"
+            throw "Packaged koi.exe smoke test failed"
           }
       - uses: actions/upload-artifact@v7
         with:
@@ -184,14 +184,14 @@ jobs:
           extracted=/tmp/koi-release-check
           mkdir -p "$extracted"
           tar -xzf "$archive" -C "$extracted"
-          for variant_bin in koi-engine-avx2 koi-engine-avx512; do
+          for variant_bin in koi-avx2 koi-avx512; do
             if nm -u "$extracted/$variant_bin" | grep -Eq "(^|[[:space:]])(execv|execve|fork|posix_spawn|system|popen)(@|$)"; then
               echo "Unexpected process-creation symbol in $variant_bin" >&2
               exit 1
             fi
           done
-          "$extracted/koi-engine" nnue | grep -q "valid (checksum verified)"
-          timeout 15 "$extracted/koi-engine" -c "uci" -c "isready" -c "position startpos" -c "go depth 2" | grep -q "^bestmove "
+          "$extracted/koi" nnue | grep -q "valid (checksum verified)"
+          timeout 15 "$extracted/koi" -c "uci" -c "isready" -c "position startpos" -c "go depth 2" | grep -q "^bestmove "
           '
       - uses: actions/upload-artifact@v7
         with:
@@ -231,8 +231,8 @@ jobs:
           mkdir -p "$extracted"
           archive=$(find artifacts/release -maxdepth 1 -name "*-macos-arm64.tar.gz" | head -n 1)
           tar -xzf "$archive" -C "$extracted"
-          "$extracted/koi-engine" nnue | grep -q "valid (checksum verified)"
-          "$extracted/koi-engine" -c "uci" -c "isready" -c "position startpos" -c "go depth 2" | grep -q "^bestmove "
+          "$extracted/koi" nnue | grep -q "valid (checksum verified)"
+          "$extracted/koi" -c "uci" -c "isready" -c "position startpos" -c "go depth 2" | grep -q "^bestmove "
       - uses: actions/upload-artifact@v7
         with:
           name: release-macos-assets

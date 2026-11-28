@@ -10,7 +10,7 @@ param(
 
 $binarySuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
 if ([string]::IsNullOrWhiteSpace($EnginePath)) {
-    $EnginePath = Join-Path (Join-Path $PSScriptRoot '../../build/release') "koi-engine$binarySuffix"
+    $EnginePath = Join-Path (Join-Path $PSScriptRoot '../../build/release') "koi$binarySuffix"
 }
 
 $ErrorActionPreference = 'Stop'

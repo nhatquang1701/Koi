@@ -127,19 +127,19 @@ int main(int argc, char* argv[]) {
                 ? koi::make_evaluator()
                 : koi::make_evaluator(std::optional<std::filesystem::path>(nnue_path));
         } catch (const std::exception& error) {
-            std::cerr << "koi-engine: unable to load an evaluator network (" << error.what()
+            std::cerr << "koi: unable to load an evaluator network (" << error.what()
                       << ").\n"
-                      << "koi-engine: provide koi.nnue beside the executable or set EvalFile.\n";
+                      << "koi: provide koi.nnue beside the executable or set EvalFile.\n";
             return 4;
         }
     }
     if (selection.evaluator == nullptr) {
-        std::cerr << "koi-engine: no usable NNUE network";
+        std::cerr << "koi: no usable NNUE network";
         if (selection.nnue_error.has_value()) {
             std::cerr << " (" << selection.nnue_error->message << ")";
         }
         std::cerr << ".\n"
-                  << "koi-engine: provide koi.nnue beside the executable or set EvalFile.\n";
+                  << "koi: provide koi.nnue beside the executable or set EvalFile.\n";
         return 4;
     }
     koi::SearchService search_service(selection.evaluator, {}, 1);

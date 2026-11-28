@@ -432,7 +432,7 @@ function Read-KoiPackageBindingInput {
     } catch {
         throw "Package manifest is not valid JSON: $manifestPath"
     }
-    if ($manifest.schema -cne 'koi-engine-package-v1') {
+    if ($manifest.schema -cnotin @('koi-package-v1', 'koi-engine-package-v1')) {
         throw 'Package manifest has an unsupported schema.'
     }
     $provenance = $manifest.provenance

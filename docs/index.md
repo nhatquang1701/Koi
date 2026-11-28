@@ -45,7 +45,7 @@ It combines Fancy Magic / BMI2 PEXT bitboards, iterative-deepening Principal Var
 ## 60-Second Quick Start
 
 1. **Extract a release archive** (or build via `cmake --preset <platform>-release`).
-2. **Register `koi-engine`** (`koi-engine.exe` on Windows) as a UCI engine in your chess GUI.
+2. **Register `koi`** (`koi.exe` on Windows) as a UCI engine in your chess GUI.
 3. **Play or analyze** with `Hash = 512` and `Threads = 1` (deterministic) or `Threads = 4` (Lazy SMP).
 
 Koi discovers its assets automatically with zero config files:
@@ -59,28 +59,28 @@ Koi discovers its assets automatically with zero config files:
 ## Interactive CLI Highlights
 
 ```bash
-koi-engine bench                  # OpenBench-compatible deterministic benchmark
-koi-engine speedtest 1 128 3      # Timed multi-position NPS throughput check
-koi-engine compiler               # Print toolchain, C++ standard, and ISA capabilities
-koi-engine nnue [path]            # Inspect NNUE container version, shape, and SHA-256 checksum
-koi-engine d [fen]                # Print ASCII board, FEN, Zobrist key, move count, and FIDE state
-koi-engine fen [fen]              # Print resulting 6-field FEN (e.g. fen moves e4 e5 Nf3)
-koi-engine epd [fen]              # Print standard EPD (hmvc/fmvn) for startpos/FEN/moves
-koi-engine key [fen]              # Print position, pawn, and Polyglot hash keys
-koi-engine moves [--san] [fen]    # List sorted legal moves (UCI or FIDE SAN)
-koi-engine pgn [fen]              # Export startpos/FEN/moves as FIDE PGN
-koi-engine flip [fen]             # Toggle side to move when legal (updated FEN)
-koi-engine book [fen]             # Probe active or --book <path> Polyglot weights
-koi-engine tb [fen]               # Probe active or --syzygy <dir> Syzygy tablebases
-koi-engine see <move> [fen]       # Compute static exchange evaluation (SEE) in cp
-koi-engine eval [fen]             # Inspect NNUE metadata or HCE term breakdown table
-koi-engine options                # Print live active protocol, evaluator, book, and Syzygy options
-koi-engine --hce eval [fen]       # Evaluate directly with classical HCE (no network)
-koi-engine --nnue <path> bench    # Benchmark an explicit NNUE weight file
-koi-engine perft 5 [fen]          # Run timed perft divide (depth 1..10) or `--suite` (6 CPW positions)
-koi-engine --hash 64 --threads 4 -c "uci" -c "go depth 6"  # Initial Hash/Threads + batch commands
-koi-engine --version              # Print version and git build commit
-koi-engine --engine-json          # Print En Croissant / Pawn Appétit JSON profile
+koi bench                  # OpenBench-compatible deterministic benchmark
+koi speedtest 1 128 3      # Timed multi-position NPS throughput check
+koi compiler               # Print toolchain, C++ standard, and ISA capabilities
+koi nnue [path]            # Inspect NNUE container version, shape, and SHA-256 checksum
+koi d [fen]                # Print ASCII board, FEN, Zobrist key, move count, and FIDE state
+koi fen [fen]              # Print resulting 6-field FEN (e.g. fen moves e4 e5 Nf3)
+koi epd [fen]              # Print standard EPD (hmvc/fmvn) for startpos/FEN/moves
+koi key [fen]              # Print position, pawn, and Polyglot hash keys
+koi moves [--san] [fen]    # List sorted legal moves (UCI or FIDE SAN)
+koi pgn [fen]              # Export startpos/FEN/moves as FIDE PGN
+koi flip [fen]             # Toggle side to move when legal (updated FEN)
+koi book [fen]             # Probe active or --book <path> Polyglot weights
+koi tb [fen]               # Probe active or --syzygy <dir> Syzygy tablebases
+koi see <move> [fen]       # Compute static exchange evaluation (SEE) in cp
+koi eval [fen]             # Inspect NNUE metadata or HCE term breakdown table
+koi options                # Print live active protocol, evaluator, book, and Syzygy options
+koi --hce eval [fen]       # Evaluate directly with classical HCE (no network)
+koi --nnue <path> bench    # Benchmark an explicit NNUE weight file
+koi perft 5 [fen]          # Run timed perft divide (depth 1..10) or `--suite` (6 CPW positions)
+koi --hash 64 --threads 4 -c "uci" -c "go depth 6"  # Initial Hash/Threads + batch commands
+koi --version              # Print version and git build commit
+koi --engine-json          # Print En Croissant / Pawn Appétit JSON profile
 ```
 
 Inside a UCI session, Koi also accepts `d`, `fen`, `epd`, `key`, `moves [san]`, `book`, `tb`, `eval`, `nnue`, `flip`, `makemove <move...>`, `undo [plies]`, `history`, `pgn`, `annotate <move|game>`, `see <move>`, `options`, `compiler`, `bench [depth [hash [threads]]]`, `speedtest [threads [hash [seconds]]]`, `perft <depth|suite>`, `wait`, and `help` (and one-shot CLI position arguments accept `startpos`, a FEN, or `moves <uci|san>...`). For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).

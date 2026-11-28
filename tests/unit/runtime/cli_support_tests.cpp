@@ -131,7 +131,7 @@ bool is_valid_protocol_stub(const std::string_view name) noexcept {
 std::optional<int> invoke_parse(const std::vector<std::string>& args, koi::cli::CliOptions& out) {
     std::vector<std::string> storage;
     storage.reserve(args.size() + 1);
-    storage.emplace_back("koi-engine");
+    storage.emplace_back("koi");
     storage.insert(storage.end(), args.begin(), args.end());
 
     std::vector<char*> argv;
@@ -197,7 +197,7 @@ void test_inline_cmd_parsing_and_env_roundtrip() {
         koi::cli::CliOptions help_opts;
         const auto exit_code = invoke_parse({"help"}, help_opts);
         koi::test::require(exit_code == std::optional<int>(0) &&
-                               out.str().find("Usage: koi-engine") != std::string::npos &&
+                               out.str().find("Usage: koi") != std::string::npos &&
                                out.str().find("history") != std::string::npos &&
                                out.str().find("pgn") != std::string::npos,
                            "bare help subcommand must exit 0 with usage summary");
@@ -430,7 +430,7 @@ void test_unquoted_fen_and_inspection_subcommands() {
         koi::test::require(!invoke_parse({}, epd_reexec).has_value() && epd_reexec.epd &&
                                epd_reexec.inspect_fen == "moves e4 e5 Nf3",
                            "KOI_CLI_EPD and KOI_CLI_FEN must roundtrip across empty argv");
-        std::array<std::string, 1> storage{{"koi-engine"}};
+        std::array<std::string, 1> storage{{"koi"}};
         std::array<char*, 1> argv{{storage[0].data()}};
         ScopedStreamCapture out(std::cout);
         const auto run_exit = koi::cli::run_zero_network_cli_command(
@@ -461,7 +461,7 @@ void test_unquoted_fen_and_inspection_subcommands() {
             !invoke_parse({}, san_moves_reexec).has_value() && san_moves_reexec.moves &&
                 san_moves_reexec.moves_san && san_moves_reexec.inspect_fen == "moves e4 e5",
             "KOI_CLI_MOVES_SAN must roundtrip across empty argv");
-        std::array<std::string, 1> storage{{"koi-engine"}};
+        std::array<std::string, 1> storage{{"koi"}};
         std::array<char*, 1> argv{{storage[0].data()}};
         ScopedStreamCapture out(std::cout);
         const auto run_exit = koi::cli::run_zero_network_cli_command(
@@ -491,7 +491,7 @@ void test_unquoted_fen_and_inspection_subcommands() {
         koi::test::require(!invoke_parse({}, pgn_reexec).has_value() && pgn_reexec.pgn &&
                                pgn_reexec.inspect_fen == "moves e2e4 e7e5 g1f3",
                            "KOI_CLI_PGN and KOI_CLI_FEN must roundtrip across empty argv");
-        std::array<std::string, 1> storage{{"koi-engine"}};
+        std::array<std::string, 1> storage{{"koi"}};
         std::array<char*, 1> argv{{storage[0].data()}};
         ScopedStreamCapture out(std::cout);
         const auto run_exit = koi::cli::run_zero_network_cli_command(
@@ -514,7 +514,7 @@ void test_unquoted_fen_and_inspection_subcommands() {
                                history_reexec.history &&
                                history_reexec.inspect_fen == "moves e4 e5 Nf3",
                            "KOI_CLI_HISTORY and KOI_CLI_FEN must roundtrip across empty argv");
-        std::array<std::string, 1> storage{{"koi-engine"}};
+        std::array<std::string, 1> storage{{"koi"}};
         std::array<char*, 1> argv{{storage[0].data()}};
         ScopedStreamCapture out(std::cout);
         const auto run_exit = koi::cli::run_zero_network_cli_command(

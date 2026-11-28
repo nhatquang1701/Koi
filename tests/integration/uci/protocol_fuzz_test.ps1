@@ -42,7 +42,7 @@ function Invoke-UciTranscript([string]$Transcript, [string]$Label,
     $session.Process.StandardInput.Close()
 
     if (-not $session.Process.WaitForExit($TimeoutMilliseconds)) {
-        Stop-TimedOutSession $session "koi-engine hung on fuzz case '$Label'."
+        Stop-TimedOutSession $session "koi hung on fuzz case '$Label'."
     }
 
     $output = $stdoutTask.GetAwaiter().GetResult()
@@ -50,7 +50,7 @@ function Invoke-UciTranscript([string]$Transcript, [string]$Label,
     $exitCode = $session.Process.ExitCode
     try { $session.Process.Dispose() } catch {}
     if ($exitCode -ne 0) {
-        throw "koi-engine exited with $exitCode on fuzz case '$Label': $diagnostics"
+        throw "koi exited with $exitCode on fuzz case '$Label': $diagnostics"
     }
     return [pscustomobject]@{
         Label = $Label

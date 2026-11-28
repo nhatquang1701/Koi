@@ -4,7 +4,7 @@
 #
 # Usage: spsa_runner.sh <dir> <tag> <params-json> [games]
 # Environment:
-#   SPSA_REFERENCE  reference engine binary (default ~/koi-run/koi-engine-spsa-base)
+#   SPSA_REFERENCE  reference engine binary (default ~/koi-run/koi-spsa-base)
 #   SPSA_OPENINGS   opening corpus (default tests/data/openings/openings-release-strength-160.txt)
 #   SPSA_NODES      nodes per move (default 10000)
 #   SPSA_EVAL_FILE  optional NNUE path forwarded via -KoiEvalFile
@@ -19,7 +19,7 @@ games=${4:-50}
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 
-reference=${SPSA_REFERENCE:-$HOME/koi-run/koi-engine-spsa-base}
+reference=${SPSA_REFERENCE:-$HOME/koi-run/koi-spsa-base}
 openings=${SPSA_OPENINGS:-tests/data/openings/openings-release-strength-160.txt}
 nodes=${SPSA_NODES:-10000}
 default_eval="$root/artifacts/networks/koi-v9-hm10-h256-official.nnue"
@@ -43,7 +43,7 @@ git checkout -- src/ 2>/dev/null || true
 if [ -d "$dir/src" ]; then
     cp -R "$dir/src/." src/
 fi
-cmake --build build/release --target koi_engine koi_replay -j 6 > "$dir/build.log" 2>&1
+cmake --build build/release --target koi koi_replay -j 6 > "$dir/build.log" 2>&1
 
 head -n "$half" "$openings" > "$dir/openings.txt"
 
@@ -54,7 +54,7 @@ fi
 
 for color in white black; do
     pwsh -NoProfile -File tools/stability/uci_match.ps1 \
-        -KoiPath build/release/koi-engine \
+        -KoiPath build/release/koi \
         -OpponentPath "$reference" \
         -KoiColor "$color" \
         -Games 1 \

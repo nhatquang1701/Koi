@@ -13,7 +13,7 @@ $isMacOSHost = -not $isWindowsHost -and
     [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)
 $platformTag = if ($isWindowsHost) { '' } elseif ($isMacOSHost) { '-macos-arm64' } else { '-linux-x86_64' }
 $binarySuffix = if ($isWindowsHost) { '.exe' } else { '' }
-$packageName = "koi-engine-v1.2.0$platformTag"
+$packageName = "koi-v1.2.0$platformTag"
 $archivePathName = if ($isWindowsHost) { "$packageName.zip" } else { "$packageName.tar.gz" }
 $outputDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('koi-package-test-' + [guid]::NewGuid().ToString('N'))
 
@@ -105,10 +105,10 @@ try {
     $manifestPath = Join-Path $outputDirectory "$packageName.package.json"
     $archivePath = Join-Path $outputDirectory $archivePathName
     $archiveHashPath = "$archivePath.sha256"
-    $requiredExecutables = @("koi-engine$binarySuffix")
+    $requiredExecutables = @("koi$binarySuffix")
     if (-not $isMacOSHost) {
-        $requiredExecutables = @("koi-engine$binarySuffix", "koi-engine-avx2$binarySuffix",
-            "koi-engine-avx512$binarySuffix")
+        $requiredExecutables = @("koi$binarySuffix", "koi-avx2$binarySuffix",
+            "koi-avx512$binarySuffix")
     }
     $requiredFiles = @($requiredExecutables + @('book.bin', 'LICENSE'))
     foreach ($required in $requiredFiles) {
@@ -145,7 +145,7 @@ try {
 
     $manifestText = Get-Content -LiteralPath $manifestPath -Raw
     $manifest = $manifestText | ConvertFrom-Json
-    Assert-True ($manifest.schema -ceq 'koi-engine-package-v1') 'package manifest schema is incorrect'
+    Assert-True ($manifest.schema -ceq 'koi-package-v1') 'package manifest schema is incorrect'
     Assert-True ($manifest.version -ceq '1.2.0') 'package manifest version is not 1.2.0'
     $expectedPlatform = if ($isWindowsHost) { 'windows-x86_64' } elseif ($isMacOSHost) { 'macos-arm64' } else { 'linux-x86_64' }
     Assert-True ($manifest.platform -ceq $expectedPlatform) 'manifest platform does not match the host'
@@ -207,7 +207,7 @@ try {
     Assert-True ($replayOutput -contains 'legal 1') 'extracted replay smoke did not report a legal position'
     Assert-True ($replayOutput -contains 'result 1/2-1/2') 'extracted replay smoke did not report the repetition draw'
 
-    $enginePath = Join-Path $extractionDirectory "koi-engine$binarySuffix"
+    $enginePath = Join-Path $extractionDirectory "koi$binarySuffix"
     $fixtureNetPath = Join-Path $BuildDirectory 'koi.nnue'
     Assert-True (Test-Path -LiteralPath $fixtureNetPath -PathType Leaf) 'build tree must provide the generated fixture network'
     $fixtureNet = (Resolve-Path -LiteralPath $fixtureNetPath).Path
@@ -261,7 +261,7 @@ try {
         -BuildDirectory $BuildDirectory -OutputDirectory $flatSmokeDir `
         -NnuePath $fixtureNet | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "package script with fixture network exited with $LASTEXITCODE" }
-    $flatSmokeEngine = Join-Path (Join-Path $flatSmokeDir $packageName) "koi-engine$binarySuffix"
+    $flatSmokeEngine = Join-Path (Join-Path $flatSmokeDir $packageName) "koi$binarySuffix"
     $flatSmoke = Invoke-BoundedProcess -FilePath $flatSmokeEngine -InputLines $uciTranscript
     Assert-True ($flatSmoke.ExitCode -eq 0) "flat koi.nnue auto-discovery failed with $($flatSmoke.ExitCode)"
     Assert-True (@($flatSmoke.StandardOutput -split "`r?`n") -contains 'uciok') 'flat koi.nnue package did not complete UCI handshake without KOI_NNUE_PATH'

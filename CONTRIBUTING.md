@@ -39,22 +39,22 @@ Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gc
 
 ### CPU Dispatch & Quick Smoke Check
 
-On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engine-avx512` or `koi-engine-avx2` when the host CPU supports them (with fast `PEXT`), or runs the baseline build in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary.
+On Windows and Linux x86-64, `koi` automatically dispatches to `koi-avx512` or `koi-avx2` when the host CPU supports them (with fast `PEXT`), or runs the baseline build in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary.
 
 ```bash
 # Deterministic OpenBench-compatible node benchmark & timed NPS throughput check (plus Makefile targets: `make tools`, `make smoke`, `make speedtest`, `make profile-build`, `make asan`, `make engine-json`, `make nnue`, `make options`, `make eval`, `make d`, `make epd`, `make history`, `make pgn`, `make version`, `make compiler`, `make perft`, `make perft-suite`)
-./build/windows-release/koi-engine.exe bench
-./build/windows-release/koi-engine.exe speedtest 1 128 3
+./build/windows-release/koi.exe bench
+./build/windows-release/koi.exe speedtest 1 128 3
 
 # Zero-network position & asset inspection, compiler/ISA readout, eval (--hce / --nnue <path>), & fast perft
-./build/windows-release/koi-engine.exe compiler
-./build/windows-release/koi-engine.exe --hce eval
-./build/windows-release/koi-engine.exe d
-./build/windows-release/koi-engine.exe see e2e4
-./build/windows-release/koi-engine.exe perft 4 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+./build/windows-release/koi.exe compiler
+./build/windows-release/koi.exe --hce eval
+./build/windows-release/koi.exe d
+./build/windows-release/koi.exe see e2e4
+./build/windows-release/koi.exe perft 4 "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
 
-# Inline UCI smoke check with explicit hash/threads (or `printf "...\nwait\nquit\n" | ./build/.../koi-engine`)
-./build/linux-gcc-release/koi-engine --hash 64 --threads 1 -c "uci" -c "isready" -c "position startpos" -c "go depth 4"
+# Inline UCI smoke check with explicit hash/threads (or `printf "...\nwait\nquit\n" | ./build/.../koi`)
+./build/linux-gcc-release/koi --hash 64 --threads 1 -c "uci" -c "isready" -c "position startpos" -c "go depth 4"
 ```
 
 Supported zero-network CLI inspection subcommands also include `version`, `help`, `nnue [path]`, `fen [pos]`, `epd [pos]`, `key [pos]`, `moves [--san] [pos]`, `history [pos]`, `pgn [pos]`, `flip [pos]`, `book [pos]` (optional `--book <path>`), `tb [pos]` (optional `--syzygy <path>`), and `perft --suite`, while evaluator-backed `eval [pos]` and `options` boot the active NNUE network or `--hce`. `[pos]` accepts `startpos`, a quoted/unquoted 4- or 6-field FEN, or `[startpos|fen] [moves <uci|san>...]`.
@@ -80,7 +80,7 @@ python tools/docs/prepare_pages.py && mkdocs build --strict
 
 - **Strict assertions:** Never weaken or delete test assertions or `XFAIL` entries to force a green run; an unexpected pass (`XPASS`) fails the suite by design.
 - **Determinism contract:** `Threads = 1` is strictly deterministic. Multi-threaded tests (`Threads > 1`) validate invariants (legality, completion, depth, ranked MultiPV) rather than byte-for-byte PV equality.
-- **Non-functional changes:** Verify that `koi-engine bench` produces an identical node count before and after your change.
+- **Non-functional changes:** Verify that `koi bench` produces an identical node count before and after your change.
 - **Functional search/eval changes:** Gate strength changes with equal-time paired matches / SPRT (see [Apple Silicon Worker](docs/mac-worker.md) and [Developer Tools](tools/README.md)).
 
 ---

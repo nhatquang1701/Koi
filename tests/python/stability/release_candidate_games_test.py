@@ -119,7 +119,7 @@ class ReleaseCandidateGamesTest(unittest.TestCase):
         data["engines"] = [
             {
                 "label": "Koi",
-                "path": "C:/package/koi-engine.exe",
+                "path": "C:/package/koi.exe",
                 "name": "Koi",
                 "version": "1.0.0",
                 "hashes": {"executable_sha256": executable_sha256},
@@ -139,8 +139,8 @@ class ReleaseCandidateGamesTest(unittest.TestCase):
             "source_commit": source_commit,
             "source_dirty": source_dirty,
             "executable_identity": {
-                "path": "C:/package/koi-engine.exe",
-                "package_relative_path": "koi-engine.exe",
+                "path": "C:/package/koi.exe",
+                "package_relative_path": "koi.exe",
                 "name": "Koi",
                 "version": "1.0.0",
                 "sha256": executable_sha256,

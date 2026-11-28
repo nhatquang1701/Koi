@@ -231,7 +231,7 @@ with `PYTHONPATH=.` on Python 3.10) from the repository root:
   `d`/`--display`, `fen`, `epd`, `key`, `moves [--san]`, `history`, `pgn`, `flip`, `book`, `tb`, `see`, `eval`,
   `perft <depth|--suite> [pos]`, `bench`, `--hce`/`--nnue`/`--book`/`--syzygy`/`--protocol`
   both one-shot and in live sessions, and invalid-argument exit codes across
-  `koi-engine` and companion tools).
+  `koi` and companion tools).
 ## Labels and scheduling
 
 Every test carries CTest labels; combine them with `-L`/`-LE`, for example
@@ -379,7 +379,7 @@ cancellation):
   memory errors and use-after-free regressions fail CI.
 - `shadow-diff` builds with `-DKOI_BUILD_SHADOW_DIFF=ON` and runs
   `koi_shadow_diff_tests`.
-- `windows-package` builds Release, packages the `koi-engine-v1.2.0.zip` with
+- `windows-package` builds Release, packages the `koi-v1.2.0.zip` with
   `tools/build/package_release.ps1`, runs the package manifest and smoke test,
   and uploads the archive with its `.sha256` sidecar.
 
@@ -393,7 +393,7 @@ cancellation):
   and time-manager suites three times with `KOI_TEST_RETRIES=1` and no
   `--repeat`, so a first-attempt flake cannot hide behind a retry.
 - `linux-tarball` builds inside an Ubuntu 22.04 container, packages the
-  portable `koi-engine-v1.2.0-linux-x86_64.tar.gz` with
+  portable `koi-v1.2.0-linux-x86_64.tar.gz` with
   `tools/build/package_release.ps1`, verifies and extracts the archive, then
   runs bounded UCI smokes with the automatic and `KOI_CPU_VARIANT=generic`
   variants.
@@ -409,7 +409,7 @@ cancellation):
   the Linux legs. The x86-only AVX-512 binary smoke and the three-binary
   variant process test are omitted, and diagnostics upload on failure.
 - `macos-package` builds Release, packages the
-  `koi-engine-v1.2.0-macos-arm64.tar.gz` with
+  `koi-v1.2.0-macos-arm64.tar.gz` with
   `tools/build/package_release.ps1`, verifies and extracts the archive, runs
   the bounded UCI smokes, and uploads the tarball with its `.sha256` sidecar.
 
@@ -478,7 +478,7 @@ build (`make -j profile-build ARCH=apple-silicon`). The underlying
 
 ```bash
 python3 tools/measurement/elo_estimate.py \
-  --koi build/release/koi-engine \
+  --koi build/release/koi \
   --replay build/release/koi-replay \
   --stockfish third_party/stockfish-19-macos/stockfish \
   --anchors artifacts/manifests/elo-anchors-macos.json \

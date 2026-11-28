@@ -36,20 +36,20 @@ all: release
 
 release:
 	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS)
-	cmake --build "$(BUILD_DIR)" --config Release --target koi_engine -j "$(JOBS)"
-	@if [ -n "$(EXE)" ]; then cp "$(BUILD_DIR)/koi-engine" "$(EXE)" && chmod +x "$(EXE)"; fi
+	cmake --build "$(BUILD_DIR)" --config Release --target koi -j "$(JOBS)"
+	@if [ -n "$(EXE)" ]; then cp "$(BUILD_DIR)/koi" "$(EXE)" && chmod +x "$(EXE)"; fi
 
 tools:
 	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS)
-	cmake --build "$(BUILD_DIR)" --config Release --target koi_engine koi_bench koi_perft koi_replay koi_eval_features koi_nnue_fixture -j "$(JOBS)"
+	cmake --build "$(BUILD_DIR)" --config Release --target koi koi_bench koi_perft koi_replay koi_eval_features koi_nnue_fixture -j "$(JOBS)"
 
 profile-build:
 	rm -rf "$(PGO_GEN_DIR)" "$(PGO_DATA_DIR)"
 	mkdir -p "$(PGO_DATA_DIR)"
 	@PGO_DATA_ABS=$$(cd "$(PGO_DATA_DIR)" && pwd); \
 	cmake -S . -B "$(PGO_GEN_DIR)" $(GENERATOR) $(CMAKE_FLAGS) -DKOI_PGO=generate -DKOI_PGO_PROFILE_FILE="$$PGO_DATA_ABS" && \
-	cmake --build "$(PGO_GEN_DIR)" --config Release --target koi_engine -j "$(JOBS)" && \
-	LLVM_PROFILE_FILE="$$PGO_DATA_ABS/koi-%p.profraw" "$(PGO_GEN_DIR)/koi-engine" $(EVAL_ARGS) bench "$(PGO_BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)" && \
+	cmake --build "$(PGO_GEN_DIR)" --config Release --target koi -j "$(JOBS)" && \
+	LLVM_PROFILE_FILE="$$PGO_DATA_ABS/koi-%p.profraw" "$(PGO_GEN_DIR)/koi" $(EVAL_ARGS) bench "$(PGO_BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)" && \
 	COMPILER_ID=$$(cat "$(PGO_GEN_DIR)"/CMakeFiles/*/CMakeCXXCompiler.cmake 2>/dev/null | sed -n 's/^set(CMAKE_CXX_COMPILER_ID "\([^"]*\)").*/\1/p' | head -n 1); \
 	if echo "$$COMPILER_ID" | grep -q "Clang"; then \
 	  if [ "$(UNAME_S)" = "Darwin" ]; then \
@@ -63,60 +63,60 @@ profile-build:
 	fi && \
 	rm -rf "$(BUILD_DIR)" && \
 	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS) -DKOI_PGO=use -DKOI_PGO_PROFILE_FILE="$$PGO_ARG" && \
-	cmake --build "$(BUILD_DIR)" --config Release --target koi_engine -j "$(JOBS)" && \
-	if [ -n "$(EXE)" ]; then cp "$(BUILD_DIR)/koi-engine" "$(EXE)" && chmod +x "$(EXE)"; fi
+	cmake --build "$(BUILD_DIR)" --config Release --target koi -j "$(JOBS)" && \
+	if [ -n "$(EXE)" ]; then cp "$(BUILD_DIR)/koi" "$(EXE)" && chmod +x "$(EXE)"; fi
 
 bench: release
-	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"
+	@"$(BUILD_DIR)/koi" $(EVAL_ARGS) bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"
 
 nnue: release
 	@if [ -n "$(EVALFILE)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" nnue "$(EVALFILE)"; \
+	  "$(BUILD_DIR)/koi" nnue "$(EVALFILE)"; \
 	else \
-	  "$(BUILD_DIR)/koi-engine" nnue; \
+	  "$(BUILD_DIR)/koi" nnue; \
 	fi
 
 options: release
-	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) options
+	@"$(BUILD_DIR)/koi" $(EVAL_ARGS) options
 
 speedtest: release
-	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) speedtest "$(SPEEDTEST_THREADS)" "$(SPEEDTEST_HASH)" "$(SPEEDTEST_SECONDS)"
+	@"$(BUILD_DIR)/koi" $(EVAL_ARGS) speedtest "$(SPEEDTEST_THREADS)" "$(SPEEDTEST_HASH)" "$(SPEEDTEST_SECONDS)"
 
 eval: release
-	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) eval $(FEN_ARG)
+	@"$(BUILD_DIR)/koi" $(EVAL_ARGS) eval $(FEN_ARG)
 
 version: release
-	"$(BUILD_DIR)/koi-engine" version
+	"$(BUILD_DIR)/koi" version
 
 engine-json: release
 	@ARGS="--engine-json"; \
 	if [ -n "$(THREADS)" ]; then ARGS="--threads $(THREADS) $$ARGS"; fi; \
 	if [ -n "$(HASH)" ]; then ARGS="--hash $(HASH) $$ARGS"; fi; \
-	"$(BUILD_DIR)/koi-engine" $$ARGS
+	"$(BUILD_DIR)/koi" $$ARGS
 
 compiler: release
-	"$(BUILD_DIR)/koi-engine" compiler
+	"$(BUILD_DIR)/koi" compiler
 
 perft: release
-	@"$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)" $(FEN_ARG)
+	@"$(BUILD_DIR)/koi" perft "$(PERFT_DEPTH)" $(FEN_ARG)
 
 perft-suite: release
-	"$(BUILD_DIR)/koi-engine" perft --suite
+	"$(BUILD_DIR)/koi" perft --suite
 
 d: release
-	@"$(BUILD_DIR)/koi-engine" d $(FEN_ARG)
+	@"$(BUILD_DIR)/koi" d $(FEN_ARG)
 
 epd: release
-	@"$(BUILD_DIR)/koi-engine" epd $(FEN_ARG)
+	@"$(BUILD_DIR)/koi" epd $(FEN_ARG)
 
 history: release
-	@"$(BUILD_DIR)/koi-engine" history $(FEN_ARG)
+	@"$(BUILD_DIR)/koi" history $(FEN_ARG)
 
 pgn: release
-	@"$(BUILD_DIR)/koi-engine" pgn $(FEN_ARG)
+	@"$(BUILD_DIR)/koi" pgn $(FEN_ARG)
 
 smoke: release
-	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) -c "uci" -c "isready" -c "position startpos" -c "go depth 2"
+	@"$(BUILD_DIR)/koi" $(EVAL_ARGS) -c "uci" -c "isready" -c "position startpos" -c "go depth 2"
 
 test:
 	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS)
@@ -137,9 +137,9 @@ clean:
 
 help:
 	@echo "Koi Makefile targets (Linux x86-64 / macOS arm64):"
-	@echo "  make [EXE=<path>]                      Build koi-engine Release (copies binary to EXE for OpenBench)"
-	@echo "  make tools                             Build koi-engine and all companion CLI developer tools"
-	@echo "  make profile-build [EVALFILE=...]      Build PGO-optimized koi-engine Release binary"
+	@echo "  make [EXE=<path>]                      Build koi Release (copies binary to EXE for OpenBench)"
+	@echo "  make tools                             Build koi and all companion CLI developer tools"
+	@echo "  make profile-build [EVALFILE=...]      Build PGO-optimized koi Release binary"
 	@echo "  make bench [EVALFILE=...]              Build and run deterministic OpenBench benchmark"
 	@echo "  make speedtest [SPEEDTEST_THREADS=1]   Build and run timed NPS throughput benchmark"
 	@echo "  make eval [EVALFILE=...] [FEN=...]     Evaluate startpos or FEN with NNUE/HCE"
@@ -149,7 +149,7 @@ help:
 	@echo "  make version                           Build and print engine version banner"
 	@echo "  make compiler                          Build and print compiler / ISA metadata"
 	@echo "  make perft [PERFT_DEPTH=5] [FEN=...]   Build and run timed perft divide"
-	@echo "  make perft-suite                       Build koi-engine and run 6-position CPW suite"
+	@echo "  make perft-suite                       Build koi and run 6-position CPW suite"
 	@echo "  make d [FEN=...]                       Build and print ASCII board, FEN, key, and FIDE state"
 	@echo "  make epd [FEN=...]                     Build and print standard EPD (hmvc/fmvn) for position"
 	@echo "  make history [FEN=...]                 Build and print move history and reconstructed position command"

@@ -21,7 +21,7 @@ The engine is called **Koi**. Historical releases through v1.1.5 used the name
 identifies as `Koi <version>` (e.g., `Koi 1.2.0`). Those historical releases are
 not renamed. New builds identify themselves as **Koi** in the UCI handshake, and
 this guide uses **Koi** throughout. Binary and archive file names keep the
-`koi-engine` spelling so existing scripts keep working.
+`koi` spelling so existing scripts keep working.
 
 ## Architecture
 
@@ -44,7 +44,7 @@ cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release && 
 cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release && ctest --preset macos-arm64-release
 ```
 
-Available presets in [CMakePresets.json](../CMakePresets.json) include `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](../Makefile) (`make`, `make tools`, `make profile-build` for PGO, `make EXE=koi-engine`, `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make version`, `make compiler`, `make perft`, `make test`, `make docs`). Explicit toolchain requirements and manual CMake invocations follow below:
+Available presets in [CMakePresets.json](../CMakePresets.json) include `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-gcc-tsan`, `macos-arm64-release`, and `macos-arm64-debug`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](../Makefile) (`make`, `make tools`, `make profile-build` for PGO, `make EXE=koi`, `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make version`, `make compiler`, `make perft`, `make test`, `make docs`). Explicit toolchain requirements and manual CMake invocations follow below:
 
 === "Windows x64"
 
@@ -100,15 +100,15 @@ has no static-runtime policy and always passes it).
 For a Debug build, substitute `build\debug` and `Debug` in those commands. The
 Release build produces three engine executables in `build\release`
 (`build/release` on Linux and macOS, where they carry no `.exe` suffix; macOS
-arm64 builds only the baseline `koi-engine`):
+arm64 builds only the baseline `koi`):
 
-- `koi-engine.exe` — the baseline build and the single entry point for GUIs and
+- `koi.exe` — the baseline build and the single entry point for GUIs and
   scripts. It starts the fastest sibling this CPU supports
-  (`koi-engine-avx512.exe`, then `koi-engine-avx2.exe`) when that file is
+  (`koi-avx512.exe`, then `koi-avx2.exe`) when that file is
   present, and otherwise runs its own baseline code in place. The selector
   writes nothing to stdout or stderr.
-- `koi-engine-avx2.exe` — Release-only `/arch:AVX2` build.
-- `koi-engine-avx512.exe` — Release-only `/arch:AVX512` build.
+- `koi-avx2.exe` — Release-only `/arch:AVX2` build.
+- `koi-avx512.exe` — Release-only `/arch:AVX512` build.
 
 Each optimized sibling checks the CPU at startup and exits with code 3 and a
 clear message instead of executing an unsupported instruction. Set
@@ -116,7 +116,7 @@ clear message instead of executing an unsupported instruction. Set
 unknown values keep the automatic behavior). On Windows the selector launches
 the sibling as a child process, forwards its exit code, and a job object kills
 the child if the parent disappears; on Linux it `execv`s the sibling so the
-process image is replaced. On macOS arm64 there are no AVX siblings, so the baseline `koi-engine` runs directly. All other developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`, `koi-nnue-fixture`) are built with AVX2 on Windows and Linux x86-64 and as baseline binaries on macOS arm64.
+process image is replaced. On macOS arm64 there are no AVX siblings, so the baseline `koi` runs directly. All other developer tools (`koi-bench`, `koi-replay`, `koi-perft`, `koi-eval-features`, `koi-nnue-fixture`) are built with AVX2 on Windows and Linux x86-64 and as baseline binaries on macOS arm64.
 
 For an independently reproducible release gate, run the checked-in harness from
 an x64 Visual Studio developer shell. It configures and builds fresh canonical
@@ -230,7 +230,7 @@ or `--hce` to select Koi's evaluator):
     ```powershell
     python .\tools\measurement\elo_oracle.py `
       --pgn .\tests\data\games\2026-09-08-koi-vs-stockfish-19.pgn `
-      --koi .\build\release\koi-engine.exe `
+      --koi .\build\release\koi.exe `
       --koi-eval-file .\artifacts\networks\koi-v9-hm10-h256-official.nnue `
       --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
       --output .\artifacts\verification\elo-oracle.json `
@@ -242,7 +242,7 @@ or `--hce` to select Koi's evaluator):
     ```bash
     python3 ./tools/measurement/elo_oracle.py \
       --pgn ./tests/data/games/2026-09-08-koi-vs-stockfish-19.pgn \
-      --koi ./build/release/koi-engine \
+      --koi ./build/release/koi \
       --koi-eval-file ./artifacts/networks/koi-v9-hm10-h256-official.nnue \
       --stockfish /path/to/stockfish \
       --output ./artifacts/verification/elo-oracle.json \
@@ -258,7 +258,7 @@ kept outside the normal search metrics:
     ```powershell
     python .\tools\measurement\elo_oracle.py `
       --pgn .\tests\data\games\2026-09-08-koi-vs-stockfish-19.pgn `
-      --koi .\build\release\koi-engine.exe `
+      --koi .\build\release\koi.exe `
       --koi-eval-file .\artifacts\networks\koi-v9-hm10-h256-official.nnue `
       --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
       --book C:\LicensedBooks\book.bin --book-audit `
@@ -271,7 +271,7 @@ kept outside the normal search metrics:
     ```bash
     python3 ./tools/measurement/elo_oracle.py \
       --pgn ./tests/data/games/2026-09-08-koi-vs-stockfish-19.pgn \
-      --koi ./build/release/koi-engine \
+      --koi ./build/release/koi \
       --koi-eval-file ./artifacts/networks/koi-v9-hm10-h256-official.nnue \
       --stockfish /path/to/stockfish \
       --book /path/to/licensed/book.bin --book-audit \
@@ -360,7 +360,7 @@ optional PowerShell harness (PowerShell 7 `pwsh` works on Windows, Linux, and ma
 
     ```powershell
     .\tools\stability\uci_match.ps1 `
-      -KoiPath .\build\release\koi-engine.exe `
+      -KoiPath .\build\release\koi.exe `
       -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
       -Depth 6 -Threads 4 -Hash 512 `
       -OutputDirectory .\artifacts\matches\match-results
@@ -370,7 +370,7 @@ optional PowerShell harness (PowerShell 7 `pwsh` works on Windows, Linux, and ma
 
     ```bash
     pwsh -NoProfile -File ./tools/stability/uci_match.ps1 \
-      -KoiPath ./build/release/koi-engine \
+      -KoiPath ./build/release/koi \
       -OpponentPath /path/to/stockfish \
       -Depth 6 -Threads 4 -Hash 512 \
       -OutputDirectory ./artifacts/matches/match-results
@@ -387,7 +387,7 @@ without contaminating later positions. PGN Result headers match the adjudicated 
 `-Nodes` instead of `-Depth` for those limits. To run a named FEN suite, pass
 `-FenFile` containing one entry per line in the form `name | six-field FEN` (blank
 lines and `#` comments are ignored). The replay executable is expected beside
-`koi-engine.exe` (or can be supplied as `-ReplayPath`).
+`koi.exe` (or can be supplied as `-ReplayPath`).
 
 For color-balanced paired Elo measurements, supply the checked-in eight-opening
 suite (or another file in the same `name | uci move uci move` format) and a chess
@@ -406,7 +406,7 @@ book-disabled and licensed-book conditions at both clocks:
     ```powershell
     # No-book 1+0 color-paired match
     .\tools\stability\uci_match.ps1 `
-      -KoiPath .\build\release\koi-engine.exe `
+      -KoiPath .\build\release\koi.exe `
       -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
       -OpeningFile .\tests\data\openings\openings-basic.txt `
       -TimeControl 1+0 -Games 20 -PairedColors `
@@ -415,7 +415,7 @@ book-disabled and licensed-book conditions at both clocks:
 
     # With a licensed book at 5+3
     .\tools\stability\uci_match.ps1 `
-      -KoiPath .\build\release\koi-engine.exe `
+      -KoiPath .\build\release\koi.exe `
       -OpponentPath .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
       -OpeningFile .\tests\data\openings\openings-basic.txt `
       -TimeControl 5+3 -Games 20 -PairedColors `
@@ -428,7 +428,7 @@ book-disabled and licensed-book conditions at both clocks:
     ```bash
     # No-book 1+0 color-paired match
     pwsh -NoProfile -File ./tools/stability/uci_match.ps1 \
-      -KoiPath ./build/release/koi-engine \
+      -KoiPath ./build/release/koi \
       -OpponentPath /path/to/stockfish \
       -OpeningFile ./tests/data/openings/openings-basic.txt \
       -TimeControl 1+0 -Games 20 -PairedColors \
@@ -437,7 +437,7 @@ book-disabled and licensed-book conditions at both clocks:
 
     # With a licensed book at 5+3
     pwsh -NoProfile -File ./tools/stability/uci_match.ps1 \
-      -KoiPath ./build/release/koi-engine \
+      -KoiPath ./build/release/koi \
       -OpponentPath /path/to/stockfish \
       -OpeningFile ./tests/data/openings/openings-basic.txt \
       -TimeControl 5+3 -Games 20 -PairedColors \
@@ -471,8 +471,8 @@ exact bound described in the release evidence report; this SPRT utility is explo
 
     ```powershell
     .\tools\stability\sprt_compare.ps1 `
-      -CandidatePath .\build\release\koi-engine.exe `
-      -BaselinePath .\artifacts\verification\baseline\koi-engine-baseline.exe `
+      -CandidatePath .\build\release\koi.exe `
+      -BaselinePath .\artifacts\verification\baseline\koi-baseline.exe `
       -Nodes 20000 -Games 2 -MinGames 40 -MaxGames 64 -Elo1 5 `
       -OutputDirectory .\artifacts\matches\sprt-candidate
     ```
@@ -481,8 +481,8 @@ exact bound described in the release evidence report; this SPRT utility is explo
 
     ```bash
     pwsh -NoProfile -File ./tools/stability/sprt_compare.ps1 \
-      -CandidatePath ./build/release/koi-engine \
-      -BaselinePath ./artifacts/verification/baseline/koi-engine-baseline \
+      -CandidatePath ./build/release/koi \
+      -BaselinePath ./artifacts/verification/baseline/koi-baseline \
       -Nodes 20000 -Games 2 -MinGames 40 -MaxGames 64 -Elo1 5 \
       -OutputDirectory ./artifacts/matches/sprt-candidate
     ```
@@ -519,7 +519,7 @@ manifest, corpus, and report path resolved explicitly:
 
     ```powershell
     python .\tools\measurement\elo_estimate.py `
-      --koi .\build\release\koi-engine.exe `
+      --koi .\build\release\koi.exe `
       --replay .\build\release\koi-replay.exe `
       --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
       --anchors .\artifacts\manifests\elo-anchors.json `
@@ -536,7 +536,7 @@ manifest, corpus, and report path resolved explicitly:
 
     ```bash
     python3 ./tools/measurement/elo_estimate.py \
-      --koi ./build/release/koi-engine \
+      --koi ./build/release/koi \
       --replay ./build/release/koi-replay \
       --stockfish /path/to/stockfish \
       --anchors ./artifacts/manifests/elo-anchors.json \
@@ -564,7 +564,7 @@ no-book result. Use a separate output path and licensed external book:
 
     ```powershell
     python .\tools\measurement\elo_estimate.py `
-      --koi .\build\release\koi-engine.exe `
+      --koi .\build\release\koi.exe `
       --replay .\build\release\koi-replay.exe `
       --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
       --anchors .\artifacts\manifests\elo-anchors.json `
@@ -580,7 +580,7 @@ no-book result. Use a separate output path and licensed external book:
 
     ```bash
     python3 ./tools/measurement/elo_estimate.py \
-      --koi ./build/release/koi-engine \
+      --koi ./build/release/koi \
       --replay ./build/release/koi-replay \
       --stockfish /path/to/stockfish \
       --anchors ./artifacts/manifests/elo-anchors.json \
@@ -666,9 +666,9 @@ cases run as ordinary fatal tests.
 
 ## Interactive and CLI commands
 
-In addition to standard UCI/XBoard sessions, `koi-engine` supports standard chess-engine CLI options and interactive terminal commands:
+In addition to standard UCI/XBoard sessions, `koi` supports standard chess-engine CLI options and interactive terminal commands:
 
-- **CLI subcommands & flags:** `koi-engine -c <cmd>` (`--cmd <cmd>`, repeatable batch execution with automatic `wait` + `quit`), `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine speedtest [threads [hash [seconds]]]` (or `--speedtest`, timed multi-position NPS throughput benchmark), `koi-engine compiler` (`--compiler`), `koi-engine nnue [path]` (zero-Python container metadata & payload SHA-256 verification), `koi-engine d`/`--display [pos]`, `koi-engine fen [pos]`, `koi-engine epd [pos]`, `koi-engine key [pos]`, `koi-engine moves [--san] [pos]`, `koi-engine history [pos]`, `koi-engine pgn [pos]`, `koi-engine flip [pos]`, `koi-engine book [pos]` (optional `--book <path>`), `koi-engine tb [pos]` (optional `--syzygy <path>`), `koi-engine see <move> [pos]`, `koi-engine eval [pos]` (`--eval [pos]`), `koi-engine options` (`--options`), `koi-engine perft <depth|--suite> [pos]` (`1..10` or 6-position CPW suite) — where `[pos]` accepts `startpos`, a quoted/unquoted 4-or-6-field FEN, or `[startpos|fen] [moves <uci|san>...]` — plus `koi-engine --hash <mb>`, `koi-engine --threads <n>`, `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine --book <path>`, `koi-engine --syzygy <path>`, `koi-engine version` (`--version` / `-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine help` (`--help` / `-h`).
+- **CLI subcommands & flags:** `koi -c <cmd>` (`--cmd <cmd>`, repeatable batch execution with automatic `wait` + `quit`), `koi bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi speedtest [threads [hash [seconds]]]` (or `--speedtest`, timed multi-position NPS throughput benchmark), `koi compiler` (`--compiler`), `koi nnue [path]` (zero-Python container metadata & payload SHA-256 verification), `koi d`/`--display [pos]`, `koi fen [pos]`, `koi epd [pos]`, `koi key [pos]`, `koi moves [--san] [pos]`, `koi history [pos]`, `koi pgn [pos]`, `koi flip [pos]`, `koi book [pos]` (optional `--book <path>`), `koi tb [pos]` (optional `--syzygy <path>`), `koi see <move> [pos]`, `koi eval [pos]` (`--eval [pos]`), `koi options` (`--options`), `koi perft <depth|--suite> [pos]` (`1..10` or 6-position CPW suite) — where `[pos]` accepts `startpos`, a quoted/unquoted 4-or-6-field FEN, or `[startpos|fen] [moves <uci|san>...]` — plus `koi --hash <mb>`, `koi --threads <n>`, `koi --hce` (force HCE without a network), `koi --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi --book <path>`, `koi --syzygy <path>`, `koi version` (`--version` / `-v`), `koi --engine-json`, `koi --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi help` (`--help` / `-h`).
 - **Interactive commands (inside a UCI session):**
   - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, check status, legal move count, and FIDE game state (`ongoing`, `checkmate`, `stalemate`, or draw rule).
   - `fen` — prints the six-field FEN of the current position.
@@ -701,13 +701,13 @@ Run an end-to-end handshake, search, and clean shutdown after building:
 === "One-shot CLI (--cmd)"
 
     ```bash
-    ./build/release/koi-engine -c "uci" -c "isready" -c "position startpos" -c "go depth 2"
+    ./build/release/koi -c "uci" -c "isready" -c "position startpos" -c "go depth 2"
     ```
 
 === "PowerShell"
 
     ```powershell
-    $engine = (Resolve-Path .\build\release\koi-engine.exe).Path
+    $engine = (Resolve-Path .\build\release\koi.exe).Path
     @(
         'uci'
         'isready'
@@ -721,7 +721,7 @@ Run an end-to-end handshake, search, and clean shutdown after building:
 === "Linux / macOS (Bash)"
 
     ```bash
-    printf 'uci\nisready\nposition startpos\ngo depth 2\nwait\nquit\n' | ./build/release/koi-engine
+    printf 'uci\nisready\nposition startpos\ngo depth 2\nwait\nquit\n' | ./build/release/koi
     ```
 
 The output should include, in order, the versioned engine identification lines
@@ -959,18 +959,18 @@ protocol clean. Leave this option disabled for normal release use.
 ## Register in En Croissant (primary)
 
 1. Build the Release target and resolve the absolute path to
-   `build\release\koi-engine.exe` (`build/release/koi-engine` on Linux and macOS) — or
+   `build\release\koi.exe` (`build/release/koi` on Linux and macOS) — or
    the executable in your chosen build directory.
-2. In **Pawn Appétit** / **En Croissant**, add a UCI engine and select that `koi-engine` path.
+2. In **Pawn Appétit** / **En Croissant**, add a UCI engine and select that `koi` path.
    Keep the engine's working directory beside the executable when configuring
    the engine so portable relative assets resolve predictably.
 
     !!! tip "Showing a separate `VERSION` badge (like Stockfish)"
-        Pawn Appétit / En Croissant's local binary scanner only populates `Name` from `id name` and leaves `Version` blank. Run `koi-engine --engine-json` (optionally with `--threads <n> --hash <mb>`, e.g. `koi-engine --threads 4 --hash 256 --engine-json`) to print a ready-to-paste JSON profile (`name: "Koi"`, `version: "<semver>"`, resolved `path`, defaults) for the GUI's **Edit JSON** dialog (or inspect `koi-engine --version`).
+        Pawn Appétit / En Croissant's local binary scanner only populates `Name` from `id name` and leaves `Version` blank. Run `koi --engine-json` (optionally with `--threads <n> --hash <mb>`, e.g. `koi --threads 4 --hash 256 --engine-json`) to print a ready-to-paste JSON profile (`name: "Koi"`, `version: "<semver>"`, resolved `path`, defaults) for the GUI's **Edit JSON** dialog (or inspect `koi --version`).
 
    - **Protocols (`uci`, `usi`, `ucci`, `ucicyclone`, `xboard`):** Select `Protocol` in UCI options (or launch with `--protocol <name>`, or send `xboard` / `usi` / `ucci` directly on stdin). All modes target standard 8x8 chess (`xboard` implements CECP v2 `protover 2`, `feature`, `setboard`, `usermove`, `ping/pong`, `level`/`st`/`sd`, `time`/`otim`, `post`/`nopost`, `analyze`/`exit`, `undo`/`remove`; `usi` and `ucci`/`ucicyclone` support their handshake, option, `go`, `bestmove resign`/`nobestmove`, and `bye` conventions on 8x8 boards).
 3. Release archives ship a compact Stockfish-verified CC0 opening book as
-   `book.bin` beside `koi-engine.exe` (used automatically unless `OwnBook` is
+   `book.bin` beside `koi.exe` (used automatically unless `OwnBook` is
    explicitly `false`); to use another Polyglot book, replace `book.bin` or set
    `BookFile` with `OwnBook=true`. Do not add unlicensed book data to this
    repository or redistribute it without its license.
@@ -1003,7 +1003,7 @@ per search. Any other standard UCI GUI can use the same executable and options.
 
 ## Generic UCI fallback (including Lucas Chess)
 
-1. Build the engine and resolve the path to `koi-engine` (`koi-engine.exe` on Windows).
+1. Build the engine and resolve the path to `koi` (`koi.exe` on Windows).
 2. In Lucas Chess, open the engine-management or configuration dialog and add
    the built executable as an external UCI engine.
 3. Save the engine configuration, then select Koi for play.
@@ -1103,11 +1103,11 @@ transcript but cannot automate a locally installed Lucas Chess GUI.
 
 ## Configuration and release packaging
 
-The Koi v1.2.0 Windows package is `koi-engine-v1.2.0.zip`; the portable
+The Koi v1.2.0 Windows package is `koi-v1.2.0.zip`; the portable
 Linux archive is
-`koi-engine-v1.2.0-linux-x86_64.tar.gz`; macOS arm64 (Apple Silicon) archives
+`koi-v1.2.0-linux-x86_64.tar.gz`; macOS arm64 (Apple Silicon) archives
 are published alongside them. Each user-facing archive is intentionally minimal
-and contains only the platform engine executables (`koi-engine` plus AVX2/AVX-512
+and contains only the platform engine executables (`koi` plus AVX2/AVX-512
 siblings on Windows/Linux), the bundled `koi.nnue`, the bundled Stockfish-verified
 CC0 opening book (`book.bin`), and `LICENSE`. Standalone `koi.nnue` is attached alongside the platform archives on GitHub Releases (without `.package.json` or `.sha256` clutter in the Releases Assets tab; GitHub displays built-in SHA-256 digests and SLSA build-provenance attestations).
 

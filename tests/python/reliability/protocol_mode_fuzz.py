@@ -6,7 +6,7 @@ XBoard CECP v2, USI, UCCI, UCI_Cyclone, mid-search protocol switching,
 hostile numeric/string tokens, CRLF/NUL framing, and healthy teardown.
 
     python tests/python/reliability/protocol_mode_fuzz.py \
-        --engine build/ci-release/koi-engine.exe --cases 100 \
+        --engine build/ci-release/koi.exe --cases 100 \
         --workers 2 --out build/ci-release/reliability/protocol_mode-fuzz.json
 """
 

@@ -1,73 +1,73 @@
 # CLI & Interactive Reference
 
-In addition to headless GUI communication, `koi-engine` and its companion developer binaries provide terminal commands for inspecting boards, hash keys, opening books, Syzygy tablebases, NNUE evaluations, perft counts, and deterministic benchmarks.
+In addition to headless GUI communication, `koi` and its companion developer binaries provide terminal commands for inspecting boards, hash keys, opening books, Syzygy tablebases, NNUE evaluations, perft counts, and deterministic benchmarks.
 
 ---
 
-## `koi-engine` One-Shot CLI Commands
+## `koi` One-Shot CLI Commands
 
-Run one-shot commands directly from a shell (`koi-engine.exe` on Windows, `koi-engine` on Linux and macOS):
+Run one-shot commands directly from a shell (`koi.exe` on Windows, `koi` on Linux and macOS):
 
 ```bash
 # OpenBench-compatible deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread)
-koi-engine bench [depth [hash [threads]]]
-koi-engine --bench [depth [hash [threads]]]
+koi bench [depth [hash [threads]]]
+koi --bench [depth [hash [threads]]]
 
 # Timed multi-position NPS throughput benchmark (defaults: 1 thread, 128 MB hash, 3 seconds)
-koi-engine speedtest [threads [hash [seconds]]]
-koi-engine --speedtest [threads [hash [seconds]]]
+koi speedtest [threads [hash [seconds]]]
+koi --speedtest [threads [hash [seconds]]]
 
 # Build metadata, C++26 standard, and active SIMD ISA (no NNUE network required)
-koi-engine compiler
-koi-engine --compiler
+koi compiler
+koi --compiler
 
 # Native NNUE container metadata & SHA-256 payload checksum verifier
-koi-engine nnue [path]
+koi nnue [path]
 
 # Timed perft divide from startpos/custom FEN (1..10) or 6-position CPW verification suite (no NNUE required)
-koi-engine perft <depth> [fen]
-koi-engine perft --suite
+koi perft <depth> [fen]
+koi perft --suite
 
 # Zero-network board diagram, six-field FEN, EPD, Zobrist/Polyglot hash keys, legal moves, PGN export, flip, book/TB probe, and SEE
-koi-engine d [fen]
-koi-engine --display [fen]
-koi-engine fen [fen]
-koi-engine epd [fen]
-koi-engine key [fen]
-koi-engine moves [--san] [fen]
-koi-engine history [fen]
-koi-engine pgn [fen]
-koi-engine flip [fen]
-koi-engine book [fen]                  # or --book <path> book [fen]
-koi-engine tb [fen]                    # or --syzygy <dir> tb [fen]
-koi-engine see <move> [fen]
+koi d [fen]
+koi --display [fen]
+koi fen [fen]
+koi epd [fen]
+koi key [fen]
+koi moves [--san] [fen]
+koi history [fen]
+koi pgn [fen]
+koi flip [fen]
+koi book [fen]                  # or --book <path> book [fen]
+koi tb [fen]                    # or --syzygy <dir> tb [fen]
+koi see <move> [fen]
 
 # Static NNUE/HCE evaluation and live option summary
-koi-engine eval [fen]
-koi-engine --eval [fen]
-koi-engine options                     # or --options
+koi eval [fen]
+koi --eval [fen]
+koi options                     # or --options
 
 # Pre-boot session defaults & asset overrides (also apply to live UCI, `-c`, `eval`, `bench`, and `options`)
-koi-engine --hce eval [fen]
-koi-engine --nnue <path> eval [fen]
-koi-engine --book <path> --syzygy <dir> options
-koi-engine --book <path> -c "position startpos" -c "go depth 6"
+koi --hce eval [fen]
+koi --nnue <path> eval [fen]
+koi --book <path> --syzygy <dir> options
+koi --book <path> -c "position startpos" -c "go depth 6"
 
 # Identity, GUI JSON profile, initial hash/threads, protocol dialect, batch execution, and help
-koi-engine version                                    # or -v, --version
-koi-engine [--threads <n> --hash <mb>] --engine-json
-koi-engine --hash <mb> --threads <n> -c "go depth 6"
-koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>
-koi-engine -c "position startpos moves e2e4" -c "go depth 6"   # repeatable --cmd
-koi-engine help          # or -h, --help
+koi version                                    # or -v, --version
+koi [--threads <n> --hash <mb>] --engine-json
+koi --hash <mb> --threads <n> -c "go depth 6"
+koi --protocol <uci|usi|ucci|ucicyclone|xboard>
+koi -c "position startpos moves e2e4" -c "go depth 6"   # repeatable --cmd
+koi help          # or -h, --help
 ```
 
 !!! note "Zero-network subcommands, unquoted FENs & batch mode"
-    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `epd`, `key`, `moves`, `history`, `pgn`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network; `--book <path>` and `--syzygy <path>` apply to both one-shot `book`/`tb` probes and live UCI, `-c`, or `options` sessions; `--hash` and `--threads` also provide defaults for `bench` and `speedtest` when positional hash/threads arguments are omitted). Both quoted (`koi-engine perft 2 "..."`), unquoted 4- or 6-field FEN arguments, and `[startpos|fen] [moves <uci|san>...]` sequences (for example `koi-engine fen moves e2e4 e7e5 g1f3`, `koi-engine d moves e4 e5 Nf3`, or `koi-engine eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd`/`--hash`/`--threads` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make asan` (ASan+UBSan), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make epd`, `make history`, `make pgn`, `make engine-json`, `make version`, `make compiler`, `make perft PERFT_DEPTH=5 [FEN=...]`, and `make perft-suite`.
+    `version`, `help`, `compiler`, `nnue`, `perft`, `d`, `fen`, `epd`, `key`, `moves`, `history`, `pgn`, `flip`, `book`, `tb`, `see`, `--version`, `--help`, and `--engine-json` execute before normal engine boot (`nnue` inspects and verifies either a supplied `.nnue` file or the auto-discovered network; `--book <path>` and `--syzygy <path>` apply to both one-shot `book`/`tb` probes and live UCI, `-c`, or `options` sessions; `--hash` and `--threads` also provide defaults for `bench` and `speedtest` when positional hash/threads arguments are omitted). Both quoted (`koi perft 2 "..."`), unquoted 4- or 6-field FEN arguments, and `[startpos|fen] [moves <uci|san>...]` sequences (for example `koi fen moves e2e4 e7e5 g1f3`, `koi d moves e4 e5 Nf3`, or `koi eval startpos moves e2e4 e7e5`) are supported. Repeatable `-c <cmd>` / `--cmd <cmd>` runs protocol commands in batch mode (auto-appending `wait` + `quit` unless the last command is already `quit`/`bye`) and cannot be combined with one-shot subcommands. Invalid perft depths, `speedtest`/`bench` bounds, corrupt `.nnue` files, illegal `see`, `flip`, or `moves` inputs, missing `--book`/`--syzygy`/`--nnue`/`--cmd`/`--hash`/`--threads` values, malformed FENs, or unknown flags exit cleanly with status `2` and a diagnostic on `stderr`. On Linux and macOS, the root `Makefile` wraps these directly as `make tools`, `make profile-build` (PGO), `make asan` (ASan+UBSan), `make smoke`, `make speedtest`, `make bench`, `make nnue`, `make options`, `make eval`, `make d`, `make epd`, `make history`, `make pgn`, `make engine-json`, `make version`, `make compiler`, `make perft PERFT_DEPTH=5 [FEN=...]`, and `make perft-suite`.
 
 ### Example Outputs
 
-=== "`koi-engine bench`"
+=== "`koi bench`"
 
     ```text
     ===========================
@@ -76,7 +76,7 @@ koi-engine help          # or -h, --help
     Nodes/second    : 4268663
     ```
 
-=== "`koi-engine eval`"
+=== "`koi eval`"
 
     ```text
     Evaluator      : NNUE (v9 halfka-hm-v2, 7680->256x2->8)
@@ -89,7 +89,7 @@ koi-engine help          # or -h, --help
     Quantization   : int16/int8 (QA=255, QB=64, scale=400)
     ```
 
-=== "`KOI_EVALUATOR=hce koi-engine eval` (Kiwipete)"
+=== "`KOI_EVALUATOR=hce koi eval` (Kiwipete)"
 
     ```text
     Evaluator      : HCE (classical tapered)
@@ -113,7 +113,7 @@ koi-engine help          # or -h, --help
     Total (White)  |   +1.49 |   +0.86 |  +1.49
     ```
 
-=== "`koi-engine compiler`"
+=== "`koi compiler`"
 
     ```text
     Koi 1.2.0 (<commit>)
@@ -123,7 +123,7 @@ koi-engine help          # or -h, --help
     SIMD / ISA     : NEON
     ```
 
-=== "`koi-engine nnue`"
+=== "`koi nnue`"
 
     ```text
     NNUE file      : koi-v9-hm10-h256-official.nnue
@@ -136,7 +136,7 @@ koi-engine help          # or -h, --help
     Status         : valid (checksum verified)
     ```
 
-=== "`koi-engine options`"
+=== "`koi options`"
 
     ```text
     Protocol        : uci
@@ -160,7 +160,7 @@ koi-engine help          # or -h, --help
 
 ## Interactive Session Commands
 
-Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready`, `ucinewgame`, `position`, `setoption`, `go`, `stop`, `ponderhit`, `debug`, `quit`) are paired with interactive inspection commands:
+Inside a live `koi` stdin session, standard UCI commands (`uci`, `isready`, `ucinewgame`, `position`, `setoption`, `go`, `stop`, `ponderhit`, `debug`, `quit`) are paired with interactive inspection commands:
 
 | Command | Arguments | Purpose |
 | :--- | :--- | :--- |

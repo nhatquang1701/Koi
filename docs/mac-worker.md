@@ -74,7 +74,7 @@ ctest --test-dir build/release -j 8 --output-on-failure
   `tools/stability/sprt_compare.ps1`, and `tools/nnue/net_match.ps1`;
   install PowerShell 7 on macOS with `brew install --cask powershell`.
 
-- Reference throughput (Apple Silicon M4, `Threads=1`, Official NNUE v9 `h256` with PGO+LTO): ~3.4–4.2M NPS in `1+0` self-play and ~12–14M NPS at `Threads=4`. Use `build/release/koi-engine bench` for a quick single-threaded deterministic node-count and NPS check.
+- Reference throughput (Apple Silicon M4, `Threads=1`, Official NNUE v9 `h256` with PGO+LTO): ~3.4–4.2M NPS in `1+0` self-play and ~12–14M NPS at `Threads=4`. Use `build/release/koi bench` for a quick single-threaded deterministic node-count and NPS check.
 
 ## Remote worker pattern
 

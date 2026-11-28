@@ -23,17 +23,17 @@ def _resolve_engine() -> pathlib.Path:
         if path.is_file():
             return path
     candidates = [
-        ROOT / "build" / "loop-win" / "koi-engine.exe",
-        ROOT / "build" / "windows-release" / "koi-engine.exe",
-        ROOT / "build" / "release" / "koi-engine.exe",
-        ROOT / "build" / "release" / "koi-engine",
-        ROOT / "build" / "linux-gcc-release" / "koi-engine",
-        ROOT / "build" / "macos-arm64-release" / "koi-engine",
+        ROOT / "build" / "loop-win" / "koi.exe",
+        ROOT / "build" / "windows-release" / "koi.exe",
+        ROOT / "build" / "release" / "koi.exe",
+        ROOT / "build" / "release" / "koi",
+        ROOT / "build" / "linux-gcc-release" / "koi",
+        ROOT / "build" / "macos-arm64-release" / "koi",
     ]
     for candidate in candidates:
         if candidate.is_file():
             return candidate
-    raise unittest.SkipTest("No built koi-engine executable found; set KOI_ENGINE_EXE")
+    raise unittest.SkipTest("No built koi executable found; set KOI_ENGINE_EXE")
 
 
 def _resolve_tool(env_name: str, binary_stem: str, engine: pathlib.Path) -> pathlib.Path:
@@ -88,7 +88,7 @@ class CliSubcommandsTest(unittest.TestCase):
         for flag in ("help", "--help", "-h"):
             proc = self._run([flag], disable_nnue=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            self.assertIn("Usage: koi-engine", proc.stdout)
+            self.assertIn("Usage: koi", proc.stdout)
             self.assertIn("eval, --eval [fen]", proc.stdout)
             self.assertIn("history [fen]", proc.stdout)
             self.assertIn("perft <depth|--suite> [fen]", proc.stdout)

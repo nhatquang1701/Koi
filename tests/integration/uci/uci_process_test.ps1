@@ -15,7 +15,7 @@ Import-Module ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../sup
 Set-UciTimeoutMilliseconds $TimeoutMilliseconds
 
 # Every engine process the shared session module starts is tracked there so a
-# failed assertion can never orphan a running koi-engine.exe. The trap runs on
+# failed assertion can never orphan a running koi.exe. The trap runs on
 # any terminating error, kills the survivors, and then lets the error propagate.
 trap {
     Stop-AllUciSessions
@@ -29,16 +29,16 @@ function Invoke-UciTranscript([string]$Transcript) {
     $session.Process.StandardInput.Close()
 
     if (-not $session.Process.WaitForExit($TimeoutMilliseconds)) {
-        Stop-TimedOutSession $session 'koi-engine transcript did not exit within 5000 ms.'
+        Stop-TimedOutSession $session 'koi transcript did not exit within 5000 ms.'
     }
 
     $output = $stdoutTask.GetAwaiter().GetResult()
     $diagnostics = $session.StderrTask.GetAwaiter().GetResult()
     if ($session.Process.ExitCode -ne 0) {
-        throw "koi-engine exited with $($session.Process.ExitCode): $diagnostics"
+        throw "koi exited with $($session.Process.ExitCode): $diagnostics"
     }
     if ($diagnostics.Length -ne 0) {
-        throw "koi-engine wrote diagnostics for a valid transcript: $diagnostics"
+        throw "koi wrote diagnostics for a valid transcript: $diagnostics"
     }
 
     return @($output -split "`r?`n" | Where-Object { $_.Length -ne 0 })
@@ -103,7 +103,7 @@ if ((Read-UciLine $session 'initial readyok') -cne 'readyok') {
 
 Write-TestProgress 2 11 'executable-relative opening book and MultiPV search'
 $bookFileName = "uci-process-book-$([guid]::NewGuid().ToString('N')).bin"
-$engineFileName = if ($env:OS -eq 'Windows_NT') { 'koi-engine.exe' } else { 'koi-engine' }
+$engineFileName = if ($env:OS -eq 'Windows_NT') { 'koi.exe' } else { 'koi' }
 $bookPath = Join-Path (Split-Path -Parent $EnginePath) $bookFileName
 $bookLaunchDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "koi-uci-process-$([guid]::NewGuid().ToString('N'))"
 $originalPath = $env:PATH
@@ -590,18 +590,18 @@ $null = Complete-UciSession $gameSession $true
 
 $versionText = (& $EnginePath --version | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or $versionText -notmatch '^Koi \S+ \(\S+\)$') {
-    throw "koi-engine --version failed or returned unexpected format: '$versionText'"
+    throw "koi --version failed or returned unexpected format: '$versionText'"
 }
 
 $engineJsonRaw = (& $EnginePath --engine-json | Out-String)
 if ($LASTEXITCODE -ne 0) {
-    throw 'koi-engine --engine-json exited non-zero.'
+    throw 'koi --engine-json exited non-zero.'
 }
 $engineJson = $engineJsonRaw | ConvertFrom-Json
 if ($engineJson.type -cne 'local' -or $engineJson.name -cne 'Koi' -or
     [string]::IsNullOrWhiteSpace([string]$engineJson.version) -or
     [string]::IsNullOrWhiteSpace([string]$engineJson.path)) {
-    throw "koi-engine --engine-json emitted unexpected schema: $engineJsonRaw"
+    throw "koi --engine-json emitted unexpected schema: $engineJsonRaw"
 }
 
 $xboardSession = Start-UciSession -Executable $EnginePath -Arguments @('--protocol', 'xboard')

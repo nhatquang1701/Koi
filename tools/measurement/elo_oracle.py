@@ -985,13 +985,13 @@ def _resolve_engine_paths(
 ) -> tuple[Path, Path]:
     missing: list[str] = []
     if koi_raw is None:
-        missing.append("--koi <koi-engine.exe>")
+        missing.append("--koi <koi.exe>")
     if stockfish_raw is None:
         missing.append("--stockfish <stockfish.exe>")
     if missing:
         raise OracleError(f"{mode} requires " + " and ".join(missing) + ".")
     return (
-        _resolve_file(koi_raw, "Koi executable", "--koi <koi-engine.exe>"),
+        _resolve_file(koi_raw, "Koi executable", "--koi <koi.exe>"),
         _resolve_file(stockfish_raw, "Stockfish executable", "--stockfish <stockfish.exe>"),
     )
 

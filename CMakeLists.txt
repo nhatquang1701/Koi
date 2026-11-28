@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.31)
 
-project(koi_engine VERSION 1.2.0 LANGUAGES CXX)
+project(koi VERSION 1.2.0 LANGUAGES CXX)
 
 # Build identity for the UCI handshake: the version is the single project()
 # pin above, the commit is the checkout HEAD at configure time (best effort so
@@ -521,12 +521,12 @@ else()
         "(${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION})")
 endif()
 
-# koi_core_avx512 backs koi-engine-avx512.exe on x86-64 hosts.
+# koi_core_avx512 backs koi-avx512.exe on x86-64 hosts.
 if(KOI_TARGET_X86_64)
     koi_add_core_target(koi_core_avx512 "/arch:AVX512")
 endif()
 
-# koi_core_generic backs the baseline koi-engine executable that runs on any
+# koi_core_generic backs the baseline koi executable that runs on any
 # host CPU (x64 or arm64).
 # Fathom's vendored popcount selects `_mm_popcnt_u64` unconditionally on MSVC
 # x64, so the baseline build asks for its software fallback; the standard
@@ -747,52 +747,52 @@ function(koi_configure_shipping_metadata target file_description output_filename
     endif()
 endfunction()
 
-# Engine flavors: the baseline `koi-engine` selects the best sibling at startup,
+# Engine flavors: the baseline `koi` selects the best sibling at startup,
 # while on x86-64 the AVX2/AVX-512 binaries gate themselves when launched
 # directly on a CPU that cannot execute them without linking process-launch APIs.
 # macOS arm64 builds the baseline alone because those instruction sets do not
 # exist there.
-add_executable(koi_engine
+add_executable(koi
     src/main.cpp
     src/cli_support.cpp
     src/koi/cpu_variant_selector.cpp
 )
 
-target_link_libraries(koi_engine PRIVATE koi_core_generic)
-target_compile_definitions(koi_engine PRIVATE KOI_CPU_SELECTOR=1)
-set_target_properties(koi_engine PROPERTIES OUTPUT_NAME "koi-engine")
-koi_configure_shipping_metadata(koi_engine "Koi UCI Chess Engine" "koi-engine.exe")
+target_link_libraries(koi PRIVATE koi_core_generic)
+target_compile_definitions(koi PRIVATE KOI_CPU_SELECTOR=1)
+set_target_properties(koi PROPERTIES OUTPUT_NAME "koi")
+koi_configure_shipping_metadata(koi "Koi UCI Chess Engine" "koi.exe")
 
 if(KOI_TARGET_X86_64)
-    add_executable(koi_engine_avx2
+    add_executable(koi_avx2
         src/main.cpp
         src/cli_support.cpp
     )
 
-    target_link_libraries(koi_engine_avx2 PRIVATE koi_core)
-    target_compile_definitions(koi_engine_avx2 PRIVATE KOI_CPU_REQUIRES_AVX2=1)
+    target_link_libraries(koi_avx2 PRIVATE koi_core)
+    target_compile_definitions(koi_avx2 PRIVATE KOI_CPU_REQUIRES_AVX2=1)
     if(NOT MSVC)
-        target_sources(koi_engine_avx2 PRIVATE $<TARGET_OBJECTS:koi_cpu_guard_avx2>)
-        add_dependencies(koi_engine_avx2 koi_cpu_guard_avx2)
+        target_sources(koi_avx2 PRIVATE $<TARGET_OBJECTS:koi_cpu_guard_avx2>)
+        add_dependencies(koi_avx2 koi_cpu_guard_avx2)
     endif()
-    set_target_properties(koi_engine_avx2 PROPERTIES OUTPUT_NAME "koi-engine-avx2")
+    set_target_properties(koi_avx2 PROPERTIES OUTPUT_NAME "koi-avx2")
     koi_configure_shipping_metadata(
-        koi_engine_avx2 "Koi UCI Chess Engine (AVX2)" "koi-engine-avx2.exe")
+        koi_avx2 "Koi UCI Chess Engine (AVX2)" "koi-avx2.exe")
 
-    add_executable(koi_engine_avx512
+    add_executable(koi_avx512
         src/main.cpp
         src/cli_support.cpp
     )
 
-    target_link_libraries(koi_engine_avx512 PRIVATE koi_core_avx512)
-    target_compile_definitions(koi_engine_avx512 PRIVATE KOI_CPU_REQUIRES_AVX512=1)
+    target_link_libraries(koi_avx512 PRIVATE koi_core_avx512)
+    target_compile_definitions(koi_avx512 PRIVATE KOI_CPU_REQUIRES_AVX512=1)
     if(NOT MSVC)
-        target_sources(koi_engine_avx512 PRIVATE $<TARGET_OBJECTS:koi_cpu_guard_avx512>)
-        add_dependencies(koi_engine_avx512 koi_cpu_guard_avx512)
+        target_sources(koi_avx512 PRIVATE $<TARGET_OBJECTS:koi_cpu_guard_avx512>)
+        add_dependencies(koi_avx512 koi_cpu_guard_avx512)
     endif()
-    set_target_properties(koi_engine_avx512 PROPERTIES OUTPUT_NAME "koi-engine-avx512")
+    set_target_properties(koi_avx512 PROPERTIES OUTPUT_NAME "koi-avx512")
     koi_configure_shipping_metadata(
-        koi_engine_avx512 "Koi UCI Chess Engine (AVX-512)" "koi-engine-avx512.exe")
+        koi_avx512 "Koi UCI Chess Engine (AVX-512)" "koi-avx512.exe")
 endif()
 
 # PowerShell drives the process-level integration tests. It ships on Windows and
@@ -819,7 +819,7 @@ endfunction()
 
 function(koi_add_engine_ps_test test_name script_relpath release_seconds)
     koi_add_ps_test(${test_name} "${script_relpath}" ${release_seconds}
-        -EnginePath "$<TARGET_FILE:koi_engine>" ${ARGN})
+        -EnginePath "$<TARGET_FILE:koi>" ${ARGN})
 endfunction()
 
 koi_add_engine_ps_test(koi_engine_process tests/integration/uci/uci_process_test.ps1 60)
@@ -852,8 +852,8 @@ set_tests_properties(run_tests_artifact_path PROPERTIES
 # not built on arm64.
 if(KOI_TARGET_X86_64)
     koi_add_engine_ps_test(koi_engine_variant_process tests/integration/uci/engine_variant_process_test.ps1 60
-        -Avx2EnginePath "$<TARGET_FILE:koi_engine_avx2>"
-        -Avx512EnginePath "$<TARGET_FILE:koi_engine_avx512>")
+        -Avx2EnginePath "$<TARGET_FILE:koi_avx2>"
+        -Avx512EnginePath "$<TARGET_FILE:koi_avx512>")
 endif()
 
 koi_add_engine_ps_test(koi_engine_en_croissant_process tests/integration/uci/en_croissant_uci_test.ps1 30)
@@ -959,7 +959,7 @@ if(Python3_Interpreter_FOUND)
         TEST cli_subcommands_python
         APPEND
         PROPERTY ENVIRONMENT
-            "KOI_ENGINE_EXE=$<TARGET_FILE:koi_engine>"
+            "KOI_ENGINE_EXE=$<TARGET_FILE:koi>"
             "KOI_PERFT_EXE=$<TARGET_FILE:koi_perft>"
             "KOI_REPLAY_EXE=$<TARGET_FILE:koi_replay>"
             "KOI_BENCH_EXE=$<TARGET_FILE:koi_bench>"
@@ -1100,7 +1100,7 @@ if(Python3_Interpreter_FOUND)
             NAME "koi_${KOI_FUZZ_NAME}_fuzz_process"
             COMMAND "${Python3_EXECUTABLE}"
                     "${KOI_RELIABILITY_FUZZ_DIR}/${KOI_FUZZ_NAME}_fuzz.py"
-                    --engine "$<TARGET_FILE:koi_engine>"
+                    --engine "$<TARGET_FILE:koi>"
                     --cases "${KOI_FUZZ_CASES}"
                     --workers 2
                     --out "${CMAKE_BINARY_DIR}/reliability/${KOI_FUZZ_NAME}-fuzz.json"

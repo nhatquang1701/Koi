@@ -77,7 +77,7 @@ if (Test-Path -LiteralPath $installerPath -PathType Leaf) {
         Assert-True $missingFailed 'A missing EnginePath must fail.'
         Assert-Contains $missingOutput 'EnginePath' 'Missing EnginePath errors must identify the input.'
 
-        $enginePath = Join-Path $tempRoot 'koi-engine.exe'
+        $enginePath = Join-Path $tempRoot 'koi.exe'
         [System.IO.File]::WriteAllBytes($enginePath, [byte[]](0x4B, 0x4F, 0x49))
         $bookPath = Join-Path $tempRoot 'book.bin'
         $originalBytes = [byte[]](0x01, 0x02, 0x03, 0x04)
@@ -102,7 +102,7 @@ if (Test-Path -LiteralPath $installerPath -PathType Leaf) {
         Write-Output '[3/4] verify offline verified install and repeat no-op'
         $successRoot = Join-Path $tempRoot 'success'
         New-Item -ItemType Directory -Path $successRoot | Out-Null
-        $successEngine = Join-Path $successRoot 'koi-engine.exe'
+        $successEngine = Join-Path $successRoot 'koi.exe'
         [System.IO.File]::WriteAllBytes($successEngine, [byte[]](0x4B, 0x4F, 0x49))
         $fixturePath = Join-Path $tempRoot 'fixture-book.bin'
         [System.IO.File]::WriteAllBytes($fixturePath, [byte[]](0x50, 0x4F, 0x4C, 0x59))

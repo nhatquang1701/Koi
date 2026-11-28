@@ -62,8 +62,8 @@ jobs:
         run: |
           grep -m1 '^flags' /proc/cpuinfo | tr ' ' '\n' | grep -E '^avx' | sort | tr '\n' ' '; echo
           set +e
-          ./build/ci-release/koi-engine-avx512 </dev/null >/tmp/koi-avx512.out 2>/tmp/koi-avx512.err
-          echo "koi-engine-avx512 exit=$?"
+          ./build/ci-release/koi-avx512 </dev/null >/tmp/koi-avx512.out 2>/tmp/koi-avx512.err
+          echo "koi-avx512 exit=$?"
           cat /tmp/koi-avx512.out
           cat /tmp/koi-avx512.err
           set -e
@@ -262,8 +262,8 @@ jobs:
         run: |
           grep -m1 '^flags' /proc/cpuinfo | tr ' ' '\n' | grep -E '^avx' | sort | tr '\n' ' '; echo
           set +e
-          ./build/ci-release/koi-engine-avx512 </dev/null >/tmp/koi-avx512.out 2>/tmp/koi-avx512.err
-          echo "koi-engine-avx512 exit=$?"
+          ./build/ci-release/koi-avx512 </dev/null >/tmp/koi-avx512.out 2>/tmp/koi-avx512.err
+          echo "koi-avx512 exit=$?"
           cat /tmp/koi-avx512.out
           cat /tmp/koi-avx512.err
           set -e
@@ -549,8 +549,8 @@ jobs:
           pwsh -NoProfile -File tools/build/package_release.ps1 -BuildDirectory build/ci-release -OutputDirectory artifacts/packages
           ls -l artifacts/packages
           pwsh -NoProfile -File tests/integration/packaging/package_release_test.ps1 -BuildDirectory build/ci-release -PackageScript tools/build/package_release.ps1
-          archive=artifacts/packages/koi-engine-v1.2.0-linux-x86_64.tar.gz
-          (cd artifacts/packages && sha256sum -c koi-engine-v1.2.0-linux-x86_64.tar.gz.sha256)
+          archive=artifacts/packages/koi-v1.2.0-linux-x86_64.tar.gz
+          (cd artifacts/packages && sha256sum -c koi-v1.2.0-linux-x86_64.tar.gz.sha256)
           extracted=/tmp/koi-v1.2.0-package
           mkdir -p "$extracted"
           tar -xzf "$archive" -C "$extracted"
@@ -561,14 +561,14 @@ jobs:
           import pathlib
           import re
           root = pathlib.Path("/tmp/koi-v1.2.0-package")
-          manifest = json.loads(pathlib.Path("artifacts/packages/koi-engine-v1.2.0-linux-x86_64.package.json").read_text(encoding="utf-8-sig"))
+          manifest = json.loads(pathlib.Path("artifacts/packages/koi-v1.2.0-linux-x86_64.package.json").read_text(encoding="utf-8-sig"))
           assert manifest["version"] == "1.2.0", manifest["version"]
           assert manifest["platform"] == "linux-x86_64", manifest["platform"]
           assert re.fullmatch(r"[0-9a-f]{40,64}", manifest["provenance"]["source_commit"]), manifest["provenance"]
           assert manifest["provenance"]["source_commit"] == os.environ["GITHUB_SHA"], manifest["provenance"]
           assert manifest["provenance"]["source_dirty"] is False, manifest["provenance"]
           extracted_files = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
-          assert extracted_files == ["LICENSE", "book.bin", "koi-engine", "koi-engine-avx2", "koi-engine-avx512"], extracted_files
+          assert extracted_files == ["LICENSE", "book.bin", "koi", "koi-avx2", "koi-avx512"], extracted_files
           for item in manifest["files"]:
               path = (root / item["path"]).resolve()
               assert root.resolve() in path.parents, item["path"]
@@ -576,10 +576,10 @@ jobs:
               assert len(data) == item["size_bytes"], item["path"]
               assert hashlib.sha256(data).hexdigest() == item["sha256"], item["path"]
           PY
-          for executable in koi-engine koi-engine-avx2 koi-engine-avx512; do
+          for executable in koi koi-avx2 koi-avx512; do
             test -x "$extracted/$executable"
           done
-          for variant_bin in koi-engine-avx2 koi-engine-avx512; do
+          for variant_bin in koi-avx2 koi-avx512; do
             if nm -u "$extracted/$variant_bin" | grep -Eq "(^|[[:space:]])(execv|execve|fork|posix_spawn|system|popen)(@|$)"; then
               echo "Unexpected process-creation symbol in $variant_bin" >&2
               exit 1
@@ -608,15 +608,15 @@ jobs:
           # has none; the packaged engine still requires NNUE at boot, so smoke
           # it against the build-tree fixture network.
           export KOI_NNUE_PATH=/work/build/ci-release/koi.nnue
-          smoke package-auto "$extracted/koi-engine"
-          smoke package-generic env KOI_CPU_VARIANT=generic "$extracted/koi-engine"
+          smoke package-auto "$extracted/koi"
+          smoke package-generic env KOI_CPU_VARIANT=generic "$extracted/koi"
           # `stop` is required before `quit`: quitting an active search suppresses
           # its completion, so the transcript would never carry a bestmove.
-          printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | ./build/ci-release/koi-engine > /tmp/smoke-auto.txt 2> /tmp/smoke-auto.err
+          printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | ./build/ci-release/koi > /tmp/smoke-auto.txt 2> /tmp/smoke-auto.err
           cat /tmp/smoke-auto.txt
           cat /tmp/smoke-auto.err
           grep -q "bestmove" /tmp/smoke-auto.txt
-          printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | env KOI_CPU_VARIANT=generic ./build/ci-release/koi-engine > /tmp/smoke-generic.txt 2> /tmp/smoke-generic.err
+          printf "uci\nisready\nposition startpos\ngo depth 2\nstop\nquit\n" | env KOI_CPU_VARIANT=generic ./build/ci-release/koi > /tmp/smoke-generic.txt 2> /tmp/smoke-generic.err
           cat /tmp/smoke-generic.txt
           cat /tmp/smoke-generic.err
           grep -q "bestmove" /tmp/smoke-generic.txt
@@ -626,11 +626,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: koi-engine-linux-tarball
+          name: koi-linux-tarball
           path: |
-            artifacts/packages/koi-engine-v1.2.0-linux-x86_64.tar.gz
-            artifacts/packages/koi-engine-v1.2.0-linux-x86_64.tar.gz.sha256
-            artifacts/packages/koi-engine-v1.2.0-linux-x86_64.package.json
+            artifacts/packages/koi-v1.2.0-linux-x86_64.tar.gz
+            artifacts/packages/koi-v1.2.0-linux-x86_64.tar.gz.sha256
+            artifacts/packages/koi-v1.2.0-linux-x86_64.package.json
           if-no-files-found: ignore
           retention-days: 7
 

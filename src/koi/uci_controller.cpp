@@ -1865,7 +1865,7 @@ int UciController::run_eval(const std::optional<std::string_view> fen) {
         std::string error;
         const auto parsed = detail::parse_cli_position_spec(*fen, error);
         if (!parsed.has_value()) {
-            diagnostics_ << "koi-engine: " << error << '\n' << std::flush;
+            diagnostics_ << "koi: " << error << '\n' << std::flush;
             return 2;
         }
         stop_and_suppress_active_search();

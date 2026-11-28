@@ -495,7 +495,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        koi_path = elo_oracle._resolve_file(args.koi, "Koi executable", "--koi <koi-engine>")
+        koi_path = elo_oracle._resolve_file(args.koi, "Koi executable", "--koi <koi>")
         pgn_path = elo_oracle._resolve_file(args.pgn, "PGN file", "--pgn <file.pgn>")
         result = annotate_pgn_file(
             pgn_path,

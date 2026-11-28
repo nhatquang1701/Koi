@@ -18,7 +18,7 @@ Import-Module ([System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '../../support/UciSession.psm1'))) -Force
 
 # Every engine process the shared session module starts is tracked there so a
-# failed assertion can never orphan a running koi-engine.exe. The trap runs on
+# failed assertion can never orphan a running koi.exe. The trap runs on
 # any terminating error, kills the survivors, and then lets the error propagate.
 trap {
     Stop-AllUciSessions
@@ -117,43 +117,43 @@ function Assert-GatedOrHealthy {
 # baseline build in-process. Either way stdout/stderr stay protocol-clean.
 Write-TestProgress 1 7 'automatic CPU variant selector'
 $automatic = Invoke-EngineTranscript -Executable $EnginePath
-Assert-HealthyTranscript $automatic 'koi-engine.exe (automatic)'
+Assert-HealthyTranscript $automatic 'koi.exe (automatic)'
 
 # The explicit baseline override must run the generic build on any x64 CPU.
 Write-TestProgress 2 7 'explicit KOI_CPU_VARIANT=generic'
 $generic = Invoke-EngineTranscript -Executable $EnginePath -Variant 'generic'
-Assert-HealthyTranscript $generic 'koi-engine.exe (KOI_CPU_VARIANT=generic)'
+Assert-HealthyTranscript $generic 'koi.exe (KOI_CPU_VARIANT=generic)'
 
 # An unknown value is treated like `auto` instead of failing the engine.
 Write-TestProgress 3 7 'unknown KOI_CPU_VARIANT fallback'
 $unknown = Invoke-EngineTranscript -Executable $EnginePath -Variant 'bogus'
-Assert-HealthyTranscript $unknown 'koi-engine.exe (unknown KOI_CPU_VARIANT)'
+Assert-HealthyTranscript $unknown 'koi.exe (unknown KOI_CPU_VARIANT)'
 
 # The direct AVX2 binary is healthy on an AVX2 host and must gate itself with a
 # clear message (exit 3) on anything older, never crash with an illegal opcode.
-Write-TestProgress 4 7 'direct koi-engine-avx2 executable'
+Write-TestProgress 4 7 'direct koi-avx2 executable'
 $avx2 = Invoke-EngineTranscript -Executable $Avx2EnginePath
 $hostSupportsAvx2 = $avx2.ExitCode -eq 0
-Assert-GatedOrHealthy $avx2 'koi-engine-avx2.exe' 'AVX2'
+Assert-GatedOrHealthy $avx2 'koi-avx2.exe' 'AVX2'
 
 # A forced AVX2 selection goes through the selector, so the child's exit code
 # and diagnostics must be forwarded unchanged.
 Write-TestProgress 5 7 'forced KOI_CPU_VARIANT=avx2'
 $forcedAvx2 = Invoke-EngineTranscript -Executable $EnginePath -Variant 'avx2'
 if ($hostSupportsAvx2) {
-    Assert-HealthyTranscript $forcedAvx2 'koi-engine.exe (KOI_CPU_VARIANT=avx2)'
+    Assert-HealthyTranscript $forcedAvx2 'koi.exe (KOI_CPU_VARIANT=avx2)'
 } else {
-    Assert-GatedOrHealthy $forcedAvx2 'koi-engine.exe (KOI_CPU_VARIANT=avx2)' 'AVX2'
+    Assert-GatedOrHealthy $forcedAvx2 'koi.exe (KOI_CPU_VARIANT=avx2)' 'AVX2'
 }
 
 # The direct AVX-512 binary is healthy on an AVX-512 host and gates itself on
 # every other CPU; this test host has AVX2 only, so both outcomes are accepted
 # as long as the binary never crashes.
-Write-TestProgress 6 7 'direct koi-engine-avx512 executable'
+Write-TestProgress 6 7 'direct koi-avx512 executable'
 $avx512 = Invoke-EngineTranscript -Executable $Avx512EnginePath
-Assert-GatedOrHealthy $avx512 'koi-engine-avx512.exe' 'AVX-512'
+Assert-GatedOrHealthy $avx512 'koi-avx512.exe' 'AVX-512'
 
 # Forcing the AVX-512 sibling through the selector must forward its behavior.
 Write-TestProgress 7 7 'forced KOI_CPU_VARIANT=avx512'
 $forcedAvx512 = Invoke-EngineTranscript -Executable $EnginePath -Variant 'avx512'
-Assert-GatedOrHealthy $forcedAvx512 'koi-engine.exe (KOI_CPU_VARIANT=avx512)' 'AVX-512'
+Assert-GatedOrHealthy $forcedAvx512 'koi.exe (KOI_CPU_VARIANT=avx512)' 'AVX-512'

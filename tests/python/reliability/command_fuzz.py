@@ -8,7 +8,7 @@ commands sent; stderr may only contain documented position errors; at least one
 legal bestmove must complete.
 
     python tests/python/reliability/command_fuzz.py \
-        --engine build/release/koi-engine.exe --cases 500 \
+        --engine build/release/koi.exe --cases 500 \
         --workers 4 --out build/tmp/command-fuzz.json
 """
 

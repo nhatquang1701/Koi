@@ -26,7 +26,7 @@ BOT_HOME="${KOI_BOT_HOME:-$HOME/koi-bot}"
 UPSTREAM="https://github.com/lichess-bot-devs/lichess-bot.git"
 REPO="nhatquang1701/Koi"
 ENGINE_DIR="$BOT_HOME/engines"
-ENGINE="$ENGINE_DIR/koi-engine"
+ENGINE="$ENGINE_DIR/koi"
 NET="$ENGINE_DIR/koi.nnue"
 CONFIG="$BOT_HOME/config.yml"
 TOKEN_FILE="$BOT_HOME/token"
@@ -179,7 +179,7 @@ url: "https://lichess.org/"
 
 engine:
   dir: "$ENGINE_DIR"
-  name: "koi-engine"
+  name: "koi"
   protocol: "uci"
   ponder: true
   working_dir: "$ENGINE_DIR"
@@ -299,7 +299,10 @@ install_engine() {
     fi
 
     tar -xzf "$tmp/package.tar.gz" -C "$ENGINE_DIR"
-    chmod +x "$ENGINE_DIR"/koi-engine 2>/dev/null || true
+    if [ ! -f "$ENGINE_DIR/koi" ] && [ -f "$ENGINE_DIR/koi-engine" ]; then
+        mv "$ENGINE_DIR/koi-engine" "$ENGINE_DIR/koi"
+    fi
+    chmod +x "$ENGINE_DIR"/koi 2>/dev/null || true
 
     local net_url net_digest
     net_url="$(asset_url ".nnue" "$json")"
@@ -409,7 +412,7 @@ write_status_window_script() {
 BOT_HOME="${KOI_BOT_HOME:-$HOME/koi-bot}"
 CONFIG="$BOT_HOME/config.yml"
 BOT_LOG="$BOT_HOME/logs/bot.log"
-BOT_ENGINE="$BOT_HOME/engines/koi-engine"
+BOT_ENGINE="$BOT_HOME/engines/koi"
 printf '\033]0;LICHESS BOT RUNNING\007'
 printf '\n\033[1;32m  LICHESS BOT RUNNING\033[0m\n\n'
 printf 'engine: %s\n' "$(cat "$BOT_HOME/engines/VERSION" 2>/dev/null || echo unknown)"

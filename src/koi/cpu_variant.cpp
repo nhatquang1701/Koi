@@ -55,23 +55,23 @@ std::string_view cpu_variant_executable_name(CpuVariant variant) noexcept {
 #ifdef _WIN32
     switch (variant) {
     case CpuVariant::generic:
-        return "koi-engine.exe";
+        return "koi.exe";
     case CpuVariant::avx2:
-        return "koi-engine-avx2.exe";
+        return "koi-avx2.exe";
     case CpuVariant::avx512:
-        return "koi-engine-avx512.exe";
+        return "koi-avx512.exe";
     }
-    return "koi-engine.exe";
+    return "koi.exe";
 #else
     switch (variant) {
     case CpuVariant::generic:
-        return "koi-engine";
+        return "koi";
     case CpuVariant::avx2:
-        return "koi-engine-avx2";
+        return "koi-avx2";
     case CpuVariant::avx512:
-        return "koi-engine-avx512";
+        return "koi-avx512";
     }
-    return "koi-engine";
+    return "koi";
 #endif
 }
 

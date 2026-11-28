@@ -15,7 +15,7 @@ Please **do not** report security vulnerabilities through public GitHub issues.
 
 Instead, open a private report using [GitHub Security Advisories](https://github.com/nhatquang1701/Koi/security/advisories/new). Include:
 
-- Koi version and build commit (`koi-engine --version`)
+- Koi version and build commit (`koi --version`)
 - Operating system and architecture
 - Minimal reproducer (crafted FEN, UCI transcript, malformed `.nnue` network, Polyglot `.bin` book, or Syzygy tablebase path)
 - Expected vs. observed behavior (crash, sanitizer report, out-of-bounds read/write, hang)
@@ -29,4 +29,4 @@ Koi is designed to fail closed on untrusted inputs. Reports are especially welco
 - `.nnue` binary container parsing and verification
 - Polyglot `.bin` opening book loading
 - Syzygy `.rtbw` / `.rtbz` discovery, magic validation, and probing
-- CPU variant auto-dispatch (`koi-engine` launcher)
+- CPU variant auto-dispatch (`koi` launcher)

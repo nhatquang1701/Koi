@@ -27,7 +27,7 @@ Koi v4, v5, v6, v8, or v9 NNUE file; its SHA-256 is recorded (the reference side
 harness attestation path).
 
 .PARAMETER EnginePath
-Koi engine executable (default: build/release/koi-engine.exe).
+Koi engine executable (default: build/release/koi.exe).
 
 .PARAMETER Games
 Total games; the odd game goes to the candidate-white half. Every game must
@@ -103,7 +103,7 @@ Import-Module (Join-Path $PSScriptRoot '../stability/EtaSupport.psm1') -Force
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $binarySuffix = if ($env:OS -eq 'Windows_NT') { '.exe' } else { '' }
 if ([string]::IsNullOrWhiteSpace($EnginePath)) {
-    $EnginePath = Join-Path (Join-Path $repositoryRoot 'build/release') "koi-engine$binarySuffix"
+    $EnginePath = Join-Path (Join-Path $repositoryRoot 'build/release') "koi$binarySuffix"
 }
 if ([string]::IsNullOrWhiteSpace($UciMatchPath)) {
     $UciMatchPath = Join-Path (Join-Path $repositoryRoot 'tools/stability') 'uci_match.ps1'

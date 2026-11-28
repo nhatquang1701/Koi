@@ -105,7 +105,7 @@ function Write-PackageBindingInputs([string]$PackageEnginePath, [string]$Manifes
         $ManifestExecutableHash = $engineHash
     }
     $manifest = [ordered]@{
-        schema = 'koi-engine-package-v1'
+        schema = 'koi-package-v1'
         files = @(@{
             path = [System.IO.Path]::GetFileName($PackageEnginePath)
             size_bytes = (Get-Item -LiteralPath $PackageEnginePath).Length

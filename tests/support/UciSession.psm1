@@ -139,7 +139,7 @@ function Stop-AllUciSessions {
         Kill every engine process tree started through Start-UciSession.
     .DESCRIPTION
         Intended for a script-level trap so a failed assertion can never leave a
-        running koi-engine.exe behind.  Already exited processes are ignored.
+        running koi.exe behind.  Already exited processes are ignored.
     #>
     foreach ($tracked in $script:KoiSessions) {
         Stop-ProcessTreeSafely $tracked
@@ -203,7 +203,7 @@ function Read-UciLine {
 
     $line = $readTask.GetAwaiter().GetResult()
     if ($null -eq $line) {
-        throw "koi-engine closed stdout while waiting for $Description."
+        throw "koi closed stdout while waiting for $Description."
     }
     $Session.Lines.Add($line)
     return $line
@@ -261,7 +261,7 @@ function Complete-UciSession {
     $Session.Process.StandardInput.Close()
 
     if (-not $Session.Process.WaitForExit($script:UciTimeoutMilliseconds)) {
-        Stop-TimedOutSession $Session "koi-engine did not exit within $($script:UciTimeoutMilliseconds) ms."
+        Stop-TimedOutSession $Session "koi did not exit within $($script:UciTimeoutMilliseconds) ms."
     }
 
     $tail = $stdoutTailTask.GetAwaiter().GetResult()
@@ -273,10 +273,10 @@ function Complete-UciSession {
     $exitCode = $Session.Process.ExitCode
     $null = $script:KoiSessions.Remove($Session.Process)
     if ($exitCode -ne 0) {
-        throw "koi-engine exited with $($exitCode): $diagnostics"
+        throw "koi exited with $($exitCode): $diagnostics"
     }
     if ($diagnostics.Length -ne 0) {
-        throw "koi-engine wrote diagnostics for a valid transcript: $diagnostics"
+        throw "koi wrote diagnostics for a valid transcript: $diagnostics"
     }
 
     return @($Session.Lines)

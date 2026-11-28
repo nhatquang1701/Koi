@@ -36,8 +36,8 @@ tools use the in-tree `koi_chess` package, PowerShell tools run under `pwsh`,
 and binary names pick up the platform suffix automatically (`.exe` on Windows,
 no suffix on Linux and macOS).
 `tools/build/package_release.ps1` writes the Windows `.zip` or, on Linux and
-macOS arm64, the portable `koi-engine-v1.2.0-linux-x86_64.tar.gz` or
-`koi-engine-v1.2.0-macos-arm64.tar.gz` tarball; CI builds and verifies each
+macOS arm64, the portable `koi-v1.2.0-linux-x86_64.tar.gz` or
+`koi-v1.2.0-macos-arm64.tar.gz` tarball; CI builds and verifies each
 archive on its own platform. Each build generates a `.package.json` manifest
 with SHA-256 hashes and source provenance plus a `.sha256` checksum sidecar for
 local and CI verification; published GitHub Release Assets attach only the clean
@@ -45,7 +45,7 @@ platform archives (`.zip` / `.tar.gz`) for end users.
 
 ## Engine CLI utilities (`tools/engine/`)
 
-Besides `koi-engine` itself, five standalone developer CLI executables are built
+Besides `koi` itself, five standalone developer CLI executables are built
 alongside the engine. Every tool supports `-h` / `--help` and `-v` / `--version`; full flag tables and
 examples live in [CLI & Interactive Reference](../docs/CLI.md):
 
@@ -114,7 +114,7 @@ budgets by ending early.
 ```powershell
 $revision = git rev-parse HEAD
 python .\tools\measurement\uci_benchmark.py `
-  --koi .\build\release\koi-engine.exe `
+  --koi .\build\release\koi.exe `
   --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
   --fen-corpus .\tests\data\positions\evaluation-positions.txt `
   --source-revision $revision `
@@ -167,7 +167,7 @@ Recipe (macOS / AppleClang M4, from the repository root):
 ```bash
 # 1. Instrumented build.
 cmake -S . -B build/pgo-gen -DCMAKE_BUILD_TYPE=Release -DKOI_PGO=generate
-cmake --build build/pgo-gen -j8 --target koi_bench koi_engine
+cmake --build build/pgo-gen -j8 --target koi_bench koi
 
 # 2. Collect held-out profile traces and merge.
 mkdir -p build/pgo-data
@@ -181,7 +181,7 @@ xcrun llvm-profdata merge -output="$PWD/build/pgo-data/koi.profdata" build/pgo-d
 # 3. Optimized build (LTO + PGO).
 cmake -S . -B build/pgo-use -DCMAKE_BUILD_TYPE=Release -DKOI_PGO=use \
   -DKOI_PGO_PROFILE_FILE="$PWD/build/pgo-data/koi.profdata"
-cmake --build build/pgo-use -j8 --target koi_bench koi_engine
+cmake --build build/pgo-use -j8 --target koi_bench koi
 ```
 
 Recipe (Windows, VS 2022 BuildTools shell, from the repository root):
@@ -189,7 +189,7 @@ Recipe (Windows, VS 2022 BuildTools shell, from the repository root):
 ```powershell
 # 1. Instrumented build.
 cmake -S . -B build/pgo-generate -G Ninja -DCMAKE_BUILD_TYPE=Release -DKOI_PGO=generate
-cmake --build build/pgo-generate --target koi_bench koi_engine
+cmake --build build/pgo-generate --target koi_bench koi
 
 # 2. Train.  Counter files land in the process working directory, so run the
 #    instrumented binaries from the build directory and copy pgort140.dll from
@@ -199,16 +199,16 @@ Set-Location build/pgo-generate
 .\koi-bench.exe --nnue "<repo>\artifacts\networks\koi-v9-hm10-h256-official.nnue" --threads 1 --optional
 .\koi-bench.exe --nnue "<repo>\artifacts\networks\koi-v9-hm10-h256-official.nnue" --threads 1 --timed `
   --fen-file "<repo>\tests\data\endgames\endgame-positions.txt" --depth-sweep 2..5
-# Drive koi-engine.exe with a short UCI workload: startpos/Kiwipete/endgame
+# Drive koi.exe with a short UCI workload: startpos/Kiwipete/endgame
 # `go movetime 2000`, startpos `go depth 7`, startpos `go nodes 500000`.
 
 # 3. Merge the counters into the databases (pgomgr ships with MSVC).
 pgomgr /merge koi-bench!1.pgc koi-bench.pgd
-pgomgr /merge koi-engine!1.pgc koi-engine.pgd
+pgomgr /merge koi!1.pgc koi.pgd
 
 # 4. Optimized rebuild in the same directory.
 cmake -S <repo> -B . -DKOI_PGO=use
-cmake --build . --target koi_bench koi_engine
+cmake --build . --target koi_bench koi
 ```
 
 Measured results:
@@ -226,7 +226,7 @@ Measured results:
 The clean HCE lives in `src/koi/classical_evaluator.*`. It is optional and
 selectable for development/measurement:
 
-- `koi-engine` with `KOI_EVALUATOR=hce` boots without a network, and the UCI
+- `koi` with `KOI_EVALUATOR=hce` boots without a network, and the UCI
   `EvalMode` combo switches between `nnue` and `hce` for later searches.
 - `koi-bench --hce` runs the built-in tactical/positional suite with the HCE
   (no network required); `koi-bench --nnue NET` remains the NNUE path.
@@ -257,7 +257,7 @@ repository-local verification tree:
 ```powershell
 python .\tools\measurement\elo_oracle.py `
   --pgn .\tests\data\games\2026-09-08-koi-vs-stockfish-19.pgn `
-  --koi .\build\release\koi-engine.exe `
+  --koi .\build\release\koi.exe `
   --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
   --output .\artifacts\verification\elo-oracle.json `
   --movetime-ms 250 --threads 4
@@ -317,11 +317,11 @@ the one-time installer:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\build\install_book.ps1 `
-  -EnginePath .\build\release\koi-engine.exe
+  -EnginePath .\build\release\koi.exe
 ```
 
 `-EnginePath` is mandatory and must identify an existing local engine
-executable (`.exe` on Windows, or `koi-engine` on Linux/macOS).
+executable (`.exe` on Windows, or `koi` on Linux/macOS).
 The installer downloads the pinned `lichess_1900_rapid_2026-05.bin` asset from
 the `books-2026-05-v1` release, verifies SHA-256
 `56abc70e5291b4338356009d380e565fd85eab8067f6bf34927b5807ff231370`, and
@@ -336,7 +336,7 @@ It keeps book hits and book-move CPL out of ordinary search metrics and uses
 ```powershell
 python .\tools\measurement\book_audit.py `
   --pgn .\tests\data\games\2026-09-08-koi-vs-stockfish-19.pgn `
-  --koi .\build\release\koi-engine.exe `
+  --koi .\build\release\koi.exe `
   --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
   --book C:\LicensedBooks\book.bin
 ```
@@ -355,7 +355,7 @@ The default output directory is `artifacts/matches`.
 ```powershell
 python .\tools\measurement\stockfish_match.py --help
 python .\tools\measurement\stockfish_match.py `
-  --koi .\build\release\koi-engine.exe `
+  --koi .\build\release\koi.exe `
   --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
   --opening-file .\tests\data\openings\openings-basic.txt `
   --time-control 1+0 --games 20 --koi-color white `
@@ -405,7 +405,7 @@ Generate and inspect the deterministic schedule without launching engines:
 
 ```powershell
 & .\tools\stability\cutechess_stability_campaign.ps1 `
-  -KoiPath .\build\release\koi-engine.exe `
+  -KoiPath .\build\release\koi.exe `
   -StockfishPath '.\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe' `
   -OutputDirectory .\artifacts\stability\campaign-plan `
   -PlanOnly
@@ -463,7 +463,7 @@ Use this exact no-book dry-run CLI from the repository root:
 
 ```powershell
 python .\tools\measurement\elo_estimate.py `
-  --koi .\build\release\koi-engine.exe `
+  --koi .\build\release\koi.exe `
   --replay .\build\release\koi-replay.exe `
   --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
   --anchors .\artifacts\manifests\elo-anchors.json `
@@ -487,7 +487,7 @@ Book mode is a separate run, with a separate report and external licensed book:
 
 ```powershell
 python .\tools\measurement\elo_estimate.py `
-  --koi .\build\release\koi-engine.exe `
+  --koi .\build\release\koi.exe `
   --replay .\build\release\koi-replay.exe `
   --stockfish .\third_party\stockfish-19\stockfish-windows-x86-64-universal\stockfish\stockfish-windows-x86-64-universal.exe `
   --anchors .\artifacts\manifests\elo-anchors.json `

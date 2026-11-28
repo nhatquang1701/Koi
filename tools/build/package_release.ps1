@@ -28,7 +28,7 @@ $isMacOSHost = -not $isWindowsHost -and
     [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)
 $binarySuffix = if ($isWindowsHost) { '.exe' } else { '' }
 $platformTag = if ($isWindowsHost) { '' } elseif ($isMacOSHost) { '-macos-arm64' } else { '-linux-x86_64' }
-$packageName = "koi-engine-v1.2.0$platformTag"
+$packageName = "koi-v1.2.0$platformTag"
 $packageDirectory = Join-Path $outputRoot $packageName
 $archivePath = if ($isWindowsHost) {
     Join-Path $outputRoot "$packageName.zip"
@@ -61,10 +61,10 @@ New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 # Release archives ship the engine binaries (and their launcher variants) only.
 # Developer tools and the test suite are built from source by developers and are
 # deliberately excluded from release packages.
-$requiredExecutables = @("koi-engine$binarySuffix")
+$requiredExecutables = @("koi$binarySuffix")
 if (-not $isMacOSHost) {
-    $requiredExecutables = @("koi-engine$binarySuffix", "koi-engine-avx2$binarySuffix",
-                             "koi-engine-avx512$binarySuffix")
+    $requiredExecutables = @("koi$binarySuffix", "koi-avx2$binarySuffix",
+                             "koi-avx512$binarySuffix")
 }
 function Test-RequiredExecutables {
     param(
@@ -242,7 +242,7 @@ $archiveHash = Get-Sha256Hex -Path $archivePath
 Set-Content -LiteralPath "$archivePath.sha256" -Value "$archiveHash  $([System.IO.Path]::GetFileName($archivePath))" -Encoding ASCII
 
 $manifest = [ordered]@{
-    schema = 'koi-engine-package-v1'
+    schema = 'koi-package-v1'
     version = '1.2.0'
     platform = if ($isWindowsHost) { 'windows-x86_64' } elseif ($isMacOSHost) { 'macos-arm64' } else { 'linux-x86_64' }
     build_configuration = 'Release'

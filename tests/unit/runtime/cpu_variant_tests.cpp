@@ -36,13 +36,13 @@ void test_executable_names() {
         "";
 #endif
     koi::test::require(cpu_variant_executable_name(CpuVariant::generic) ==
-                           "koi-engine" + suffix,
+                           "koi" + suffix,
                        "the baseline build keeps the primary engine name");
     koi::test::require(cpu_variant_executable_name(CpuVariant::avx2) ==
-                           "koi-engine-avx2" + suffix,
+                           "koi-avx2" + suffix,
                        "the AVX2 build must expose its own name");
     koi::test::require(cpu_variant_executable_name(CpuVariant::avx512) ==
-                           "koi-engine-avx512" + suffix,
+                           "koi-avx512" + suffix,
                        "the AVX-512 build must expose its own name");
 }
 
