@@ -1927,10 +1927,13 @@ void UciController::handle_ponderhit() {
         // the GUI clock is running. Arm a hard-budget fallback timer so a long
         // in-flight iteration cannot flag the engine.
         try {
+            koi::RootTimingContext ponder_ctx;
+            ponder_ctx.game_phase = position_.game_phase();
+            ponder_ctx.fullmove_number = position_.fullmove_number();
             koi::TimeManager converted_timing(
                 converted_for_timing, position_.side_to_move(), kFixedSpeedPercent,
                 move_overhead_ms_, slow_mover_percent_,
-                koi::RootTimingContext{}, {}, dynamic_overhead_, ponderhit_now,
+                ponder_ctx, {}, dynamic_overhead_, ponderhit_now,
                 observed_overhead);
             if (const auto budget = converted_timing.time_budget();
                 budget.has_value() && budget->count() > 0) {

@@ -707,6 +707,8 @@ the search but cannot push it past the cap.
   on deep (`depth >= 10`, `stability >= 4`) `>= 90%` best-move-share
   converted `ponderhit` searches past `25%` of the soft/optimum target,
   in calm high-effort positions (`>= 90%` best-move node share) past `60%` of the
+  soft/optimum target, in sudden-death `<= 10 s + 0` scrambles without
+  `movestogo` on calm `depth >= 5` (`stability >= 2`) lines past `70%` of the
   soft/optimum target, in calm `depth >= 6` stable (`stability >= 3`, no
   aspiration re-research) positions past `75%` of the soft/optimum target, in
   clock mode at soft after at least 2 stable observations when the extension
@@ -718,8 +720,8 @@ the search but cannot push it past the cap.
   single-move exits, emergency pacing, forced-mate / single-move
   exits, `25%` deep (`depth >= 10`, `stability >= 4`, `>= 90%` effort)
   converted-`ponderhit` exits, `60%` high-effort dominance (`>= 90%` best-move
-  node share) and calm `75%` soft-target cutoffs (symmetrically suppressed
-  after an aspiration re-search), adaptive EWMA branching-factor lookahead (`1.3×..3.2×`, starting at
+  node share), `70%` sudden-death scramble depth-5 calm exits, and calm `75%`
+  soft-target cutoffs (symmetrically suppressed after an aspiration re-search), adaptive EWMA branching-factor lookahead (`1.3×..3.2×`, starting at
   `1.5×`, `4 ms` sample floor in emergency pacing vs `10 ms` otherwise, used
   uniformly across both serial and parallel iterative-deepening drivers to
   avoid doomed partial iterations past `1.2×` soft target), and a doomed

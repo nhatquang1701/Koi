@@ -170,32 +170,32 @@ std::int64_t SearchOrderingTables::continuation_history_raw(
     if (const std::size_t pair0 = slot_index(0); pair0 < kContinuationHistorySize) {
         cont_score += continuation_history_[pair0];
     }
-    auto add_ply = [&](const std::size_t distance, const int divisor) noexcept {
-        if (const std::size_t pair = slot_index(distance); pair < kContinuationHistorySize) {
+    auto add_ply = [&]<std::size_t Distance, int Divisor>() noexcept {
+        if (const std::size_t pair = slot_index(Distance); pair < kContinuationHistorySize) {
             cont_score += large_->multi_ply_continuation_history[
-                distance * kContinuationHistorySize + pair] / divisor;
+                Distance * kContinuationHistorySize + pair] / Divisor;
         }
     };
     if (move_count <= 1) {
         return cont_score;
     }
-    add_ply(1, 2);
+    add_ply.template operator()<1U, 2>();
     if (move_count <= 2) {
         return cont_score;
     }
-    add_ply(2, 3);
+    add_ply.template operator()<2U, 3>();
     if (move_count <= 3) {
         return cont_score;
     }
-    add_ply(3, 4);
+    add_ply.template operator()<3U, 4>();
     if (move_count <= 4) {
         return cont_score;
     }
-    add_ply(4, 5);
+    add_ply.template operator()<4U, 5>();
     if (move_count <= 5) {
         return cont_score;
     }
-    add_ply(5, 6);
+    add_ply.template operator()<5U, 6>();
     return cont_score;
 }
 
@@ -215,14 +215,19 @@ QuietAndContinuationScores SearchOrderingTables::quiet_and_continuation_scores(
     }
 
     const std::size_t side_index = static_cast<std::size_t>(color_index(side));
+    const std::size_t piece_idx = static_cast<std::size_t>(piece_index(metadata.moving_piece));
+    const std::size_t to_sq = metadata.move.to().index() < Square::kInvalid ?
+        static_cast<std::size_t>(metadata.move.to().index()) : 0U;
     std::int64_t quiet_score = history_[side_index][move_idx];
-    quiet_score += piece_to_history_[piece_to_index(metadata.moving_piece, metadata.move.to())];
+    quiet_score += piece_to_history_[piece_idx * 64U + to_sq];
     if (context.ply < static_cast<int>(kLowPlyHistoryPlies)) {
         quiet_score += low_ply_history_[static_cast<std::size_t>(context.ply) * kMoveTableSize +
                                         move_idx];
     }
     quiet_score += cont_score;
-    quiet_score += large_->pawn_history[pawn_index(context, metadata.moving_piece, metadata.move.to())] / 2;
+    const std::uint64_t dims = (static_cast<std::uint64_t>(piece_idx) << 8U) | to_sq;
+    quiet_score += large_->pawn_history[static_cast<std::size_t>(
+        mix64(context.pawn_key ^ dims) & (kPawnHistorySize - 1))] / 2;
     return QuietAndContinuationScores{
         clamp_history(quiet_score, kMaximumHistoryScore), continuation};
 }
@@ -235,14 +240,19 @@ int SearchOrderingTables::quiet_history_score(
     }
     const std::size_t move_idx = move_index(metadata.move);
     const std::size_t side_index = static_cast<std::size_t>(color_index(side));
+    const std::size_t piece_idx = static_cast<std::size_t>(piece_index(metadata.moving_piece));
+    const std::size_t to_sq = metadata.move.to().index() < Square::kInvalid ?
+        static_cast<std::size_t>(metadata.move.to().index()) : 0U;
     std::int64_t score = history_[side_index][move_idx];
-    score += piece_to_history_[piece_to_index(metadata.moving_piece, metadata.move.to())];
+    score += piece_to_history_[piece_idx * 64U + to_sq];
     if (context.ply < static_cast<int>(kLowPlyHistoryPlies)) {
         score += low_ply_history_[static_cast<std::size_t>(context.ply) * kMoveTableSize +
                                   move_idx];
     }
     score += continuation_history_raw(move_idx, context);
-    score += large_->pawn_history[pawn_index(context, metadata.moving_piece, metadata.move.to())] / 2;
+    const std::uint64_t dims = (static_cast<std::uint64_t>(piece_idx) << 8U) | to_sq;
+    score += large_->pawn_history[static_cast<std::size_t>(
+        mix64(context.pawn_key ^ dims) & (kPawnHistorySize - 1))] / 2;
     return clamp_history(score, kMaximumHistoryScore);
 }
 

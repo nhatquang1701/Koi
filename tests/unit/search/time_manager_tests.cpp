@@ -1204,6 +1204,35 @@ void test_single_move_zero_hardness_and_deep_ponderhit_fast_exit() {
             "deep >=10 ply >=90% effort ponderhit past 25% optimum_budget must exit symmetrically");
 }
 
+void test_sudden_death_scramble_calm_depth5_cutoff() {
+    auto sd_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager sd(clock_limits(milliseconds{8'000}, milliseconds{0}),
+                   koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                   [sd_now] { return *sd_now; });
+    sd.observe_iteration({4, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    sd.observe_iteration({5, 20, false, false, false, 10'000, 5'000, milliseconds{15}});
+    const auto sd_opt = sd.diagnostics().optimum_budget;
+    *sd_now += (sd_opt * 60) / 100;
+    require(!sd.should_stop_after_iteration() &&
+                sd.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble calm depth-5 search at 60% optimum_budget must continue");
+    *sd_now += (sd_opt * 12) / 100 + milliseconds{1};
+    require(sd.should_stop_after_iteration() &&
+                !sd.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble calm depth-5 search past 70% optimum_budget must stop cleanly");
+
+    auto inc_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager inc(clock_limits(milliseconds{8'000}, milliseconds{1'000}),
+                    koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                    [inc_now] { return *inc_now; });
+    inc.observe_iteration({4, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    inc.observe_iteration({5, 20, false, false, false, 10'000, 5'000, milliseconds{15}});
+    *inc_now += (inc.diagnostics().optimum_budget * 72) / 100;
+    require(!inc.should_stop_after_iteration() &&
+                inc.should_start_next_iteration(milliseconds{1}),
+            "incremental clock at depth 5 and 72% optimum_budget must not trigger sudden-death scramble cutoff");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1256,6 +1285,8 @@ int main(int argc, char** argv) {
          test_aspiration_research_fallback_guard_and_emergency_depth4_stop},
         {"single-move zero hardness and deep ponderhit fast exit",
          test_single_move_zero_hardness_and_deep_ponderhit_fast_exit},
+        {"sudden-death scramble calm depth-5 cutoff",
+         test_sudden_death_scramble_calm_depth5_cutoff},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

@@ -1588,24 +1588,30 @@ public:
             const Piece moved_now = state.board[static_cast<std::size_t>(to)];
             const Piece mover_piece = record.move.promotion() != Promotion::none
                 ? Piece{PieceType::pawn, mover} : moved_now;
-            remove_bitboard_piece(state, moved_now, to);
+            if (!moved_now.empty()) {
+                remove_bitboard_piece_known(state, moved_now, to);
+            }
             state.board[static_cast<std::size_t>(to)] = {};
             if (!record.captured.empty()) {
                 const int victim = (record.flags & kEpFlag) != 0
                     ? static_cast<int>(record.ep_victim) : to;
                 state.board[static_cast<std::size_t>(victim)] = record.captured;
-                add_bitboard_piece(state, record.captured, victim);
+                add_bitboard_piece_known(state, record.captured, victim);
             }
             state.board[static_cast<std::size_t>(from)] = mover_piece;
-            add_bitboard_piece(state, mover_piece, from);
+            if (!mover_piece.empty()) {
+                add_bitboard_piece_known(state, mover_piece, from);
+            }
             if ((record.flags & kCastlingFlag) != 0) {
                 const int rook_from = to > from ? from + 3 : from - 4;
                 const int rook_to = to > from ? from + 1 : from - 1;
                 const Piece rook = state.board[static_cast<std::size_t>(rook_to)];
-                remove_bitboard_piece(state, rook, rook_to);
+                if (!rook.empty()) {
+                    remove_bitboard_piece_known(state, rook, rook_to);
+                    add_bitboard_piece_known(state, rook, rook_from);
+                }
                 state.board[static_cast<std::size_t>(rook_from)] = rook;
                 state.board[static_cast<std::size_t>(rook_to)] = {};
-                add_bitboard_piece(state, rook, rook_from);
             }
         }
         state.side = opposite(state.side);
@@ -2957,22 +2963,19 @@ private:
         }
 
         if (previous_castling != 0) {
-            if (moving.type == PieceType::king) {
-                state.castling &= moving.color == Color::white ?
-                    static_cast<std::uint8_t>(~(kWhiteKingSide | kWhiteQueenSide)) :
-                    static_cast<std::uint8_t>(~(kBlackKingSide | kBlackQueenSide));
-            }
-            static constexpr std::array<std::uint8_t, 64> kRookRightMask = []() constexpr {
+            static constexpr std::array<std::uint8_t, 64> kCastlingRightsMask = []() constexpr {
                 std::array<std::uint8_t, 64> m{};
                 m.fill(0xFFU);
                 m[0] = static_cast<std::uint8_t>(~kWhiteQueenSide);
+                m[4] = static_cast<std::uint8_t>(~(kWhiteKingSide | kWhiteQueenSide));
                 m[7] = static_cast<std::uint8_t>(~kWhiteKingSide);
                 m[56] = static_cast<std::uint8_t>(~kBlackQueenSide);
+                m[60] = static_cast<std::uint8_t>(~(kBlackKingSide | kBlackQueenSide));
                 m[63] = static_cast<std::uint8_t>(~kBlackKingSide);
                 return m;
             }();
-            if (moving.type == PieceType::rook) state.castling &= kRookRightMask[from];
-            if (captured.type == PieceType::rook) state.castling &= kRookRightMask[to];
+            state.castling &= kCastlingRightsMask[static_cast<std::size_t>(from)] &
+                kCastlingRightsMask[static_cast<std::size_t>(to)];
             if (state.castling != previous_castling) {
                 next_key ^= keys.castling[previous_castling & kAllCastling] ^
                     keys.castling[state.castling & kAllCastling];

@@ -885,6 +885,16 @@ bool TimeManager::should_stop_after_iteration() const noexcept {
         elapsed >= scale_fraction(soft_target, 75, 100)) {
         return true;
     }
+    if (!hard_position_ &&
+        increment_clock_ <= std::chrono::milliseconds::zero() &&
+        !limits_.moves_to_go.has_value() &&
+        remaining_clock_ <= std::chrono::milliseconds{10'000} &&
+        last_observed_depth_ >= 5 && stable_observations_ >= 2 &&
+        best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
+        !last_aspiration_researched_ &&
+        elapsed >= scale_fraction(soft_target, 70, 100)) {
+        return true;
+    }
     // Even if shallow iterations had a best-move change or score jump, do not
     // let a non-collapsing position burn all the way to the hard deadline once
     // it has completed a reasonable depth and passed its scaled optimum target,
@@ -943,6 +953,15 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
             best_move_stability_ >= 3 && score_drop_cp_ <= 15 &&
             !last_aspiration_researched_ &&
             elapsed >= scale_fraction(soft_target, 75, 100)) {
+            return false;
+        }
+        if (increment_clock_ <= std::chrono::milliseconds::zero() &&
+            !limits_.moves_to_go.has_value() &&
+            remaining_clock_ <= std::chrono::milliseconds{10'000} &&
+            last_observed_depth_ >= 5 && stable_observations_ >= 2 &&
+            best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
+            !last_aspiration_researched_ &&
+            elapsed >= scale_fraction(soft_target, 70, 100)) {
             return false;
         }
         if (last_observed_depth_ >= 5 && best_move_stability_ >= 2 &&
