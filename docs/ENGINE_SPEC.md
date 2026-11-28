@@ -747,7 +747,8 @@ the search but cannot push it past the cap.
   aspiration re-research) positions past `75%` of the soft/optimum target, in
   clock mode at soft after at least 2 stable observations when the extension
   is unaffordable, and on the non-collapsing fallback past soft/optimum time
-  once `depth >= 5` (or `depth >= 4` during emergency pacing) with
+  once `depth >= 5` (or `depth >= 4` during emergency pacing or sudden-death
+  scrambles) with
   `best_move_stability >= 1`, `score_drop < 40` cp, and no aspiration
   re-research on the last iteration.
 - `should_start_next_iteration`: honors the shared `clock_early_stop_reached`

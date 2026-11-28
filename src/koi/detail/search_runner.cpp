@@ -99,6 +99,43 @@ struct RootScheduleRecord {
         metadata.move.promotion() == Promotion::none;
 }
 
+[[nodiscard]] bool completed_root_needs_short_fallback(
+    const GameState& root, const MoveMetadataList& legal_moves,
+    const std::optional<Move>& best_move) noexcept {
+    return short_capture_needs_fallback(legal_moves, best_move) ||
+        short_quiet_needs_fallback(root, legal_moves, best_move) ||
+        short_quiet_exposes_immediate_check(root, legal_moves, best_move) ||
+        short_check_needs_fallback(legal_moves, best_move) ||
+        short_checked_root_king_evasion_needs_fallback(
+            root, legal_moves, best_move);
+}
+
+template <typename ResolveOverdueFn>
+[[nodiscard]] std::optional<ShortFallbackChoice> resolve_completed_root_fallback(
+    const GameState& root, const MoveMetadataList& legal_moves,
+    const std::optional<Move>& current_best, ResolveOverdueFn&& resolve_overdue,
+    SearchStats* stats, const Evaluator& evaluator, std::mutex* evaluator_mutex,
+    const bool allow_deep_checked_fallback,
+    const FallbackControl& fallback_control) noexcept {
+    std::optional<ShortFallbackChoice> choice = resolve_overdue(legal_moves, stats);
+    const MoveMetadata* current_metadata = current_best.has_value()
+        ? find_legal_move(legal_moves, *current_best)
+        : nullptr;
+    if (current_metadata != nullptr &&
+        is_quiet_non_checking_move(*current_metadata) &&
+        (!choice.has_value() || choice->move == current_metadata->move)) {
+        choice = scored_safe_checking_capture(
+            root, legal_moves, evaluator, evaluator_mutex,
+            allow_deep_checked_fallback, &fallback_control);
+    }
+    if (!choice.has_value() ||
+        !short_fallback_should_replace_completed_root(
+            root, legal_moves, current_best, choice->move)) {
+        return std::nullopt;
+    }
+    return choice;
+}
+
 struct SerialRootConfirmationState {
     const SearchLimits& limits;
     GameState& root;
@@ -905,11 +942,10 @@ void SearchRunner::run_impl() {
             legal_moves, true, true, CheckFlagMode::quiet_moves_only);
         timing_context.legal_move_count = static_cast<std::uint32_t>(legal_moves.size());
         timing_context.forcing_move_count = static_cast<std::uint32_t>(std::count_if(
-            legal_moves.begin(), legal_moves.end(), [](const MoveMetadata& metadata) {
-                return metadata.is_capture() || metadata.gives_check ||
-                    metadata.move.promotion() != Promotion::none;
-            }));
-        timing_context.in_check = root.in_check();
+            legal_moves.begin(), legal_moves.end(), is_forcing_move));
+        const Color root_side = root.side_to_move();
+        const bool root_in_check = root.in_check();
+        timing_context.in_check = root_in_check;
         timing_context.game_phase = root.game_phase();
         timing_context.fullmove_number = root.fullmove_number();
         timing_context.previous_search_score = options.previous_search_score;
@@ -918,7 +954,7 @@ void SearchRunner::run_impl() {
         if (limits.search_moves_specified) {
             if (limits.movetime.has_value() &&
                 *limits.movetime < kShortTimedFallbackMinimum &&
-                !timing_context.in_check) {
+                !root_in_check) {
                 unfiltered_legal_moves.emplace(legal_moves);
             }
             std::size_t write_index = 0;
@@ -936,7 +972,7 @@ void SearchRunner::run_impl() {
             timing_context.legal_move_count = static_cast<std::uint32_t>(legal_moves.size());
         }
         table_access.new_generation();
-        TimeManager time_manager(limits, root.side_to_move(), options.speed_percent,
+        TimeManager time_manager(limits, root_side, options.speed_percent,
                                  options.move_overhead_ms, options.slow_mover_percent,
                                  timing_context, {}, options.dynamic_move_overhead,
                                  options.search_started, options.observed_overhead_ms);
@@ -978,9 +1014,9 @@ void SearchRunner::run_impl() {
             }
             if (evaluator_mutex_ptr != nullptr) {
                 std::lock_guard lock(*evaluator_mutex_ptr);
-                result.score_cp = evaluator->evaluate(root, root.side_to_move());
+                result.score_cp = evaluator->evaluate(root, root_side);
             } else {
-                result.score_cp = evaluator->evaluate(root, root.side_to_move());
+                result.score_cp = evaluator->evaluate(root, root_side);
             }
             root_static_eval = result.score_cp;
             if (root_is_claimable_draw || root_is_forced_draw) {
@@ -1043,20 +1079,22 @@ void SearchRunner::run_impl() {
 
         const std::optional<std::chrono::milliseconds> effective_time_budget =
             time_manager.time_budget();
+        const std::optional<std::chrono::milliseconds> active_budget =
+            limits.movetime.has_value() ? limits.movetime : effective_time_budget;
         const bool requested_short_timed_fallback = limits.movetime.has_value() &&
             *limits.movetime >= kShortTimedFallbackMinimum &&
             *limits.movetime <= kShortTimedFallbackThreshold;
         const bool ultra_short_nonchecked_fallback = limits.movetime.has_value() &&
             *limits.movetime < kShortTimedFallbackMinimum &&
-            !timing_context.in_check && timing_context.forcing_move_count != 0;
+            !root_in_check && timing_context.forcing_move_count != 0;
         const bool ultra_short_checked_fallback = limits.movetime.has_value() &&
-            *limits.movetime < kShortTimedFallbackMinimum && timing_context.in_check;
+            *limits.movetime < kShortTimedFallbackMinimum && root_in_check;
         const bool clock_short_timed_fallback = !limits.movetime.has_value() &&
             effective_time_budget.has_value() &&
             *effective_time_budget <= kShortTimedFallbackThreshold;
         bool ultra_short_nonchecked_forcing_root = false;
         if (limits.movetime.has_value() &&
-            *limits.movetime < kShortTimedFallbackMinimum && !timing_context.in_check) {
+            *limits.movetime < kShortTimedFallbackMinimum && !root_in_check) {
             const PositionFeatures root_features = root.position_features();
             const MoveMetadataList& forcing_root_moves =
                 unfiltered_legal_moves.has_value() ? *unfiltered_legal_moves : legal_moves;
@@ -1070,26 +1108,20 @@ void SearchRunner::run_impl() {
             ultra_short_nonchecked_fallback || ultra_short_nonchecked_forcing_root ||
             ultra_short_checked_fallback || clock_short_timed_fallback;
         const bool short_tactical_fallback = short_search_fallback &&
-            (timing_context.in_check || timing_context.forcing_move_count != 0 ||
+            (root_in_check || timing_context.forcing_move_count != 0 ||
              ultra_short_nonchecked_forcing_root);
         const bool short_tactical_budget =
-            (timing_context.in_check || timing_context.forcing_move_count != 0 ||
+            (root_in_check || timing_context.forcing_move_count != 0 ||
              ultra_short_nonchecked_forcing_root) &&
-            ((limits.movetime.has_value() &&
-              *limits.movetime <= kShortTimedSerialThreshold) ||
-             (!limits.movetime.has_value() && effective_time_budget.has_value() &&
-              *effective_time_budget <= kShortTimedSerialThreshold));
+            active_budget.has_value() && *active_budget <= kShortTimedSerialThreshold;
         // A checked root has no time for the full emergency evasion/reply
         // scan when the hard budget is below 150 ms.  Keep the fallback
         // to one static post-evasion evaluation in that band so the
         // authoritative first root iteration still gets a chance to
         // complete. Normal timed and fixed-depth paths retain the deeper
         // checking fallback.
-        const bool shallow_checked_fallback = root.in_check() &&
-            ((limits.movetime.has_value() &&
-              *limits.movetime < kShortTimedFallbackMinimum) ||
-             (!limits.movetime.has_value() && effective_time_budget.has_value() &&
-              *effective_time_budget < kShortTimedFallbackMinimum));
+        const bool shallow_checked_fallback = root_in_check &&
+            active_budget.has_value() && *active_budget < kShortTimedFallbackMinimum;
         const bool allow_deep_checked_fallback = !shallow_checked_fallback;
         // Caching the uninterrupted overdue fallback scan avoids repeating an
         // expensive static/two-ply root pass across depths 1 and 2 on short
@@ -1119,7 +1151,7 @@ void SearchRunner::run_impl() {
         };
         const bool defer_expensive_short_fallback = clock_short_timed_fallback;
         const bool ultra_short_nonchecking_parallel = limits.movetime.has_value() &&
-            *limits.movetime < kShortTimedFallbackMinimum && !timing_context.in_check;
+            *limits.movetime < kShortTimedFallbackMinimum && !root_in_check;
 
         // Lazy SMP replaces the root-splitting pool for the common Threads > 1
         // configuration. Unlike RootWorkerPool, Lazy SMP has minimal startup
@@ -1128,9 +1160,7 @@ void SearchRunner::run_impl() {
         // threads instead of falling back to a single core. Only node-limited,
         // MultiPV, draw, or ultra-short (< 25 ms) scramble searches bypass it.
         const bool ultra_short_smp_skip =
-            (limits.movetime.has_value() && *limits.movetime < std::chrono::milliseconds{25}) ||
-            (!limits.movetime.has_value() && effective_time_budget.has_value() &&
-             *effective_time_budget < std::chrono::milliseconds{25});
+            active_budget.has_value() && *active_budget < std::chrono::milliseconds{25};
         const bool use_lazy_smp = options.threads > 1 && options.multi_pv == 1 &&
             !time_manager.node_limit().has_value() && !ultra_short_smp_skip &&
             !root_is_claimable_draw && !root_is_forced_draw && legal_moves.size() >= 2;
@@ -1139,12 +1169,12 @@ void SearchRunner::run_impl() {
             lazy_pool = std::make_unique<LazySmpPool>(
                 options.threads - 1, root, legal_moves, *evaluator, *table, time_manager,
                 session->stop_requested(), evaluator_mutex_ptr, true,
-                options.quiet_history_side_hook, tablebase_binding, root.side_to_move(),
+                options.quiet_history_side_hook, tablebase_binding, root_side,
                 options.contempt_cp);
         }
 
         if (legal_moves.empty()) {
-            result.score_cp = root.in_check() ? -kMateScore : 0;
+            result.score_cp = root_in_check ? -kMateScore : 0;
             result.mate = mate_from_score(result.score_cp);
         } else if (tablebase_result.has_value()) {
             result.best_move = tablebase_result->moves.front();
@@ -1169,7 +1199,7 @@ void SearchRunner::run_impl() {
             auto context_storage = std::make_unique<SearchContext>(
                 *evaluator, *table, time_manager, session->stop_requested(),
                 nullptr, evaluator_mutex_ptr, &legal_moves, true,
-                options.quiet_history_side_hook, tablebase_binding, root.side_to_move(),
+                options.quiet_history_side_hook, tablebase_binding, root_side,
                 options.contempt_cp);
             SearchContext& context = *context_storage;
             context.profile_enabled = static_cast<bool>(sink.on_profile);
@@ -1530,51 +1560,22 @@ void SearchRunner::run_impl() {
                 if ((short_tactical_fallback || defer_nonchecking_short_fallback) &&
                     !defer_expensive_short_fallback &&
                     result.completed_depth <= 2 &&
-                    (short_capture_needs_fallback(legal_moves, result.best_move) ||
-                     short_quiet_needs_fallback(root, legal_moves, result.best_move) ||
-                     short_quiet_exposes_immediate_check(
-                         root, legal_moves, result.best_move) ||
-                     short_check_needs_fallback(legal_moves, result.best_move) ||
-                     short_checked_root_king_evasion_needs_fallback(
-                         root, legal_moves, result.best_move))) {
+                    completed_root_needs_short_fallback(
+                        root, legal_moves, result.best_move)) {
                     // The iteration is complete, so preserve a bounded
                     // shallow safety correction even if the hard clock
                     // has just fired. Do not re-enter the recursive
                     // emergency scan after the deadline.
-                    auto fallback = resolve_overdue_fallback(
-                        legal_moves, &context.stats);
-                    std::optional<Move> fallback_move;
-                    int fallback_score = score;
-                    if (fallback.has_value()) {
-                        fallback_move = fallback->move;
-                        fallback_score = normalize_root_fallback_score(fallback->score);
-                    }
-                    const auto current_metadata = result.best_move.has_value() ?
-                        std::find_if(
-                            legal_moves.begin(), legal_moves.end(),
-                            [&result](const MoveMetadata& metadata) {
-                                return metadata.move == *result.best_move;
-                            }) : legal_moves.end();
-                    if (current_metadata != legal_moves.end() &&
-                        !current_metadata->is_capture() && !current_metadata->gives_check &&
-                        current_metadata->move.promotion() == Promotion::none &&
-                        (!fallback_move.has_value() ||
-                         *fallback_move == current_metadata->move)) {
-                        if (const auto checking_capture = scored_safe_checking_capture(
-                                root, legal_moves, *evaluator, evaluator_mutex_ptr,
-                                allow_deep_checked_fallback, &fallback_control);
-                            checking_capture.has_value()) {
-                            fallback_move = checking_capture->move;
-                            fallback_score = normalize_root_fallback_score(checking_capture->score);
-                        } else {
-                            fallback_move.reset();
-                        }
-                    }
-                    if (fallback_move.has_value() &&
-                        short_fallback_should_replace_completed_root(
-                            root, legal_moves, result.best_move, *fallback_move)) {
-                        result.best_move = *fallback_move;
-                        result.pv = {*fallback_move};
+                    if (const auto fallback = resolve_completed_root_fallback(
+                            root, legal_moves, result.best_move,
+                            resolve_overdue_fallback, &context.stats,
+                            *evaluator, evaluator_mutex_ptr,
+                            allow_deep_checked_fallback, fallback_control);
+                        fallback.has_value()) {
+                        const int fallback_score =
+                            normalize_root_fallback_score(fallback->score);
+                        result.best_move = fallback->move;
+                        result.pv = {fallback->move};
                         result.score_cp = fallback_score;
                         result.mate = mate_from_score(fallback_score);
                         score = fallback_score;
@@ -1586,7 +1587,7 @@ void SearchRunner::run_impl() {
                         // following bestmove disagree with the final
                         // info line.
                         pv = {};
-                        pv.moves[0] = *fallback_move;
+                        pv.moves[0] = fallback->move;
                         pv.length = 1;
                     }
                 }
@@ -2445,52 +2446,22 @@ void SearchRunner::run_impl() {
                     (short_tactical_fallback || defer_nonchecking_short_fallback) &&
                     !defer_expensive_short_fallback &&
                     result.completed_depth <= 2 &&
-                    (short_capture_needs_fallback(parallel_moves, result.best_move) ||
-                     short_quiet_needs_fallback(root, parallel_moves, result.best_move) ||
-                     short_quiet_exposes_immediate_check(
-                         root, parallel_moves, result.best_move) ||
-                     short_check_needs_fallback(parallel_moves, result.best_move) ||
-                     short_checked_root_king_evasion_needs_fallback(
-                         root, parallel_moves, result.best_move))) {
+                    completed_root_needs_short_fallback(
+                        root, parallel_moves, result.best_move)) {
                     // Keep the post-iteration safety correction bounded;
                     // recursive fallback work is never started after a
                     // short explicit deadline.
-                    auto fallback = resolve_overdue_fallback(
-                        parallel_moves, &root_context.stats);
-                    std::optional<Move> fallback_move;
-                    int fallback_score = best_line.score;
-                    if (fallback.has_value()) {
-                        fallback_move = fallback->move;
-                        fallback_score = normalize_root_fallback_score(fallback->score);
-                    }
-                    const auto current_metadata = result.best_move.has_value() ?
-                        std::find_if(
-                            parallel_moves.begin(), parallel_moves.end(),
-                            [&result](const MoveMetadata& metadata) {
-                                return metadata.move == *result.best_move;
-                            }) : parallel_moves.end();
-                    if (current_metadata != parallel_moves.end() &&
-                        !current_metadata->is_capture() && !current_metadata->gives_check &&
-                        current_metadata->move.promotion() == Promotion::none &&
-                        (!fallback_move.has_value() ||
-                         *fallback_move == current_metadata->move)) {
-                        if (const auto checking_capture = scored_safe_checking_capture(
-                                root, parallel_moves, *evaluator, evaluator_mutex_ptr,
-                                allow_deep_checked_fallback, &fallback_control);
-                            checking_capture.has_value()) {
-                            fallback_move = checking_capture->move;
-                            fallback_score = normalize_root_fallback_score(checking_capture->score);
-                        } else {
-                            fallback_move.reset();
-                        }
-                    }
-                    const bool should_replace = fallback_move.has_value() &&
-                        short_fallback_should_replace_completed_root(
-                            root, parallel_moves, result.best_move, *fallback_move);
-                    if (should_replace) {
+                    if (const auto fallback = resolve_completed_root_fallback(
+                            root, parallel_moves, result.best_move,
+                            resolve_overdue_fallback, &root_context.stats,
+                            *evaluator, evaluator_mutex_ptr,
+                            allow_deep_checked_fallback, fallback_control);
+                        fallback.has_value()) {
+                        const int fallback_score =
+                            normalize_root_fallback_score(fallback->score);
                         const std::optional<Move> superseded_move = result.best_move;
-                        result.best_move = *fallback_move;
-                        result.pv = {*fallback_move};
+                        result.best_move = fallback->move;
+                        result.pv = {fallback->move};
                         result.score_cp = fallback_score;
                         result.mate = mate_from_score(fallback_score);
                         // The info loop below reads the ranked root line,
@@ -2505,11 +2476,11 @@ void SearchRunner::run_impl() {
                             corrected_line.safe_upper_bound = false;
                             corrected_line.selective_upper_bound = false;
                             corrected_line.pv = {};
-                            corrected_line.pv.moves[0] = *fallback_move;
+                            corrected_line.pv.moves[0] = fallback->move;
                             corrected_line.pv.length = 1;
                         }
                         if (RootScheduleRecord* record =
-                                schedule_record_for(*fallback_move);
+                                schedule_record_for(fallback->move);
                             record != nullptr) {
                             // Keep the next iteration's queue ordering in
                             // sync with the corrected authoritative root
@@ -2521,7 +2492,7 @@ void SearchRunner::run_impl() {
                             record->previous_exact = false;
                         }
                         if (superseded_move.has_value() &&
-                            *superseded_move != *fallback_move) {
+                            *superseded_move != fallback->move) {
                             if (RootScheduleRecord* record =
                                     schedule_record_for(*superseded_move);
                                 record != nullptr) {

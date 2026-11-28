@@ -2291,6 +2291,43 @@ void test_sudden_death_scramble_lookahead_and_ponderhit_discount_exit() {
             "incremental 6s+1s high-effort depth-8 ponderhit must retain depth>=10/stability>=4 exit gate");
 }
 
+void test_sudden_death_scramble_depth4_fallback_stop() {
+    auto scr_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                    koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                    [scr_now] { return *scr_now; });
+    scr.observe_iteration({3, 0, true, false, false, 10'000, 5'000, milliseconds{5}});
+    scr.observe_iteration({4, 0, false, false, false, 10'000, 5'000, milliseconds{8}});
+    *scr_now += scr.diagnostics().optimum_budget;
+    require(!scr.diagnostics().emergency_pacing &&
+                scr.should_stop_after_iteration() &&
+                !scr.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble depth-4 stable non-collapsing search past optimum_budget must stop symmetrically");
+
+    auto scr_asp_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_asp(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [scr_asp_now] { return *scr_asp_now; });
+    scr_asp.observe_iteration({3, 60, true, false, false, 10'000, 5'000, milliseconds{5}});
+    scr_asp.observe_iteration({4, 40, false, false, true, 10'000, 5'000, milliseconds{8}});
+    *scr_asp_now += scr_asp.diagnostics().optimum_budget;
+    require(!scr_asp.should_stop_after_iteration() &&
+                scr_asp.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble depth-4 aspiration re-search must retain hard extension");
+
+    auto inc_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager inc(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                    koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                    [inc_now] { return *inc_now; });
+    inc.observe_iteration({3, 0, true, false, false, 10'000, 5'000, milliseconds{5}});
+    inc.observe_iteration({4, 0, false, false, false, 10'000, 5'000, milliseconds{8}});
+    *inc_now += inc.diagnostics().optimum_budget;
+    require(!inc.diagnostics().emergency_pacing &&
+                !inc.should_stop_after_iteration() &&
+                inc.should_start_next_iteration(milliseconds{1}),
+            "incremental 6s+1s depth-4 non-collapsing search must retain depth>=5 fallback gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2387,6 +2424,8 @@ int main(int argc, char** argv) {
          test_sudden_death_scramble_conversion_drawn_and_ponderhit_bank},
         {"sudden death scramble lookahead and ponderhit discount exit",
          test_sudden_death_scramble_lookahead_and_ponderhit_discount_exit},
+        {"sudden death scramble depth 4 fallback stop",
+         test_sudden_death_scramble_depth4_fallback_stop},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

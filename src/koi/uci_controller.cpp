@@ -2814,6 +2814,7 @@ void UciController::write_search_completion(const std::uint64_t generation,
     if (generation != generation_ || state_ == ControllerState::ShuttingDown) {
         return;
     }
+    std::array<char, 5> move_buffer{};
     if (protocol == ProtocolMode::xboard) {
         if (is_ponder_search || xboard_analyze) {
             return;
@@ -2821,7 +2822,7 @@ void UciController::write_search_completion(const std::uint64_t generation,
         if (result.best_move.has_value()) {
             xboard_pending_move_ = result.best_move;
             xboard_pending_move_generation_ = generation;
-            output_ << "move " << result.best_move->uci() << '\n' << std::flush;
+            output_ << "move " << result.best_move->format_uci(move_buffer) << '\n' << std::flush;
         } else {
             output_ << xboard_terminal_result_line(search_root) << '\n' << std::flush;
         }
@@ -2833,15 +2834,17 @@ void UciController::write_search_completion(const std::uint64_t generation,
         return;
     }
 
-    output_ << "bestmove " << result.best_move->uci();
+    output_ << "bestmove " << result.best_move->format_uci(move_buffer);
     // The ponder move is part of the answer whenever the engine knows it; the
     // `Ponder` option only tells the engine whether the GUI will actually
     // ponder, so gating the move on it needlessly starved GUIs of the hint.
     if (result.ponder_move.has_value()) {
-        output_ << " ponder " << result.ponder_move->uci();
+        output_ << " ponder " << result.ponder_move->format_uci(move_buffer);
     }
     output_ << '\n' << std::flush;
-    if (generation == active_clock_search_generation_ && clock_baseline_valid_) {
+    const bool matched_clock_baseline =
+        generation == active_clock_search_generation_ && clock_baseline_valid_;
+    if (matched_clock_baseline) {
         previous_clock_search_elapsed_ms_ = std::max<std::int64_t>(
             0, std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::steady_clock::now() - previous_clock_search_start_)
@@ -2851,9 +2854,15 @@ void UciController::write_search_completion(const std::uint64_t generation,
     if ((!is_ponder_search || generation == active_clock_search_generation_) &&
         result.completed_depth > 0 && !result.mate.has_value()) {
         previous_search_score_ = result.score_cp;
-        previous_search_side_ = search_root.side_to_move();
-        previous_search_fullmove_ = search_root.fullmove_number();
-        previous_search_position_key_ = search_root.position_key();
+        if (matched_clock_baseline) {
+            previous_search_side_ = previous_clock_side_;
+            previous_search_fullmove_ = previous_clock_fullmove_;
+            previous_search_position_key_ = previous_clock_position_key_;
+        } else {
+            previous_search_side_ = search_root.side_to_move();
+            previous_search_fullmove_ = search_root.fullmove_number();
+            previous_search_position_key_ = search_root.position_key();
+        }
     }
 }
 
@@ -2933,15 +2942,17 @@ void UciController::write_book_completion(const std::uint64_t generation, const 
         return;
     }
 
+    std::array<char, 5> move_buffer{};
+    const std::string_view best_uci = validation.best_move->format_uci(move_buffer);
     if (protocol == ProtocolMode::xboard) {
         xboard_pending_move_ = validation.best_move;
         xboard_pending_move_generation_ = generation;
-        output_ << "move " << validation.best_move->uci() << '\n' << std::flush;
+        output_ << "move " << best_uci << '\n' << std::flush;
         return;
     }
 
-    output_ << "info string book move " << validation.best_move->uci() << " depth " << ply << '\n'
-             << "bestmove " << validation.best_move->uci() << '\n' << std::flush;
+    output_ << "info string book move " << best_uci << " depth " << ply << '\n'
+             << "bestmove " << best_uci << '\n' << std::flush;
 }
 
 bool UciController::debug_logging_enabled() const noexcept {

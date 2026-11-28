@@ -895,8 +895,8 @@ bool TimeManager::clock_early_stop_reached(
         elapsed >= soft_target) {
         return true;
     }
+    const bool sudden_death_scramble = is_sudden_death_scramble();
     if (!hard_position_) {
-        const bool sudden_death_scramble = is_sudden_death_scramble();
         const int min_ponderhit_doomed_depth =
             emergency_pacing_ ? 6 : (sudden_death_scramble ? 7 : 8);
         const std::uint32_t min_ponderhit_doomed_stability = emergency_pacing_ ? 2U : 3U;
@@ -953,7 +953,7 @@ bool TimeManager::clock_early_stop_reached(
     // let a non-collapsing position burn all the way to the hard deadline once
     // it has completed a reasonable depth and passed its scaled optimum target,
     // unless the final iteration just required an aspiration re-search.
-    const int min_fallback_depth = emergency_pacing_ ? 4 : 5;
+    const int min_fallback_depth = (emergency_pacing_ || sudden_death_scramble) ? 4 : 5;
     if (last_observed_depth_ >= min_fallback_depth && best_move_stability_ >= 1 &&
         score_drop_cp_ < 40 && !last_aspiration_researched_ &&
         elapsed >= soft_target) {
