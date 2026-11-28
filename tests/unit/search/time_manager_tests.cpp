@@ -1085,6 +1085,33 @@ void test_overwhelming_win_noise_immunity_and_emergency_bullet_lookahead() {
             "emergency <=3s bullet lookahead must catch <20ms doomed hard plies");
 }
 
+void test_high_latency_net_increment_credit_and_symmetric_calm_stop() {
+    TimeManager laggy(clock_limits(milliseconds{30'000}, milliseconds{1'000}),
+                      koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                      {}, true, {}, 800);
+    TimeManager clean(clock_limits(milliseconds{30'000}, milliseconds{1'000}),
+                      koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                      {}, true, {}, 30);
+    require(laggy.diagnostics().soft_budget + milliseconds{400} < clean.diagnostics().soft_budget,
+            "high network latency (>100ms) must discount net increment credit even above 15 increments");
+
+    auto calm_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager calm(clock_limits(milliseconds{120'000}, milliseconds{1'000}),
+                     koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                     [calm_now] { return *calm_now; });
+    for (int depth = 4; depth <= 6; ++depth) {
+        calm.observe_iteration(
+            {depth, 30, false, false, false, 10'000, 5'000, milliseconds{30}});
+    }
+    const auto opt = calm.diagnostics().optimum_budget;
+    *calm_now += (opt * 65) / 100;
+    require(!calm.should_stop_after_iteration() && calm.should_start_next_iteration(milliseconds{1}),
+            "calm search at 65% optimum_budget must continue");
+    *calm_now += (opt * 11) / 100 + milliseconds{1};
+    require(calm.should_stop_after_iteration() && !calm.should_start_next_iteration(milliseconds{1}),
+            "calm search past 75% optimum_budget must stop symmetrically after iteration");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1129,6 +1156,8 @@ int main(int argc, char** argv) {
          test_ponderhit_instant_exit_and_repeating_emergency_horizon},
         {"overwhelming-win noise immunity and emergency bullet lookahead",
          test_overwhelming_win_noise_immunity_and_emergency_bullet_lookahead},
+        {"high-latency net-increment credit and symmetric calm stop",
+         test_high_latency_net_increment_credit_and_symmetric_calm_stop},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

@@ -632,8 +632,9 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    - Base allocation: `usable / horizon`.
    - Increment credit: `min(3/4 × credit_inc, 1/4 × usable)`, where
      `credit_inc` is `max(0, increment - overhead)` once `remaining <= 15 ×
-     increment` without `movestogo` (keeping low-clock incremental endgames
-     sustainable) and `increment` otherwise.
+     increment` or `overhead > 100 ms` without `movestogo` (keeping
+     high-latency and low-clock incremental endgames sustainable) and
+     `increment` otherwise.
    - Raw soft: `base + increment_credit`.
    - Raw hard: `hard_units × base + 1.5 × increment_credit`, where
      `hard_units = 3` at ≤ 3000 ms remaining and `2` otherwise (earlier builds
@@ -701,8 +702,9 @@ the search but cannot push it past the cap.
   single-legal moves after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
   in calm high-effort positions (`>= 90%` best-move node share) past `60%` of the
-  soft/optimum target, and in clock mode at soft after at least 2 stable
-  observations when the extension is unaffordable.
+  soft/optimum target, in calm `depth >= 6` stable (`stability >= 3`) positions
+  past `75%` of the soft/optimum target, and in clock mode at soft after at
+  least 2 stable observations when the extension is unaffordable.
 - `should_start_next_iteration`: honors instant post-`ponderhit` forced-mate /
   single-move exits, emergency pacing, forced-mate / single-move
   exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm

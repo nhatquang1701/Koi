@@ -1563,6 +1563,17 @@ public:
         return true;
     }
 
+    bool make_generated_move_if_key(const Move& move, const std::uint64_t expected_key) noexcept {
+        if (state.key != expected_key) {
+            return false;
+        }
+        return make_generated_move(move);
+    }
+
+    [[nodiscard]] Position::KeyAndSide position_key_and_side() const noexcept {
+        return Position::KeyAndSide{state.key, state.side};
+    }
+
     bool unapply() noexcept {
         if (state.history_size == 0) return false;
         // Consume the top record and invert the make in place.  The piece
@@ -3109,6 +3120,15 @@ bool Position::make_move(const Move& move) noexcept { return impl_->position.mak
 
 bool Position::make_generated_move(const Move& move) noexcept {
     return impl_->position.make_generated_move(move);
+}
+
+bool Position::make_generated_move_if_key(const Move& move,
+                                          const std::uint64_t expected_key) noexcept {
+    return impl_->position.make_generated_move_if_key(move, expected_key);
+}
+
+Position::KeyAndSide Position::position_key_and_side() const noexcept {
+    return impl_->position.position_key_and_side();
 }
 
 bool Position::unmake_move() noexcept { return impl_->position.unmake_move(); }

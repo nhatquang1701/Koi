@@ -366,7 +366,8 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     const auto net_increment = nonnegative_difference(clock->increment, overhead);
     const auto low_inc_threshold = scale_fraction(clock->increment, 15, 1);
     const auto raw_inc_credit =
-        (!limits_.moves_to_go.has_value() && has_increment && remaining <= low_inc_threshold)
+        (!limits_.moves_to_go.has_value() && has_increment &&
+         (remaining <= low_inc_threshold || overhead > std::chrono::milliseconds{100}))
             ? three_quarters(net_increment)
             : three_quarters(clock->increment);
     const auto increment_credit = std::min(raw_inc_credit,
@@ -860,6 +861,12 @@ bool TimeManager::should_stop_after_iteration() const noexcept {
         best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
         !last_aspiration_researched_ &&
         elapsed >= scale_fraction(soft_target, 60, 100)) {
+        return true;
+    }
+    if (!hard_position_ && last_observed_depth_ >= 6 &&
+        stable_observations_ >= 2 && best_move_stability_ >= 3 &&
+        score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
+        elapsed >= scale_fraction(soft_target, 75, 100)) {
         return true;
     }
     // Even if shallow iterations had a best-move change or score jump, do not

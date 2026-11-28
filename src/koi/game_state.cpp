@@ -1876,8 +1876,8 @@ bool GameState::make_search_move(const MoveMetadata& metadata) noexcept {
         // Search detaches the compatibility mirror and supplies records generated
         // strictly from the current position, so skip per-move SplitMix token
         // hashing and preserve only the cheap stale-key/origin guards.
-        return metadata.position_key == position_key() &&
-            impl_->native_position.make_generated_move(metadata.move);
+        return impl_->native_position.make_generated_move_if_key(
+            metadata.move, metadata.position_key);
     }
     // The staged picker may lazily discover that a generated capture or
     // promotion gives check. `gives_check` is part of the public metadata
@@ -1988,6 +1988,11 @@ bool GameState::is_terminal() const noexcept {
 
 std::uint64_t GameState::position_key() const noexcept {
     return impl_->native_position.position_key();
+}
+
+PositionKeyAndSide GameState::position_key_and_side() const noexcept {
+    const Position::KeyAndSide ks = impl_->native_position.position_key_and_side();
+    return PositionKeyAndSide{ks.position_key, ks.side_to_move};
 }
 
 std::uint64_t GameState::repetition_history_fingerprint() const noexcept {

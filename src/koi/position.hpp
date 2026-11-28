@@ -92,6 +92,7 @@ public:
     // Applies a move that came from this position's legal move generator.
     // Callers must not use this for unvalidated external input.
     bool make_generated_move(const Move& move) noexcept;
+    bool make_generated_move_if_key(const Move& move, std::uint64_t expected_key) noexcept;
     bool unmake_move() noexcept;
     bool make_null_move() noexcept;
     bool unmake_null_move() noexcept;
@@ -103,6 +104,11 @@ public:
     // check-state, or king-distance legality rules used by production UCI.
     bool set_fen_unchecked(std::string_view fen);
     [[nodiscard]] std::uint64_t position_key() const noexcept;
+    struct KeyAndSide {
+        std::uint64_t position_key = 0;
+        Color side_to_move = Color::white;
+    };
+    [[nodiscard]] KeyAndSide position_key_and_side() const noexcept;
     // Search-only fingerprint of reversible ancestor position keys since the
     // most recent pawn move, capture, or castling-rights change. Null moves
     // do not contribute to this fingerprint, and move unmake restores it.

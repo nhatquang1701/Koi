@@ -218,10 +218,11 @@ KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
         }
     }
     const bool threat = threat_features_;
-    const Color mover = state.side_to_move();
+    const PositionKeyAndSide ks = state.position_key_and_side();
+    const Color mover = ks.side_to_move;
     const std::size_t mover_index = mover == Color::white ? 0U : 1U;
     const std::size_t opponent_index = 1U - mover_index;
-    const std::uint64_t key = state.position_key();
+    const std::uint64_t key = ks.position_key;
     const bool use_avx2 = path == NnueInferencePath::avx2_compatible ? avx2_available() :
         (path == NnueInferencePath::automatic && avx2_available());
     (void)use_avx2;
@@ -370,10 +371,11 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
         // kernels still use accumulator_.values and bottleneck_values as scratch.
         ensure_accumulator_storage();
     }
-    const Color mover = state.side_to_move();
+    const PositionKeyAndSide ks = state.position_key_and_side();
+    const Color mover = ks.side_to_move;
     const std::size_t mover_index = mover == Color::white ? 0U : 1U;
     const std::size_t opponent_index = 1U - mover_index;
-    const std::uint64_t key = state.position_key();
+    const std::uint64_t key = ks.position_key;
     const bool use_avx2 = path == NnueInferencePath::avx2_compatible ? avx2_available() :
         (path == NnueInferencePath::automatic && avx2_available());
     (void)use_avx2;
@@ -708,6 +710,15 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
                     static_cast<std::uint16_t>(plane_base + (sq ^ sq_xor));
             }
         }
+    }
+
+    if constexpr (std::is_same_v<SumT, std::int16_t>) {
+        apply_finny_diffs_s16(
+            weights_->feature_weights.data(), hidden_units_,
+            cached_sums, target_sums,
+            std::span<const std::uint16_t>(removed.data(), removed_count),
+            std::span<const std::uint16_t>(added.data(), added_count));
+        return;
     }
 
     if ((removed_count == 1U && added_count == 1U) ||
@@ -1160,6 +1171,110 @@ KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub2_add2(
 
 #undef KOI_DELTA_ALWAYS_INLINE
 
+void apply_finny_diffs_s16(
+    const std::int16_t* const base,
+    const std::size_t count,
+    std::int16_t* const cached_sums,
+    std::int16_t* const target_sums,
+    const std::span<const std::uint16_t> removed,
+    const std::span<const std::uint16_t> added) noexcept {
+    if (removed.empty() && added.empty()) {
+        std::copy_n(cached_sums, count, target_sums);
+        return;
+    }
+    std::size_t hidden = 0;
+#if KOI_NNUE_COMPILED_NEON
+    for (; hidden + 32U <= count; hidden += 32U) {
+        int16x8_t a0 = vld1q_s16(cached_sums + hidden);
+        int16x8_t a1 = vld1q_s16(cached_sums + hidden + 8U);
+        int16x8_t a2 = vld1q_s16(cached_sums + hidden + 16U);
+        int16x8_t a3 = vld1q_s16(cached_sums + hidden + 24U);
+        for (const std::uint16_t feat : removed) {
+            const std::int16_t* const w = base + static_cast<std::size_t>(feat) * count + hidden;
+            a0 = vsubq_s16(a0, vld1q_s16(w));
+            a1 = vsubq_s16(a1, vld1q_s16(w + 8U));
+            a2 = vsubq_s16(a2, vld1q_s16(w + 16U));
+            a3 = vsubq_s16(a3, vld1q_s16(w + 24U));
+        }
+        for (const std::uint16_t feat : added) {
+            const std::int16_t* const w = base + static_cast<std::size_t>(feat) * count + hidden;
+            a0 = vaddq_s16(a0, vld1q_s16(w));
+            a1 = vaddq_s16(a1, vld1q_s16(w + 8U));
+            a2 = vaddq_s16(a2, vld1q_s16(w + 16U));
+            a3 = vaddq_s16(a3, vld1q_s16(w + 24U));
+        }
+        vst1q_s16(cached_sums + hidden, a0);
+        vst1q_s16(cached_sums + hidden + 8U, a1);
+        vst1q_s16(cached_sums + hidden + 16U, a2);
+        vst1q_s16(cached_sums + hidden + 24U, a3);
+        vst1q_s16(target_sums + hidden, a0);
+        vst1q_s16(target_sums + hidden + 8U, a1);
+        vst1q_s16(target_sums + hidden + 16U, a2);
+        vst1q_s16(target_sums + hidden + 24U, a3);
+    }
+    for (; hidden + 8U <= count; hidden += 8U) {
+        int16x8_t a0 = vld1q_s16(cached_sums + hidden);
+        for (const std::uint16_t feat : removed) {
+            a0 = vsubq_s16(a0, vld1q_s16(base + static_cast<std::size_t>(feat) * count + hidden));
+        }
+        for (const std::uint16_t feat : added) {
+            a0 = vaddq_s16(a0, vld1q_s16(base + static_cast<std::size_t>(feat) * count + hidden));
+        }
+        vst1q_s16(cached_sums + hidden, a0);
+        vst1q_s16(target_sums + hidden, a0);
+    }
+#elif KOI_NNUE_COMPILED_AVX2
+    if (avx2_available()) {
+        for (; hidden + 32U <= count; hidden += 32U) {
+            __m256i a0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(cached_sums + hidden));
+            __m256i a1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(cached_sums + hidden + 16U));
+            for (const std::uint16_t feat : removed) {
+                const std::int16_t* const w = base + static_cast<std::size_t>(feat) * count + hidden;
+                a0 = _mm256_sub_epi16(a0, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(w)));
+                a1 = _mm256_sub_epi16(a1, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(w + 16U)));
+            }
+            for (const std::uint16_t feat : added) {
+                const std::int16_t* const w = base + static_cast<std::size_t>(feat) * count + hidden;
+                a0 = _mm256_add_epi16(a0, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(w)));
+                a1 = _mm256_add_epi16(a1, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(w + 16U)));
+            }
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(cached_sums + hidden), a0);
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(cached_sums + hidden + 16U), a1);
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_sums + hidden), a0);
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_sums + hidden + 16U), a1);
+        }
+        for (; hidden + 16U <= count; hidden += 16U) {
+            __m256i a0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(cached_sums + hidden));
+            for (const std::uint16_t feat : removed) {
+                const std::int16_t* const w = base + static_cast<std::size_t>(feat) * count + hidden;
+                a0 = _mm256_sub_epi16(a0, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(w)));
+            }
+            for (const std::uint16_t feat : added) {
+                const std::int16_t* const w = base + static_cast<std::size_t>(feat) * count + hidden;
+                a0 = _mm256_add_epi16(a0, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(w)));
+            }
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(cached_sums + hidden), a0);
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_sums + hidden), a0);
+        }
+    }
+#endif
+    for (; hidden < count; ++hidden) {
+        int acc = cached_sums[hidden];
+        for (const std::uint16_t feat : removed) {
+            acc -= base[static_cast<std::size_t>(feat) * count + hidden];
+        }
+        for (const std::uint16_t feat : added) {
+            acc += base[static_cast<std::size_t>(feat) * count + hidden];
+        }
+        const auto updated = static_cast<std::int16_t>(acc);
+        cached_sums[hidden] = updated;
+        target_sums[hidden] = updated;
+    }
+}
+
 } // namespace
 
 void NnueWorker::apply_fused_perspective_deltas(
@@ -1572,7 +1687,8 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
                 return;
             }
         }
-        const Color mover = opposite(child.side_to_move());
+        const PositionKeyAndSide child_ks = child.position_key_and_side();
+        const Color mover = opposite(child_ks.side_to_move);
         const PieceType moving = metadata.moving_piece;
         if (moving == PieceType::king) {
             const std::size_t mover_idx = mover == Color::white ? 0U : 1U;
@@ -1599,7 +1715,7 @@ void NnueWorker::on_make_move(const GameState& child, const MoveMetadata& metada
         slot_computed_[1][child_idx] = 0;
         slot_pieces_[child_idx] = static_cast<std::uint8_t>(
             slot_pieces_[from_slot] - (metadata.captured_piece != PieceType::none ? 1U : 0U));
-        slot_keys_[child_idx] = child.position_key();
+        slot_keys_[child_idx] = child_ks.position_key;
         slot_valid_[child_idx] = 1;
         slot_cursor_ = child_slot;
         return;

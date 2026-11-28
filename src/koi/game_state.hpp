@@ -46,6 +46,11 @@ struct SearchNodeInfo {
     bool has_non_pawn_material = false;
 };
 
+struct PositionKeyAndSide {
+    std::uint64_t position_key = 0;
+    Color side_to_move = Color::white;
+};
+
 enum class MoveKind : std::uint8_t { quiet, capture, en_passant, castling, promotion };
 
 enum class CheckFlagMode : std::uint8_t {
@@ -387,6 +392,7 @@ public:
     [[nodiscard]] bool is_draw_by_rule() const noexcept;
     [[nodiscard]] bool is_terminal() const noexcept;
     [[nodiscard]] std::uint64_t position_key() const noexcept;
+    [[nodiscard]] PositionKeyAndSide position_key_and_side() const noexcept;
     // Search-only fingerprint of reversible ancestor position keys. It is
     // intentionally separate from position_key(), which remains the public
     // board/repetition identity used by UCI and search-session cancellation.
