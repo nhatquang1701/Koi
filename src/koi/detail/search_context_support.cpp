@@ -229,6 +229,33 @@ bool quiet_move_is_forcing(const PositionFeatures& before,
 
 namespace {
 
+[[nodiscard]] constexpr std::array<std::array<std::uint64_t, 64>, 2>
+build_passed_pawn_masks() noexcept {
+    std::array<std::array<std::uint64_t, 64>, 2> masks{};
+    for (int own = 0; own < 2; ++own) {
+        const int direction = own == 0 ? 1 : -1;
+        for (int sq = 0; sq < 64; ++sq) {
+            const int rank = sq / 8;
+            const int file = sq % 8;
+            std::uint64_t ahead = 0;
+            const int min_file = file > 0 ? file - 1 : 0;
+            const int max_file = file < 7 ? file + 1 : 7;
+            for (int candidate_file = min_file; candidate_file <= max_file; ++candidate_file) {
+                for (int candidate_rank = rank + direction;
+                     candidate_rank >= 0 && candidate_rank < 8;
+                     candidate_rank += direction) {
+                    ahead |= std::uint64_t{1} << (candidate_rank * 8 + candidate_file);
+                }
+            }
+            masks[static_cast<std::size_t>(own)][static_cast<std::size_t>(sq)] = ahead;
+        }
+    }
+    return masks;
+}
+
+constexpr std::array<std::array<std::uint64_t, 64>, 2> kPassedPawnMask =
+    build_passed_pawn_masks();
+
 [[nodiscard]] std::uint64_t compact_king_zone_mask(const std::uint8_t square) noexcept {
     if (square >= Square::kInvalid) {
         return 0;
@@ -268,8 +295,8 @@ void build_quiet_forcing_after_view(const GameState& after, const Color mover,
     // Same precomputed attack tables and first-blocker occupancy semantics as
     // native_position_features(), using a single ExchangeSnapshot lookup.
     const ExchangeSnapshot snap = after.exchange_snapshot();
-    out = QuietForcingAfterView{};
     if (snap.piece_bitboards == nullptr) {
+        out = QuietForcingAfterView{};
         return;
     }
     const std::size_t mover_index = mover == Color::white ? 0U : 1U;
@@ -278,14 +305,27 @@ void build_quiet_forcing_after_view(const GameState& after, const Color mover,
     const auto& mover_bitboards = bitboards[mover_index];
     const auto& enemy_bitboards = bitboards[enemy_index];
 
-    std::uint64_t enemy_pieces = 0;
-    for (std::size_t type = 1; type <= 6; ++type) {
-        enemy_pieces |= enemy_bitboards[type];
-    }
+    const std::uint64_t enemy_pawns =
+        enemy_bitboards[static_cast<std::size_t>(PieceType::pawn)];
+    const std::uint64_t enemy_knights =
+        enemy_bitboards[static_cast<std::size_t>(PieceType::knight)];
+    const std::uint64_t enemy_bishops =
+        enemy_bitboards[static_cast<std::size_t>(PieceType::bishop)];
+    const std::uint64_t enemy_rooks_queens =
+        enemy_bitboards[static_cast<std::size_t>(PieceType::rook)] |
+        enemy_bitboards[static_cast<std::size_t>(PieceType::queen)];
+    const std::uint64_t enemy_major_or_minor =
+        enemy_rooks_queens | enemy_knights | enemy_bishops;
+    const std::uint64_t enemy_non_king = enemy_pawns | enemy_major_or_minor;
+    const std::uint64_t enemy_king =
+        enemy_bitboards[static_cast<std::size_t>(PieceType::king)];
     const std::uint64_t occupied = snap.occupied;
     out.occupied = occupied;
-    out.enemy_pieces = enemy_pieces;
-    out.enemy_pawns = enemy_bitboards[static_cast<std::size_t>(PieceType::pawn)];
+    out.enemy_pieces = enemy_non_king | enemy_king;
+    out.enemy_pawns = enemy_pawns;
+    out.enemy_rooks_queens = enemy_rooks_queens;
+    out.enemy_non_king = enemy_non_king;
+    out.enemy_major_or_minor = enemy_major_or_minor;
 
     constexpr std::uint64_t kFileA = 0x0101010101010101ULL;
     constexpr std::uint64_t kFileH = 0x8080808080808080ULL;
@@ -325,8 +365,6 @@ void build_quiet_forcing_after_view(const GameState& after, const Color mover,
     // after.king_zone_attacks[enemy] == popcount(attacks_after[own] &
     // king_zone_mask(enemy king square)); the full extraction computes exactly
     // this expression from the enemy king bitboard (kInvalid when absent).
-    const std::uint64_t enemy_king =
-        enemy_bitboards[static_cast<std::size_t>(PieceType::king)];
     const std::uint8_t enemy_king_square = enemy_king == 0
         ? Square::kInvalid
         : static_cast<std::uint8_t>(std::countr_zero(enemy_king));
@@ -343,19 +381,13 @@ bool quiet_move_is_forcing(const PositionFeatures& before, const GameState& afte
     //     occupancy).
     //  2. after_view.enemy_king_zone_attacks equals
     //     after_features.king_zone_attacks[enemy].
-    //  3. the metadata guard, king-zone comparison, attacked-piece scan,
-    //     newly-attacked scan, and passed-pawn branch keep the original check
-    //     order, and both bitboard scans iterate squares in ascending
-    //     countr_zero order over the same square sets (board reads come from
-    //     the same native position the full snapshot is extracted from).
-    //  4. the passed-pawn branch is the bitboard form of the original board
-    //     scan: enemy_pawns & adjacent_files(file) & ranks strictly ahead.
-    //  5. before.attacked_squares[own] and before.king_zone_attacks[enemy]
-    //     still come from the parent snapshot passed by the caller.
-    //  6. the caller feeds the result only into lmr_gate/dynamic_late_move,
-    //     which consume the same booleans and produce the same reduction.
-    //  7. no TT key, move ordering, history update, or emission order is
-    //     touched here.
+    //  3. the fork test matches target_triggers_fork(..., false): rooks/queens,
+    //     central pawns (files c..f on ranks 4..5), or >= 2 non-king enemy
+    //     targets hit from destination all trigger directly from bitboards
+    //     without per-target piece_at() PIMPL calls.
+    //  4. newly attacked enemy N/B/R/Q targets reduce to a single bitboard
+    //     intersection against after_view.enemy_major_or_minor.
+    //  5. the passed-pawn test uses precomputed kPassedPawnMask[own][dest].
     if (metadata.is_capture() || metadata.gives_check ||
         metadata.move.promotion() != Promotion::none) {
         return false;
@@ -377,8 +409,9 @@ bool quiet_move_is_forcing(const PositionFeatures& before, const GameState& afte
         return false;
     }
 
-    int attacked_valuable_pieces = 0;
-    const Piece moved = after_state.piece_at(Square::from_index(destination));
+    const Piece moved = metadata.moving_piece != PieceType::none
+        ? Piece{metadata.moving_piece, before.side_to_move}
+        : after_state.piece_at(Square::from_index(destination));
     std::uint64_t attacks = 0;
     switch (moved.type) {
     case PieceType::pawn:
@@ -402,55 +435,31 @@ bool quiet_move_is_forcing(const PositionFeatures& before, const GameState& afte
     case PieceType::none:
         break;
     }
-    attacks &= after_view.enemy_pieces;
-    while (attacks != 0) {
-        const std::uint8_t square =
-            static_cast<std::uint8_t>(std::countr_zero(attacks));
-        attacks &= attacks - 1;
-        if (target_triggers_fork(after_state.piece_at(Square::from_index(square)),
-                                 square, enemy, false, attacked_valuable_pieces)) {
-            return true;
-        }
+    constexpr std::uint64_t kCentralForkPawnMask = 0x0000003C3C000000ULL;
+    const std::uint64_t attacked_non_king = attacks & after_view.enemy_non_king;
+    if ((attacked_non_king &
+         (after_view.enemy_rooks_queens |
+          (after_view.enemy_pawns & kCentralForkPawnMask))) != 0 ||
+        std::popcount(attacked_non_king) >= 2) {
+        return true;
     }
 
-    std::uint64_t newly_attacked = after_view.own_attacked_squares &
-        ~before.attacked_squares[own];
-    while (newly_attacked != 0) {
-        const std::uint8_t square =
-            static_cast<std::uint8_t>(std::countr_zero(newly_attacked));
-        newly_attacked &= newly_attacked - 1;
-        const Piece target = after_state.piece_at(Square::from_index(square));
-        if (!target.empty() && (target.color == Color::white ? 0U : 1U) == enemy &&
-            (target.type == PieceType::queen || target.type == PieceType::rook ||
-             target.type == PieceType::bishop || target.type == PieceType::knight)) {
-            return true;
-        }
+    if ((after_view.own_attacked_squares & ~before.attacked_squares[own] &
+         after_view.enemy_major_or_minor) != 0) {
+        return true;
     }
 
     if (moved.type == PieceType::pawn && (moved.color == Color::white ? 0U : 1U) == own) {
         const int rank = destination / 8;
         const int file = destination % 8;
-        const int direction = moved.color == Color::white ? 1 : -1;
-        // The original scan walks the destination file and its neighbours
-        // strictly ahead of the pawn; the enemy pawn bitboard intersected with
-        // that same square set is equivalent to finding an enemy pawn there.
-        std::uint64_t ahead_mask = 0;
-        for (int candidate_file = std::max(0, file - 1);
-             candidate_file <= std::min(7, file + 1); ++candidate_file) {
-            for (int candidate_rank = rank + direction;
-                 candidate_rank >= 0 && candidate_rank < 8;
-                 candidate_rank += direction) {
-                ahead_mask |= std::uint64_t{1} << (candidate_rank * 8 + candidate_file);
-            }
-        }
-        const bool passed = (after_view.enemy_pawns & ahead_mask) == 0;
-        const bool advanced = moved.color == Color::white ? rank >= 4 : rank <= 3;
         const bool central_break = (file == 3 || file == 4) &&
             (rank == 3 || rank == 4);
-        if (passed && advanced) {
+        if (central_break) {
             return true;
         }
-        if (central_break) {
+        const bool advanced = moved.color == Color::white ? rank >= 4 : rank <= 3;
+        if (advanced &&
+            (after_view.enemy_pawns & kPassedPawnMask[own][destination]) == 0) {
             return true;
         }
     }

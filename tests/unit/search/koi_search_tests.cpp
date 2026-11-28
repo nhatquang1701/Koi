@@ -3545,7 +3545,7 @@ void test_compact_forcing_probe_matches_full_feature_decision() {
     // exactly, and the compact view must reproduce every snapshot field the
     // probe consumes.  The set covers opening, king-ring, piece-attack,
     // passed-pawn, central-break, castling, and both sides to move.
-    constexpr std::array<std::string_view, 8> fixtures{
+    constexpr std::array<std::string_view, 11> fixtures{
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
         "k7/2R1Q3/8/8/8/2n5/8/6K1 w - - 0 1",
         "4k3/8/7b/8/8/8/8/R5K1 w - - 0 1",
@@ -3554,6 +3554,11 @@ void test_compact_forcing_probe_matches_full_feature_decision() {
         "8/5p2/4p3/3P4/2P5/1P6/8/K1k5 w - - 0 1",
         "r3k2r/pppppppp/8/8/3N4/8/PPPPPPPP/R3K2R w KQkq - 0 1",
         "r3k2r/pppppppp/8/8/3n4/8/PPPPPPPP/R3K2R b KQkq - 0 1",
+        // Central-pawn and minor-pair fork targets without rooks/queens.
+        "4k3/8/8/2p2n2/8/1N6/8/4K3 w - - 0 1",
+        "4k3/8/2b2n2/8/8/8/4N3/4K3 w - - 0 1",
+        // Advanced black passed-pawn push.
+        "4k3/8/8/8/4p3/8/8/4K3 b - - 0 1",
     };
 
     std::size_t quiet_moves_checked = 0;
@@ -3575,9 +3580,21 @@ void test_compact_forcing_probe_matches_full_feature_decision() {
             koi::detail::QuietForcingAfterView view;
             koi::detail::build_quiet_forcing_after_view(
                 child, parent.side_to_move(), view);
+            const koi::Color enemy_color =
+                parent.side_to_move() == koi::Color::white ? koi::Color::black : koi::Color::white;
             const std::size_t own =
                 parent.side_to_move() == koi::Color::white ? 0U : 1U;
             const std::size_t enemy = 1U - own;
+            const std::uint64_t expected_enemy_pawns =
+                child.piece_bitboard(koi::PieceType::pawn, enemy_color);
+            const std::uint64_t expected_enemy_rooks_queens =
+                child.piece_bitboard(koi::PieceType::rook, enemy_color) |
+                child.piece_bitboard(koi::PieceType::queen, enemy_color);
+            const std::uint64_t expected_enemy_major_or_minor = expected_enemy_rooks_queens |
+                child.piece_bitboard(koi::PieceType::knight, enemy_color) |
+                child.piece_bitboard(koi::PieceType::bishop, enemy_color);
+            const std::uint64_t expected_enemy_non_king =
+                expected_enemy_pawns | expected_enemy_major_or_minor;
             const std::string move_name = metadata.move.uci();
             require(view.occupied != 0 && view.occupied == after.occupied,
                     "the compact view must reproduce child occupancy for " + move_name);
@@ -3585,6 +3602,12 @@ void test_compact_forcing_probe_matches_full_feature_decision() {
                     "the compact view must reproduce enemy occupancy for " + move_name);
             require(view.enemy_pawns == after.pawns[enemy],
                     "the compact view must reproduce the enemy pawns for " + move_name);
+            require(view.enemy_rooks_queens == expected_enemy_rooks_queens,
+                    "the compact view must reproduce enemy rooks/queens for " + move_name);
+            require(view.enemy_major_or_minor == expected_enemy_major_or_minor,
+                    "the compact view must reproduce enemy major/minor pieces for " + move_name);
+            require(view.enemy_non_king == expected_enemy_non_king,
+                    "the compact view must reproduce enemy non-king pieces for " + move_name);
             require(view.own_attacked_squares == after.attacked_squares[own],
                     "the compact view must reproduce the mover attack union for " + move_name);
             require(view.enemy_king_zone_attacks == after.king_zone_attacks[enemy],

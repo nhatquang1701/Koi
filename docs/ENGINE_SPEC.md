@@ -607,12 +607,15 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    - `remaining` is the side-to-move clock, clamped to ≥ 0.
    - Observed GUI/network overhead (clock searches only): `UciController`
      compares the previous reported clock plus increment minus Koi's own
-     completed `go`-to-`bestmove` search duration (excluding opponent think time
-     and preserving the baseline across interleaved `go ponder` traffic)
-     against the newly reported clock. Positive excess ≥ 25 ms raises a learned
-     overhead (capped at 1500 ms); a negative or sub-threshold excess decays it
-     by 1/8. `movetime` searches never learn or use it, and `ucinewgame` resets
-     it.
+     completed `go`-to-`bestmove` search duration (excluding opponent think time,
+     preserving the baseline across interleaved `go ponder` traffic, and
+     requiring same-side game continuity—`side_to_move` unchanged and either
+     `fullmove == prev + 1` or identical `position_key`, so side switches or
+     unrelated FEN jumps never inject bogus latency) against the newly reported
+     clock. Positive excess ≥ 25 ms raises a learned overhead (capped at
+     1500 ms); a negative or sub-threshold excess decays it by 1/8 (and
+     sustained sub-half candidates decay toward zero across moves). `movetime`
+     searches never learn or use it, and `ucinewgame` resets it.
    - Effective overhead: `max(Move Overhead, learned overhead)`, or when
      `Dynamic Overhead` is enabled, `max(clamp(remaining / 50, 10, 100),
      learned overhead, Move Overhead > 30 ? Move Overhead : 0)`.
@@ -684,7 +687,8 @@ the search but cannot push it past the cap.
   during `<= 1 s + 0` sub-second sudden-death scrambles without `movestogo`,
   `1.35×` during `<= 10 s + 0` sudden-death scrambles without `movestogo`, and
   `1.85×` otherwise) using `best_move_effort_permille_`, `best_move_stability_`,
-  decayed cumulative `instability_permille_`, inter-move and intra-search
+  decayed cumulative `instability_permille_`, inter-move (gated on the same
+  side-to-move game continuity check) and intra-search
   `score_drop_cp_` (ignored when holding a stable `>= +600` cp win without
   re-research), `score_gain_cp_`, `last_aspiration_researched_`,
   single-legal-move cap (`min(150 ms, soft / 8)`), confirmed winning forced-mate

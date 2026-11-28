@@ -311,7 +311,13 @@ void UciController::reset_new_game() {
         previous_clock_increment_ms_ = 0;
         previous_clock_search_elapsed_ms_ = 0;
         previous_clock_search_start_ = {};
+        previous_clock_side_ = Color::white;
+        previous_clock_fullmove_ = 0;
+        previous_clock_position_key_ = 0;
         previous_search_score_.reset();
+        previous_search_side_ = Color::white;
+        previous_search_fullmove_ = 0;
+        previous_search_position_key_ = 0;
         xboard_pending_move_.reset();
     }
     debug_json_event("ucinewgame", "\"hash_cleared\":true");
@@ -1916,7 +1922,7 @@ void UciController::handle_ponderhit() {
             std::lock_guard lock(output_mutex_);
             current_generation = generation_;
         }
-        note_clock_baseline(converted_for_timing, current_generation, ponderhit_now);
+        note_clock_baseline(position_, converted_for_timing, current_generation, ponderhit_now);
         {
             std::lock_guard lock(output_mutex_);
             observed_overhead = observed_gui_overhead_ms_;
@@ -1975,7 +1981,7 @@ void UciController::handle_ponderhit() {
 }
 
 void UciController::note_clock_baseline(
-    const SearchLimits& limits, const std::uint64_t generation,
+    const GameState& root, const SearchLimits& limits, const std::uint64_t generation,
     const std::chrono::steady_clock::time_point started) noexcept {
     if (limits.ponder) {
         // Speculative pondering is unbounded and precedes our next real clock
@@ -1984,8 +1990,11 @@ void UciController::note_clock_baseline(
         return;
     }
     const bool clock_search = !limits.infinite && !limits.movetime.has_value();
+    const Color side_to_move = root.side_to_move();
+    const std::uint16_t fullmove_number = root.fullmove_number();
+    const std::uint64_t position_key = root.position_key();
     const std::optional<ClockLimit>& clock =
-        position_.side_to_move() == Color::white ? limits.white_clock : limits.black_clock;
+        side_to_move == Color::white ? limits.white_clock : limits.black_clock;
     std::uint32_t logged_overhead = 0;
     std::int64_t logged_elapsed = 0;
     bool overhead_updated = false;
@@ -1994,12 +2003,22 @@ void UciController::note_clock_baseline(
         if (!clock_search || !clock.has_value()) {
             clock_baseline_valid_ = false;
             previous_clock_search_completed_ = false;
+            previous_clock_fullmove_ = 0;
+            previous_clock_position_key_ = 0;
             return;
         }
-        // Only measure round-trip discrepancy using our engine's actual
+        // Only measure round-trip discrepancy within a continuous same-side
+        // game progression (or an immediate re-search of the same position):
+        // an ad-hoc FEN jump or side switch without `ucinewgame` carries an
+        // unrelated clock and must not inject a false latency spike.
+        const bool clock_continues_game = clock_baseline_valid_ &&
+            side_to_move == previous_clock_side_ &&
+            (fullmove_number == static_cast<std::uint16_t>(previous_clock_fullmove_ + 1U) ||
+             position_key == previous_clock_position_key_);
+        // Also measure round-trip discrepancy using only our engine's actual
         // go-to-bestmove duration; including the opponent's think time made the
         // expected clock smaller than reality and suppressed overhead learning.
-        if (clock_baseline_valid_ && previous_clock_search_completed_) {
+        if (clock_continues_game && previous_clock_search_completed_) {
             const std::uint32_t updated = uci::derive_network_overhead_ms(
                 previous_clock_remaining_ms_, previous_clock_increment_ms_,
                 previous_clock_search_elapsed_ms_, clock->remaining.count(),
@@ -2015,6 +2034,9 @@ void UciController::note_clock_baseline(
         previous_clock_increment_ms_ = clock->increment.count();
         previous_clock_search_start_ = started;
         active_clock_search_generation_ = generation;
+        previous_clock_side_ = side_to_move;
+        previous_clock_fullmove_ = fullmove_number;
+        previous_clock_position_key_ = position_key;
         previous_clock_search_completed_ = false;
         clock_baseline_valid_ = true;
     }
@@ -2232,13 +2254,21 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                                 xboard_analyze_snapshot, search_root);
     };
 
-    note_clock_baseline(limits, generation, search_started);
+    note_clock_baseline(search_root, limits, generation, search_started);
     std::uint32_t observed_overhead = 0;
     std::optional<int> previous_score;
+    const Color search_side = search_root.side_to_move();
+    const std::uint16_t search_fullmove = search_root.fullmove_number();
+    const std::uint64_t search_key = search_root.position_key();
     {
         std::lock_guard lock(output_mutex_);
         observed_overhead = observed_gui_overhead_ms_;
-        previous_score = previous_search_score_;
+        if (previous_search_score_.has_value() &&
+            search_side == previous_search_side_ &&
+            (search_fullmove == static_cast<std::uint16_t>(previous_search_fullmove_ + 1U) ||
+             search_key == previous_search_position_key_)) {
+            previous_score = previous_search_score_;
+        }
     }
 
     SearchOptions options;
@@ -2788,6 +2818,9 @@ void UciController::write_search_completion(const std::uint64_t generation,
     if ((!is_ponder_search || generation == active_clock_search_generation_) &&
         result.completed_depth > 0 && !result.mate.has_value()) {
         previous_search_score_ = result.score_cp;
+        previous_search_side_ = search_root.side_to_move();
+        previous_search_fullmove_ = search_root.fullmove_number();
+        previous_search_position_key_ = search_root.position_key();
     }
 }
 

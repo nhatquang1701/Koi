@@ -2211,6 +2211,32 @@ void test_network_overhead_is_learned_from_clock_discrepancy() {
     const std::string ponder_contents((std::istreambuf_iterator<char>(ponder_log)), {});
     require(ponder_contents.find("network overhead estimate") != std::string::npos,
             "interleaved go ponder must preserve clock baseline for network overhead learning");
+
+    // Switching sides or jumping to an unrelated FEN without `ucinewgame` must
+    // not compare unrelated clocks and inject a bogus network latency spike.
+    koi::test::TempDirectory jump_files;
+    const ControllerResult jump_result = run_controller_in_directory(
+        "setoption name DebugFile value network-jump.log\n"
+        "debug on\n"
+        "position startpos\n"
+        "go wtime 10000 btime 10000 winc 0 binc 0 depth 1\n"
+        "wait\n"
+        "position startpos moves e2e4\n"
+        "go wtime 10000 btime 1000 winc 0 binc 0 depth 1\n"
+        "wait\n"
+        "position fen 4k3/8/8/8/8/8/4P3/4K3 w - - 0 10\n"
+        "go wtime 500 btime 500 winc 0 binc 0 depth 1\n"
+        "wait\n"
+        "options\n"
+        "quit\n",
+        jump_files.path());
+    require(jump_result.exit_code == 0 && jump_result.diagnostics.empty(),
+            "side switch and non-sequential FEN jumps must stay protocol-clean");
+    std::ifstream jump_log(jump_files.path() / "network-jump.log", std::ios::binary);
+    const std::string jump_contents((std::istreambuf_iterator<char>(jump_log)), {});
+    require(jump_contents.find("network overhead estimate") == std::string::npos &&
+                jump_result.output.find("observed: 0 ms") != std::string::npos,
+            "switching sides or jumping FENs without ucinewgame must not learn false overhead");
 }
 void test_evalfile_autodiscovery_marker_is_informational() {
     const ControllerResult marked = run_controller_with_autodiscovery("uci\nquit\n", true);

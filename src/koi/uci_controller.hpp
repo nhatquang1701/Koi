@@ -151,9 +151,10 @@ private:
     bool try_install_nnue_file(const std::filesystem::path& path, std::string_view option_label,
                                std::filesystem::path* resolved_out = nullptr);
     // Records the clock baseline for the current timed move and folds observed
-    // GUI/network round-trip latency from the previous completed search into
-    // `observed_gui_overhead_ms_`.
-    void note_clock_baseline(const SearchLimits& limits, std::uint64_t generation,
+    // GUI/network round-trip latency from the previous completed same-side
+    // search into `observed_gui_overhead_ms_`.
+    void note_clock_baseline(const GameState& root, const SearchLimits& limits,
+                             std::uint64_t generation,
                              std::chrono::steady_clock::time_point started) noexcept;
     void stop_active_search();
     void stop_and_suppress_active_search();
@@ -227,7 +228,13 @@ private:
     std::int64_t previous_clock_increment_ms_ = 0;
     std::int64_t previous_clock_search_elapsed_ms_ = 0;
     std::chrono::steady_clock::time_point previous_clock_search_start_{};
+    Color previous_clock_side_ = Color::white;
+    std::uint16_t previous_clock_fullmove_ = 0;
+    std::uint64_t previous_clock_position_key_ = 0;
     std::optional<int> previous_search_score_;
+    Color previous_search_side_ = Color::white;
+    std::uint16_t previous_search_fullmove_ = 0;
+    std::uint64_t previous_search_position_key_ = 0;
     std::uint32_t slow_mover_percent_ = 100;
     std::uint32_t contempt_cp_ = 0;
     bool strength_mode_ = false;

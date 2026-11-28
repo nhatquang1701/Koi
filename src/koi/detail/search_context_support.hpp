@@ -23,6 +23,9 @@ struct QuietForcingAfterView {
     std::uint64_t occupied = 0;
     std::uint64_t enemy_pieces = 0;
     std::uint64_t enemy_pawns = 0;
+    std::uint64_t enemy_rooks_queens = 0;
+    std::uint64_t enemy_non_king = 0;
+    std::uint64_t enemy_major_or_minor = 0;
     // Union of the mover's piece attacks with post-move occupancy; equals
     // PositionFeatures::attacked_squares[own].
     std::uint64_t own_attacked_squares = 0;

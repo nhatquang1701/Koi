@@ -2168,6 +2168,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             const bool child_in_check = state.in_check();
             bool king_zone_pressure = false;
             bool reducible_quiet = false;
+            QuietForcingAfterView after_forced_view;
+            bool after_forced_view_ready = false;
             if (lmr_candidate) {
                 if (metadata.is_capture()) {
                     // A non-checking capture has no quiet-move forcing
@@ -2193,27 +2195,20 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // popcount(attacks_after[own] & king_zone_mask(enemy
                     // king))).  The parent snapshot stays the source of the
                     // before/after comparison.
-                    QuietForcingAfterView after_forced_view;
                     build_quiet_forcing_after_view(
                         state, lmr_parent_features.side_to_move, after_forced_view);
+                    after_forced_view_ready = true;
                     const std::size_t enemy =
                         lmr_parent_features.side_to_move == Color::white ? 1U : 0U;
                     king_zone_pressure = after_forced_view.enemy_king_zone_attacks >
                         lmr_parent_features.king_zone_attacks[enemy];
-                    reducible_quiet = !child_in_check &&
+                    reducible_quiet = !child_in_check && !king_zone_pressure &&
                         !quiet_move_is_forcing(
                             lmr_parent_features, state, after_forced_view, metadata);
                 }
             }
             if (king_zone_pressure) {
                 ++stats.lmr_king_zone_exclusions;
-            }
-            if (king_zone_pressure) {
-                // A quiet move that increases direct king-ring pressure is a
-                // forcing defensive/tactical resource even when its move
-                // metadata is not a check. Do not let the later LMR call
-                // reduce it after paying for the feature comparison.
-                reducible_quiet = false;
             }
             bool quiet_forcing_extension = false;
             if ((quiet_forcing_parent_features != nullptr || root_direct_forcing_features != nullptr) &&
@@ -2228,12 +2223,14 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     (quiet_move_has_king_ring_target(forcing_parent_features, metadata) ||
                      quiet_move_has_pawn_break_target(metadata));
                 if (direct_forcing_target || near_root_forcing_target) {
-                    ++stats.position_feature_extractions;
-                    QuietForcingAfterView after_quiet_view;
-                    build_quiet_forcing_after_view(
-                        state, forcing_parent_features.side_to_move, after_quiet_view);
+                    if (!after_forced_view_ready) {
+                        ++stats.position_feature_extractions;
+                        build_quiet_forcing_after_view(
+                            state, forcing_parent_features.side_to_move, after_forced_view);
+                        after_forced_view_ready = true;
+                    }
                     quiet_forcing_extension = quiet_move_is_forcing(
-                        forcing_parent_features, state, after_quiet_view, metadata);
+                        forcing_parent_features, state, after_forced_view, metadata);
                     if (quiet_forcing_extension) {
                         ++stats.quiet_forcing_extensions;
                     }
