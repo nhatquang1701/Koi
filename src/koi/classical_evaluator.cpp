@@ -15,8 +15,6 @@
 namespace koi {
 namespace {
 
-[[nodiscard]] constexpr int abs_int(int value) noexcept { return value < 0 ? -value : value; }
-
 // Tapered evaluation unit: midgame and endgame components in centipawns.
 struct Score {
     int mg = 0;
@@ -34,18 +32,18 @@ struct Score {
     return left;
 }
 
-[[nodiscard]] constexpr Score scaled(Score score, int mg, int eg) noexcept {
+[[nodiscard]] constexpr Score scaled(const Score score, const int mg, const int eg) noexcept {
     return Score{score.mg * mg, score.eg * eg};
 }
 
 // Internal development/tuning seam: term-group scales in percent.  The
-// production defaults are 100 (75 for king_safety) and are used unless
-// KOI_HCE_* is set, so normal engine behavior is unaffected; tuners can
-// screen variants by launching the same binary with different environments.
+// production defaults are 100 and are used unless KOI_HCE_* is set, so normal
+// engine behavior is unaffected; tuners can screen variants by launching the
+// same binary with different environments.
 struct HceTuning {
     int passed = 100;
     int mobility = 100;
-    int king_safety = 75;
+    int king_safety = 100;
     int pawn_structure = 100;
     int tempo = 100;
     int evaluation = 100;
@@ -77,7 +75,7 @@ struct HceTuning {
     static const HceTuning tuning{
         tuning_percent("KOI_HCE_PASSED_SCALE", 100),
         tuning_percent("KOI_HCE_MOBILITY_SCALE", 100),
-        tuning_percent("KOI_HCE_KING_SAFETY_SCALE", 75),
+        tuning_percent("KOI_HCE_KING_SAFETY_SCALE", 100),
         tuning_percent("KOI_HCE_PAWN_SCALE", 100),
         tuning_percent("KOI_HCE_TEMPO_SCALE", 100),
         tuning_percent("KOI_HCE_EVAL_SCALE", 100),
@@ -100,239 +98,195 @@ constexpr int kPhaseMaximum = 24;
 constexpr std::size_t kWhite = 0;
 constexpr std::size_t kBlack = 1;
 
-[[nodiscard]] constexpr std::size_t index_of(Color color) noexcept {
-    return color == Color::white ? kWhite : kBlack;
+[[nodiscard]] constexpr std::size_t type_index(const PieceType type) noexcept {
+    return static_cast<std::size_t>(type);
 }
 
-[[nodiscard]] constexpr int sign_of(std::size_t index) noexcept {
+[[nodiscard]] constexpr int sign_of(const std::size_t index) noexcept {
     return index == kWhite ? 1 : -1;
 }
 
-[[nodiscard]] constexpr int file_of(int square) noexcept { return square & 7; }
-[[nodiscard]] constexpr int rank_of(int square) noexcept { return square >> 3; }
-[[nodiscard]] constexpr std::uint64_t bit_of(int square) noexcept {
+[[nodiscard]] constexpr int file_of(const int square) noexcept { return square & 7; }
+[[nodiscard]] constexpr int rank_of(const int square) noexcept { return square >> 3; }
+[[nodiscard]] constexpr std::uint64_t bit_of(const int square) noexcept {
     return std::uint64_t{1} << static_cast<unsigned>(square);
 }
 
-[[nodiscard]] constexpr int square_distance(int first, int second) noexcept {
-    return std::max(abs_int(file_of(first) - file_of(second)),
-                    abs_int(rank_of(first) - rank_of(second)));
+[[nodiscard]] constexpr int square_distance(const int first, const int second) noexcept {
+    const int df = file_of(first) - file_of(second);
+    const int dr = rank_of(first) - rank_of(second);
+    return std::max(df < 0 ? -df : df, dr < 0 ? -dr : dr);
 }
 
-// Tapered king tables (rank 1 first, White perspective; Black is mirrored).
-// The old formula mixed castling safety and endgame centralisation in one
-// expression; explicit tables make the two regimes independently tunable.
-inline constexpr std::array<int, 64> kKingMg{
-    20, 30, 10, 0, 0, 10, 30, 20,
-    -10, -20, -20, -20, -20, -20, -20, -10,
-    -20, -30, -30, -40, -40, -30, -30, -20,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-};
-inline constexpr std::array<int, 64> kKingEg{
-    -50, -30, -30, -30, -30, -30, -30, -50,
-    -30, -30, 0, 0, 0, 0, -30, -30,
-    -30, -10, 20, 30, 30, 20, -10, -30,
-    -30, -10, 30, 40, 40, 30, -10, -30,
-    -30, -10, 30, 40, 40, 30, -10, -30,
-    -30, -10, 20, 30, 30, 20, -10, -30,
-    -30, -20, -10, 0, 0, -10, -20, -30,
-    -50, -40, -30, -20, -20, -30, -40, -50,
-};
+// Texel-tuned tapered material and piece-square tables (rank 1 first,
+// White perspective; Black mirrored via square ^ 56).
+inline constexpr std::array<Score, 7> kMaterialWeights{{
+    {0, 0}, {93, 189}, {476, 396}, {476, 421}, {644, 811}, {1348, 1299}, {0, 0}
+}};
 
-// Explicit piece tables (rank 1 first, White perspective; Black mirrored).
-// Values are the classic simplified-evaluation layout, kept separate for mg/eg
-// so future tuning can move each regime independently.
-inline constexpr std::array<int, 64> kPawnMg{
-    0, 0, 0, 0, 0, 0, 0, 0,
-    5, 10, 10, -20, -20, 10, 10, 5,
-    5, -5, -10, 0, 0, -10, -5, 5,
-    0, 0, 0, 20, 20, 0, 0, 0,
-    5, 5, 10, 25, 25, 10, 5, 5,
-    10, 10, 20, 30, 30, 20, 10, 10,
-    50, 50, 50, 50, 50, 50, 50, 50,
-    0, 0, 0, 0, 0, 0, 0, 0,
-};
-inline constexpr std::array<int, 64> kPawnEg{
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    5, 5, 5, 10, 10, 5, 5, 5,
-    10, 10, 15, 20, 20, 15, 10, 10,
-    25, 25, 30, 40, 40, 30, 25, 25,
-    60, 60, 60, 60, 60, 60, 60, 60,
-    0, 0, 0, 0, 0, 0, 0, 0,
-};
-inline constexpr std::array<int, 64> kKnightPst{
-    -50, -40, -30, -30, -30, -30, -40, -50,
-    -40, -20, 0, 0, 0, 0, -20, -40,
-    -30, 0, 10, 15, 15, 10, 0, -30,
-    -30, 5, 15, 20, 20, 15, 5, -30,
-    -30, 0, 15, 20, 20, 15, 0, -30,
-    -30, 5, 10, 15, 15, 10, 5, -30,
-    -40, -20, 0, 5, 5, 0, -20, -40,
-    -50, -40, -30, -30, -30, -30, -40, -50,
-};
-inline constexpr std::array<int, 64> kBishopPst{
-    -20, -10, -10, -10, -10, -10, -10, -20,
-    -10, 0, 0, 0, 0, 0, 0, -10,
-    -10, 0, 5, 10, 10, 5, 0, -10,
-    -10, 5, 5, 10, 10, 5, 5, -10,
-    -10, 0, 10, 10, 10, 10, 0, -10,
-    -10, 10, 10, 10, 10, 10, 10, -10,
-    -10, 5, 0, 0, 0, 0, 5, -10,
-    -20, -10, -10, -10, -10, -10, -10, -20,
-};
-inline constexpr std::array<int, 64> kRookPst{
-    0, 0, 0, 5, 5, 0, 0, 0,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    5, 10, 10, 10, 10, 10, 10, 5,
-    0, 0, 0, 0, 0, 0, 0, 0,
-};
-inline constexpr std::array<int, 64> kQueenPst{
-    -20, -10, -10, -5, -5, -10, -10, -20,
-    -10, 0, 0, 0, 0, 0, 0, -10,
-    -10, 0, 5, 5, 5, 5, 0, -10,
-    -5, 0, 5, 5, 5, 5, 0, -5,
-    0, 0, 5, 5, 5, 5, 0, -5,
-    -10, 5, 5, 5, 5, 5, 0, -10,
-    -10, 0, 5, 0, 0, 0, 0, -10,
-    -20, -10, -10, -5, -5, -10, -10, -20,
-};
+inline constexpr std::array<Score, 64> kPawnPst{{
+    {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0},
+    {-58, -14}, {-38, -18}, {-33, -22}, {-48, -13}, {-34, 0}, {-12, -19}, {-2, -25}, {-45, -31},
+    {-36, -30}, {-36, -21}, {-5, -38}, {-20, -31}, {4, -34}, {-26, -26}, {4, -32}, {-27, -37},
+    {-37, -21}, {-21, -16}, {1, -34}, {30, -45}, {30, -41}, {8, -37}, {-3, -22}, {-27, -36},
+    {-11, -5}, {-1, -3}, {21, -22}, {37, -41}, {65, -42}, {38, -23}, {20, -7}, {7, -18},
+    {15, 65}, {14, 60}, {41, 46}, {73, 5}, {43, 19}, {70, 32}, {29, 56}, {7, 50},
+    {57, 168}, {71, 171}, {52, 145}, {81, 141}, {39, 114}, {32, 154}, {-41, 172}, {-25, 177},
+    {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}
+}};
 
-// Piece-square tables are formulas for v1; they are replaced by tuned tables
-// once the term set and strength harness are stable.
-[[nodiscard]] constexpr Score piece_square(PieceType type, int square, Color color) noexcept {
-    // Evaluate black from White's mirrored board, so one formula serves both
-    // colours and all positional symmetry is exact.
-    const int normalized = color == Color::white ? square : (square ^ 56);
-    const int file = file_of(normalized);
-    const int rank = rank_of(normalized);
-    const std::size_t index = static_cast<std::size_t>(rank * 8 + file);
+inline constexpr std::array<Score, 64> kKnightPst{{
+    {-48, -4}, {-16, -24}, {-29, 19}, {-41, 21}, {-22, 0}, {7, 4}, {-12, -8}, {-40, -16},
+    {-64, 0}, {-29, -5}, {-18, 1}, {1, 1}, {4, 8}, {8, -3}, {-19, -2}, {-14, -8},
+    {-64, -12}, {-20, 1}, {-1, -8}, {21, 8}, {33, 5}, {9, -8}, {19, -3}, {-50, -1},
+    {-29, 4}, {-29, 18}, {24, 14}, {18, 25}, {41, 26}, {32, 18}, {8, 16}, {-9, -3},
+    {10, 5}, {11, 16}, {30, 26}, {82, 22}, {20, 40}, {86, 19}, {9, 26}, {44, 4},
+    {-13, -9}, {47, -9}, {46, 10}, {60, 16}, {106, -3}, {37, 9}, {50, -9}, {14, -2},
+    {-35, -24}, {-22, 2}, {29, -10}, {33, 17}, {-9, 2}, {68, -20}, {-9, -20}, {13, -24},
+    {-143, -77}, {-18, -3}, {-18, 6}, {-38, -6}, {-21, -13}, {-40, -4}, {-11, -12}, {-91, -60}
+}};
+
+inline constexpr std::array<Score, 64> kBishopPst{{
+    {-24, -1}, {43, 13}, {19, 2}, {-7, 3}, {-22, 10}, {2, 15}, {-1, 18}, {-30, -12},
+    {11, 4}, {28, -12}, {21, -6}, {-3, -2}, {4, -9}, {26, -28}, {46, -16}, {15, -28},
+    {-8, -4}, {10, 10}, {15, 3}, {-3, 8}, {7, 6}, {15, -5}, {19, 2}, {-4, 7},
+    {-28, 7}, {-11, 6}, {-25, 24}, {38, -3}, {12, -3}, {-7, 3}, {-1, -2}, {11, -8},
+    {3, 3}, {-5, 7}, {14, 3}, {20, 6}, {26, 4}, {16, 0}, {-1, 6}, {-23, -2},
+    {-4, -3}, {34, 1}, {15, -10}, {34, -3}, {15, 4}, {32, 13}, {27, 3}, {25, 8},
+    {-20, -1}, {11, -16}, {-16, 3}, {-24, 12}, {-38, 2}, {-47, 4}, {-3, -18}, {-27, -13},
+    {-36, -9}, {-11, 10}, {-18, 1}, {-36, -9}, {-29, -4}, {-48, -5}, {-22, 6}, {-33, -4}
+}};
+
+inline constexpr std::array<Score, 64> kRookPst{{
+    {-20, -8}, {-11, -11}, {-2, -9}, {4, -14}, {25, -27}, {12, -13}, {23, -21}, {5, -29},
+    {-36, -19}, {-23, -7}, {-23, -8}, {-22, -1}, {-8, -13}, {-7, -14}, {-2, -35}, {-36, -26},
+    {-29, -6}, {-24, -11}, {-23, 1}, {-19, -3}, {-17, -14}, {-5, -10}, {35, -29}, {14, -25},
+    {-30, 4}, {-30, 3}, {-23, 7}, {-21, 3}, {-10, -6}, {-24, -1}, {-2, -3}, {-18, -25},
+    {-15, 9}, {-15, 19}, {-9, 19}, {-15, 4}, {-13, 3}, {7, -2}, {13, -5}, {20, -6},
+    {-11, 15}, {19, 11}, {3, 18}, {7, 12}, {33, -6}, {40, 9}, {40, 9}, {10, 1},
+    {-11, 12}, {-24, 35}, {7, 30}, {44, 25}, {36, 15}, {47, 10}, {26, 8}, {50, -3},
+    {11, 2}, {-4, 22}, {14, 14}, {-12, 28}, {18, 10}, {23, 19}, {1, 20}, {8, 14}
+}};
+
+inline constexpr std::array<Score, 64> kQueenPst{{
+    {-38, -22}, {-16, -39}, {3, -14}, {15, -31}, {7, -30}, {-29, -28}, {-42, -26}, {-22, -27},
+    {-12, -10}, {-9, -21}, {24, -43}, {26, -34}, {25, -22}, {14, -44}, {25, -53}, {30, -31},
+    {-12, -15}, {6, -9}, {-9, 3}, {1, -15}, {7, -14}, {1, 4}, {15, 4}, {0, 9},
+    {0, 15}, {-23, -20}, {-17, -10}, {0, -7}, {-11, 18}, {-18, 17}, {7, -6}, {-1, 26},
+    {-1, -2}, {-22, 11}, {-7, -14}, {-15, 2}, {-24, 23}, {-15, 32}, {-15, 56}, {15, 38},
+    {-10, 7}, {11, 5}, {-24, 9}, {-4, 10}, {-6, 31}, {47, 41}, {69, 45}, {29, 37},
+    {6, 3}, {-38, 8}, {-30, 31}, {-1, 26}, {-18, 35}, {36, 49}, {15, 23}, {43, 40},
+    {-21, -28}, {-13, -25}, {-10, -8}, {11, -5}, {-1, 14}, {14, 13}, {22, -10}, {11, -19}
+}};
+
+inline constexpr std::array<Score, 64> kKingPst{{
+    {1, -27}, {88, -61}, {60, -39}, {-58, -26}, {32, -54}, {-49, -21}, {75, -58}, {50, -82},
+    {28, -32}, {41, -27}, {-4, -10}, {-30, 2}, {-26, -1}, {-9, -8}, {65, -32}, {26, -34},
+    {-12, -36}, {2, -15}, {-19, -12}, {-50, -1}, {-18, -3}, {-46, -2}, {6, -23}, {-51, -26},
+    {-16, -27}, {-3, -10}, {-26, 2}, {-26, 6}, {-45, 14}, {-41, 1}, {-28, -14}, {-51, -25},
+    {4, -20}, {5, 22}, {-1, 27}, {-19, 41}, {-20, 33}, {-33, 34}, {-6, 22}, {-27, -3},
+    {11, 8}, {15, 39}, {13, 52}, {4, 37}, {1, 48}, {2, 61}, {16, 59}, {-8, 14},
+    {6, 12}, {24, 48}, {19, 36}, {9, 32}, {18, 36}, {15, 40}, {10, 49}, {1, 24},
+    {4, -23}, {12, -24}, {14, -19}, {11, 4}, {14, 2}, {9, 4}, {5, -3}, {6, -15}
+}};
+
+inline constexpr std::array<Score, 4> kMobilityWeights{{{3, 10}, {8, 10}, {5, 4}, {1, 16}}};
+inline constexpr Score kDoubledPawnPenalty{6, -38};
+inline constexpr Score kIsolatedPawnPenalty{-23, -5};
+inline constexpr std::array<Score, 8> kPassedPawnRankBonus{{
+    {0, 0}, {2, -59}, {-23, -27}, {-16, 19}, {3, 67}, {19, 89}, {12, 74}, {0, 0}
+}};
+inline constexpr Score kPassedOwnKingDist{7, -11};
+inline constexpr Score kPassedEnemyKingDist{-2, 19};
+inline constexpr Score kPassedBlockedBonus{-3, -37};
+inline constexpr Score kConnectedPawnBonus{11, 0};
+inline constexpr Score kCandidatePasserBonus{22, 9};
+inline constexpr Score kKingAttackerWeight{4, 17};
+inline constexpr Score kKingAttackerSqWeight{-11, 1};
+inline constexpr Score kKingAttackerGe3Weight{-18, -7};
+inline constexpr Score kKingMissingShieldPenalty{-22, 18};
+inline constexpr Score kKingOpenFilePenalty{-33, -15};
+inline constexpr std::array<Score, 4> kHangingBonus{{
+    {41, 28}, {52, 33}, {52, 27}, {44, -3}
+}};
+inline constexpr Score kPawnAttackDefendedBonus{67, 24};
+inline constexpr Score kBishopPairBonus{44, 39};
+inline constexpr Score kKnightOutpostBonus{7, 8};
+inline constexpr Score kRookOpenFileBonus{57, -3};
+inline constexpr Score kRookSemiOpenFileBonus{21, 19};
+inline constexpr Score kRookSeventhBonus{9, 11};
+inline constexpr Score kCenterControlBonus{3, 4};
+inline constexpr Score kDevelopmentBonus{35, 15};
+inline constexpr Score kTempoBonus{54, 32};
+
+[[nodiscard]] constexpr const std::array<Score, 64>& piece_square_table(
+    const PieceType type) noexcept {
     switch (type) {
-    case PieceType::pawn:
-        return Score{kPawnMg[index], kPawnEg[index]};
-    case PieceType::knight:
-        return Score{kKnightPst[index], kKnightPst[index]};
-    case PieceType::bishop:
-        return Score{kBishopPst[index], kBishopPst[index]};
-    case PieceType::rook:
-        return Score{kRookPst[index], kRookPst[index]};
-    case PieceType::queen:
-        return Score{kQueenPst[index], kQueenPst[index]};
+    case PieceType::pawn: return kPawnPst;
+    case PieceType::knight: return kKnightPst;
+    case PieceType::bishop: return kBishopPst;
+    case PieceType::rook: return kRookPst;
+    case PieceType::queen: return kQueenPst;
     case PieceType::king:
-        return Score{kKingMg[index], kKingEg[index]};
-    case PieceType::none:
-        return {};
+    case PieceType::none: return kKingPst;
     }
-    return {};
-}
-
-[[nodiscard]] constexpr Score material(PieceType type) noexcept {
-    switch (type) {
-    case PieceType::pawn: return {100, 120};
-    case PieceType::knight: return {320, 305};
-    case PieceType::bishop: return {335, 325};
-    case PieceType::rook: return {500, 540};
-    case PieceType::queen: return {900, 930};
-    case PieceType::king: return {0, 0};
-    case PieceType::none: return {};
-    }
-    return {};
-}
-
-// Per-square mobility weights by piece type (indexed by PieceType value).
-[[nodiscard]] constexpr Score mobility_weight(PieceType type) noexcept {
-    switch (type) {
-    case PieceType::knight: return {4, 4};
-    case PieceType::bishop: return {3, 4};
-    case PieceType::rook: return {2, 3};
-    case PieceType::queen: return {1, 2};
-    case PieceType::pawn:
-    case PieceType::king:
-    case PieceType::none: return {};
-    }
-    return {};
+    return kKingPst;
 }
 
 struct EvalBoard {
-    std::array<Piece, 64> board{};
     std::array<std::uint64_t, 2> colors{};
     std::array<std::array<std::uint64_t, 7>, 2> pieces{};
     std::uint64_t occupied = 0;
     std::array<int, 2> kings{-1, -1};
     std::array<std::uint64_t, 2> pawn_attacks{};
+    std::array<std::array<std::uint16_t, 4>, 2> mobility{};
     std::uint8_t phase = 0;
     Color side_to_move = Color::white;
     std::uint8_t development[2]{};
     std::uint8_t center_control[2]{};
     std::uint8_t king_zone_attacks[2]{};
-    std::array<std::uint8_t, 64> piece_mobility{};
     std::array<std::uint64_t, 2> attacked_squares{};
 };
 
-[[nodiscard]] std::size_t type_index(PieceType type) noexcept {
-    return static_cast<std::size_t>(type);
-}
-
-[[nodiscard]] EvalBoard make_eval_board(const GameState& state) {
+[[nodiscard]] EvalBoard make_eval_board(const GameState& state) noexcept {
     EvalBoard eval;
-    state.copy_board_to(eval.board);
-    eval.side_to_move = state.side_to_move();
+    const ExchangeSnapshot snap = state.exchange_snapshot();
+    eval.pieces = *snap.piece_bitboards;
+    eval.occupied = snap.occupied;
+    eval.side_to_move = snap.side_to_move;
 
-    for (int square = 0; square < 64; ++square) {
-        const Piece piece = eval.board[static_cast<std::size_t>(square)];
-        if (piece.empty()) {
-            continue;
+    for (std::size_t color = 0; color < 2; ++color) {
+        std::uint64_t occ_color = 0;
+        for (std::size_t pt = 1; pt <= 6; ++pt) {
+            occ_color |= eval.pieces[color][pt];
         }
-        const std::size_t color = index_of(piece.color);
-        const std::uint64_t square_bit = bit_of(square);
-        eval.colors[color] |= square_bit;
-        eval.pieces[color][type_index(piece.type)] |= square_bit;
-        eval.occupied |= square_bit;
-        if (piece.type == PieceType::king) {
-            eval.kings[color] = square;
-        }
-        switch (piece.type) {
-        case PieceType::knight:
-        case PieceType::bishop:
-            eval.phase = static_cast<std::uint8_t>(eval.phase + 1);
-            break;
-        case PieceType::rook:
-            eval.phase = static_cast<std::uint8_t>(eval.phase + 2);
-            break;
-        case PieceType::queen:
-            eval.phase = static_cast<std::uint8_t>(eval.phase + 4);
-            break;
-        default:
-            break;
-        }
+        eval.colors[color] = occ_color;
+        const std::uint64_t king_bb = eval.pieces[color][type_index(PieceType::king)];
+        eval.kings[color] = king_bb != 0 ? std::countr_zero(king_bb) : -1;
     }
-    eval.phase = std::min<std::uint8_t>(eval.phase, kPhaseMaximum);
+
+    const int phase =
+        std::popcount(eval.pieces[kWhite][type_index(PieceType::knight)] |
+                      eval.pieces[kBlack][type_index(PieceType::knight)] |
+                      eval.pieces[kWhite][type_index(PieceType::bishop)] |
+                      eval.pieces[kBlack][type_index(PieceType::bishop)]) +
+        2 * std::popcount(eval.pieces[kWhite][type_index(PieceType::rook)] |
+                          eval.pieces[kBlack][type_index(PieceType::rook)]) +
+        4 * std::popcount(eval.pieces[kWhite][type_index(PieceType::queen)] |
+                          eval.pieces[kBlack][type_index(PieceType::queen)]);
+    eval.phase = static_cast<std::uint8_t>(std::min(phase, kPhaseMaximum));
 
     // Home-square development count: knights off b1/g1 or bishops off c1/f1
     // for White, mirrored for Black.
     for (std::size_t color = 0; color < 2; ++color) {
-        constexpr std::array<std::uint64_t, 2> kHomeMinorSquares{
-            0x0000000000000042ULL,   // b1 (1), g1 (6)
-            0x4200000000000000ULL};  // b8 (57), g8 (62)
-        constexpr std::array<std::uint64_t, 2> kHomeBishopSquares{
-            0x0000000000000024ULL,   // c1 (2), f1 (5)
-            0x2400000000000000ULL};  // c8 (58), f8 (61)
-        const std::uint64_t minors = eval.pieces[color][type_index(PieceType::knight)] |
+        constexpr std::array<std::uint64_t, 2> kHomeMinors{
+            0x0000000000000066ULL,   // b1/c1/f1/g1
+            0x6600000000000000ULL};  // b8/c8/f8/g8
+        const std::uint64_t minors =
+            eval.pieces[color][type_index(PieceType::knight)] |
             eval.pieces[color][type_index(PieceType::bishop)];
-        const std::uint64_t home = color == kWhite
-            ? kHomeMinorSquares[0] | kHomeBishopSquares[0]
-            : kHomeMinorSquares[1] | kHomeBishopSquares[1];
         eval.development[color] = static_cast<std::uint8_t>(
-            std::popcount(minors & ~home));
+            std::popcount(minors & ~kHomeMinors[color]));
     }
 
     constexpr std::uint64_t kCenterMask =
@@ -349,34 +303,34 @@ struct EvalBoard {
             : (((pawns & kNotFileA) >> 9) | ((pawns & kNotFileH) >> 7));
 
         std::uint64_t attacks = eval.pawn_attacks[color];
-        for (std::uint64_t non_pawns = own & ~pawns; non_pawns != 0;) {
-            const int square = std::countr_zero(non_pawns);
-            non_pawns &= non_pawns - 1;
-            const Piece piece = eval.board[static_cast<std::size_t>(square)];
-            std::uint64_t piece_attacks = 0;
-            switch (piece.type) {
-            case PieceType::knight:
-                piece_attacks = detail::knight_attacks(square);
-                break;
-            case PieceType::bishop:
-                piece_attacks = detail::bishop_attacks(square, eval.occupied);
-                break;
-            case PieceType::rook:
-                piece_attacks = detail::rook_attacks(square, eval.occupied);
-                break;
-            case PieceType::queen:
-                piece_attacks = detail::queen_attacks(square, eval.occupied);
-                break;
-            case PieceType::king:
-                piece_attacks = detail::king_attacks(square);
-                break;
-            case PieceType::pawn:
-            case PieceType::none:
-                break;
+
+        auto accumulate_piece_attacks = [&](const PieceType pt, auto&& attack_fn) noexcept {
+            const std::size_t mob_index = type_index(pt) - type_index(PieceType::knight);
+            int mob_sum = 0;
+            for (std::uint64_t bb = eval.pieces[color][type_index(pt)]; bb != 0;) {
+                const int square = std::countr_zero(bb);
+                bb &= bb - 1;
+                const std::uint64_t piece_attacks = attack_fn(square);
+                attacks |= piece_attacks;
+                mob_sum += std::popcount(piece_attacks & ~own);
             }
-            attacks |= piece_attacks;
-            eval.piece_mobility[static_cast<std::size_t>(square)] =
-                static_cast<std::uint8_t>(std::popcount(piece_attacks & ~own));
+            eval.mobility[color][mob_index] = static_cast<std::uint16_t>(mob_sum);
+        };
+
+        accumulate_piece_attacks(
+            PieceType::knight, [](int sq) noexcept { return detail::knight_attacks(sq); });
+        accumulate_piece_attacks(
+            PieceType::bishop,
+            [&eval](int sq) noexcept { return detail::bishop_attacks(sq, eval.occupied); });
+        accumulate_piece_attacks(
+            PieceType::rook,
+            [&eval](int sq) noexcept { return detail::rook_attacks(sq, eval.occupied); });
+        accumulate_piece_attacks(
+            PieceType::queen,
+            [&eval](int sq) noexcept { return detail::queen_attacks(sq, eval.occupied); });
+
+        if (eval.kings[color] >= 0) {
+            attacks |= detail::king_attacks(eval.kings[color]);
         }
         eval.attacked_squares[color] = attacks;
         eval.center_control[color] =
@@ -465,15 +419,14 @@ inline constexpr PawnMaskTable kPassedPawnMask = make_passed_pawn_masks();
 inline constexpr PawnMaskTable kForwardFileMask = make_forward_file_masks();
 inline constexpr PawnMaskTable kConnectedPawnMask = make_connected_pawn_masks();
 
-[[nodiscard]] Score pawn_structure(const EvalBoard& eval, std::size_t color,
-                                   const HceTuning& tuning) {
+[[nodiscard]] Score pawn_structure(const EvalBoard& eval, const std::size_t color,
+                                   const HceTuning& tuning) noexcept {
     Score score{};
     const std::uint64_t own_pawns = eval.pieces[color][type_index(PieceType::pawn)];
     const std::uint64_t enemy_pawns =
         eval.pieces[1 - color][type_index(PieceType::pawn)];
     const bool white = color == kWhite;
 
-    // File counts for doubled/isolated detection.
     std::array<int, 8> own_file_count{};
     for (std::uint64_t pawns = own_pawns; pawns != 0;) {
         const int square = std::countr_zero(pawns);
@@ -482,19 +435,17 @@ inline constexpr PawnMaskTable kConnectedPawnMask = make_connected_pawn_masks();
     }
 
     for (int file = 0; file < 8; ++file) {
-        const bool isolated = (file == 0 || own_file_count[static_cast<std::size_t>(file - 1)] == 0) &&
+        const bool isolated =
+            (file == 0 || own_file_count[static_cast<std::size_t>(file - 1)] == 0) &&
             (file == 7 || own_file_count[static_cast<std::size_t>(file + 1)] == 0);
         if (own_file_count[static_cast<std::size_t>(file)] > 1) {
             const int extra = own_file_count[static_cast<std::size_t>(file)] - 1;
-            score += Score{-8 * extra, -12 * extra};
+            score += scaled(kDoubledPawnPenalty, extra, extra);
         }
         if (isolated && own_file_count[static_cast<std::size_t>(file)] != 0) {
-            score += Score{-14, -10};
+            score += kIsolatedPawnPenalty;
         }
     }
-
-    constexpr std::array<int, 8> kPassedMg{0, 6, 12, 22, 38, 65, 105, 0};
-    constexpr std::array<int, 8> kPassedEg{0, 10, 20, 36, 62, 105, 165, 0};
 
     for (std::uint64_t pawns = own_pawns; pawns != 0;) {
         const int square = std::countr_zero(pawns);
@@ -503,48 +454,41 @@ inline constexpr PawnMaskTable kConnectedPawnMask = make_connected_pawn_masks();
         const int rank = rank_of(square);
         const int own_rank = white ? rank : 7 - rank;
 
-        const bool passed = (enemy_pawns & kPassedPawnMask[color][static_cast<std::size_t>(square)]) == 0;
+        const bool passed =
+            (enemy_pawns & kPassedPawnMask[color][static_cast<std::size_t>(square)]) == 0;
         if (passed) {
             Score bonus = percent_of(
-                Score{kPassedMg[static_cast<std::size_t>(own_rank)],
-                      kPassedEg[static_cast<std::size_t>(own_rank)]},
+                kPassedPawnRankBonus[static_cast<std::size_t>(own_rank)],
                 tuning.passed_rank);
-            // The attacking king escorts a passer while the defending king is
-            // pushed away; this is mostly an endgame term.
             if (eval.kings[color] >= 0 && eval.kings[1 - color] >= 0) {
                 const int own_king_distance = square_distance(eval.kings[color], square);
                 const int enemy_king_distance =
                     square_distance(eval.kings[1 - color], square);
-                const int proximity = enemy_king_distance - own_king_distance;
-                bonus += Score{proximity * 2, proximity * 5};
+                bonus += scaled(kPassedOwnKingDist, own_king_distance, own_king_distance);
+                bonus += scaled(kPassedEnemyKingDist, enemy_king_distance, enemy_king_distance);
             }
-            // A piece directly in front of the passer reduces its value.
             const int ahead_rank = white ? rank + 1 : rank - 1;
             if (ahead_rank >= 0 && ahead_rank < 8 &&
                 ((eval.occupied >> (ahead_rank * 8 + file)) & 1U) != 0) {
-                bonus += Score{-10, -16};
+                bonus += kPassedBlockedBonus;
             }
             score += percent_of(bonus, tuning.passed);
             continue;
         }
 
-        // Connected/phalanx: a friendly pawn on an adjacent file at the same
-        // rank or one rank behind supports this pawn.
         const bool connected =
             (own_pawns & kConnectedPawnMask[color][static_cast<std::size_t>(square)]) != 0;
         if (connected) {
-            score += Score{6, 8};
-            // Candidate: no enemy pawn ahead on this file and a friendly pawn
-            // behind/level on an adjacent file.
+            score += kConnectedPawnBonus;
             if ((enemy_pawns & kForwardFileMask[color][static_cast<std::size_t>(square)]) == 0) {
-                score += Score{5, 8};
+                score += kCandidatePasserBonus;
             }
         }
     }
     return score;
 }
 
-[[nodiscard]] Score king_safety(const EvalBoard& eval, std::size_t color) {
+[[nodiscard]] Score king_safety(const EvalBoard& eval, const std::size_t color) noexcept {
     const int king = eval.kings[color];
     if (king < 0) {
         return {};
@@ -556,12 +500,13 @@ inline constexpr PawnMaskTable kConnectedPawnMask = make_connected_pawn_masks();
     const std::uint64_t own_pawns = eval.pieces[color][type_index(PieceType::pawn)];
 
     const int attacker_count = eval.king_zone_attacks[color];
-    score += Score{-attacker_count * attacker_count * 3, -attacker_count * 2};
+    score += scaled(kKingAttackerWeight, attacker_count, attacker_count);
+    const int attacker_sq = attacker_count * attacker_count;
+    score += scaled(kKingAttackerSqWeight, attacker_sq, attacker_sq);
     if (attacker_count >= 3) {
-        score += Score{-18, -8};
+        score += kKingAttackerGe3Weight;
     }
 
-    // Pawn shelter and open files around the king.
     for (int file = std::max(0, king_file - 1); file <= std::min(7, king_file + 1); ++file) {
         bool shield_pawn = false;
         for (int delta = 1; delta <= 2; ++delta) {
@@ -574,46 +519,40 @@ inline constexpr PawnMaskTable kConnectedPawnMask = make_connected_pawn_masks();
             }
         }
         if (!shield_pawn) {
-            score += Score{-12, -5};
+            score += kKingMissingShieldPenalty;
         }
         const std::uint64_t file_mask = 0x0101010101010101ULL << static_cast<unsigned>(file);
         if ((own_pawns & file_mask) == 0) {
-            score += Score{-6, -2};
+            score += kKingOpenFilePenalty;
         }
     }
     return score;
 }
 
-[[nodiscard]] Score threats(const EvalBoard& eval, std::size_t color) {
+[[nodiscard]] Score threats(const EvalBoard& eval, const std::size_t color) noexcept {
     Score score{};
     const std::size_t enemy = 1 - color;
     const std::uint64_t own_attacks = eval.attacked_squares[color];
     const std::uint64_t enemy_defended = eval.attacked_squares[enemy];
-    const std::uint64_t enemy_pieces = eval.colors[enemy] &
-        ~eval.pieces[enemy][type_index(PieceType::king)] &
-        ~eval.pieces[enemy][type_index(PieceType::pawn)];
 
-    constexpr std::array<Score, 7> kHangingBonus{
-        Score{}, Score{12, 18}, Score{40, 35}, Score{40, 35},
-        Score{80, 60}, Score{150, 120}, Score{}};
-
-    for (std::uint64_t remaining = enemy_pieces & own_attacks; remaining != 0;) {
-        const int square = std::countr_zero(remaining);
-        remaining &= remaining - 1;
-        const std::uint64_t square_bit = bit_of(square);
-        const PieceType type = eval.board[static_cast<std::size_t>(square)].type;
-        if ((enemy_defended & square_bit) == 0) {
-            score += kHangingBonus[type_index(type)];
-        } else if ((eval.pawn_attacks[color] & square_bit) != 0) {
-            // A pawn attacking a defended piece still costs the defender
-            // tempo/coordination; small bonus only.
-            score += Score{8, 6};
+    for (std::size_t pt = type_index(PieceType::knight);
+         pt <= type_index(PieceType::queen); ++pt) {
+        std::uint64_t attacked = eval.pieces[enemy][pt] & own_attacks;
+        while (attacked != 0) {
+            const int square = std::countr_zero(attacked);
+            attacked &= attacked - 1;
+            const std::uint64_t square_bit = bit_of(square);
+            if ((enemy_defended & square_bit) == 0) {
+                score += kHangingBonus[pt - type_index(PieceType::knight)];
+            } else if ((eval.pawn_attacks[color] & square_bit) != 0) {
+                score += kPawnAttackDefendedBonus;
+            }
         }
     }
     return score;
 }
 
-[[nodiscard]] Score piece_features(const EvalBoard& eval, std::size_t color) {
+[[nodiscard]] Score piece_features(const EvalBoard& eval, const std::size_t color) noexcept {
     Score score{};
     const bool white = color == kWhite;
     const std::uint64_t own_pawns = eval.pieces[color][type_index(PieceType::pawn)];
@@ -621,7 +560,7 @@ inline constexpr PawnMaskTable kConnectedPawnMask = make_connected_pawn_masks();
     const std::uint64_t enemy_pawn_attacks = eval.pawn_attacks[1 - color];
 
     if (std::popcount(eval.pieces[color][type_index(PieceType::bishop)]) >= 2) {
-        score += Score{35, 50};
+        score += kBishopPairBonus;
     }
 
     for (std::uint64_t knights = eval.pieces[color][type_index(PieceType::knight)];
@@ -631,7 +570,7 @@ inline constexpr PawnMaskTable kConnectedPawnMask = make_connected_pawn_masks();
         const std::uint64_t square_bit = bit_of(square);
         if ((eval.pawn_attacks[color] & square_bit) != 0 &&
             (enemy_pawn_attacks & square_bit) == 0) {
-            score += Score{25, 15};
+            score += kKnightOutpostBonus;
         }
     }
 
@@ -644,13 +583,13 @@ inline constexpr PawnMaskTable kConnectedPawnMask = make_connected_pawn_masks();
         const bool own_pawn_on_file = (own_pawns & file_mask) != 0;
         const bool any_pawn_on_file = ((own_pawns | enemy_pawns) & file_mask) != 0;
         if (!any_pawn_on_file) {
-            score += Score{20, 12};
+            score += kRookOpenFileBonus;
         } else if (!own_pawn_on_file) {
-            score += Score{10, 6};
+            score += kRookSemiOpenFileBonus;
         }
         const int own_rank = white ? rank_of(square) : 7 - rank_of(square);
         if (own_rank == 6) {
-            score += Score{20, 25};
+            score += kRookSeventhBonus;
         }
     }
     return score;
@@ -738,57 +677,65 @@ auto evaluate_classical_impl(const GameState& state, const Color perspective) {
 
     const HceTuning& tuning = hce_tuning();
     Score total{};
-    for (std::uint64_t occ = eval.occupied; occ != 0;) {
-        const int square = std::countr_zero(occ);
-        occ &= occ - 1;
-        const Piece piece = eval.board[static_cast<std::size_t>(square)];
-        const int s = sign_of(index_of(piece.color));
-        const Score mat = material(piece.type);
-        const Score pst = piece_square(piece.type, square, piece.color);
-        if constexpr (CollectTrace) {
-            add_trace_scaled(tr.material, mat, s);
-            add_trace_scaled(tr.pst, pst, s);
-        }
-        total += scaled(mat + pst, s, s);
-    }
 
     for (std::size_t color = 0; color < 2; ++color) {
         const int sign = sign_of(color);
-        Score side{};
+        Score mat_side{};
+        Score pst_side{};
 
-        // Mobility by piece type (pawns and kings have zero mobility weight).
-        std::uint64_t mob_pieces = eval.colors[color] &
-            ~eval.pieces[color][type_index(PieceType::pawn)] &
-            ~eval.pieces[color][type_index(PieceType::king)];
-        while (mob_pieces != 0) {
-            const int square = std::countr_zero(mob_pieces);
-            mob_pieces &= mob_pieces - 1;
-            const Piece piece = eval.board[static_cast<std::size_t>(square)];
-            const Score weight = mobility_weight(piece.type);
-            const int mobility = eval.piece_mobility[static_cast<std::size_t>(square)];
-            int piece_mobility_scale = 100;
-            switch (piece.type) {
-            case PieceType::knight: piece_mobility_scale = tuning.mobility_knight; break;
-            case PieceType::bishop: piece_mobility_scale = tuning.mobility_bishop; break;
-            case PieceType::rook: piece_mobility_scale = tuning.mobility_rook; break;
-            case PieceType::queen: piece_mobility_scale = tuning.mobility_queen; break;
-            default: break;
+        for (std::size_t pt = type_index(PieceType::pawn);
+             pt <= type_index(PieceType::king); ++pt) {
+            std::uint64_t bb = eval.pieces[color][pt];
+            if (bb == 0) {
+                continue;
+            }
+            const int count = std::popcount(bb);
+            mat_side += scaled(kMaterialWeights[pt], count, count);
+            const auto& table = piece_square_table(static_cast<PieceType>(pt));
+            while (bb != 0) {
+                const int square = std::countr_zero(bb);
+                bb &= bb - 1;
+                const int normalized = color == kWhite ? square : (square ^ 56);
+                pst_side += table[static_cast<std::size_t>(normalized)];
+            }
+        }
+
+        if constexpr (CollectTrace) {
+            add_trace_scaled(tr.material, mat_side, sign);
+            add_trace_scaled(tr.pst, pst_side, sign);
+        }
+        total += scaled(mat_side + pst_side, sign, sign);
+
+        Score side{};
+        const std::array<int, 4> mob_piece_scales{{
+            tuning.mobility_knight,
+            tuning.mobility_bishop,
+            tuning.mobility_rook,
+            tuning.mobility_queen,
+        }};
+        for (std::size_t mob_idx = 0; mob_idx < 4; ++mob_idx) {
+            const int mob_count = static_cast<int>(eval.mobility[color][mob_idx]);
+            if (mob_count == 0) {
+                continue;
             }
             const Score mob_term = percent_of(
-                Score{weight.mg * mobility, weight.eg * mobility},
-                tuning.mobility * piece_mobility_scale / 100);
+                scaled(kMobilityWeights[mob_idx], mob_count, mob_count),
+                tuning.mobility * mob_piece_scales[mob_idx] / 100);
             side += mob_term;
             if constexpr (CollectTrace) {
                 add_trace_scaled(tr.mobility, mob_term, sign);
             }
         }
 
-        const Score pawns_term = percent_of(pawn_structure(eval, color, tuning), tuning.pawn_structure);
+        const Score pawns_term =
+            percent_of(pawn_structure(eval, color, tuning), tuning.pawn_structure);
         const Score king_term = percent_of(king_safety(eval, color), tuning.king_safety);
         const Score threats_term = percent_of(threats(eval, color), tuning.threats);
         const Score piece_term = percent_of(piece_features(eval, color), tuning.piece_terms);
-        const Score center_term{eval.center_control[color] * 3, 0};
-        const Score dev_term{static_cast<int>(eval.development[color]) * 4, 0};
+        const Score center_term =
+            scaled(kCenterControlBonus, eval.center_control[color], eval.center_control[color]);
+        const Score dev_term =
+            scaled(kDevelopmentBonus, eval.development[color], eval.development[color]);
 
         side += pawns_term;
         side += king_term;
@@ -808,9 +755,9 @@ auto evaluate_classical_impl(const GameState& state, const Color perspective) {
         total += scaled(side, sign, sign);
     }
 
-    // Side-to-move tempo.  The score is White-positive, so Black's tempo
-    // subtracts.
-    const Score tempo = eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10};
+    const Score tempo = eval.side_to_move == Color::white
+        ? kTempoBonus
+        : Score{-kTempoBonus.mg, -kTempoBonus.eg};
     const Score tempo_term = percent_of(tempo, tuning.tempo);
     total += tempo_term;
 

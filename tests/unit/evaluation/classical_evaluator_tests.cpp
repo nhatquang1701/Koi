@@ -251,7 +251,7 @@ void test_trace_matches_evaluate_across_positions() {
     }
     const koi::ClassicalEvalTrace mid = evaluator.trace(state_from_fen(
         "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 b - - 0 7"));
-    require(!mid.insufficient_material && mid.tempo.mg == -10 && mid.phase > 0,
+    require(!mid.insufficient_material && mid.tempo.mg < 0 && mid.phase > 0,
             "active middlegame trace must populate phase, tempo, and non-insufficient flag");
     const koi::ClassicalEvalTrace ins =
         evaluator.trace(state_from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1"));

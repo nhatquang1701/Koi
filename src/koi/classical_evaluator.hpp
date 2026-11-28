@@ -4,8 +4,9 @@
 //
 // Optional, selectable evaluator: NNUE remains the production/default path.
 // This implementation is stateless and thread-safe; every evaluation derives
-// directly from GameState::copy_board_to and the native attack tables (without
-// using the NNUE PositionFeatures container), with no hidden global state.
+// directly from GameState::exchange_snapshot and the native attack tables
+// (without copying the board array or using the NNUE PositionFeatures
+// container), with no hidden global state.
 // The score is in centipawns from the requested perspective, compatible with
 // the search's score range.
 
