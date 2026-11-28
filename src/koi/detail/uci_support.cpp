@@ -138,6 +138,16 @@ std::string hex_bytes(const std::uint8_t* const data, const std::size_t count) {
     return hex;
 }
 
+std::string_view trim_ascii(std::string_view value) noexcept {
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0) {
+        value.remove_suffix(1);
+    }
+    return value;
+}
+
 } // namespace
 
 BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& line,
@@ -1276,13 +1286,7 @@ std::optional<std::pair<std::string, std::string>> parse_xboard_option_assignmen
     if (eq == std::string_view::npos) {
         return std::nullopt;
     }
-    std::string_view name = text.substr(0, eq);
-    while (!name.empty() && std::isspace(static_cast<unsigned char>(name.front())) != 0) {
-        name.remove_prefix(1);
-    }
-    while (!name.empty() && std::isspace(static_cast<unsigned char>(name.back())) != 0) {
-        name.remove_suffix(1);
-    }
+    const std::string_view name = trim_ascii(text.substr(0, eq));
     if (name.empty()) {
         return std::nullopt;
     }
