@@ -1799,7 +1799,7 @@ void test_emergency_ponderhit_discount_and_high_effort_fast_exit() {
     TimeManager emg_asp(emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
                         warm_context(), [now_asp] { return *now_asp; });
     emg_asp.observe_iteration({5, 25, false, false, false, 10'000, 9'500, milliseconds{4}});
-    emg_asp.observe_iteration({6, 25, false, true, false, 10'000, 9'500, milliseconds{5}});
+    emg_asp.observe_iteration({6, 25, false, false, true, 10'000, 9'500, milliseconds{5}});
     emg_asp.reconfigure(emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
                         warm_context(), false, *now_asp, 0);
     *now_asp += (emg_asp.diagnostics().optimum_budget * 30) / 100;
