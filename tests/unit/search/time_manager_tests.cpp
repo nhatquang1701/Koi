@@ -2089,6 +2089,101 @@ void test_high_latency_pre_emergency_ramp_and_scramble_overrun_guards() {
             "incremental 6s+1s hard position at depth 6 must retain depth>=7 pre-overrun guard");
 }
 
+void test_sudden_death_scramble_conversion_drawn_and_ponderhit_bank() {
+    auto scr_conv_opt = [](const int score_cp) {
+        TimeManager tm(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+        tm.observe_iteration({5, score_cp, false, false, false, 10'000, 5'000, milliseconds{10}});
+        tm.observe_iteration({6, score_cp, false, false, false, 10'000, 5'000, milliseconds{15}});
+        require(!tm.diagnostics().emergency_pacing,
+                "6s+0 clock must stay in sudden-death scramble outside emergency pacing");
+        return tm.diagnostics().optimum_budget;
+    };
+    const auto scr_even = scr_conv_opt(20);
+    const auto scr_win = scr_conv_opt(700);
+    const auto scr_loss = scr_conv_opt(-750);
+    const auto scr_defense = scr_conv_opt(-550);
+    require(scr_win < scr_even && scr_loss < scr_even && scr_defense == scr_even,
+            "sudden-death scramble at depth 6 must speed up >=+500/<=-700 cp while protecting -550 cp");
+
+    auto inc_conv_opt = [](const int score_cp) {
+        TimeManager tm(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+        tm.observe_iteration({5, score_cp, false, false, false, 10'000, 5'000, milliseconds{10}});
+        tm.observe_iteration({6, score_cp, false, false, false, 10'000, 5'000, milliseconds{15}});
+        return tm.diagnostics().optimum_budget;
+    };
+    require(inc_conv_opt(700) == inc_conv_opt(20),
+            "incremental 6s+1s at depth 6 must retain depth>=8 conversion speedup threshold");
+
+    auto endgame_ctx = warm_context();
+    endgame_ctx.game_phase = 4;
+    auto mid_ctx = warm_context();
+    mid_ctx.game_phase = 16;
+    auto observe_drawn7 = [](TimeManager& tm) {
+        tm.observe_iteration({5, 5, false, false, false, 10'000, 5'000, milliseconds{8}});
+        tm.observe_iteration({6, 6, false, false, false, 10'000, 5'000, milliseconds{10}});
+        tm.observe_iteration({7, 8, false, false, false, 10'000, 5'000, milliseconds{12}});
+    };
+    TimeManager scr_endgame(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                            koi::Color::white, 100, kMoveOverheadMs, 100, endgame_ctx);
+    TimeManager scr_mid(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx);
+    observe_drawn7(scr_endgame);
+    observe_drawn7(scr_mid);
+    require(scr_endgame.diagnostics().optimum_budget < scr_mid.diagnostics().optimum_budget,
+            "sudden-death scramble dead-drawn endgame at depth 7 and stability 3 must apply 22% speedup");
+
+    TimeManager inc_endgame(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                            koi::Color::white, 100, kMoveOverheadMs, 100, endgame_ctx);
+    TimeManager inc_mid(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx);
+    observe_drawn7(inc_endgame);
+    observe_drawn7(inc_mid);
+    require(inc_endgame.diagnostics().optimum_budget == inc_mid.diagnostics().optimum_budget,
+            "incremental 6s+1s dead-drawn endgame at depth 7 must retain depth>=10/stability>=4 gate");
+
+    auto scr_ph_now = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits scr_ponder = clock_limits(milliseconds{6'000}, milliseconds{0});
+    scr_ponder.ponder = true;
+    TimeManager scr_ph(scr_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                       warm_context(), [scr_ph_now] { return *scr_ph_now; });
+    const auto scr_ph_hard = scr_ph.diagnostics().hard_budget;
+    const auto sample1 = std::max(milliseconds{12}, (scr_ph_hard * 45) / 100);
+    const auto sample2 = std::max(milliseconds{20}, (scr_ph_hard * 90) / 100);
+    const auto sample3 = std::max(milliseconds{30}, (scr_ph_hard * 150) / 100);
+    scr_ph.observe_iteration({5, 25, false, false, false, 10'000, 5'000, sample1});
+    scr_ph.observe_iteration({6, 25, false, false, false, 10'000, 5'000, sample2});
+    scr_ph.observe_iteration({7, 25, false, false, false, 10'000, 5'000, sample3});
+    scr_ph.reconfigure(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100,
+                       warm_context(), false, *scr_ph_now, 0);
+    require(!scr_ph.diagnostics().emergency_pacing &&
+                scr_ph.should_stop_after_iteration() &&
+                !scr_ph.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble calm depth-7 ponderhit with doomed next ply must bank immediately");
+
+    auto inc_ph_now = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits inc_ponder = clock_limits(milliseconds{6'000}, milliseconds{1'000});
+    inc_ponder.ponder = true;
+    TimeManager inc_ph(inc_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                       warm_context(), [inc_ph_now] { return *inc_ph_now; });
+    const auto inc_ph_hard = inc_ph.diagnostics().hard_budget;
+    inc_ph.observe_iteration(
+        {5, 25, false, false, false, 10'000, 5'000, std::max(milliseconds{20}, (inc_ph_hard * 45) / 100)});
+    inc_ph.observe_iteration(
+        {6, 25, false, false, false, 10'000, 5'000, std::max(milliseconds{30}, (inc_ph_hard * 90) / 100)});
+    inc_ph.observe_iteration(
+        {7, 25, false, false, false, 10'000, 5'000, std::max(milliseconds{40}, (inc_ph_hard * 150) / 100)});
+    inc_ph.reconfigure(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100,
+                       warm_context(), false, *inc_ph_now, 0);
+    require(!inc_ph.diagnostics().emergency_pacing &&
+                inc_ph.should_stop_after_iteration() == false &&
+                inc_ph.should_start_next_iteration(milliseconds{1}),
+            "incremental 6s+1s calm depth-7 ponderhit must retain depth>=8 doomed-ply bank threshold");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2181,6 +2276,8 @@ int main(int argc, char** argv) {
          test_sudden_death_scramble_high_effort_depth5_recapture_cutoff},
         {"high latency pre emergency ramp and scramble overrun guards",
          test_high_latency_pre_emergency_ramp_and_scramble_overrun_guards},
+        {"sudden death scramble conversion drawn and ponderhit bank",
+         test_sudden_death_scramble_conversion_drawn_and_ponderhit_bank},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

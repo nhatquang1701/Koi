@@ -220,33 +220,6 @@ private:
         return side_to_move_;
     }
 
-    // Compact bitset whose words are deliberately not zeroed by construction.
-    // std::bitset's default constructor always clears its storage, which
-    // would charge every quiescence/evasion picker construction for bits only
-    // a main-mode picker can read (see materialize); the picker constructor
-    // calls reset() for main mode instead.  No accessor below is reached
-    // before that reset has run.
-    class LazyBitset {
-    public:
-        void reset() noexcept { words_.fill(0); }
-
-        [[nodiscard]] bool test(const std::size_t index) const noexcept {
-            return ((words_[index / kWordBits] >> (index % kWordBits)) & 1U) != 0U;
-        }
-
-        void set(const std::size_t index) noexcept {
-            words_[index / kWordBits] |= std::uint64_t{1} << (index % kWordBits);
-        }
-
-    private:
-        static constexpr std::size_t kWordBits = 64U;
-        static constexpr std::size_t kWordCount =
-            (kMaximumLegalMoves + kWordBits - 1U) / kWordBits;
-        // Deliberately uninitialized: the main-mode constructor reset() starts
-        // these words before any test()/set() touches them.
-        std::array<std::uint64_t, kWordCount> words_;
-    };
-
     const SearchMoveOrdering& ordering_;
     const GameState& state_;
     const MoveMetadataList& moves_;
@@ -260,13 +233,6 @@ private:
     Move excluded_move_;
     Mode mode_ = Mode::main;
     Stage stage_ = Stage::done;
-    // The bitsets below must start zeroed only for main-mode searches: they
-    // track lazy SEE/check materialization for `Mode::main`.  Quiescence and
-    // evasion pickers never reach materialize(), so `see_computed_`,
-    // `capture_check_computed_`, and `capture_checks_` stay uninitialized there.
-    LazyBitset see_computed_;
-    LazyBitset capture_check_computed_;
-    LazyBitset capture_checks_;
     std::array<std::int16_t, kMaximumLegalMoves> see_scores_;
     // Exchange baseline for this picker, built lazily on the first capture
     // whose SEE is not already available and reused for every later capture.
@@ -284,10 +250,15 @@ private:
     std::array<std::uint16_t, kStageRankCount> stage_end_;
     std::array<std::uint16_t, kStageRankCount> stage_cursor_;
     std::uint8_t stage_sorted_mask_ = 0;
-    // The good-capture pass is already ordered by the same history/MVV score
-    // used by the bad-capture pass. Keep only the staged slot of each deferred
-    // capture instead of copying the complete Candidate record a second time.
-    std::array<std::uint16_t, kMaximumLegalMoves> deferred_bad_capture_indices_;
+    struct DeferredBadCapture {
+        std::uint16_t source_index;
+        std::int16_t see_score;
+        int ordering_score;
+    };
+    // Keep deferred bad captures compactly with their materialized SEE and
+    // priority (checking captures stay in good_captures, so gives_check is
+    // always false here).
+    std::array<DeferredBadCapture, kMaximumLegalMoves> deferred_bad_captures_;
     // Emission scratch for next(): every return path writes it before the
     // pointer is handed out, and the following emitted record overwrites it.
     // Deliberately uninitialized: MoveMetadata has no meaningful empty value

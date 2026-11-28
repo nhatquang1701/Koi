@@ -700,9 +700,11 @@ the search but cannot push it past the cap.
   `20 ms` floor on healthy clocks or `5 ms` under emergency pacing; getting
   mated `-M` retains defensive search time), asymmetric conversion speedup
   (`score >= +500` cp winning or `<= -700` cp decisively lost with a stable
-  line at `depth >= 8`, or `depth >= 5` under emergency pacing), dead-drawn
+  line at `depth >= 8`, `depth >= 6` in sudden-death scrambles, or
+  `depth >= 5` under emergency pacing), dead-drawn
   low-phase endgame speedup (`0.78×` when `!hard_position_`,
-  `0 <= game_phase <= 4`, `|score| <= 15` cp, `depth >= 10` / `stability >= 4`
+  `0 <= game_phase <= 4`, `|score| <= 15` cp, `depth >= 10` / `stability >= 4`,
+  `depth >= 7` / `stability >= 3` in sudden-death scrambles,
   or `depth >= 6` / `stability >= 2` under emergency pacing, `score_drop <= 10`
   cp, and no aspiration re-research), and a 20% ponder-time-saved discount when a
   `ponderhit` arrives with a calm deep line (`depth >= 6`, `stability >= 3`, or
@@ -721,7 +723,8 @@ the search but cannot push it past the cap.
   `depth >= 2` under emergency pacing) or twice-confirmed winning forced mate
   (`last_mate_sign_ > 0`, `depth >= 6`, or `depth >= 4` under emergency
   pacing), immediately when a calm deep
-  (`depth >= 8`, `stability >= 3`, `>= 20 ms` sample, or `depth >= 6`,
+  (`depth >= 8`, `stability >= 3`, `>= 20 ms` sample, `depth >= 7`,
+  `stability >= 3`, `>= 10 ms` sample in sudden-death scrambles, or `depth >= 6`,
   `stability >= 2`, `>= 5 ms` sample under emergency pacing, no aspiration
   re-research) `ponderhit` would require more than `2× hard_budget` for its
   predicted next ply, on confirmed winning forced mates (`depth >= 4`) or

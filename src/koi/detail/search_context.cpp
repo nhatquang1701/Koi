@@ -1508,41 +1508,41 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // restores it between candidates (make/unmake), with captures and
         // promotions never observed by the quiet-only gates below.  Compute
         // it once for all three consumers instead of once per use.
+        int cached_node_game_phase = -1;
         const auto node_game_phase = [&]() noexcept -> int {
-            const auto& node_bitboards = *node_info.piece_bitboards;
-            constexpr std::size_t kPhaseKnightIdx = static_cast<std::size_t>(PieceType::knight);
-            constexpr std::size_t kPhaseBishopIdx = static_cast<std::size_t>(PieceType::bishop);
-            constexpr std::size_t kPhaseRookIdx = static_cast<std::size_t>(PieceType::rook);
-            constexpr std::size_t kPhaseQueenIdx = static_cast<std::size_t>(PieceType::queen);
-            return std::min(
-                static_cast<int>(std::popcount(
-                    node_bitboards[0][kPhaseKnightIdx] | node_bitboards[1][kPhaseKnightIdx] |
-                    node_bitboards[0][kPhaseBishopIdx] | node_bitboards[1][kPhaseBishopIdx])) +
-                    2 * static_cast<int>(std::popcount(
-                        node_bitboards[0][kPhaseRookIdx] | node_bitboards[1][kPhaseRookIdx])) +
-                    4 * static_cast<int>(std::popcount(
-                        node_bitboards[0][kPhaseQueenIdx] | node_bitboards[1][kPhaseQueenIdx])),
-                24);
+            if (cached_node_game_phase < 0) {
+                const auto& node_bitboards = *node_info.piece_bitboards;
+                constexpr std::size_t kPhaseKnightIdx = static_cast<std::size_t>(PieceType::knight);
+                constexpr std::size_t kPhaseBishopIdx = static_cast<std::size_t>(PieceType::bishop);
+                constexpr std::size_t kPhaseRookIdx = static_cast<std::size_t>(PieceType::rook);
+                constexpr std::size_t kPhaseQueenIdx = static_cast<std::size_t>(PieceType::queen);
+                cached_node_game_phase = std::min(
+                    static_cast<int>(std::popcount(
+                        node_bitboards[0][kPhaseKnightIdx] | node_bitboards[1][kPhaseKnightIdx] |
+                        node_bitboards[0][kPhaseBishopIdx] | node_bitboards[1][kPhaseBishopIdx])) +
+                        2 * static_cast<int>(std::popcount(
+                            node_bitboards[0][kPhaseRookIdx] | node_bitboards[1][kPhaseRookIdx])) +
+                        4 * static_cast<int>(std::popcount(
+                            node_bitboards[0][kPhaseQueenIdx] | node_bitboards[1][kPhaseQueenIdx])),
+                    24);
+            }
+            return cached_node_game_phase;
         };
-        const bool phase_rich_depth_one_candidate =
-            !claimable_draw && !checked && depth == 1 && node_game_phase() >= 8;
+        const bool depth_one_quiet_candidate = !claimable_draw && !checked && depth == 1;
         std::optional<bool> phase_rich_quiet_position_value;
         const auto phase_rich_quiet_position = [&]() -> bool {
             if (!phase_rich_quiet_position_value.has_value()) {
                 phase_rich_quiet_position_value =
-                    phase_rich_depth_one_candidate && !tactical_position();
+                    depth_one_quiet_candidate && node_game_phase() >= 8 && !tactical_position();
             }
             return *phase_rich_quiet_position_value;
         };
-        const PositionFeatures* quiet_forcing_parent_features = nullptr;
-        const PositionFeatures* root_direct_forcing_features = nullptr;
-        if (!checked && depth == 1 && ply == 1) {
-            quiet_forcing_parent_features = &ensure_features();
-        }
-        if (!checked && depth == 1 && ply == 0 && allow_root_forcing_extension) {
-            root_direct_forcing_features = &ensure_features();
-        }
-        if (phase_rich_depth_one_candidate && !pv_node) {
+        const bool check_ply1_quiet_forcing = !checked && depth == 1 && ply == 1;
+        const bool check_root_direct_forcing =
+            !checked && depth == 1 && ply == 0 && allow_root_forcing_extension;
+        const bool defer_depth_one_quiet_futility =
+            check_ply1_quiet_forcing || check_root_direct_forcing;
+        if (depth_one_quiet_candidate && !pv_node) {
             if (depth <= 1 && alpha > -kInfinity &&
                 static_eval + kRazorMarginPerDepthSquared * depth * depth <= alpha &&
                 phase_rich_quiet_position()) {
@@ -1915,8 +1915,6 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         const int full_child_depth = depth - 1;
         const bool shallow_checked_root = ply == 1 && depth <= 3 &&
             stack.frame(0).in_check;
-        // Restored/unchanged node position preserves piece counts.
-        const bool phase_rich_depth_three = depth == 3 && node_game_phase() >= 8;
         while (const MoveMetadata* candidate = next_candidate()) {
             const MoveMetadata& metadata = *candidate;
             // The stop flags are already sampled once per node entry
@@ -2012,7 +2010,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 ++stats.lmr_high_history_exclusions;
             }
             const bool phase_rich_shallow_node = lmr_gate.candidate &&
-                !metadata.is_capture() && phase_rich_depth_three;
+                !metadata.is_capture() && depth == 3 && node_game_phase() >= 8;
             const bool lmr_candidate = lmr_gate.candidate &&
                 !lmr_gate.high_history_exclusion && !shallow_checked_root &&
                 !phase_rich_shallow_node;
@@ -2098,8 +2096,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 pre_capture_lmr_decision = pre_lmr;
             }
             if (!claimable_draw && ply > 0 && !pv_node && !checked &&
-                quiet_forcing_parent_features == nullptr &&
-                root_direct_forcing_features == nullptr &&
+                !defer_depth_one_quiet_futility &&
                 move_number > 0 && !metadata.is_capture() && !metadata.gives_check &&
                 move.promotion() == Promotion::none && !is_tt_move) {
                 const int pre_lmr_depth = std::max(0, full_child_depth);
@@ -2113,9 +2110,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     continue;
                 }
             }
-            if (phase_rich_depth_one_candidate && !pv_node &&
-                quiet_forcing_parent_features == nullptr &&
-                root_direct_forcing_features == nullptr &&
+            if (depth_one_quiet_candidate && !pv_node &&
+                !defer_depth_one_quiet_futility &&
                 SearchPolicy::quiet_futility_window(
                     move_number, static_eval, depth, alpha) &&
                 !metadata.is_capture() && !metadata.gives_check &&
@@ -2138,6 +2134,11 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     ++stats.lmr_parent_feature_reuses;
                 }
             }
+            const PositionFeatures* forcing_parent_features_ptr =
+                (defer_depth_one_quiet_futility && !metadata.is_capture() &&
+                 !metadata.gives_check && metadata.move.promotion() == Promotion::none)
+                ? &ensure_features()
+                : nullptr;
             const std::uint64_t root_move_start_visited =
                 ply == 0 ? (stats.nodes + stats.qnodes) : 0;
             if (profile_enabled && ply == 0) {
@@ -2210,15 +2211,11 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 ++stats.lmr_king_zone_exclusions;
             }
             bool quiet_forcing_extension = false;
-            if ((quiet_forcing_parent_features != nullptr || root_direct_forcing_features != nullptr) &&
-                !metadata.is_capture() && !metadata.gives_check &&
-                metadata.move.promotion() == Promotion::none) {
-                const PositionFeatures& forcing_parent_features =
-                    root_direct_forcing_features != nullptr ? *root_direct_forcing_features :
-                    *quiet_forcing_parent_features;
+            if (forcing_parent_features_ptr != nullptr) {
+                const PositionFeatures& forcing_parent_features = *forcing_parent_features_ptr;
                 const bool direct_forcing_target =
                     quiet_move_has_direct_forcing_target(forcing_parent_features, metadata);
-                const bool near_root_forcing_target = quiet_forcing_parent_features != nullptr &&
+                const bool near_root_forcing_target = check_ply1_quiet_forcing &&
                     (quiet_move_has_king_ring_target(forcing_parent_features, metadata) ||
                      quiet_move_has_pawn_break_target(metadata));
                 if (direct_forcing_target || near_root_forcing_target) {
@@ -2288,9 +2285,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 continue;
             }
 
-            if (phase_rich_depth_one_candidate && !pv_node &&
-                (quiet_forcing_parent_features != nullptr ||
-                 root_direct_forcing_features != nullptr) &&
+            if (depth_one_quiet_candidate && !pv_node &&
+                defer_depth_one_quiet_futility &&
                 SearchPolicy::quiet_futility_window(
                     move_number, static_eval, depth, alpha) &&
                 !metadata.is_capture() && !metadata.gives_check &&

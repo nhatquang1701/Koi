@@ -483,16 +483,7 @@ SearchMovePicker::SearchMovePicker(
       excluded_move_(excluded_move), mode_(mode), stage_(first_stage()),
       mutable_moves_(mutable_moves), defer_quiets_(mutable_moves != nullptr),
       side_to_move_(side_to_move_hint.value_or(Color::white)),
-      side_to_move_ready_(side_to_move_hint.has_value()) {
-    // Only a main-mode picker reaches materialize()'s lazy SEE and capture-check
-    // probes; quiescence and evasion pickers never read them, so only main
-    // mode pays for zeroing those bitsets.
-    if (mode_ == Mode::main) {
-        see_computed_.reset();
-        capture_check_computed_.reset();
-        capture_checks_.reset();
-    }
-}
+      side_to_move_ready_(side_to_move_hint.has_value()) {}
 
 bool SearchMovePicker::is_good_capture(const MoveMetadata& metadata) const noexcept {
     // A quiet promotion is still a forcing material transformation.  It has
@@ -530,33 +521,19 @@ SearchMovePicker::Stage SearchMovePicker::first_stage() const noexcept {
 
 MoveMetadata SearchMovePicker::materialize(const std::size_t index) {
     MoveMetadata metadata = moves_[index];
-    if (metadata.is_capture()) {
-        if (!see_computed_.test(index)) {
-            if (metadata.see_computed) {
-                see_scores_[index] = metadata.see_score;
-            } else {
-                if (!see_context_.has_value()) {
-                    see_context_ = exchange_context_from(state_);
-                }
-                see_scores_[index] = static_cast<std::int16_t>(std::clamp(
-                    static_exchange_gain(*see_context_, metadata),
-                    static_cast<int>(std::numeric_limits<std::int16_t>::min()),
-                    static_cast<int>(std::numeric_limits<std::int16_t>::max())));
-            }
-            see_computed_.set(index);
+    if (metadata.is_capture() && !metadata.see_computed) {
+        if (!see_context_.has_value()) {
+            see_context_ = exchange_context_from(state_);
         }
-        metadata.see_score = see_scores_[index];
+        metadata.see_score = static_cast<std::int16_t>(std::clamp(
+            static_exchange_gain(*see_context_, metadata),
+            static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+            static_cast<int>(std::numeric_limits<std::int16_t>::max())));
         metadata.see_computed = true;
     }
     const bool promotion = metadata.move.promotion() != Promotion::none;
     if (mode_ == Mode::main && (metadata.is_capture() || promotion) && !metadata.gives_check) {
-        if (!capture_check_computed_.test(index)) {
-            if (state_.move_gives_check(metadata.move)) {
-                capture_checks_.set(index);
-            }
-            capture_check_computed_.set(index);
-        }
-        metadata.gives_check = capture_checks_.test(index);
+        metadata.gives_check = state_.move_gives_check(metadata.move);
     }
     return metadata;
 }
@@ -938,13 +915,13 @@ const MoveMetadata* SearchMovePicker::next() {
         }
         if (stage_ == Stage::bad_captures) {
             if (deferred_bad_capture_index_ < deferred_bad_capture_count_) {
-                const std::size_t candidate_slot =
-                    deferred_bad_capture_indices_[deferred_bad_capture_index_++];
-                const Candidate candidate = staged_[candidate_slot];
-                const std::size_t source_index = candidate_source_index(candidate);
-                emitted_metadata_ = materialize(source_index);
-                emitted_metadata_.ordering_score =
-                    resolved_capture_priority(source_index, candidate);
+                const DeferredBadCapture& bad =
+                    deferred_bad_captures_[deferred_bad_capture_index_++];
+                emitted_metadata_ = moves_[bad.source_index];
+                emitted_metadata_.see_score = bad.see_score;
+                emitted_metadata_.see_computed = true;
+                emitted_metadata_.gives_check = false;
+                emitted_metadata_.ordering_score = bad.ordering_score;
                 return &emitted_metadata_;
             }
             advance_stage();
@@ -975,12 +952,12 @@ const MoveMetadata* SearchMovePicker::next() {
             }
             emitted_metadata_ = materialize(source_index);
             if (emitted_metadata_.is_capture() && !is_good_capture(emitted_metadata_)) {
-                if (deferred_bad_capture_count_ < deferred_bad_capture_indices_.size()) {
-                    // Keep the staged slot rather than the source index so the
-                    // candidate's staged priority is still reachable when the
-                    // bad-capture stage emits the deferred record.
-                    deferred_bad_capture_indices_[deferred_bad_capture_count_++] =
-                        static_cast<std::uint16_t>(candidate_slot);
+                if (deferred_bad_capture_count_ < deferred_bad_captures_.size()) {
+                    deferred_bad_captures_[deferred_bad_capture_count_++] =
+                        DeferredBadCapture{
+                            static_cast<std::uint16_t>(source_index),
+                            emitted_metadata_.see_score,
+                            resolved_capture_priority(source_index, candidate)};
                 }
                 continue;
             }

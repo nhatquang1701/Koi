@@ -763,12 +763,16 @@ void TimeManager::update_optimum_budget() noexcept {
         scale_permille = (scale_permille * 1120) / 1000;
     }
 
+    const bool subsecond_sudden_death = is_subsecond_sudden_death();
+    const bool sudden_death_scramble = is_sudden_death_scramble();
+
     // Asymmetric conversion speedup: clearly winning positions (>= +500 cp) and
     // decisively hopeless positions (<= -700 cp) with a stable deep best move
     // move faster so won games never flag, while -500..-699 cp still gets full
-    // defensive search time (`depth >= 5` under emergency pacing, `depth >= 8`
-    // otherwise).
-    const int min_conversion_depth = emergency_pacing_ ? 5 : 8;
+    // defensive search time (`depth >= 5` under emergency pacing, `depth >= 6`
+    // in sudden-death scrambles, `depth >= 8` otherwise).
+    const int min_conversion_depth =
+        emergency_pacing_ ? 5 : (sudden_death_scramble ? 6 : 8);
     if (previous_score_.has_value() && last_observed_depth_ >= min_conversion_depth &&
         best_move_stability_ >= 2 && score_drop_cp_ <= 25 &&
         !last_aspiration_researched_) {
@@ -786,11 +790,14 @@ void TimeManager::update_optimum_budget() noexcept {
     }
 
     // Dead-drawn simplified endgames (phase <= 4, |score| <= 15 cp) that have
-    // already reached a calm, stable line (`depth >= 10, stability >= 4`, or
-    // `depth >= 6, stability >= 2` under emergency pacing) do not need full
-    // middlegame think time; save 22% to bank clock for sudden-death finishes.
-    const int min_drawn_depth = emergency_pacing_ ? 6 : 10;
-    const std::uint32_t min_drawn_stability = emergency_pacing_ ? 2U : 4U;
+    // already reached a calm, stable line (`depth >= 10, stability >= 4`,
+    // `depth >= 7, stability >= 3` in sudden-death scrambles, or `depth >= 6,
+    // stability >= 2` under emergency pacing) do not need full middlegame think
+    // time; save 22% to bank clock for sudden-death finishes.
+    const int min_drawn_depth =
+        emergency_pacing_ ? 6 : (sudden_death_scramble ? 7 : 10);
+    const std::uint32_t min_drawn_stability =
+        emergency_pacing_ ? 2U : (sudden_death_scramble ? 3U : 4U);
     if (!hard_position_ &&
         root_context_.game_phase >= 0 && root_context_.game_phase <= 4 &&
         previous_score_.has_value() && std::abs(*previous_score_) <= 15 &&
@@ -813,8 +820,6 @@ void TimeManager::update_optimum_budget() noexcept {
         scale_permille = (scale_permille * 800ULL) / 1000ULL;
     }
 
-    const bool subsecond_sudden_death = is_subsecond_sudden_death();
-    const bool sudden_death_scramble = is_sudden_death_scramble();
     const std::uint64_t max_scale_permille =
         subsecond_sudden_death ? 1000ULL : (sudden_death_scramble ? 1350ULL : 1850ULL);
     scale_permille = std::clamp<std::uint64_t>(scale_permille, 380, max_scale_permille);
@@ -888,11 +893,13 @@ bool TimeManager::clock_early_stop_reached(
         return true;
     }
     if (!hard_position_) {
-        const int min_ponderhit_doomed_depth = emergency_pacing_ ? 6 : 8;
+        const bool sudden_death_scramble = is_sudden_death_scramble();
+        const int min_ponderhit_doomed_depth =
+            emergency_pacing_ ? 6 : (sudden_death_scramble ? 7 : 8);
         const std::uint32_t min_ponderhit_doomed_stability = emergency_pacing_ ? 2U : 3U;
         const auto min_ponderhit_doomed_sample = emergency_pacing_
             ? std::chrono::milliseconds{5}
-            : std::chrono::milliseconds{20};
+            : (sudden_death_scramble ? std::chrono::milliseconds{10} : std::chrono::milliseconds{20});
         if (ponderhit_converted_ &&
             last_observed_depth_ >= min_ponderhit_doomed_depth &&
             best_move_stability_ >= min_ponderhit_doomed_stability &&
@@ -915,7 +922,6 @@ bool TimeManager::clock_early_stop_reached(
             elapsed >= scale_fraction(soft_target, 25, 100)) {
             return true;
         }
-        const bool sudden_death_scramble = is_sudden_death_scramble();
         const int min_effort_depth = (emergency_pacing_ || sudden_death_scramble) ? 5 : 6;
         if (has_effort_sample_ && best_move_effort_permille_ >= 900U &&
             last_observed_depth_ >= min_effort_depth && stable_observations_ >= 2 &&
