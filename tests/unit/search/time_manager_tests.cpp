@@ -2486,6 +2486,75 @@ void test_decisive_loss_noise_immunity_preserves_defense_above_minus900() {
             "defensive drop above -900 cp (-750 -> -830) must retain hard_position_");
 }
 
+void test_sudden_death_scramble_single_move_and_winning_mate_exit() {
+    RootTimingContext single_ctx = warm_context();
+    single_ctx.legal_move_count = 1;
+
+    auto now_scr_single = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_single(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                           koi::Color::white, 100, kMoveOverheadMs, 100, single_ctx,
+                           [now_scr_single] { return *now_scr_single; });
+    scr_single.observe_iteration({3, 0, false, false, false, 1'000, 1'000, milliseconds{2}});
+    *now_scr_single += scr_single.diagnostics().optimum_budget;
+    require(!scr_single.diagnostics().emergency_pacing &&
+                scr_single.should_stop_after_iteration() &&
+                !scr_single.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble single legal move at depth 3 must exit at optimum_budget");
+
+    auto now_inc_single = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager inc_single(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                           koi::Color::white, 100, kMoveOverheadMs, 100, single_ctx,
+                           [now_inc_single] { return *now_inc_single; });
+    inc_single.observe_iteration({3, 0, false, false, false, 1'000, 1'000, milliseconds{2}});
+    *now_inc_single += inc_single.diagnostics().optimum_budget;
+    require(!inc_single.should_stop_after_iteration() &&
+                inc_single.should_start_next_iteration(milliseconds{1}),
+            "incremental single legal move at depth 3 must retain depth>=4 exit gate");
+
+    SearchLimits ponder_sd = clock_limits(milliseconds{6'000}, milliseconds{0});
+    ponder_sd.ponder = true;
+    TimeManager scr_ponder_single(ponder_sd, koi::Color::white, 100, kMoveOverheadMs, 100,
+                                  single_ctx);
+    scr_ponder_single.observe_iteration(
+        {3, 0, false, false, false, 1'000, 1'000, milliseconds{2}});
+    scr_ponder_single.reconfigure(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                                  koi::Color::white, 100, kMoveOverheadMs, 100, single_ctx);
+    require(scr_ponder_single.should_stop_after_iteration() &&
+                !scr_ponder_single.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble ponderhit with depth-3 single legal move must exit at 0 ms");
+
+    TimeManager scr_mate(ponder_sd, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    scr_mate.observe_iteration({4, 99'500, false, false, false, 10'000, 9'000, milliseconds{5}});
+    scr_mate.observe_iteration({5, 99'500, false, false, false, 10'000, 9'000, milliseconds{8}});
+    scr_mate.reconfigure(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                         koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    require(scr_mate.should_stop_after_iteration() &&
+                !scr_mate.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble ponderhit with twice-confirmed depth-5 winning mate must exit at 0 ms");
+
+    TimeManager scr_mate_floor(clock_limits(milliseconds{3'200}, milliseconds{0}),
+                               koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    scr_mate_floor.observe_iteration(
+        {4, 99'500, false, false, false, 10'000, 9'000, milliseconds{3}});
+    scr_mate_floor.observe_iteration(
+        {5, 99'500, false, false, false, 10'000, 9'000, milliseconds{4}});
+    require(!scr_mate_floor.diagnostics().emergency_pacing &&
+                scr_mate_floor.diagnostics().soft_budget / 6 < milliseconds{10} &&
+                scr_mate_floor.diagnostics().optimum_budget == milliseconds{10},
+            "sudden-death scramble winning mate must apply 10 ms optimum_budget floor");
+
+    SearchLimits ponder_inc = clock_limits(milliseconds{6'000}, milliseconds{1'000});
+    ponder_inc.ponder = true;
+    TimeManager inc_mate(ponder_inc, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    inc_mate.observe_iteration({4, 99'500, false, false, false, 10'000, 9'000, milliseconds{5}});
+    inc_mate.observe_iteration({5, 99'500, false, false, false, 10'000, 9'000, milliseconds{8}});
+    inc_mate.reconfigure(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                         koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    require(!inc_mate.should_stop_after_iteration() &&
+                inc_mate.should_start_next_iteration(milliseconds{1}),
+            "incremental ponderhit with depth-5 winning mate must retain depth>=6 instant-exit gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2592,6 +2661,8 @@ int main(int argc, char** argv) {
          test_repeating_high_latency_net_increment_and_subsecond_multi_move},
         {"decisive loss noise immunity preserves defense above minus900",
          test_decisive_loss_noise_immunity_preserves_defense_above_minus900},
+        {"sudden death scramble single move and winning mate exit",
+         test_sudden_death_scramble_single_move_and_winning_mate_exit},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

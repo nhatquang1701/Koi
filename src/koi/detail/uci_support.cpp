@@ -121,9 +121,12 @@ const char* disposition_name(const CompletionDisposition disposition) noexcept {
 }
 
 std::string debug_hex(const std::uint64_t value) {
-    std::ostringstream stream;
-    stream << std::hex << std::setw(16) << std::setfill('0') << value;
-    return stream.str();
+    constexpr char kHexDigits[] = "0123456789abcdef";
+    std::string hex(16, '0');
+    for (int shift = 60, idx = 0; shift >= 0; shift -= 4, ++idx) {
+        hex[static_cast<std::size_t>(idx)] = kHexDigits[(value >> shift) & 0xfU];
+    }
+    return hex;
 }
 
 std::string hex_bytes(const std::uint8_t* const data, const std::size_t count) {
@@ -283,14 +286,54 @@ bool parse_xboard_seconds(const std::string_view value, std::chrono::millisecond
     if (value.empty()) {
         return false;
     }
-    char* end = nullptr;
-    const std::string buffer(value);
-    const double seconds = std::strtod(buffer.c_str(), &end);
-    if (end == buffer.c_str() || *end != '\0' || !std::isfinite(seconds) ||
-        seconds < 0.0 || seconds > 86'400'000.0) {
+    constexpr std::uint64_t kMaxWholeSeconds = 86'400'000ULL;
+    constexpr std::uint64_t kMaxMilliseconds = kMaxWholeSeconds * 1'000ULL;
+    std::uint64_t whole_seconds = 0;
+    std::uint64_t frac_ms = 0;
+    int frac_digits = 0;
+    bool round_up = false;
+    bool seen_dot = false;
+    bool seen_digit = false;
+    for (const char ch : value) {
+        if (ch == '.') {
+            if (seen_dot) {
+                return false;
+            }
+            seen_dot = true;
+            continue;
+        }
+        if (ch < '0' || ch > '9') {
+            return false;
+        }
+        seen_digit = true;
+        const std::uint64_t digit = static_cast<std::uint64_t>(ch - '0');
+        if (!seen_dot) {
+            if (whole_seconds > (kMaxWholeSeconds - digit) / 10ULL) {
+                return false;
+            }
+            whole_seconds = whole_seconds * 10ULL + digit;
+        } else {
+            if (frac_digits == 0) {
+                frac_ms += digit * 100ULL;
+            } else if (frac_digits == 1) {
+                frac_ms += digit * 10ULL;
+            } else if (frac_digits == 2) {
+                frac_ms += digit;
+            } else if (frac_digits == 3 && digit >= 5ULL) {
+                round_up = true;
+            }
+            ++frac_digits;
+        }
+    }
+    if (!seen_digit) {
         return false;
     }
-    duration = std::chrono::milliseconds{static_cast<std::int64_t>(seconds * 1000.0 + 0.5)};
+    const std::uint64_t total_ms =
+        whole_seconds * 1'000ULL + frac_ms + (round_up ? 1ULL : 0ULL);
+    if (total_ms > kMaxMilliseconds) {
+        return false;
+    }
+    duration = std::chrono::milliseconds{static_cast<std::int64_t>(total_ms)};
     return true;
 }
 

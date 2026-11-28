@@ -701,7 +701,8 @@ the search but cannot push it past the cap.
   `last_aspiration_researched_`,
   single-legal-move cap (`min(150 ms, soft / 8)`), confirmed winning forced-mate
   fast exit (`>= 2` stable deep `+M` mate iterations, capped at `250 ms` with a
-  `20 ms` floor on healthy clocks or `5 ms` under emergency pacing; getting
+  `20 ms` floor on healthy clocks, `10 ms` in sudden-death scrambles, or `5 ms`
+  under emergency pacing; getting
   mated `-M` retains defensive search time), asymmetric conversion speedup
   (`score >= +500` cp winning or `<= -700` cp decisively lost with a stable
   line at `depth >= 8`, `depth >= 6` in sudden-death scrambles, or
@@ -724,16 +725,18 @@ the search but cannot push it past the cap.
   budget wins.
 - `should_stop_after_iteration` and `should_start_next_iteration` share
   `clock_early_stop_reached`: stops at the hard deadline, immediately on a
-  converted `ponderhit` with a verified single legal reply (`depth >= 4`, or
-  `depth >= 2` under emergency pacing) or twice-confirmed winning forced mate
-  (`last_mate_sign_ > 0`, `depth >= 6`, or `depth >= 4` under emergency
+  converted `ponderhit` with a verified single legal reply (`depth >= 4`,
+  `depth >= 3` in sudden-death scrambles, or `depth >= 2` under emergency pacing)
+  or twice-confirmed winning forced mate (`last_mate_sign_ > 0`, `depth >= 6`,
+  `depth >= 5` in sudden-death scrambles, or `depth >= 4` under emergency
   pacing), immediately when a calm deep
   (`depth >= 8`, `stability >= 3`, `>= 20 ms` sample, `depth >= 7`,
   `stability >= 3`, `>= 10 ms` sample in sudden-death scrambles, or `depth >= 6`,
   `stability >= 2`, `>= 5 ms` sample under emergency pacing, no aspiration
   re-research) `ponderhit` would require more than `2× hard_budget` for its
   predicted next ply, on confirmed winning forced mates (`depth >= 4`) or
-  single-legal moves (`depth >= 4`, or `depth >= 2` under emergency pacing)
+  single-legal moves (`depth >= 4`, `depth >= 3` in sudden-death scrambles, or
+  `depth >= 2` under emergency pacing)
   after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
   on deep (`depth >= 10`, `stability >= 4`, `depth >= 8`, `stability >= 3` in

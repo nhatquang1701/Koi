@@ -16,8 +16,9 @@ std::vector<std::string> sorted_native_move_strings(const Position& position) {
         std::min(position.legal_moves_into(raw_moves), raw_moves.size());
     std::vector<std::string> moves;
     moves.reserve(move_count);
+    std::array<char, 5> uci_buffer{};
     for (std::size_t index = 0; index < move_count; ++index) {
-        moves.push_back(raw_moves[index].uci());
+        moves.emplace_back(raw_moves[index].format_uci(uci_buffer));
     }
     std::sort(moves.begin(), moves.end());
     return moves;

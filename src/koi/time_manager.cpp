@@ -707,7 +707,8 @@ void TimeManager::update_optimum_budget() noexcept {
     if (last_mate_sign_ > 0 && mate_stable_observations_ >= 2 && last_observed_depth_ >= 4) {
         const auto min_mate_budget = emergency_pacing_
             ? std::chrono::milliseconds{5}
-            : std::chrono::milliseconds{20};
+            : (is_sudden_death_scramble() ? std::chrono::milliseconds{10}
+                                          : std::chrono::milliseconds{20});
         timing_.optimum_budget = std::min(
             timing_.soft_budget,
             std::min(kConfirmedMateOptimumCap,
@@ -883,8 +884,11 @@ bool TimeManager::clock_early_stop_reached(
     const std::chrono::milliseconds elapsed,
     const std::chrono::milliseconds budget,
     const std::chrono::milliseconds soft_target) const noexcept {
-    const int min_single_move_depth = emergency_pacing_ ? 2 : 4;
-    const int min_ponderhit_mate_depth = emergency_pacing_ ? 4 : 6;
+    const bool sudden_death_scramble = is_sudden_death_scramble();
+    const int min_single_move_depth =
+        emergency_pacing_ ? 2 : (sudden_death_scramble ? 3 : 4);
+    const int min_ponderhit_mate_depth =
+        emergency_pacing_ ? 4 : (sudden_death_scramble ? 5 : 6);
     if (ponderhit_converted_ &&
         ((root_context_.legal_move_count == 1 && last_observed_depth_ >= min_single_move_depth) ||
          (last_mate_sign_ > 0 && mate_stable_observations_ >= 2 &&
@@ -901,7 +905,6 @@ bool TimeManager::clock_early_stop_reached(
         elapsed >= soft_target) {
         return true;
     }
-    const bool sudden_death_scramble = is_sudden_death_scramble();
     if (!hard_position_) {
         const int min_ponderhit_doomed_depth =
             emergency_pacing_ ? 6 : (sudden_death_scramble ? 7 : 8);

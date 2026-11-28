@@ -336,8 +336,7 @@ void UciController::apply_pending_xboard_move() {
         }
         xboard_pending_move_.reset();
     }
-    if (pending.has_value() && position_.is_legal(*pending) &&
-        position_.make_move(*pending)) {
+    if (pending.has_value() && position_.make_move(*pending)) {
         position_moves_.push_back(*pending);
     }
 }
@@ -2594,6 +2593,7 @@ void UciController::write_readyok() {
 void UciController::write_perft_results(GameState root, const int depth,
                                         const std::stop_token stop_token,
                                         const std::uint64_t generation) {
+    root.detach_mirror();
     const auto started = std::chrono::steady_clock::now();
     std::vector<std::pair<Move, std::uint64_t>> counts;
     std::array<Move, kMaximumLegalMoves> legal_moves{};
