@@ -1821,6 +1821,90 @@ void test_emergency_ponderhit_discount_and_high_effort_fast_exit() {
             "healthy high-effort ponderhit at depth 6/stability 2 must retain depth>=10/stability>=4 gate");
 }
 
+void test_emergency_single_move_and_winning_mate_fast_exit() {
+    auto single_ctx = warm_context();
+    single_ctx.legal_move_count = 1;
+
+    auto now_emg_p = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits emg_ponder = clock_limits(milliseconds{2'000}, milliseconds{0});
+    emg_ponder.ponder = true;
+    const SearchLimits emg_live = clock_limits(milliseconds{2'000}, milliseconds{0});
+
+    TimeManager emg_single_ponder(emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                                  single_ctx, [now_emg_p] { return *now_emg_p; });
+    emg_single_ponder.observe_iteration({2, 10, false, false, false, 200, 200, milliseconds{1}});
+    emg_single_ponder.reconfigure(emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                                  single_ctx, false, *now_emg_p, 0);
+    require(emg_single_ponder.diagnostics().emergency_pacing &&
+                emg_single_ponder.should_stop_after_iteration() &&
+                !emg_single_ponder.should_start_next_iteration(milliseconds{1}),
+            "emergency single-legal-move ponderhit at depth 2 must exit immediately on ponderhit");
+
+    auto now_emg_live = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg_single_live(emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                                single_ctx, [now_emg_live] { return *now_emg_live; });
+    emg_single_live.observe_iteration({2, 10, false, false, false, 200, 200, milliseconds{1}});
+    *now_emg_live += emg_single_live.diagnostics().optimum_budget;
+    require(emg_single_live.should_stop_after_iteration() &&
+                !emg_single_live.should_start_next_iteration(milliseconds{1}),
+            "emergency single-legal-move search at depth 2 must exit once optimum_budget elapses");
+
+    auto now_healthy_s = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits healthy_ponder = clock_limits(milliseconds{20'000}, milliseconds{0});
+    healthy_ponder.ponder = true;
+    const SearchLimits healthy_live = clock_limits(milliseconds{20'000}, milliseconds{0});
+    TimeManager healthy_single(healthy_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                               single_ctx, [now_healthy_s] { return *now_healthy_s; });
+    healthy_single.observe_iteration({2, 10, false, false, false, 200, 200, milliseconds{1}});
+    healthy_single.reconfigure(healthy_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                               single_ctx, false, *now_healthy_s, 0);
+    *now_healthy_s += healthy_single.diagnostics().optimum_budget;
+    require(!healthy_single.diagnostics().emergency_pacing &&
+                !healthy_single.should_stop_after_iteration() &&
+                healthy_single.should_start_next_iteration(milliseconds{1}),
+            "healthy clock single-legal-move at depth 2 must retain depth>=4 exit gate");
+
+    auto now_mate = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits tight_emg_ponder = clock_limits(milliseconds{1'000}, milliseconds{0});
+    tight_emg_ponder.ponder = true;
+    const SearchLimits tight_emg_live = clock_limits(milliseconds{1'000}, milliseconds{0});
+
+    TimeManager emg_mate(tight_emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                         warm_context(), [now_mate] { return *now_mate; });
+    emg_mate.observe_iteration({3, 30'000, false, false, false, 1'000, 800, milliseconds{2}});
+    emg_mate.observe_iteration({4, 30'000, false, false, false, 1'000, 800, milliseconds{3}});
+    emg_mate.reconfigure(tight_emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                         warm_context(), false, *now_mate, 0);
+    require(emg_mate.diagnostics().emergency_pacing &&
+                emg_mate.diagnostics().optimum_budget < milliseconds{20} &&
+                emg_mate.should_stop_after_iteration() &&
+                !emg_mate.should_start_next_iteration(milliseconds{1}),
+            "emergency confirmed winning mate at depth 4 must use 5 ms floor and exit immediately on ponderhit");
+
+    auto now_mated = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg_mated(tight_emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                          warm_context(), [now_mated] { return *now_mated; });
+    emg_mated.observe_iteration({3, -30'000, false, false, false, 1'000, 800, milliseconds{2}});
+    emg_mated.observe_iteration({4, -30'000, false, false, false, 1'000, 800, milliseconds{3}});
+    emg_mated.reconfigure(tight_emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                          warm_context(), false, *now_mated, 0);
+    require(!emg_mated.should_stop_after_iteration() &&
+                emg_mated.should_start_next_iteration(milliseconds{1}),
+            "emergency getting-mated (-M) ponderhit must retain defensive search budget");
+
+    auto now_healthy_m = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager healthy_mate(healthy_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                             warm_context(), [now_healthy_m] { return *now_healthy_m; });
+    healthy_mate.observe_iteration({3, 30'000, false, false, false, 1'000, 800, milliseconds{2}});
+    healthy_mate.observe_iteration({4, 30'000, false, false, false, 1'000, 800, milliseconds{3}});
+    healthy_mate.reconfigure(healthy_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                             warm_context(), false, *now_healthy_m, 0);
+    require(!healthy_mate.diagnostics().emergency_pacing &&
+                !healthy_mate.should_stop_after_iteration() &&
+                healthy_mate.should_start_next_iteration(milliseconds{1}),
+            "healthy clock winning-mate ponderhit at depth 4 must retain depth>=6 instant-exit gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1905,6 +1989,8 @@ int main(int argc, char** argv) {
          test_emergency_depth6_ponderhit_doomed_ply_bank},
         {"emergency ponderhit discount and high effort exit",
          test_emergency_ponderhit_discount_and_high_effort_fast_exit},
+        {"emergency single move and winning mate exit",
+         test_emergency_single_move_and_winning_mate_fast_exit},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

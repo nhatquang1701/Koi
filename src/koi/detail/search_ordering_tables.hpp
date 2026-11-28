@@ -374,13 +374,18 @@ private:
     }
     [[nodiscard]] std::int64_t continuation_history_raw(
         std::size_t move_idx, const SearchHistoryContext& context) const noexcept;
+    [[nodiscard]] std::int64_t quiet_history_raw(
+        Color side, const MoveMetadata& metadata,
+        const SearchHistoryContext& context, std::size_t move_idx,
+        std::int64_t cont_score) const noexcept;
     static void update_history(int& score, int delta, int maximum) noexcept;
     static void update_history(std::int16_t& score, int delta, int maximum) noexcept;
     void update_parent_histories(Color side, Move move, PieceType piece, int parent_ply,
                                  const SearchHistoryContext& context, int bonus,
                                  bool continuation_only) noexcept;
     void record_scaled_multi_ply_continuation(
-        Move move, const SearchHistoryContext& context, int base_bonus) noexcept;
+        std::size_t scaled_move, const SearchHistoryContext& context,
+        int base_bonus) noexcept;
 
     struct LargeTables {
         // Leave the arrays uninitialized on allocation; SearchOrderingTables()

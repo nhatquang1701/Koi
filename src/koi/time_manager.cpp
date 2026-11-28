@@ -699,10 +699,13 @@ void TimeManager::update_optimum_budget() noexcept {
         return;
     }
     if (last_mate_sign_ > 0 && mate_stable_observations_ >= 2 && last_observed_depth_ >= 4) {
+        const auto min_mate_budget = emergency_pacing_
+            ? std::chrono::milliseconds{5}
+            : std::chrono::milliseconds{20};
         timing_.optimum_budget = std::min(
             timing_.soft_budget,
             std::min(kConfirmedMateOptimumCap,
-                     std::max(std::chrono::milliseconds{20}, timing_.soft_budget / 6)));
+                     std::max(min_mate_budget, timing_.soft_budget / 6)));
         return;
     }
 
@@ -855,13 +858,15 @@ bool TimeManager::clock_early_stop_reached(
     const std::chrono::milliseconds elapsed,
     const std::chrono::milliseconds budget,
     const std::chrono::milliseconds soft_target) const noexcept {
+    const int min_single_move_depth = emergency_pacing_ ? 2 : 4;
+    const int min_ponderhit_mate_depth = emergency_pacing_ ? 4 : 6;
     if (ponderhit_converted_ &&
-        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
+        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= min_single_move_depth) ||
          (last_mate_sign_ > 0 && mate_stable_observations_ >= 2 &&
-          last_observed_depth_ >= 6))) {
+          last_observed_depth_ >= min_ponderhit_mate_depth))) {
         return true;
     }
-    if (((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
+    if (((root_context_.legal_move_count == 1 && last_observed_depth_ >= min_single_move_depth) ||
          (last_mate_sign_ > 0 && mate_stable_observations_ >= 2 &&
           last_observed_depth_ >= 4)) &&
         elapsed >= soft_target) {

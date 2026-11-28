@@ -693,7 +693,8 @@ the search but cannot push it past the cap.
   `score_drop_cp_` (ignored when holding a stable `>= +600` cp win without
   re-research), `score_gain_cp_`, `last_aspiration_researched_`,
   single-legal-move cap (`min(150 ms, soft / 8)`), confirmed winning forced-mate
-  fast exit (`>= 2` stable deep `+M` mate iterations, capped at `250 ms`; getting
+  fast exit (`>= 2` stable deep `+M` mate iterations, capped at `250 ms` with a
+  `20 ms` floor on healthy clocks or `5 ms` under emergency pacing; getting
   mated `-M` retains defensive search time), asymmetric conversion speedup
   (`score >= +500` cp winning or `<= -700` cp decisively lost with a stable
   line at `depth >= 8`, or `depth >= 5` under emergency pacing), dead-drawn
@@ -712,14 +713,16 @@ the search but cannot push it past the cap.
   budget wins.
 - `should_stop_after_iteration` and `should_start_next_iteration` share
   `clock_early_stop_reached`: stops at the hard deadline, immediately on a
-  converted `ponderhit` with a verified single legal reply (`depth >= 4`) or
-  twice-confirmed winning forced mate (`last_mate_sign_ > 0`, `depth >= 6`),
-  immediately when a calm deep
+  converted `ponderhit` with a verified single legal reply (`depth >= 4`, or
+  `depth >= 2` under emergency pacing) or twice-confirmed winning forced mate
+  (`last_mate_sign_ > 0`, `depth >= 6`, or `depth >= 4` under emergency
+  pacing), immediately when a calm deep
   (`depth >= 8`, `stability >= 3`, `>= 20 ms` sample, or `depth >= 6`,
   `stability >= 2`, `>= 5 ms` sample under emergency pacing, no aspiration
   re-research) `ponderhit` would require more than `2× hard_budget` for its
   predicted next ply, on confirmed winning forced mates (`depth >= 4`) or
-  single-legal moves after reaching soft/optimum time, in emergency
+  single-legal moves (`depth >= 4`, or `depth >= 2` under emergency pacing)
+  after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
   on deep (`depth >= 10`, `stability >= 4`, or `depth >= 6`, `stability >= 2`
   under emergency pacing) `>= 90%` best-move-share

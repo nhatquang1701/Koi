@@ -8,7 +8,6 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <span>
 #include <utility>
@@ -837,50 +836,8 @@ std::uint64_t king_zone_mask(std::uint8_t square) noexcept {
     if (square >= Square::kInvalid) {
         return 0;
     }
-    const int file = square % 8;
-    const int rank = square / 8;
-    std::uint64_t mask = 0;
-    for (int rank_delta = -1; rank_delta <= 1; ++rank_delta) {
-        for (int file_delta = -1; file_delta <= 1; ++file_delta) {
-            const int target_file = file + file_delta;
-            const int target_rank = rank + rank_delta;
-            if (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
-                mask |= std::uint64_t{1} << (target_rank * 8 + target_file);
-            }
-        }
-    }
-    return mask;
-}
-
-using NativeFeatureBitboards = std::array<std::array<std::uint64_t, 7>, 2>;
-
-std::uint64_t native_feature_attacks(const NativeFeatureBitboards& pieces,
-                                     std::uint64_t occupied, int source,
-                                     PieceType type, Color color) noexcept {
-    // Precomputed tables already encode exactly the masks this routine used to
-    // walk by hand (including the first blocker for sliders), so feature
-    // generation shares one attack implementation with the rules core.
-    (void)pieces;
-    if (source < 0 || source >= 64) {
-        return 0;
-    }
-    switch (type) {
-    case PieceType::pawn:
-        return detail::pawn_attacks(source, color == Color::white);
-    case PieceType::knight:
-        return detail::knight_attacks(source);
-    case PieceType::king:
-        return detail::king_attacks(source);
-    case PieceType::bishop:
-        return detail::bishop_attacks(source, occupied);
-    case PieceType::rook:
-        return detail::rook_attacks(source, occupied);
-    case PieceType::queen:
-        return detail::queen_attacks(source, occupied);
-    case PieceType::none:
-        return 0;
-    }
-    return 0;
+    return detail::king_attacks(static_cast<int>(square)) |
+        (std::uint64_t{1} << square);
 }
 
 [[nodiscard]] NativeCheckProbe build_native_check_probe(
@@ -1252,71 +1209,83 @@ void native_position_features(const Position& position,
     features.fullmove_number = position.fullmove_number();
     const std::uint64_t occupied = position.occupied_squares();
     features.occupied = occupied;
+    features.board = position.board_squares();
     std::array<std::uint64_t, 2> attacks{};
+    int game_phase = 0;
 
-    for (const Color color : {Color::white, Color::black}) {
-        const std::size_t color_index = color == Color::white ? 0U : 1U;
-        const std::uint64_t own = std::accumulate(
-            pieces[color_index].begin(), pieces[color_index].end(), std::uint64_t{0},
-            [](std::uint64_t value, std::uint64_t board) { return value | board; });
+    for (const std::size_t color_index : {std::size_t{0}, std::size_t{1}}) {
+        const auto& side_bb = pieces[color_index];
+        const std::uint64_t pawns = side_bb[static_cast<std::size_t>(PieceType::pawn)];
+        const std::uint64_t knights = side_bb[static_cast<std::size_t>(PieceType::knight)];
+        const std::uint64_t bishops = side_bb[static_cast<std::size_t>(PieceType::bishop)];
+        const std::uint64_t rooks = side_bb[static_cast<std::size_t>(PieceType::rook)];
+        const std::uint64_t queens = side_bb[static_cast<std::size_t>(PieceType::queen)];
+        const std::uint64_t king = side_bb[static_cast<std::size_t>(PieceType::king)];
+        const std::uint64_t own = pawns | knights | bishops | rooks | queens | king;
         features.colors[color_index] = own;
-        features.pawns[color_index] = pieces[color_index][static_cast<std::size_t>(PieceType::pawn)];
-        for (const PieceType type : {PieceType::pawn, PieceType::knight, PieceType::bishop,
-                                     PieceType::rook, PieceType::queen, PieceType::king}) {
-            std::uint64_t remaining = pieces[color_index][static_cast<std::size_t>(type)];
-            while (remaining != 0) {
-                const int square = static_cast<int>(std::countr_zero(remaining));
-                remaining &= remaining - 1;
-                features.board[static_cast<std::size_t>(square)] = {type, color};
-                if (type == PieceType::pawn) {
-                    features.pawn_file_masks[color_index] = static_cast<std::uint8_t>(
-                        features.pawn_file_masks[color_index] |
-                        (std::uint8_t{1} << (square % 8)));
-                }
-                if (type == PieceType::knight || type == PieceType::bishop) {
-                    const bool white_home = color == Color::white &&
-                        ((type == PieceType::knight && (square == 1 || square == 6)) ||
-                         (type == PieceType::bishop && (square == 2 || square == 5)));
-                    const bool black_home = color == Color::black &&
-                        ((type == PieceType::knight && (square == 57 || square == 62)) ||
-                         (type == PieceType::bishop && (square == 58 || square == 61)));
-                    if (!white_home && !black_home) {
-                        ++features.development[color_index];
-                    }
-                }
-                switch (type) {
-                case PieceType::knight:
-                case PieceType::bishop:
-                    features.game_phase = static_cast<std::uint8_t>(features.game_phase + 1);
-                    break;
-                case PieceType::rook:
-                    features.game_phase = static_cast<std::uint8_t>(features.game_phase + 2);
-                    break;
-                case PieceType::queen:
-                    features.game_phase = static_cast<std::uint8_t>(features.game_phase + 4);
-                    break;
-                default:
-                    break;
-                }
-                const std::uint64_t piece_attacks =
-                    native_feature_attacks(pieces, occupied, square, type, color);
-                attacks[color_index] |= piece_attacks;
+        features.pawns[color_index] = pawns;
+
+        std::uint64_t pawn_files = pawns;
+        pawn_files |= pawn_files >> 32U;
+        pawn_files |= pawn_files >> 16U;
+        pawn_files |= pawn_files >> 8U;
+        features.pawn_file_masks[color_index] = static_cast<std::uint8_t>(pawn_files);
+
+        const std::uint64_t knight_home = color_index == 0U
+            ? ((std::uint64_t{1} << 1) | (std::uint64_t{1} << 6))
+            : ((std::uint64_t{1} << 57) | (std::uint64_t{1} << 62));
+        const std::uint64_t bishop_home = color_index == 0U
+            ? ((std::uint64_t{1} << 2) | (std::uint64_t{1} << 5))
+            : ((std::uint64_t{1} << 58) | (std::uint64_t{1} << 61));
+        features.development[color_index] = static_cast<std::uint8_t>(
+            std::popcount(knights & ~knight_home) +
+            std::popcount(bishops & ~bishop_home));
+        game_phase += std::popcount(knights | bishops) +
+            2 * std::popcount(rooks) + 4 * std::popcount(queens);
+
+        std::uint64_t color_attacks = 0;
+        const auto accumulate = [&](std::uint64_t bb, const auto& attack_fn) noexcept {
+            while (bb != 0) {
+                const int square = static_cast<int>(std::countr_zero(bb));
+                bb &= bb - 1;
+                const std::uint64_t piece_attacks = attack_fn(square);
+                color_attacks |= piece_attacks;
                 features.piece_mobility[static_cast<std::size_t>(square)] =
                     static_cast<std::uint8_t>(std::popcount(piece_attacks & ~own));
             }
-        }
-        features.attacked_squares[color_index] = attacks[color_index];
+        };
+        const bool is_white = color_index == 0U;
+        accumulate(pawns, [is_white](const int square) noexcept {
+            return detail::pawn_attacks(square, is_white);
+        });
+        accumulate(knights, [](const int square) noexcept {
+            return detail::knight_attacks(square);
+        });
+        accumulate(bishops, [occupied](const int square) noexcept {
+            return detail::bishop_attacks(square, occupied);
+        });
+        accumulate(rooks, [occupied](const int square) noexcept {
+            return detail::rook_attacks(square, occupied);
+        });
+        accumulate(queens, [occupied](const int square) noexcept {
+            return detail::queen_attacks(square, occupied);
+        });
+        accumulate(king, [](const int square) noexcept {
+            return detail::king_attacks(square);
+        });
+
+        attacks[color_index] = color_attacks;
+        features.attacked_squares[color_index] = color_attacks;
         features.mobility[color_index] = static_cast<std::uint16_t>(
-            std::popcount(attacks[color_index] & ~own));
-        const std::uint64_t king = pieces[color_index][static_cast<std::size_t>(PieceType::king)];
+            std::popcount(color_attacks & ~own));
         const std::uint8_t king_square = king == 0 ? Square::kInvalid :
             static_cast<std::uint8_t>(std::countr_zero(king));
         features.king_squares[color_index] = Square::from_index(king_square);
         features.center_control[color_index] = static_cast<std::uint8_t>(
-            std::popcount(attacks[color_index] & kCoreCenterMask));
+            std::popcount(color_attacks & kCoreCenterMask));
     }
 
-    features.game_phase = std::min<std::uint8_t>(features.game_phase, 24);
+    features.game_phase = static_cast<std::uint8_t>(std::min(game_phase, 24));
     for (std::size_t color = 0; color < 2; ++color) {
         features.king_zone_attacks[color] = static_cast<std::uint8_t>(std::popcount(
             attacks[1 - color] & king_zone_mask(features.king_squares[color].index())));
