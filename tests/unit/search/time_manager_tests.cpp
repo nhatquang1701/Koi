@@ -1353,15 +1353,19 @@ void test_hard_position_doomed_overrun_ply_guard() {
                               warm_context(), [dropping_now] { return *dropping_now; });
 
     const auto hard_budget = stable_hard.diagnostics().hard_budget;
-    const auto iter_time = std::max(milliseconds{20}, (hard_budget * 55) / 100);
-    // Latch hard_position_ at depth 5 via best_move_changed, then settle at depths 6..7.
-    stable_hard.observe_iteration({5, 40, true, true, false, 10'000, 5'000, iter_time / 2});
-    stable_hard.observe_iteration({6, 40, false, false, false, 10'000, 5'000, iter_time});
-    stable_hard.observe_iteration({7, 35, false, false, false, 10'000, 5'000, iter_time});
-
-    dropping_hard.observe_iteration({5, 80, true, true, false, 10'000, 5'000, iter_time / 2});
-    dropping_hard.observe_iteration({6, 80, false, false, false, 10'000, 5'000, iter_time});
-    dropping_hard.observe_iteration({7, 30, false, false, false, 10'000, 5'000, iter_time});
+    const auto d5_time = std::max(milliseconds{20}, (hard_budget * 18) / 100);
+    const auto d6_time = std::max(milliseconds{36}, (hard_budget * 36) / 100);
+    const auto d7_time = std::max(milliseconds{60}, (hard_budget * 60) / 100);
+    // Repeated root move changes with low best-move share raise optimum_budget
+    // above 70% of hard_budget while latching hard_position_; depth 7 settles
+    // on one best move without a score collapse.
+    for (TimeManager* tm : {&stable_hard, &dropping_hard}) {
+        tm->observe_iteration({4, 50, true, false, false, 10'000, 2'000, milliseconds{150}});
+        tm->observe_iteration({5, 50, true, false, false, 10'000, 2'000, d5_time});
+        tm->observe_iteration({6, 50, true, false, false, 10'000, 2'000, d6_time});
+    }
+    stable_hard.observe_iteration({7, 45, false, false, false, 10'000, 2'000, d7_time});
+    dropping_hard.observe_iteration({7, 5, false, false, false, 10'000, 2'000, d7_time});
 
     const auto elapsed_70 = (hard_budget * 70) / 100;
     *stable_now += elapsed_70;
