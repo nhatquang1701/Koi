@@ -57,7 +57,7 @@ flowchart TD
 | `detail/nnue_kernels.hpp` | Stateless AVX-512, AVX2, ARM NEON, and scalar NNUE inference and delta kernels. |
 | `detail/nnue_io.cpp`, `detail/nnue_manifest.hpp` | NNUE container serialization/deserialization, SHA-256 verification, manifest validation, and boot-time network discovery. |
 | `classical_evaluator.*` | Clean hand-crafted evaluator (HCE rewrite): stateless, tapered, selectable with `EvalMode=hce`/`KOI_EVALUATOR=hce`. |
-| `opening_book.cpp` | Optional Polyglot opening book; the repository tracks the Stockfish-verified CC0 book at `assets/book/koi.bin`, which release packages bundle as `book.bin`. |
+| `opening_book.cpp` | Optional Polyglot opening book and `discover_opening_book()` candidate lookup; the repository tracks the Stockfish-verified CC0 book at `assets/book/koi.bin`, which release packages bundle as `book.bin`. |
 | `syzygy_tablebase.cpp` | Optional Syzygy root and interior probing; no tablebase data is bundled. |
 | `time_manager.cpp` | Soft/hard time budgets, move-overhead subtraction, and flag-proof ceilings. |
 

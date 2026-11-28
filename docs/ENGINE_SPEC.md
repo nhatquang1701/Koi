@@ -1003,8 +1003,8 @@ empty for the 1.2.0 gate.
 
 | Tool | Purpose |
 | --- | --- |
-| `koi-bench` | 64-position fixed-depth tactical hard gate by default; `--optional` selects the 128-position positional corpus; `--hash`, `--threads`, `--speed`, `--timed`, `--warm-hash`, `--nodes`, `--warmup`, `--repeat`, `--depth`, `--depth-sweep`, `--fen-file`, `--epd`, `--nnue`, `--hce`, `--profile-json`, `--report` |
-| `koi-perft` | Legal-node count from `startpos` or an optional `[startpos\|fen [moves <uci\|san>...]]` at a non-negative depth (`--divide` for per-move totals and NPS; `--suite` for the 6-position CPW verification suite; `--help` for usage) |
+| `koi-bench` | 64-position fixed-depth tactical hard gate by default; `--optional` selects the 128-position positional corpus; `--hash`, `--threads`, `--speed`, `--timed`, `--warm-hash`, `--nodes`, `--warmup`, `--repeat`, `--limit`, `--depth`, `--depth-sweep`, `--fen-file`, `--epd`, `--nnue`, `--hce`, `--profile-json`, `--report` |
+| `koi-perft` | Legal-node count from `startpos` or an optional `[startpos\|fen [moves <uci\|san>...]]` at a non-negative depth (`--divide` for per-move totals and NPS; `--suite\|suite` for the 6-position CPW verification suite; `--help` for usage) |
 | `koi-replay` | Replays UCI or FIDE SAN moves from `startpos`/`fen` (4- or 6-field FENs) without exposing the vendored library; reports `legal`, `result`, `termination`, final FEN (or FIDE PGN with `--pgn`) |
 | `koi-eval-features` | Dump NNUE (`--nnue NET`) or clean-HCE (`--hce`) evaluations as CSV for a FEN or EPD corpus (`[--input FILE] [--output FILE] [--limit N]`) |
 | `koi-nnue-fixture` | Generates NNUE fixtures (`--arch v4|v5|v9`) for boundary/parity tests |

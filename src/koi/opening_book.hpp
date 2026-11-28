@@ -44,4 +44,7 @@ private:
     std::shared_ptr<Impl> impl_;
 };
 
+[[nodiscard]] std::optional<std::filesystem::path> discover_opening_book(
+    const std::filesystem::path& directory);
+
 } // namespace koi

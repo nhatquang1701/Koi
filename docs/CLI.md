@@ -223,8 +223,8 @@ Built from source via CMake presets (not shipped in user-facing release archives
 
 | Binary / Script | Role | Usage |
 | :--- | :--- | :--- |
-| `koi-bench` | 64-position tactical & 128-position positional strength suite | `koi-bench (--nnue NET \| --hce) [--hash MB] [--optional] [--timed] [--depth-sweep a..b] [--fen-file\|--epd PATH] [--report PATH]` (`bm`/`am`/`id`/`hmvc`/`fmvn`, `--flag=value` supported) |
-| `koi-perft` | Bulk-counting legal move-generator perft, `--divide`, and CPW `--suite` | `koi-perft [--divide] <depth> [startpos\|fen [moves <move>...]]` · `koi-perft --suite` |
+| `koi-bench` | 64-position tactical & 128-position positional strength suite | `koi-bench (--nnue NET \| --hce) [--hash MB] [--optional] [--timed] [--limit N] [--depth-sweep a..b] [--fen-file\|--epd PATH] [--report PATH]` (`bm`/`am`/`id`/`hmvc`/`fmvn`, `--flag=value` supported) |
+| `koi-perft` | Bulk-counting legal move-generator perft, `--divide`, and CPW `--suite` | `koi-perft [--divide] <depth> [startpos\|fen [moves <move>...]]` · `koi-perft --suite\|suite` |
 | `koi-replay` | UCI/SAN game replayer (`legal`, `result`, `termination`, `fen`) & PGN exporter | `koi-replay [--pgn] <startpos\|fen 4-or-6-field-fen> [moves <uci\|san>...]` |
 | `koi-eval-features` | Bulk CSV evaluator dumper for FEN and EPD corpora | `koi-eval-features (--nnue NET \| --hce) [--input FILE] [--output FILE] [--limit N]` (`--flag=value` supported) |
 | `koi-nnue-fixture` | Synthetic v4/v5/v9 `.nnue` generator for C++ & Python boundary tests | `koi-nnue-fixture --arch v4\|v5\|v9 --output <path>` (`--flag=value` supported) |

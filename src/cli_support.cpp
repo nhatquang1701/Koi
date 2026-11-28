@@ -886,22 +886,17 @@ std::optional<int> run_zero_network_cli_command(
         }
         const std::filesystem::path engine_directory = executable_directory(argc, argv);
         std::filesystem::path book_path;
+        bool book_usable = false;
         if (options.book_path.has_value()) {
             book_path = std::filesystem::path(*options.book_path);
-        } else {
-            const std::filesystem::path primary = engine_directory / "book.bin";
-            const std::filesystem::path packaged = engine_directory / "book" / "book.bin";
-            const std::filesystem::path bundled = engine_directory / "book" / "koi.bin";
-            if (OpeningBook::is_usable_file(primary)) {
-                book_path = primary;
-            } else if (OpeningBook::is_usable_file(packaged)) {
-                book_path = packaged;
-            } else {
-                book_path = bundled;
-            }
+            book_usable = OpeningBook::is_usable_file(book_path) &&
+                static_cast<bool>(std::ifstream(book_path, std::ios::binary));
+        } else if (const auto discovered = discover_opening_book(engine_directory);
+                   discovered.has_value()) {
+            book_path = *discovered;
+            book_usable = true;
         }
-        if (OpeningBook::is_usable_file(book_path) &&
-            static_cast<bool>(std::ifstream(book_path, std::ios::binary))) {
+        if (book_usable) {
             OpeningBook book(engine_directory);
             book.set_file(book_path);
             std::cout << detail::format_book_entries(book_path.filename().string(),

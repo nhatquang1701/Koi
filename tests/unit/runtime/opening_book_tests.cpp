@@ -331,6 +331,39 @@ void test_probe_all_returns_weight_sorted_legal_entries() {
             "probe_all must return empty for positions absent from the book");
 }
 
+void test_discover_opening_book_priority_and_validation() {
+    require(!koi::discover_opening_book({}).has_value(),
+            "discover_opening_book must return nullopt for an empty directory");
+
+    const koi::test::TempDirectory files;
+    require(!koi::discover_opening_book(files.path()).has_value(),
+            "discover_opening_book must return nullopt when no book exists");
+
+    const std::filesystem::path primary = files.path() / "book.bin";
+    {
+        std::ofstream corrupt(primary, std::ios::binary | std::ios::trunc);
+        corrupt << "corrupt";
+    }
+    require(!koi::discover_opening_book(files.path()).has_value(),
+            "discover_opening_book must ignore corrupt unaligned books");
+
+    const GameState start = GameState::startpos();
+    std::filesystem::create_directories(files.path() / "book");
+    const std::filesystem::path bundled = files.path() / "book" / "koi.bin";
+    write_book(bundled, {{start.polyglot_key(), polyglot_move("e2", "e4"), 50, 0}});
+    require(koi::discover_opening_book(files.path()) == bundled,
+            "discover_opening_book must find book/koi.bin when no higher-priority book exists");
+
+    const std::filesystem::path packaged = files.path() / "book" / "book.bin";
+    write_book(packaged, {{start.polyglot_key(), polyglot_move("d2", "d4"), 50, 0}});
+    require(koi::discover_opening_book(files.path()) == packaged,
+            "discover_opening_book must prefer book/book.bin over book/koi.bin");
+
+    write_book(primary, {{start.polyglot_key(), polyglot_move("c2", "c4"), 50, 0}});
+    require(koi::discover_opening_book(files.path()) == primary,
+            "discover_opening_book must prefer book.bin over book/book.bin");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -344,6 +377,7 @@ int main(int argc, char** argv) {
         {"book safety", test_book_safety_rejects_an_immediate_hanging_piece},
         {"same-timestamp book replacement invalidated", test_same_timestamp_size_change_invalidates_book_cache},
         {"probe_all weight-sorted legal entries", test_probe_all_returns_weight_sorted_legal_entries},
+        {"discover_opening_book priority and validation", test_discover_opening_book_priority_and_validation},
 #if defined(_WIN32)
         {"transient open failure retried", test_transient_open_failure_is_not_cached},
 #endif

@@ -49,8 +49,8 @@ Besides `koi-engine` itself, five standalone developer CLI executables are built
 alongside the engine. Every tool supports `-h` / `--help` and `-v` / `--version`; full flag tables and
 examples live in [CLI & Interactive Reference](../docs/CLI.md):
 
-- `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), `--hash MB`, `--fen-file` / `--epd` (supporting 4/6-field FENs, EPD `bm`/`am`/`id`/`hmvc`/`fmvn` ops, and UCI/SAN move lists), timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
-- `koi-perft` — fast standalone perft runner supporting `--divide`, `--suite` (6-position CPW depth-4 verification), and `[startpos|fen [moves <move>...]]`.
+- `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), `--hash MB`, `--limit N`, `--fen-file` / `--epd` (supporting 4/6-field FENs, EPD `bm`/`am`/`id`/`hmvc`/`fmvn` ops, and UCI/SAN move lists), timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
+- `koi-perft` — fast standalone perft runner supporting `--divide`, `--suite` / `suite` (6-position CPW depth-4 verification), and `[startpos|fen [moves <move>...]]`.
 - `koi-replay` — deterministic UCI and FIDE SAN game replay driver with optional `--pgn` export.
 - `koi-eval-features` — exports NNUE or HCE static evaluations for a FEN or EPD corpus to CSV (`--input`, `--output`, `--limit N`, `--flag=value` supported).
 - `koi-nnue-fixture` — generates valid synthetic `.nnue` test fixtures for CI and local testing.

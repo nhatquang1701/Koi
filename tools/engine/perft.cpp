@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -23,7 +24,7 @@ namespace {
 
 int print_usage(std::ostream& out, const int exit_code) {
     out << "usage: koi-perft [--divide] <depth> [startpos|fen [moves <move>...]]\n"
-           "       koi-perft --suite\n";
+           "       koi-perft --suite|suite\n";
     return exit_code;
 }
 
@@ -60,11 +61,18 @@ int main(int argc, char* argv[]) {
             divide = true;
             continue;
         }
-        if (argument == "--suite") {
+        if (argument == "--suite" ||
+            (!depth.has_value() && fen.empty() && argument == "suite")) {
             suite = true;
             continue;
         }
         if (!depth.has_value()) {
+            if (argument.starts_with("--") ||
+                (argument.size() >= 2 && argument[0] == '-' &&
+                 std::isdigit(static_cast<unsigned char>(argument[1])) == 0)) {
+                std::cerr << "koi-perft: unknown option '" << argument << "'\n";
+                return 2;
+            }
             int parsed = 0;
             const auto [end, error] =
                 std::from_chars(argument.data(), argument.data() + argument.size(), parsed);

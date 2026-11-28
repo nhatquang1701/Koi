@@ -1,4 +1,3 @@
-#include <charconv>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -7,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -41,6 +41,7 @@ struct BenchmarkConfig {
     bool warm_hash = false;
     bool optional = false;
     std::uint64_t node_limit = 0;
+    std::optional<std::size_t> position_limit;
     std::size_t warmup = 0;
     std::size_t repeat = 1;
     std::uint8_t default_fen_depth = 6;
@@ -115,11 +116,6 @@ bool avoids_move(const BenchPosition& benchmark, const koi::Move& move) {
         benchmark.avoid_moves.end();
 }
 
-bool parse_uint64(std::string_view value, std::uint64_t& parsed) {
-    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
-    return error == std::errc{} && end == value.data() + value.size();
-}
-
 bool parse_depth_sweep(std::string_view value, std::uint8_t& from, std::uint8_t& to) {
     const std::size_t separator = value.find("..");
     if (separator == std::string_view::npos || separator == 0 ||
@@ -128,8 +124,8 @@ bool parse_depth_sweep(std::string_view value, std::uint8_t& from, std::uint8_t&
     }
     std::uint64_t low = 0;
     std::uint64_t high = 0;
-    if (!parse_uint64(value.substr(0, separator), low) ||
-        !parse_uint64(value.substr(separator + 2), high)) {
+    if (!koi::detail::parse_uint64(value.substr(0, separator), low) ||
+        !koi::detail::parse_uint64(value.substr(separator + 2), high)) {
         return false;
     }
     if (low < 1 || high > 255 || low > high) {
@@ -211,7 +207,8 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
         }
         if (match_value_flag(argument, "--depth", index, argc, argv, flag_value, bad_flag_value)) {
             std::uint64_t value = 0;
-            if (bad_flag_value || !parse_uint64(flag_value, value) || value < 1 || value > 255) {
+            if (bad_flag_value || !koi::detail::parse_uint64(flag_value, value) ||
+                value < 1 || value > 255) {
                 return std::nullopt;
             }
             config.fixed_depth = static_cast<std::uint8_t>(value);
@@ -236,7 +233,7 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
             // Node-limited mode: measures the steady-state search instead of a
             // fixed shallow depth, matching the SPRT/node-limited match regime.
             std::uint64_t value = 0;
-            if (bad_flag_value || !parse_uint64(flag_value, value) || value == 0) {
+            if (bad_flag_value || !koi::detail::parse_uint64(flag_value, value) || value == 0) {
                 return std::nullopt;
             }
             config.node_limit = value;
@@ -244,7 +241,7 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
         }
         if (match_value_flag(argument, "--warmup", index, argc, argv, flag_value, bad_flag_value)) {
             std::uint64_t value = 0;
-            if (bad_flag_value || !parse_uint64(flag_value, value)) {
+            if (bad_flag_value || !koi::detail::parse_uint64(flag_value, value)) {
                 return std::nullopt;
             }
             config.warmup = static_cast<std::size_t>(value);
@@ -252,15 +249,25 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
         }
         if (match_value_flag(argument, "--repeat", index, argc, argv, flag_value, bad_flag_value)) {
             std::uint64_t value = 0;
-            if (bad_flag_value || !parse_uint64(flag_value, value) || value == 0) {
+            if (bad_flag_value || !koi::detail::parse_uint64(flag_value, value) || value == 0) {
                 return std::nullopt;
             }
             config.repeat = static_cast<std::size_t>(value);
             continue;
         }
+        if (match_value_flag(argument, "--limit", index, argc, argv, flag_value, bad_flag_value)) {
+            std::uint64_t value = 0;
+            if (bad_flag_value || !koi::detail::parse_uint64(flag_value, value) ||
+                value == 0 || value > std::numeric_limits<std::size_t>::max()) {
+                return std::nullopt;
+            }
+            config.position_limit = static_cast<std::size_t>(value);
+            continue;
+        }
         if (match_value_flag(argument, "--hash", index, argc, argv, flag_value, bad_flag_value)) {
             std::uint64_t value = 0;
-            if (bad_flag_value || !parse_uint64(flag_value, value) || value < 1 || value > 4'096) {
+            if (bad_flag_value || !koi::detail::parse_uint64(flag_value, value) ||
+                value < 1 || value > 4'096) {
                 return std::nullopt;
             }
             config.hash_mb = static_cast<std::size_t>(value);
@@ -268,7 +275,7 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
         }
         if (match_value_flag(argument, "--threads", index, argc, argv, flag_value, bad_flag_value)) {
             std::uint64_t value = 0;
-            if (bad_flag_value || !parse_uint64(flag_value, value) || value == 0) {
+            if (bad_flag_value || !koi::detail::parse_uint64(flag_value, value) || value == 0) {
                 return std::nullopt;
             }
             config.threads = std::min<std::size_t>(static_cast<std::size_t>(value),
@@ -277,7 +284,8 @@ std::optional<BenchmarkConfig> parse_arguments(int argc, char** argv) {
         }
         if (match_value_flag(argument, "--speed", index, argc, argv, flag_value, bad_flag_value)) {
             std::uint64_t value = 0;
-            if (bad_flag_value || !parse_uint64(flag_value, value) || value < 1 || value > 100) {
+            if (bad_flag_value || !koi::detail::parse_uint64(flag_value, value) ||
+                value < 1 || value > 100) {
                 return std::nullopt;
             }
             config.speed_percent = static_cast<std::uint8_t>(value);
@@ -453,7 +461,8 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
                                                 position.avoid_moves, nullptr);
                         } else if (opcode == "hmvc") {
                             std::uint64_t parsed_hmvc = 0;
-                            if (operand.empty() || !parse_uint64(operand, parsed_hmvc) ||
+                            if (operand.empty() ||
+                                !koi::detail::parse_uint64(operand, parsed_hmvc) ||
                                 parsed_hmvc > 65535) {
                                 throw std::runtime_error(
                                     "invalid EPD hmvc value '" + std::string(operand) +
@@ -463,7 +472,8 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
                             has_epd_clocks = true;
                         } else if (opcode == "fmvn") {
                             std::uint64_t parsed_fmvn = 0;
-                            if (operand.empty() || !parse_uint64(operand, parsed_fmvn) ||
+                            if (operand.empty() ||
+                                !koi::detail::parse_uint64(operand, parsed_fmvn) ||
                                 parsed_fmvn < 1 || parsed_fmvn > 65535) {
                                 throw std::runtime_error(
                                     "invalid EPD fmvn value '" + std::string(operand) +
@@ -1067,7 +1077,7 @@ void write_speed_json(const std::string& path, const BenchmarkConfig& config,
 }
 
 constexpr std::string_view kBenchUsage =
-    "usage: koi-bench [--hash MB] [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--depth N] [--depth-sweep a..b] [--fen-file|--epd path] [--nnue path | --hce] [--profile-json path] [--iteration-profile-json path] [--report path]\n";
+    "usage: koi-bench [--hash MB] [--threads N] [--speed 1-100] [--timed] [--warm-hash] [--optional] [--nodes N] [--warmup K] [--repeat K] [--limit N] [--depth N] [--depth-sweep a..b] [--fen-file|--epd path] [--nnue path | --hce] [--profile-json path] [--iteration-profile-json path] [--report path]\n";
 
 } // namespace
 
@@ -1126,6 +1136,9 @@ int main(int argc, char** argv) {
         if (config->repeat != 1) {
             std::cout << " repeat " << config->repeat;
         }
+        if (config->position_limit.has_value()) {
+            std::cout << " limit " << *config->position_limit;
+        }
         if (config->fixed_depth.has_value()) {
             std::cout << " depth " << static_cast<unsigned>(*config->fixed_depth);
         }
@@ -1139,6 +1152,9 @@ int main(int argc, char** argv) {
         std::cout << '\n';
         std::vector<BenchPosition> positions = config->fen_file_path.has_value() ?
             load_fen_positions(*config->fen_file_path) : load_suite_positions(config->optional);
+        if (config->position_limit.has_value() && positions.size() > *config->position_limit) {
+            positions.resize(*config->position_limit);
+        }
         for (BenchPosition& position : positions) {
             if (config->depth_sweep.has_value()) {
                 // A sweep runs one iterative-deepening search to the top of

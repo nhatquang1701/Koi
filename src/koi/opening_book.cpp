@@ -348,6 +348,25 @@ bool OpeningBook::is_usable_file(const std::filesystem::path& path) {
     return !error && size >= 16U && size % 16U == 0 && size <= kMaximumBookFileSize;
 }
 
+std::optional<std::filesystem::path> discover_opening_book(
+    const std::filesystem::path& directory) {
+    if (directory.empty()) {
+        return std::nullopt;
+    }
+    const std::array<std::filesystem::path, 3> candidates{
+        directory / "book.bin",
+        directory / "book" / "book.bin",
+        directory / "book" / "koi.bin",
+    };
+    for (const std::filesystem::path& candidate : candidates) {
+        if (OpeningBook::is_usable_file(candidate) &&
+            static_cast<bool>(std::ifstream(candidate, std::ios::binary))) {
+            return candidate;
+        }
+    }
+    return std::nullopt;
+}
+
 void OpeningBook::set_file(std::filesystem::path path) {
     impl_->set_file(std::move(path));
 }

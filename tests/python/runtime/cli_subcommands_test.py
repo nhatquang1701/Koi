@@ -881,6 +881,34 @@ class CliSubcommandsTest(unittest.TestCase):
             )
             self.assertNotEqual(bad_suite.returncode, 0, bad_suite.stdout)
 
+        perft_suite_alias = subprocess.run(
+            [str(perft_exe), "suite"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(perft_suite_alias.returncode, 0, perft_suite_alias.stderr)
+        self.assertEqual(perft_suite_alias.stderr, "")
+        self.assertIn("suite 6/6 passed | nodes 10746536 |", perft_suite_alias.stdout)
+
+        bad_perft_opt = subprocess.run(
+            [str(perft_exe), "--bogus"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(bad_perft_opt.returncode, 2, bad_perft_opt.stdout)
+        self.assertIn("unknown option", bad_perft_opt.stderr)
+
+        neg_perft = subprocess.run(
+            [str(perft_exe), "-1"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(neg_perft.returncode, 1, neg_perft.stdout)
+        self.assertIn("non-negative integer", neg_perft.stderr)
+
         help_replay = subprocess.run([str(replay_exe), "--help"], capture_output=True, text=True, timeout=15)
         self.assertEqual(help_replay.returncode, 0, help_replay.stderr)
         self.assertIn("usage: koi-replay", help_replay.stdout)
@@ -1059,6 +1087,57 @@ class CliSubcommandsTest(unittest.TestCase):
             )
             self.assertNotEqual(bad_hmvc_bench.returncode, 0)
             self.assertIn("invalid EPD hmvc value", bad_hmvc_bench.stderr)
+
+            limit1_json = bench_dir / "limit1.json"
+            bench_limit1 = subprocess.run(
+                [
+                    str(bench_exe),
+                    "--hce",
+                    "--epd",
+                    str(epd_file),
+                    "--depth",
+                    "1",
+                    "--limit",
+                    "1",
+                    "--profile-json",
+                    str(limit1_json),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(bench_limit1.returncode, 0, bench_limit1.stderr)
+            self.assertEqual(bench_limit1.stderr, "")
+            self.assertIn(" limit 1", bench_limit1.stdout)
+            limit1_rows = [line for line in bench_limit1.stdout.splitlines() if line.startswith("position ")]
+            self.assertEqual(len(limit1_rows), 1, bench_limit1.stdout)
+            limit1_profile = json.loads(limit1_json.read_text(encoding="utf-8"))
+            self.assertEqual(len(limit1_profile["positions"]), 1)
+
+            bench_limit2 = subprocess.run(
+                [str(bench_exe), "--hce", "--epd", str(epd_file), "--depth", "1", "--limit=2"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(bench_limit2.returncode, 0, bench_limit2.stderr)
+            self.assertEqual(bench_limit2.stderr, "")
+            self.assertIn(" limit 2", bench_limit2.stdout)
+            limit2_rows = [line for line in bench_limit2.stdout.splitlines() if line.startswith("position ")]
+            self.assertEqual(len(limit2_rows), 2, bench_limit2.stdout)
+
+        for bad_limit_args in (
+            ["--hce", "--limit", "0"],
+            ["--hce", "--limit=abc"],
+            ["--hce", "--limit="],
+        ):
+            bad_limit = subprocess.run(
+                [str(bench_exe), *bad_limit_args],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(bad_limit.returncode, 2, bad_limit.stdout)
 
         bad_bench_hash = subprocess.run(
             [str(bench_exe), "--hce", "--hash", "0"],

@@ -309,6 +309,10 @@ $mainSource = Read-RepositoryFile 'src/main.cpp'
 if ($mainSource -notmatch 'resolve_boot_nnue_path\(' -or $mainSource -match 'discover_nnue_network\(') {
     Fail 'src/main.cpp must delegate NNUE discovery to resolve_boot_nnue_path() instead of calling discover_nnue_network() directly'
 }
+$cliSupportImpl = Read-RepositoryFile 'src/cli_support.cpp'
+if ($cliSupportImpl -notmatch 'discover_opening_book\(' -or $cliSupportImpl.Contains('"koi.bin"')) {
+    Fail 'src/cli_support.cpp must delegate book discovery to discover_opening_book() instead of hardcoding candidate paths'
+}
 
 # 4. Engine core sources must not contain dead/tooling translation units.
 Write-Output '[4/4] check CMake core sources, reliability fuzzer location, and architecture docs'
