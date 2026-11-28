@@ -403,8 +403,10 @@ class SimpleEngine:
             self._send("go perft 1")
             moves = []
             total = None
+            deadline = time.monotonic() + timeout
             while total is None:
-                line = self._read_line(timeout=timeout)
+                remaining = max(0.0, deadline - time.monotonic())
+                line = self._read_line(timeout=remaining)
                 prefix = "info string "
                 if not line.startswith(prefix):
                     continue
@@ -474,7 +476,10 @@ class SimpleEngine:
             parsed = _parse_info_line(tokens)
             if parsed is None:
                 continue
-            last_info = parsed
+            if "score" in parsed or parsed.get("pv"):
+                last_info = parsed
+            elif "score" not in last_info and not last_info.get("pv") and "string" not in parsed:
+                last_info = parsed
         if return_bestmove:
             return (
                 last_info,

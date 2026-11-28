@@ -62,6 +62,11 @@ for line in sys.stdin:
         print("info string e2e4: 1", flush=True)
         print("info string d2d4: 1", flush=True)
         print("info string Nodes searched: 2", flush=True)
+    elif line == "go perft 1" and scenario == "chatter_perft":
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            print("info string busy chatter", flush=True)
+            time.sleep(0.02)
     elif line.startswith("go"):
         if scenario == "terminate":
             sys.exit(0)
@@ -78,6 +83,11 @@ for line in sys.stdin:
         elif scenario == "nomove":
             print("info depth 1 score cp 0", flush=True)
             print("bestmove 0000", flush=True)
+        elif scenario == "trailing_info":
+            print("info depth 3 seldepth 5 score cp 42 nodes 1234 pv e2e4 e7e5", flush=True)
+            print("info currmove d2d4 currmovenumber 2", flush=True)
+            print("info string search complete", flush=True)
+            print("bestmove e2e4", flush=True)
         else:
             print("info depth 3 seldepth 5 score cp 42 nodes 1234 pv e2e4 e7e5 g1f3", flush=True)
             print("bestmove e2e4 ponder e7e5", flush=True)
@@ -301,6 +311,21 @@ class EngineSessionTests(FakeEngineMixin):
         started = time.monotonic()
         session.quit()
         self.assertLess(time.monotonic() - started, 2.0)
+
+    def test_analyse_preserves_score_and_pv_across_trailing_currmove_and_info_string(self):
+        session = self.spawn("trailing_info")
+        info = session.analyse(chess.Board(), engine.Limit(depth=3))
+        self.assertEqual(info["depth"], 3)
+        self.assertEqual(info["score"].pov(chess.WHITE).score(), 42)
+        self.assertEqual([move.uci() for move in info["pv"]], ["e2e4", "e7e5"])
+
+    def test_legal_moves_chatter_respects_cumulative_timeout(self):
+        session = self.spawn("chatter_perft")
+        started = time.monotonic()
+        with self.assertRaises(engine.EngineError):
+            session.legal_moves(chess.Board(), timeout=0.15)
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 1.5)
 
 
 if __name__ == "__main__":

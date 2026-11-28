@@ -81,9 +81,7 @@ struct PrincipalVariation {
 private:
     void copy_from(const PrincipalVariation& other) noexcept {
         length = other.length;
-        for (std::size_t index = 0; index < length; ++index) {
-            moves[index] = other.moves[index];
-        }
+        std::copy_n(other.moves.data(), length, moves.data());
     }
 };
 

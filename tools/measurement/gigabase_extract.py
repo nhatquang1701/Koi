@@ -15,7 +15,7 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import quote
 
 
@@ -28,6 +28,7 @@ MAX_POSITIONS = 2_000_000
 RESULT_TOKENS = {"1-0", "0-1", "1/2-1/2", "*"}
 PGN_MOVE_NUMBER_RE = re.compile(r"^\d+\.{1,3}")
 PGN_NAG_RE = re.compile(r"^\$\d+$")
+PGN_RESULT_HEADER_RE = re.compile(r'^\s*\[Result\s+"(?P<result>[^"\s]+)"\]\s*$', re.IGNORECASE)
 SPLIT_RATIOS = {"train": 0.70, "validation": 0.15, "holdout": 0.15}
 SPLIT_ORDER = ("train", "validation", "holdout")
 
@@ -112,14 +113,14 @@ def _quote_identifier(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
 
 
-def _table_schema(connection: sqlite3.Connection) -> Dict[str, List[str]]:
+def _table_schema(connection: sqlite3.Connection) -> dict[str, list[str]]:
     try:
         table_rows = connection.execute(
             "SELECT name FROM sqlite_master "
             "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
             "ORDER BY name"
         ).fetchall()
-        schemas: Dict[str, List[str]] = {}
+        schemas: dict[str, list[str]] = {}
         for table_row in table_rows:
             table_name = str(table_row[0])
             columns = connection.execute(
@@ -132,8 +133,8 @@ def _table_schema(connection: sqlite3.Connection) -> Dict[str, List[str]]:
 
 
 def _find_column(
-    columns: Sequence[str], requested: Optional[str], candidates: Sequence[str]
-) -> Optional[str]:
+    columns: Sequence[str], requested: str | None, candidates: Sequence[str]
+) -> str | None:
     by_lower = {column.casefold(): column for column in columns}
     if requested is not None:
         return by_lower.get(requested.casefold())
@@ -144,15 +145,15 @@ def _find_column(
 
 
 def _choose_table(
-    schemas: Mapping[str, Sequence[str]], requested: Optional[str]
-) -> Tuple[str, List[str]]:
+    schemas: Mapping[str, Sequence[str]], requested: str | None
+) -> tuple[str, list[str]]:
     if requested is not None:
         for table_name, columns in schemas.items():
             if table_name.casefold() == requested.casefold():
                 return table_name, list(columns)
         raise GigaBaseError(f"GigaBase table is missing: '{requested}'")
 
-    table_candidates: List[Tuple[int, str, List[str]]] = []
+    table_candidates: list[tuple[int, str, list[str]]] = []
     for table_name, columns in schemas.items():
         lowered = {column.casefold() for column in columns}
         if lowered.intersection(
@@ -182,7 +183,7 @@ def _choose_table(
 
 
 def _strip_pgn_noise(pgn: str) -> str:
-    output: List[str] = []
+    output: list[str] = []
     index = 0
     variation_depth = 0
     in_brace_comment = False
@@ -262,7 +263,7 @@ def _position_count(value: Any, pgn_value: Any, fen_value: Any) -> int:
     return 1
 
 
-def _optional_chess_modules() -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
+def _optional_chess_modules() -> tuple[Any | None, Any | None, str | None]:
     """Load koi_chess lazily so raw extraction remains standard-library-safe."""
 
     module_dir = Path(__file__).resolve().parent
@@ -286,14 +287,14 @@ def _canonical_game_key(pgn_value: Any, fen_value: Any, result: str) -> str:
         payload = {"kind": "fen", "fen": " ".join(str(fen_value).split()), "result": result}
     else:
         payload = {"kind": "row", "result": result}
-    return _record_hash(payload)
+    return _content_hash(payload)
 
 
-def _header_result(pgn_value: Any) -> Optional[str]:
+def _header_result(pgn_value: Any) -> str | None:
     if pgn_value is None:
         return None
     for line in str(pgn_value).splitlines():
-        match = re.match(r'^\s*\[Result\s+"(?P<result>[^"\s]+)"\]\s*$', line, re.IGNORECASE)
+        match = PGN_RESULT_HEADER_RE.match(line)
         if match and match.group("result") in RESULT_TOKENS:
             return match.group("result")
     return None
@@ -310,7 +311,7 @@ def _side_name(chess: Any, board: Any) -> str:
     return "white" if board.turn == chess.WHITE else "black"
 
 
-def _decode_pgn(pgn_value: Any, fen_value: Any) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def _decode_pgn(pgn_value: Any, fen_value: Any) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Decode legal mainline positions, returning a non-fatal fallback on bad input."""
 
     if pgn_value is None and fen_value is None:
@@ -342,7 +343,7 @@ def _decode_pgn(pgn_value: Any, fen_value: Any) -> Tuple[List[Dict[str, Any]], D
         if game.errors:
             raise ValueError("; ".join(str(error) for error in game.errors))
         board = game.board()
-        positions: List[Dict[str, Any]] = []
+        positions: list[dict[str, Any]] = []
         for ply, node in enumerate(game.mainline(), start=1):
             move = node.move
             if move is None or not board.is_legal(move):
@@ -363,20 +364,15 @@ def _decode_pgn(pgn_value: Any, fen_value: Any) -> Tuple[List[Dict[str, Any]], D
         return [], {"status": "fallback", "reason": f"move decoding failed: {error}"}
 
 
-def _record_hash(record: Mapping[str, Any]) -> str:
-    canonical = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
 def _iter_records(
     connection: sqlite3.Connection,
     table: str,
     columns: Sequence[str],
-    requested_id: Optional[str] = None,
-    requested_pgn: Optional[str] = None,
-    requested_position_count: Optional[str] = None,
-    requested_result: Optional[str] = None,
-) -> Iterable[Dict[str, Any]]:
+    requested_id: str | None = None,
+    requested_pgn: str | None = None,
+    requested_position_count: str | None = None,
+    requested_result: str | None = None,
+) -> Iterable[dict[str, Any]]:
     id_column = _find_column(columns, requested_id, ("id", "game_id", "gameid", "key"))
     pgn_column = _find_column(
         columns,
@@ -409,7 +405,7 @@ def _iter_records(
             f"table '{table}' has no recognizable id, PGN, FEN, or position-count column"
         )
 
-    selected: List[str] = []
+    selected: list[str] = []
     if id_column is not None:
         selected.append(f"{_quote_identifier(id_column)} AS __source_id")
     else:
@@ -437,7 +433,7 @@ def _iter_records(
             result_value = row["__result"] if "__result" in row.keys() else None
             position_count = _position_count(position_value, pgn_value, fen_value)
             stratum = _record_stratum(result_value, pgn_value)
-            record: Dict[str, Any] = {
+            record: dict[str, Any] = {
                 "source_id": source_id,
                 "position_count": position_count,
                 "legal_position_count": 0,
@@ -456,21 +452,21 @@ def _iter_records(
                 record["fen_sha256"] = hashlib.sha256(
                     str(fen_value).encode("utf-8")
                 ).hexdigest()
-            record["record_sha256"] = _record_hash(record)
+            record["record_sha256"] = _content_hash(record)
             yield record
     except sqlite3.DatabaseError as error:
         raise GigaBaseError(f"unable to read GigaBase table '{table}': {error}") from error
 
 
 def _sample_records(
-    records: Iterable[Dict[str, Any]],
+    records: Iterable[dict[str, Any]],
     seed: int,
     max_games: int,
     max_positions: int,
-) -> Tuple[List[Dict[str, Any]], int, int]:
-    reservoirs: Dict[str, List[Dict[str, Any]]] = {}
-    stratum_counts: Dict[str, int] = {}
-    stratum_rngs: Dict[str, random.Random] = {}
+) -> tuple[list[dict[str, Any]], int, int]:
+    reservoirs: dict[str, list[dict[str, Any]]] = {}
+    stratum_counts: dict[str, int] = {}
+    stratum_rngs: dict[str, random.Random] = {}
     seen_keys: set[str] = set()
     scanned = 0
     unique = 0
@@ -499,7 +495,7 @@ def _sample_records(
             reservoir[replacement] = record
 
     target = min(max_games, unique)
-    candidate_records: List[Dict[str, Any]] = []
+    candidate_records: list[dict[str, Any]] = []
     if target > 0:
         allocations = _largest_remainder_allocation(stratum_counts, target)
         for stratum in sorted(reservoirs):
@@ -508,7 +504,7 @@ def _sample_records(
             candidate_records.extend(reservoir[: allocations.get(stratum, 0)])
 
     random.Random(seed).shuffle(candidate_records)
-    selected: List[Dict[str, Any]] = []
+    selected: list[dict[str, Any]] = []
     positions = 0
     for record in candidate_records:
         record_positions = int(record["position_count"])
@@ -521,7 +517,7 @@ def _sample_records(
     return selected, scanned, unique
 
 
-def _largest_remainder_allocation(counts: Mapping[str, int], target: int) -> Dict[str, int]:
+def _largest_remainder_allocation(counts: Mapping[str, int], target: int) -> dict[str, int]:
     if target <= 0 or not counts:
         return {stratum: 0 for stratum in counts}
     total = sum(counts.values())
@@ -539,7 +535,7 @@ def _largest_remainder_allocation(counts: Mapping[str, int], target: int) -> Dic
     return allocation
 
 
-def _split_counts(count: int) -> Dict[str, int]:
+def _split_counts(count: int) -> dict[str, int]:
     if count <= 0:
         return {split: 0 for split in SPLIT_ORDER}
     raw = {split: count * SPLIT_RATIOS[split] for split in SPLIT_ORDER}
@@ -554,15 +550,15 @@ def _split_counts(count: int) -> Dict[str, int]:
     return counts
 
 
-def _split_records(records: Sequence[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def _split_records(records: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     allocations = _split_counts(len(records))
-    by_stratum: Dict[str, List[Dict[str, Any]]] = {}
+    by_stratum: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         by_stratum.setdefault(str(record["stratum"]), []).append(record)
 
     # Interleave strata before slicing exact global quotas. This keeps common
     # result/outcome strata represented in every split when the sample permits.
-    interleaved: List[Dict[str, Any]] = []
+    interleaved: list[dict[str, Any]] = []
     offsets = {stratum: 0 for stratum in by_stratum}
     while True:
         progressed = False
@@ -589,7 +585,7 @@ def _content_hash(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _decode_selected_record(record: Dict[str, Any]) -> Dict[str, Any]:
+def _decode_selected_record(record: dict[str, Any]) -> dict[str, Any]:
     positions, decode = _decode_pgn(record.get("_pgn_value"), record.get("_fen_value"))
     record["positions"] = positions
     record["legal_position_count"] = len(positions)
@@ -598,7 +594,7 @@ def _decode_selected_record(record: Dict[str, Any]) -> Dict[str, Any]:
         record["position_count"] = len(positions)
     record.pop("_pgn_value", None)
     record.pop("_fen_value", None)
-    record["record_sha256"] = _record_hash(
+    record["record_sha256"] = _content_hash(
         {key: value for key, value in record.items() if key != "record_sha256"}
     )
     return record
@@ -609,12 +605,12 @@ def sample_database(
     seed: int = DEFAULT_SEED,
     max_games: int = MAX_GAMES,
     max_positions: int = MAX_POSITIONS,
-    table: Optional[str] = None,
-    id_column: Optional[str] = None,
-    pgn_column: Optional[str] = None,
-    position_count_column: Optional[str] = None,
-    result_column: Optional[str] = None,
-) -> Dict[str, Any]:
+    table: str | None = None,
+    id_column: str | None = None,
+    pgn_column: str | None = None,
+    position_count_column: str | None = None,
+    result_column: str | None = None,
+) -> dict[str, Any]:
     """Return a bounded deterministic sample and its train/validation/holdout splits."""
 
     if max_games <= 0 or max_games > MAX_GAMES:
@@ -699,8 +695,8 @@ def sample_database(
 def _manifest_for_split(
     split: str,
     sample: Mapping[str, Any],
-    records: Sequence[Dict[str, Any]],
-) -> Dict[str, Any]:
+    records: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
     source = dict(sample["source"])
     sampling = dict(sample["sampling"])
     content = {
@@ -727,7 +723,7 @@ def _manifest_for_split(
     }
 
 
-def _summary_for_sample(sample: Mapping[str, Any], manifests: Mapping[str, Mapping[str, Any]]) -> Dict[str, Any]:
+def _summary_for_sample(sample: Mapping[str, Any], manifests: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     split_summary = {
         split: {
             "record_count": int(manifest["record_count"]),
@@ -757,14 +753,14 @@ def _summary_for_sample(sample: Mapping[str, Any], manifests: Mapping[str, Mappi
     }
 
 
-def write_manifests(sample: Mapping[str, Any], output_directory: Path) -> Dict[str, Path]:
+def write_manifests(sample: Mapping[str, Any], output_directory: Path) -> dict[str, Path]:
     output = _require_output_directory(output_directory)
     output.mkdir(parents=True, exist_ok=True)
     manifests = {
         split: _manifest_for_split(split, sample, records)
         for split, records in sample["splits"].items()
     }
-    paths: Dict[str, Path] = {}
+    paths: dict[str, Path] = {}
     try:
         for split, manifest in manifests.items():
             path = output / f"{split}.json"
@@ -819,7 +815,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
     _require_output_directory(args.output_dir)
     sample = sample_database(
