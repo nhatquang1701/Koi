@@ -1905,6 +1905,64 @@ void test_emergency_single_move_and_winning_mate_fast_exit() {
             "healthy clock winning-mate ponderhit at depth 4 must retain depth>=6 instant-exit gate");
 }
 
+void test_high_latency_usable_clock_sudden_death_scramble_and_subsecond() {
+    auto now_sub_lat = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager sub_lat(clock_limits(milliseconds{1'400}, milliseconds{0}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), [now_sub_lat] { return *now_sub_lat; },
+                        false, *now_sub_lat, 250);
+    sub_lat.observe_iteration({4, 50, true, false, true, 10'000, 2'000, milliseconds{5}});
+    sub_lat.observe_iteration({5, 50, true, false, true, 10'000, 2'000, milliseconds{8}});
+    require(sub_lat.diagnostics().emergency_pacing &&
+                sub_lat.diagnostics().usable <= milliseconds{1'000} &&
+                sub_lat.diagnostics().optimum_budget <= sub_lat.diagnostics().soft_budget,
+            "high-latency usable clock <= 1 s in sudden death must cap optimum_budget at 1.00x soft");
+    *now_sub_lat += sub_lat.diagnostics().optimum_budget;
+    require(sub_lat.should_stop_after_iteration() &&
+                !sub_lat.should_start_next_iteration(milliseconds{1}),
+            "high-latency usable clock <= 1 s in sudden death must block hard extensions");
+
+    auto now_sub_low = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager sub_low(clock_limits(milliseconds{1'400}, milliseconds{0}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), [now_sub_low] { return *now_sub_low; },
+                        false, *now_sub_low, 30);
+    sub_low.observe_iteration({4, 50, true, false, true, 10'000, 2'000, milliseconds{5}});
+    sub_low.observe_iteration({5, 50, true, false, true, 10'000, 2'000, milliseconds{8}});
+    *now_sub_low += sub_low.diagnostics().optimum_budget;
+    require(sub_low.diagnostics().usable > milliseconds{1'000} &&
+                sub_low.diagnostics().optimum_budget > sub_low.diagnostics().soft_budget,
+            "low-latency 1400 ms sudden-death clock with usable > 1 s may still extend past soft_budget");
+
+    auto now_scr_lat = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_lat(clock_limits(milliseconds{10'500}, milliseconds{0}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), [now_scr_lat] { return *now_scr_lat; },
+                        false, *now_scr_lat, 1'000);
+    scr_lat.observe_iteration({4, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    scr_lat.observe_iteration({5, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    *now_scr_lat += (scr_lat.diagnostics().optimum_budget * 72) / 100;
+    require(!scr_lat.diagnostics().emergency_pacing &&
+                scr_lat.diagnostics().usable <= milliseconds{9'000} &&
+                scr_lat.should_stop_after_iteration() &&
+                !scr_lat.should_start_next_iteration(milliseconds{1}),
+            "high-latency usable clock <= 9 s in sudden death must engage 70% scramble cutoff at depth 5");
+
+    auto now_scr_low = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_low(clock_limits(milliseconds{10'500}, milliseconds{0}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), [now_scr_low] { return *now_scr_low; },
+                        false, *now_scr_low, 30);
+    scr_low.observe_iteration({4, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    scr_low.observe_iteration({5, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    *now_scr_low += (scr_low.diagnostics().optimum_budget * 72) / 100;
+    require(!scr_low.diagnostics().emergency_pacing &&
+                scr_low.diagnostics().usable > milliseconds{9'000} &&
+                !scr_low.should_stop_after_iteration() &&
+                scr_low.should_start_next_iteration(milliseconds{1}),
+            "low-latency 10500 ms sudden-death clock with usable > 9 s must continue at depth 5 and 72% target");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1991,6 +2049,8 @@ int main(int argc, char** argv) {
          test_emergency_ponderhit_discount_and_high_effort_fast_exit},
         {"emergency single move and winning mate exit",
          test_emergency_single_move_and_winning_mate_fast_exit},
+        {"high latency usable clock scramble and subsecond",
+         test_high_latency_usable_clock_sudden_death_scramble_and_subsecond},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

@@ -621,11 +621,15 @@ private:
                     if (job->depth == 1 && job->root_features.has_value() &&
                         !root_move.is_capture() && !root_move.gives_check &&
                         root_move.move.promotion() == Promotion::none &&
-                        quiet_move_has_direct_forcing_target(*job->root_features, root_move) &&
-                        quiet_move_is_forcing(*job->root_features, child.position_features(),
-                                              root_move)) {
-                        ++context.stats.quiet_forcing_extensions;
-                        ++child_depth;
+                        quiet_move_has_direct_forcing_target(*job->root_features, root_move)) {
+                        QuietForcingAfterView after_view;
+                        build_quiet_forcing_after_view(
+                            child, job->root->side_to_move(), after_view);
+                        if (quiet_move_is_forcing(
+                                *job->root_features, child, after_view, root_move)) {
+                            ++context.stats.quiet_forcing_extensions;
+                            ++child_depth;
+                        }
                     }
                     const int shared_alpha = job->root_alpha.load(std::memory_order_relaxed);
                     // MultiPV per-move aspiration: narrow the window around

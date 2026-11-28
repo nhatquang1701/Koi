@@ -1937,6 +1937,9 @@ void UciController::handle_ponderhit() {
             ponder_ctx.game_phase = position_.game_phase();
             ponder_ctx.fullmove_number = position_.fullmove_number();
             ponder_ctx.in_check = position_.in_check();
+            if (position_.count_legal_moves_up_to(2) == 1) {
+                ponder_ctx.legal_move_count = 1;
+            }
             koi::TimeManager converted_timing(
                 converted_for_timing, position_.side_to_move(), kFixedSpeedPercent,
                 move_overhead_ms_, slow_mover_percent_,

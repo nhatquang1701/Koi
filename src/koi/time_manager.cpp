@@ -811,13 +811,8 @@ void TimeManager::update_optimum_budget() noexcept {
         scale_permille = (scale_permille * 800ULL) / 1000ULL;
     }
 
-    const bool sudden_death_no_mtg =
-        increment_clock_ <= std::chrono::milliseconds::zero() &&
-        !limits_.moves_to_go.has_value();
-    const bool subsecond_sudden_death =
-        sudden_death_no_mtg && remaining_clock_ <= std::chrono::milliseconds{1'000};
-    const bool sudden_death_scramble =
-        sudden_death_no_mtg && remaining_clock_ <= std::chrono::milliseconds{10'000};
+    const bool subsecond_sudden_death = is_subsecond_sudden_death();
+    const bool sudden_death_scramble = is_sudden_death_scramble();
     const std::uint64_t max_scale_permille =
         subsecond_sudden_death ? 1000ULL : (sudden_death_scramble ? 1350ULL : 1850ULL);
     scale_permille = std::clamp<std::uint64_t>(scale_permille, 380, max_scale_permille);
@@ -827,15 +822,29 @@ void TimeManager::update_optimum_budget() noexcept {
     timing_.optimum_budget = std::clamp(scaled, floor_budget, timing_.hard_budget);
 }
 
+bool TimeManager::is_subsecond_sudden_death() const noexcept {
+    return clock_mode_ &&
+        increment_clock_ <= std::chrono::milliseconds::zero() &&
+        !limits_.moves_to_go.has_value() &&
+        (remaining_clock_ <= std::chrono::milliseconds{1'000} ||
+         timing_.usable <= std::chrono::milliseconds{1'000});
+}
+
+bool TimeManager::is_sudden_death_scramble() const noexcept {
+    return clock_mode_ &&
+        increment_clock_ <= std::chrono::milliseconds::zero() &&
+        !limits_.moves_to_go.has_value() &&
+        (remaining_clock_ <= std::chrono::milliseconds{10'000} ||
+         timing_.usable <= std::chrono::milliseconds{9'000});
+}
+
 std::chrono::milliseconds TimeManager::effective_soft_budget() const noexcept {
     return timing_.optimum_budget > std::chrono::milliseconds::zero() ?
         timing_.optimum_budget : timing_.soft_budget;
 }
 
 bool TimeManager::hard_extension_affordable() const noexcept {
-    if (clock_mode_ && increment_clock_ <= std::chrono::milliseconds::zero() &&
-        !limits_.moves_to_go.has_value() &&
-        remaining_clock_ <= std::chrono::milliseconds{1'000}) {
+    if (is_subsecond_sudden_death()) {
         return false;
     }
     if (timing_.overhead > std::chrono::milliseconds::zero() &&
@@ -918,10 +927,7 @@ bool TimeManager::clock_early_stop_reached(
             elapsed >= scale_fraction(soft_target, 75, 100)) {
             return true;
         }
-        const bool sudden_death_scramble =
-            increment_clock_ <= std::chrono::milliseconds::zero() &&
-            !limits_.moves_to_go.has_value() &&
-            remaining_clock_ <= std::chrono::milliseconds{10'000};
+        const bool sudden_death_scramble = is_sudden_death_scramble();
         if ((emergency_pacing_ || sudden_death_scramble) &&
             last_observed_depth_ >= 5 && stable_observations_ >= 2 &&
             best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&

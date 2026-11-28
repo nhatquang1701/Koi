@@ -53,6 +53,8 @@ private:
     // A hard position may run past the soft budget only while the clock can
     // still pay for several more hard moves; near the end the soft budget wins.
     [[nodiscard]] bool hard_extension_affordable() const noexcept;
+    [[nodiscard]] bool is_subsecond_sudden_death() const noexcept;
+    [[nodiscard]] bool is_sudden_death_scramble() const noexcept;
     [[nodiscard]] std::chrono::milliseconds effective_soft_budget() const noexcept;
     [[nodiscard]] bool clock_early_stop_reached(
         std::chrono::milliseconds elapsed,

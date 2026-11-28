@@ -1508,22 +1508,24 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // restores it between candidates (make/unmake), with captures and
         // promotions never observed by the quiet-only gates below.  Compute
         // it once for all three consumers instead of once per use.
-        const auto& node_bitboards = *node_info.piece_bitboards;
-        constexpr std::size_t kPhaseKnightIdx = static_cast<std::size_t>(PieceType::knight);
-        constexpr std::size_t kPhaseBishopIdx = static_cast<std::size_t>(PieceType::bishop);
-        constexpr std::size_t kPhaseRookIdx = static_cast<std::size_t>(PieceType::rook);
-        constexpr std::size_t kPhaseQueenIdx = static_cast<std::size_t>(PieceType::queen);
-        const int node_game_phase = std::min(
-            static_cast<int>(std::popcount(
-                node_bitboards[0][kPhaseKnightIdx] | node_bitboards[1][kPhaseKnightIdx] |
-                node_bitboards[0][kPhaseBishopIdx] | node_bitboards[1][kPhaseBishopIdx])) +
-                2 * static_cast<int>(std::popcount(
-                    node_bitboards[0][kPhaseRookIdx] | node_bitboards[1][kPhaseRookIdx])) +
-                4 * static_cast<int>(std::popcount(
-                    node_bitboards[0][kPhaseQueenIdx] | node_bitboards[1][kPhaseQueenIdx])),
-            24);
+        const auto node_game_phase = [&]() noexcept -> int {
+            const auto& node_bitboards = *node_info.piece_bitboards;
+            constexpr std::size_t kPhaseKnightIdx = static_cast<std::size_t>(PieceType::knight);
+            constexpr std::size_t kPhaseBishopIdx = static_cast<std::size_t>(PieceType::bishop);
+            constexpr std::size_t kPhaseRookIdx = static_cast<std::size_t>(PieceType::rook);
+            constexpr std::size_t kPhaseQueenIdx = static_cast<std::size_t>(PieceType::queen);
+            return std::min(
+                static_cast<int>(std::popcount(
+                    node_bitboards[0][kPhaseKnightIdx] | node_bitboards[1][kPhaseKnightIdx] |
+                    node_bitboards[0][kPhaseBishopIdx] | node_bitboards[1][kPhaseBishopIdx])) +
+                    2 * static_cast<int>(std::popcount(
+                        node_bitboards[0][kPhaseRookIdx] | node_bitboards[1][kPhaseRookIdx])) +
+                    4 * static_cast<int>(std::popcount(
+                        node_bitboards[0][kPhaseQueenIdx] | node_bitboards[1][kPhaseQueenIdx])),
+                24);
+        };
         const bool phase_rich_depth_one_candidate =
-            !claimable_draw && !checked && depth == 1 && node_game_phase >= 8;
+            !claimable_draw && !checked && depth == 1 && node_game_phase() >= 8;
         std::optional<bool> phase_rich_quiet_position_value;
         const auto phase_rich_quiet_position = [&]() -> bool {
             if (!phase_rich_quiet_position_value.has_value()) {
@@ -1594,9 +1596,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             !excluded_search && ply >= null_verification_min_ply &&
             ply > 0 && cut_node;
         const bool null_move_allowed = null_move_shape_allowed && !repetition_sensitive;
-        const NullMoveDecision null_move_gate = SearchPolicy::null_move(
-            depth, alpha, beta, checked, null_move_shape_allowed);
-        if (null_move_gate.eligible && repetition_sensitive) {
+        if (repetition_sensitive &&
+            SearchPolicy::null_move(
+                depth, alpha, beta, checked, null_move_shape_allowed).eligible) {
             ++stats.null_repetition_skips;
         }
         const bool pawn_endgame = !parent_has_non_pawn_material ||
@@ -1632,7 +1634,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // root provenance remains conservative.
                     bool null_cutoff_proven = true;
                     const bool verify_null = null_move_decision.verify ||
-                        node_game_phase < 8 ||
+                        node_game_phase() < 8 ||
                         node_piece_count <= kNullMoveSparsePieceLimit;
                     // A verification search may not start another nested
                     // verification (Stockfish's nmpMinPly guard).
@@ -1914,7 +1916,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         const bool shallow_checked_root = ply == 1 && depth <= 3 &&
             stack.frame(0).in_check;
         // Restored/unchanged node position preserves piece counts.
-        const bool phase_rich_depth_three = depth == 3 && node_game_phase >= 8;
+        const bool phase_rich_depth_three = depth == 3 && node_game_phase() >= 8;
         while (const MoveMetadata* candidate = next_candidate()) {
             const MoveMetadata& metadata = *candidate;
             // The stop flags are already sampled once per node entry
