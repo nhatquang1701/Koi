@@ -246,10 +246,12 @@ private:
     void refresh_slot_perspective_v4_finny(const GameState&, Color perspective,
                                            std::size_t slot);
     template <typename SumT>
-    void refresh_finny_bucket_v4_impl(const GameState&, Color perspective,
-                                      std::size_t bucket, SumT* target_sums);
-    void refresh_finny_bucket_v4(const GameState&, Color perspective,
-                                 std::size_t bucket, std::int32_t* target_sums);
+    void refresh_finny_bucket_v4_impl(
+        const std::array<std::array<std::uint64_t, 7>, 2>& current_bbs,
+        Color perspective, std::size_t bucket, SumT* target_sums);
+    void refresh_finny_bucket_v4(
+        const std::array<std::array<std::uint64_t, 7>, 2>& current_bbs,
+        Color perspective, std::size_t bucket, std::int32_t* target_sums);
     void apply_feature_delta(std::size_t perspective, std::size_t slot,
                              std::uint16_t index, int sign);
     void apply_fused_perspective_deltas(const std::int32_t* parent_values,

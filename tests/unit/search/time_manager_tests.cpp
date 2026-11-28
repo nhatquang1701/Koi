@@ -1233,6 +1233,49 @@ void test_sudden_death_scramble_calm_depth5_cutoff() {
             "incremental clock at depth 5 and 72% optimum_budget must not trigger sudden-death scramble cutoff");
 }
 
+void test_deep_ponderhit_doomed_over_budget_ply_bank() {
+    auto now_over = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits ponder_limits = clock_limits(milliseconds{20'000}, milliseconds{0});
+    ponder_limits.ponder = true;
+    TimeManager over(ponder_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                     warm_context(), [now_over] { return *now_over; });
+    over.observe_iteration({6, 25, false, false, false, 10'000, 5'000, milliseconds{800}});
+    over.observe_iteration({7, 25, false, false, false, 10'000, 5'000, milliseconds{1'600}});
+    over.observe_iteration({8, 25, false, false, false, 10'000, 5'000, milliseconds{3'200}});
+    over.reconfigure(clock_limits(milliseconds{20'000}, milliseconds{0}),
+                     koi::Color::white, 100, kMoveOverheadMs, 100,
+                     warm_context(), false, *now_over, 0);
+    require(over.should_stop_after_iteration() &&
+                !over.should_start_next_iteration(milliseconds{1}),
+            "calm deep ponderhit whose next ply exceeds 2x hard_budget must bank immediately");
+
+    auto now_fast = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager fast(ponder_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                     warm_context(), [now_fast] { return *now_fast; });
+    fast.observe_iteration({6, 25, false, false, false, 10'000, 5'000, milliseconds{25}});
+    fast.observe_iteration({7, 25, false, false, false, 10'000, 5'000, milliseconds{50}});
+    fast.observe_iteration({8, 25, false, false, false, 10'000, 5'000, milliseconds{100}});
+    fast.reconfigure(clock_limits(milliseconds{20'000}, milliseconds{0}),
+                     koi::Color::white, 100, kMoveOverheadMs, 100,
+                     warm_context(), false, *now_fast, 0);
+    require(!fast.should_stop_after_iteration() &&
+                fast.should_start_next_iteration(milliseconds{1}),
+            "ponderhit whose next ply fits inside 2x hard_budget must keep searching at elapsed=0");
+
+    auto now_drop = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager drop(ponder_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                     warm_context(), [now_drop] { return *now_drop; });
+    drop.observe_iteration({6, 60, false, false, false, 10'000, 5'000, milliseconds{800}});
+    drop.observe_iteration({7, 60, false, false, false, 10'000, 5'000, milliseconds{1'600}});
+    drop.observe_iteration({8, 25, false, false, false, 10'000, 5'000, milliseconds{3'200}});
+    drop.reconfigure(clock_limits(milliseconds{20'000}, milliseconds{0}),
+                     koi::Color::white, 100, kMoveOverheadMs, 100,
+                     warm_context(), false, *now_drop, 0);
+    require(!drop.should_stop_after_iteration() &&
+                drop.should_start_next_iteration(milliseconds{1}),
+            "ponderhit with a >15 cp score drop must not exit early even on expensive next ply");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1287,6 +1330,8 @@ int main(int argc, char** argv) {
          test_single_move_zero_hardness_and_deep_ponderhit_fast_exit},
         {"sudden-death scramble calm depth-5 cutoff",
          test_sudden_death_scramble_calm_depth5_cutoff},
+        {"deep ponderhit doomed over-budget ply bank",
+         test_deep_ponderhit_doomed_over_budget_ply_bank},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

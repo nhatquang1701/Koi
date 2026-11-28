@@ -895,6 +895,17 @@ bool TimeManager::should_stop_after_iteration() const noexcept {
         elapsed >= scale_fraction(soft_target, 70, 100)) {
         return true;
     }
+    if (ponderhit_converted_ && !hard_position_ &&
+        last_observed_depth_ >= 8 && best_move_stability_ >= 3 &&
+        score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
+        last_iteration_elapsed_ >= std::chrono::milliseconds{20}) {
+        const auto predicted_next = scale_fraction(
+            last_iteration_elapsed_, branching_permille_, 1000);
+        const auto budget = std::chrono::milliseconds{budget_ms};
+        if (saturating_add(elapsed, predicted_next) > saturating_add(budget, budget)) {
+            return true;
+        }
+    }
     // Even if shallow iterations had a best-move change or score jump, do not
     // let a non-collapsing position burn all the way to the hard deadline once
     // it has completed a reasonable depth and passed its scaled optimum target,
@@ -934,7 +945,18 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
     // Pre-iteration lookahead for stable clock searches: when high best-move node
     // concentration (>= 90%), calm stability (>= 75%), or a 1.5x iteration-time
     // projection shows a new ply is unlikely to pay off, skip starting it.
+    const auto budget = std::chrono::milliseconds{budget_ms};
     if (clock_mode_ && !hard_position_) {
+        if (ponderhit_converted_ &&
+            last_observed_depth_ >= 8 && best_move_stability_ >= 3 &&
+            score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
+            last_iteration_elapsed_ >= std::chrono::milliseconds{20}) {
+            const auto predicted_next = scale_fraction(
+                last_iteration_elapsed_, branching_permille_, 1000);
+            if (saturating_add(elapsed, predicted_next) > saturating_add(budget, budget)) {
+                return false;
+            }
+        }
         if (ponderhit_converted_ && has_effort_sample_ &&
             best_move_effort_permille_ >= 900U && last_observed_depth_ >= 10 &&
             stable_observations_ >= 2 && best_move_stability_ >= 4 &&
@@ -976,7 +998,6 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
             }
         }
     }
-    const auto budget = std::chrono::milliseconds{budget_ms};
     const auto min_doomed_sample = emergency_pacing_
         ? std::chrono::milliseconds{5}
         : std::chrono::milliseconds{20};

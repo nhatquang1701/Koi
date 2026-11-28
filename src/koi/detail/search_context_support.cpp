@@ -265,40 +265,60 @@ namespace {
 
 void build_quiet_forcing_after_view(const GameState& after, const Color mover,
                                     QuietForcingAfterView& out) noexcept {
-    // Type order matches native_position_features(); the union is
-    // order-independent and every mask comes from the same attack tables.
-    constexpr std::array<PieceType, 6> kAttackOrder{
-        PieceType::pawn, PieceType::knight, PieceType::bishop,
-        PieceType::rook, PieceType::queen, PieceType::king};
+    // Same precomputed attack tables and first-blocker occupancy semantics as
+    // native_position_features(), using a single ExchangeSnapshot lookup.
+    const ExchangeSnapshot snap = after.exchange_snapshot();
+    out = QuietForcingAfterView{};
+    if (snap.piece_bitboards == nullptr) {
+        return;
+    }
     const std::size_t mover_index = mover == Color::white ? 0U : 1U;
     const std::size_t enemy_index = 1U - mover_index;
-    const auto& bitboards = after.piece_bitboards();
+    const auto& bitboards = *snap.piece_bitboards;
     const auto& mover_bitboards = bitboards[mover_index];
     const auto& enemy_bitboards = bitboards[enemy_index];
-    out = QuietForcingAfterView{};
 
     std::uint64_t enemy_pieces = 0;
-    for (const PieceType type : kAttackOrder) {
-        enemy_pieces |= enemy_bitboards[static_cast<std::size_t>(type)];
+    for (std::size_t type = 1; type <= 6; ++type) {
+        enemy_pieces |= enemy_bitboards[type];
     }
-    out.occupied = after.occupied_squares();
+    const std::uint64_t occupied = snap.occupied;
+    out.occupied = occupied;
     out.enemy_pieces = enemy_pieces;
     out.enemy_pawns = enemy_bitboards[static_cast<std::size_t>(PieceType::pawn)];
 
-    // attacks_after[own]: native_position_features() builds the same union
-    // from these same maintained bitboards with the post-move occupancy
-    // (apply_unchecked refreshes state.occupied at position.cpp:1705 before
-    // the search observes the child).  Per-piece attack sets are identical
-    // and OR is order-independent, so the unions are bit-equal.
-    std::uint64_t own_attacks = 0;
-    for (const PieceType type : kAttackOrder) {
-        std::uint64_t remaining = mover_bitboards[static_cast<std::size_t>(type)];
-        while (remaining != 0) {
-            const int square = static_cast<int>(std::countr_zero(remaining));
-            remaining &= remaining - 1;
-            own_attacks |= compact_feature_attacks(
-                square, type, mover, out.occupied);
-        }
+    constexpr std::uint64_t kFileA = 0x0101010101010101ULL;
+    constexpr std::uint64_t kFileH = 0x8080808080808080ULL;
+    const std::uint64_t pawns = mover_bitboards[static_cast<std::size_t>(PieceType::pawn)];
+    std::uint64_t own_attacks = mover == Color::white
+        ? (((pawns & ~kFileA) << 7U) | ((pawns & ~kFileH) << 9U))
+        : (((pawns & ~kFileH) >> 7U) | ((pawns & ~kFileA) >> 9U));
+    std::uint64_t knights = mover_bitboards[static_cast<std::size_t>(PieceType::knight)];
+    while (knights != 0) {
+        const int square = static_cast<int>(std::countr_zero(knights));
+        knights &= knights - 1;
+        own_attacks |= knight_attacks(square);
+    }
+    const std::uint64_t queens = mover_bitboards[static_cast<std::size_t>(PieceType::queen)];
+    std::uint64_t diag_sliders =
+        mover_bitboards[static_cast<std::size_t>(PieceType::bishop)] | queens;
+    while (diag_sliders != 0) {
+        const int square = static_cast<int>(std::countr_zero(diag_sliders));
+        diag_sliders &= diag_sliders - 1;
+        own_attacks |= bishop_attacks(square, occupied);
+    }
+    std::uint64_t ortho_sliders =
+        mover_bitboards[static_cast<std::size_t>(PieceType::rook)] | queens;
+    while (ortho_sliders != 0) {
+        const int square = static_cast<int>(std::countr_zero(ortho_sliders));
+        ortho_sliders &= ortho_sliders - 1;
+        own_attacks |= rook_attacks(square, occupied);
+    }
+    std::uint64_t kings = mover_bitboards[static_cast<std::size_t>(PieceType::king)];
+    while (kings != 0) {
+        const int square = static_cast<int>(std::countr_zero(kings));
+        kings &= kings - 1;
+        own_attacks |= king_attacks(square);
     }
     out.own_attacked_squares = own_attacks;
 

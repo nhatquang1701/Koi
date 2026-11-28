@@ -701,7 +701,10 @@ the search but cannot push it past the cap.
   budget wins.
 - `should_stop_after_iteration`: stops at the hard deadline, immediately on a
   converted `ponderhit` with a verified single legal reply (`depth >= 4`) or
-  twice-confirmed forced mate (`depth >= 6`), on confirmed forced mates or
+  twice-confirmed forced mate (`depth >= 6`), immediately when a calm deep
+  (`depth >= 8`, `stability >= 3`, no aspiration re-research, `>= 20 ms` sample)
+  `ponderhit` would require more than `2× hard_budget` for its predicted next
+  ply, on confirmed forced mates or
   single-legal moves after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
   on deep (`depth >= 10`, `stability >= 4`) `>= 90%` best-move-share
@@ -717,8 +720,8 @@ the search but cannot push it past the cap.
   `best_move_stability >= 1`, `score_drop < 40` cp, and no aspiration
   re-research on the last iteration.
 - `should_start_next_iteration`: honors instant post-`ponderhit` forced-mate /
-  single-move exits, emergency pacing, forced-mate / single-move
-  exits, `25%` deep (`depth >= 10`, `stability >= 4`, `>= 90%` effort)
+  single-move / doomed `2× hard_budget` exits, emergency pacing, forced-mate /
+  single-move exits, `25%` deep (`depth >= 10`, `stability >= 4`, `>= 90%` effort)
   converted-`ponderhit` exits, `60%` high-effort dominance (`>= 90%` best-move
   node share), `70%` sudden-death scramble depth-5 calm exits, and calm `75%`
   soft-target cutoffs (symmetrically suppressed after an aspiration re-search), adaptive EWMA branching-factor lookahead (`1.3×..3.2×`, starting at

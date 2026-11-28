@@ -261,21 +261,23 @@ KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
         pieces = scratch_pieces_;
     } else {
         if (!threat) {
+            const ExchangeSnapshot snap = state.exchange_snapshot();
+            const auto& bbs = *snap.piece_bitboards;
             for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
                 const Color real = index == 0U ? Color::white : Color::black;
                 const std::size_t color_idx = real == Color::white ? 0U : 1U;
                 const std::uint64_t king_bb =
-                    state.piece_bitboards()[color_idx][static_cast<std::size_t>(PieceType::king)];
+                    bbs[color_idx][static_cast<std::size_t>(PieceType::king)];
                 const Square king_sq = king_bb != 0 ?
                     Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
                     Square{};
                 const std::size_t bucket = halfka_hm_v9_ ?
                     EvaluationFeatureExtractor::halfka_hm_v2_finny_slot_for_square(king_sq, real) :
                     EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, real);
-                refresh_finny_bucket_v4(state, real, bucket, scratch_values_[index].data());
+                refresh_finny_bucket_v4(bbs, real, bucket, scratch_values_[index].data());
                 scratch_buckets_[index] = static_cast<std::uint8_t>(bucket);
             }
-            scratch_pieces_ = static_cast<std::uint8_t>(state.piece_count());
+            scratch_pieces_ = static_cast<std::uint8_t>(std::popcount(snap.occupied));
         } else {
             // Full rebuild: the only path that materializes the feature view.
             const EvaluationFeatures features = EvaluationFeatureExtractor::extract(state);
@@ -414,11 +416,13 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
             scratch_values_16_data(opponent_index), hidden_units_);
         pieces = scratch_pieces_;
     } else {
+        const ExchangeSnapshot snap = state.exchange_snapshot();
+        const auto& bbs = *snap.piece_bitboards;
         for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
             const Color real = index == 0U ? Color::white : Color::black;
             const std::size_t color_idx = real == Color::white ? 0U : 1U;
             const std::uint64_t king_bb =
-                state.piece_bitboards()[color_idx][static_cast<std::size_t>(PieceType::king)];
+                bbs[color_idx][static_cast<std::size_t>(PieceType::king)];
             const Square king_sq = king_bb != 0 ?
                 Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
                 Square{};
@@ -426,10 +430,10 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
                 EvaluationFeatureExtractor::halfka_hm_v2_finny_slot_for_square(king_sq, real) :
                 EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, real);
             refresh_finny_bucket_v4_impl<std::int16_t>(
-                state, real, bucket_idx, scratch_values_16_data(index));
+                bbs, real, bucket_idx, scratch_values_16_data(index));
             scratch_buckets_[index] = static_cast<std::uint8_t>(bucket_idx);
         }
-        scratch_pieces_ = static_cast<std::uint8_t>(state.piece_count());
+        scratch_pieces_ = static_cast<std::uint8_t>(std::popcount(snap.occupied));
         scratch_key_ = key;
         scratch_valid_ = true;
         ++incremental_fallback_count_;
@@ -626,12 +630,12 @@ void NnueWorker::refresh_slot_perspective(const EvaluationFeatures& features,
 }
 
 template <typename SumT>
-void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
-                                              const Color perspective,
-                                              const std::size_t bucket,
-                                              SumT* const target_sums) {
+void NnueWorker::refresh_finny_bucket_v4_impl(
+    const std::array<std::array<std::uint64_t, 7>, 2>& current_bbs,
+    const Color perspective,
+    const std::size_t bucket,
+    SumT* const target_sums) {
     const std::size_t index = perspective == Color::white ? 0U : 1U;
-    const auto& current_bbs = state.piece_bitboards();
     SumT* cached_sums = nullptr;
     if constexpr (std::is_same_v<SumT, std::int16_t>) {
         cached_sums = finny_values_16_data(index) + bucket * hidden_units_;
@@ -645,7 +649,7 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
         (halfka_hm_v9_ && (bucket & 1U) != 0U ? 7U : 0U);
 
     if (finny_valid_[index][bucket] == 0) {
-        std::array<std::uint16_t, kNnueSparseFeatureCapacityV4> active_buf{};
+        std::array<std::uint16_t, kNnueSparseFeatureCapacityV4> active_buf;
         std::size_t active_count = 0;
         const std::size_t own_c = perspective == Color::white ? 0U : 1U;
         const std::size_t opp_c = 1U - own_c;
@@ -685,8 +689,8 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
     }
 
     auto& cached_bbs = finny_bitboards_[index][bucket];
-    std::array<std::uint16_t, 64> removed{};
-    std::array<std::uint16_t, 64> added{};
+    std::array<std::uint16_t, 64> removed;
+    std::array<std::uint16_t, 64> added;
     std::size_t removed_count = 0;
     std::size_t added_count = 0;
     const std::size_t own_c = perspective == Color::white ? 0U : 1U;
@@ -808,19 +812,22 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
     std::copy_n(cached_sums, hidden_units_, target_sums);
 }
 
-void NnueWorker::refresh_finny_bucket_v4(const GameState& state,
-                                         const Color perspective,
-                                         const std::size_t bucket,
-                                         std::int32_t* const target_sums) {
-    refresh_finny_bucket_v4_impl<std::int32_t>(state, perspective, bucket, target_sums);
+void NnueWorker::refresh_finny_bucket_v4(
+    const std::array<std::array<std::uint64_t, 7>, 2>& current_bbs,
+    const Color perspective,
+    const std::size_t bucket,
+    std::int32_t* const target_sums) {
+    refresh_finny_bucket_v4_impl<std::int32_t>(current_bbs, perspective, bucket, target_sums);
 }
 
 void NnueWorker::refresh_slot_perspective_v4_finny(const GameState& state,
                                                    const Color perspective,
                                                    const std::size_t slot) {
     const std::size_t index = perspective == Color::white ? 0U : 1U;
+    const ExchangeSnapshot snap = state.exchange_snapshot();
+    const auto& bbs = *snap.piece_bitboards;
     const std::uint64_t king_bb =
-        state.piece_bitboards()[index][static_cast<std::size_t>(PieceType::king)];
+        bbs[index][static_cast<std::size_t>(PieceType::king)];
     const Square king_sq = king_bb != 0 ?
         Square::from_index(static_cast<std::uint8_t>(std::countr_zero(king_bb))) :
         Square{};
@@ -828,10 +835,10 @@ void NnueWorker::refresh_slot_perspective_v4_finny(const GameState& state,
         EvaluationFeatureExtractor::halfka_hm_v2_finny_slot_for_square(king_sq, perspective) :
         EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, perspective);
     refresh_finny_bucket_v4(
-        state, perspective, bucket,
+        bbs, perspective, bucket,
         slot_values_[index].data() + slot * hidden_units_);
     slot_buckets_[index][slot] = static_cast<std::uint8_t>(bucket);
-    slot_pieces_[slot] = static_cast<std::uint8_t>(state.piece_count());
+    slot_pieces_[slot] = static_cast<std::uint8_t>(std::popcount(snap.occupied));
 }
 
 void NnueWorker::apply_feature_delta(const std::size_t perspective,
@@ -1655,7 +1662,7 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
         if (s == 0 || slot_buckets_[index][s] != slot_buckets_[index][s - 1U]) {
             const Color real = index == 0U ? Color::white : Color::black;
             refresh_finny_bucket_v4_impl<SumT>(
-                state, real, slot_buckets_[index][slot],
+                state.piece_bitboards(), real, slot_buckets_[index][slot],
                 values_base + slot * hidden_units_);
             slot_computed_[index][slot] = 1;
             return;
