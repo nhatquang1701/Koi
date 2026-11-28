@@ -9,8 +9,6 @@
 #include <limits>
 #include <memory>
 #include <mutex>
-#include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -23,7 +21,6 @@
 #include "koi/detail/search_session.hpp"
 #include "koi/detail/search_stack.hpp"
 #include "koi/detail/search_table_access.hpp"
-#include "koi/detail/thread_stack.hpp"
 #include "koi/evaluator.hpp"
 #include "koi/evaluation_features.hpp"
 #include "koi/game_state.hpp"

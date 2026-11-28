@@ -28,6 +28,7 @@ PIECE_NAMES = ("", "pawn", "knight", "bishop", "rook", "queen", "king")
 
 FILE_NAMES = ("a", "b", "c", "d", "e", "f", "g", "h")
 RANK_NAMES = ("1", "2", "3", "4", "5", "6", "7", "8")
+SQUARE_NAMES = tuple(FILE_NAMES[sq & 7] + RANK_NAMES[sq >> 3] for sq in range(64))
 
 BB_ALL = (1 << 64) - 1
 BB_SQUARES = tuple(1 << square_index for square_index in range(64))
@@ -74,7 +75,7 @@ def square_rank(square_index: int) -> int:
 
 def square_name(square_index: int) -> str:
     """Return the algebraic name (for example ``e4``) of a square."""
-    return FILE_NAMES[square_index & 7] + RANK_NAMES[square_index >> 3]
+    return SQUARE_NAMES[square_index]
 
 
 def parse_square(name: str) -> int:
@@ -156,6 +157,8 @@ class Move:
     def from_uci(cls, uci: str) -> "Move":
         if not isinstance(uci, str):
             raise ValueError(f"expected a uci string, got {uci!r}")
+        if uci == "0000":
+            return cls.null()
         if len(uci) == 4:
             return cls(parse_square(uci[0:2]), parse_square(uci[2:4]))
         if len(uci) == 5:
@@ -171,8 +174,13 @@ class Move:
         return cls(0, 0)
 
     def uci(self) -> str:
+        if self.from_square == 0 and self.to_square == 0 and self.promotion is None:
+            return "0000"
         promotion = PROMOTION_SYMBOLS[self.promotion - KNIGHT] if self.promotion else ""
         return square_name(self.from_square) + square_name(self.to_square) + promotion
+
+    def __bool__(self) -> bool:
+        return bool(self.from_square or self.to_square or self.promotion)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Move):

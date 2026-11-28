@@ -99,6 +99,8 @@ class DryRunTest(unittest.TestCase):
                 dry_run=True,
             )
             self.assertTrue(result["iterations"][0]["dry_run"])
+            self.assertNotIn("__dir", result["iterations"][0]["plus"])
+            self.assertNotIn("__dir", result["iterations"][0]["minus"])
             self.assertTrue((staging / "iter000-plus").is_dir())
             self.assertTrue((staging / "iter000-minus").is_dir())
             self.assertTrue(report.is_file())
@@ -130,6 +132,24 @@ class DryRunTest(unittest.TestCase):
                                     result, out)
             header = (out / "src/koi/detail/search_constants.hpp").read_text(encoding="utf-8")
             self.assertIn("kRazorMarginPerDepthSquared = 120", header)
+
+    def test_run_rejects_nonpositive_iterations_or_games(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for kwargs in ({"iterations": 0, "games": 10}, {"iterations": 1, "games": 0}):
+                with self.subTest(**kwargs), self.assertRaises(spsa_search.TuningError):
+                    spsa_search.run(
+                        root=ROOT,
+                        parameters=list(spsa_search.DEFAULT_PARAMETERS),
+                        staging_root=Path(directory) / "staging",
+                        runner="",
+                        seed=1,
+                        a0=2.0,
+                        alpha=0.602,
+                        a_bar=10.0,
+                        report_path=Path(directory) / "report.json",
+                        dry_run=True,
+                        **kwargs,
+                    )
 
 
 class EtaSupportTest(unittest.TestCase):

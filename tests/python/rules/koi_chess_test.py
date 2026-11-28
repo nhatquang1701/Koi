@@ -332,6 +332,13 @@ class CoreTypeTests(unittest.TestCase):
         self.assertEqual(chess.square(4, 3), chess.parse_square("e4"))
         self.assertEqual(chess.square_file(chess.parse_square("e4")), 4)
         self.assertEqual(chess.square_rank(chess.parse_square("e4")), 3)
+        self.assertEqual(chess.square_name(0), "a1")
+        self.assertEqual(chess.square_name(63), "h8")
+        null_move = chess.Move.null()
+        self.assertEqual(null_move.uci(), "0000")
+        self.assertEqual(chess.Move.from_uci("0000"), null_move)
+        self.assertFalse(bool(null_move))
+        self.assertTrue(bool(chess.Move.from_uci("a1a2")))
 
     def test_piece_at_and_piece_map(self):
         board = chess.Board()

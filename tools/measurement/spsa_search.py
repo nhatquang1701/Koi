@@ -266,6 +266,10 @@ def run(
     report_path: pathlib.Path,
     dry_run: bool,
 ) -> dict[str, object]:
+    if iterations < 1:
+        raise TuningError("iterations must be positive")
+    if games < 1:
+        raise TuningError("games must be positive")
     rng = random.Random(seed)
     values = {parameter.name: parameter.value for parameter in parameters}
     history: list[dict[str, object]] = []
@@ -286,11 +290,12 @@ def run(
         coefficient = a0 / ((iteration + a_bar) ** alpha)
 
         staged: dict[str, dict[str, int]] = {}
+        staged_dirs: dict[str, pathlib.Path] = {}
         for tag, variant in (("plus", plus), ("minus", minus)):
             output = staging_root / f"iter{iteration:03d}-{tag}"
             stage_variant(root, parameters, variant, output)
             staged[tag] = variant
-            staged[tag]["__dir"] = str(output)  # type: ignore[assignment]
+            staged_dirs[tag] = output
 
         if dry_run:
             history.append({"iteration": iteration, "delta": delta,
@@ -299,11 +304,9 @@ def run(
 
         scores: dict[str, float] = {}
         for tag in ("plus", "minus"):
-            output = pathlib.Path(staged[tag]["__dir"])
+            output = staged_dirs[tag]
             params_json = output / "parameters.json"
-            params_json.write_text(
-                json.dumps({name: value for name, value in staged[tag].items()
-                            if name != "__dir"}, indent=2), encoding="utf-8")
+            params_json.write_text(json.dumps(staged[tag], indent=2), encoding="utf-8")
             command = (runner
                        .replace("{dir}", str(output))
                        .replace("{tag}", tag)

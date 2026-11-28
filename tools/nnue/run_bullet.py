@@ -159,33 +159,21 @@ def build_export_command(
     l1_units: int = 32,
     l1_shifts: list[int] | None = None,
 ) -> list[str]:
-    if arch == "v5":
-        command = [
-            sys.executable,
-            str(TOOLS_MEASUREMENT / "export_bullet_v5.py"),
-            "--checkpoint", str(checkpoint),
-            "--validation", str(validation),
-            "--net-out", str(net_out),
-            "--meta-out", str(meta_out),
-            "--hidden", str(hidden),
-            "--l1-units", str(l1_units),
-            "--hidden-shifts", *[str(shift) for shift in hidden_shifts],
-            "--l1-shifts", *[str(shift) for shift in (l1_shifts or [6, 7, 8])],
-        ]
-        if output_shifts:
-            command += ["--output-shifts", *[str(shift) for shift in output_shifts]]
-        command += ["--tune-samples", str(tune_samples)]
-        return command
+    script = "export_bullet_v5.py" if arch == "v5" else "export_bullet_v4.py"
     command = [
         sys.executable,
-        str(TOOLS_MEASUREMENT / "export_bullet_v4.py"),
+        str(TOOLS_MEASUREMENT / script),
         "--checkpoint", str(checkpoint),
         "--validation", str(validation),
         "--net-out", str(net_out),
         "--meta-out", str(meta_out),
         "--hidden", str(hidden),
-        "--hidden-shifts", *[str(shift) for shift in hidden_shifts],
     ]
+    if arch == "v5":
+        command += ["--l1-units", str(l1_units)]
+    command += ["--hidden-shifts", *[str(shift) for shift in hidden_shifts]]
+    if arch == "v5":
+        command += ["--l1-shifts", *[str(shift) for shift in (l1_shifts or [6, 7, 8])]]
     if output_shifts:
         command += ["--output-shifts", *[str(shift) for shift in output_shifts]]
     command += ["--tune-samples", str(tune_samples)]
@@ -220,13 +208,14 @@ def measure_val_mae(raw_path: Path, validation: Path, hidden: int, limit: int = 
 
 
 def _stream(command: list[str], env: dict[str, str]) -> int:
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, env=env, bufsize=1)
-    assert process.stdout is not None
-    for line in process.stdout:
-        sys.stdout.write(line)
-        sys.stdout.flush()
-    return process.wait()
+    with subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1
+    ) as process:
+        assert process.stdout is not None
+        for line in process.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+        return process.wait()
 
 
 def run_pipeline(args: argparse.Namespace) -> int:
@@ -286,51 +275,47 @@ def run_pipeline(args: argparse.Namespace) -> int:
     if not data.is_file():
         raise BulletRunError(f"training dataset not found at {data}")
 
-    process = subprocess.Popen(train_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, env=env, bufsize=1)
-    assert process.stdout is not None
     latest_raw = None
     last_superbatch: dict | None = None
-    for line in process.stdout:
-        clean = strip_ansi(line)
-        sys.stdout.write(clean)
-        sys.stdout.flush()
-        event = parse_bullet_line(clean)
-        if event is None:
-            continue
-        if event["kind"] == "superbatch":
-            last_superbatch = event
-            continue
-        latest_name = event["name"]
-        candidate = checkpoint_dir / latest_name / "raw.bin"
-        if not candidate.is_file():
-            continue
-        latest_raw = candidate
-        if validation_text is not None and validation_text.is_file():
-            mae = measure_val_mae(candidate, validation_text, hidden, arch=arch, l1_units=l1_units)
-            if mae is not None:
-                loss = last_superbatch["loss"] if last_superbatch else 0.0
-                seconds = last_superbatch["seconds"] if last_superbatch else 0.0
-                print(format_epoch_line(
-                    _saved_index(latest_name, args.superbatches),
-                    args.superbatches,
-                    loss,
-                    mae,
-                    seconds,
-                ))
-                sys.stdout.flush()
-    code = process.wait()
+    with subprocess.Popen(
+        train_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1
+    ) as process:
+        assert process.stdout is not None
+        for line in process.stdout:
+            clean = strip_ansi(line)
+            sys.stdout.write(clean)
+            sys.stdout.flush()
+            event = parse_bullet_line(clean)
+            if event is None:
+                continue
+            if event["kind"] == "superbatch":
+                last_superbatch = event
+                continue
+            latest_name = event["name"]
+            candidate = checkpoint_dir / latest_name / "raw.bin"
+            if not candidate.is_file():
+                continue
+            latest_raw = candidate
+            if validation_text is not None and validation_text.is_file():
+                mae = measure_val_mae(candidate, validation_text, hidden, arch=arch, l1_units=l1_units)
+                if mae is not None:
+                    loss = last_superbatch["loss"] if last_superbatch else 0.0
+                    seconds = last_superbatch["seconds"] if last_superbatch else 0.0
+                    print(format_epoch_line(
+                        _saved_index(latest_name, args.superbatches),
+                        args.superbatches,
+                        loss,
+                        mae,
+                        seconds,
+                    ))
+                    sys.stdout.flush()
+        code = process.wait()
     if code != 0:
         raise BulletRunError(f"bullet training failed with exit code {code}")
     if latest_raw is None:
         raise BulletRunError(f"no checkpoint found under {checkpoint_dir}")
 
     print(f"run_bullet: exporting {latest_raw}")
-    export_command = build_export_command(
-        checkpoint_dir, validation_text, out_dir / net_name, out_dir / meta_name,
-        hidden, args.hidden_shifts, args.output_shifts, args.tune_samples,
-        arch, l1_units, args.l1_shifts,
-    )
     code = _stream(export_command, env)
     if code != 0:
         raise BulletRunError(f"export failed with exit code {code}")
