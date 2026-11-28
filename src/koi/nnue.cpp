@@ -97,11 +97,22 @@ NnueWorker::NnueWorker(std::shared_ptr<const NnueNetwork> weights,
         threat_features_ = threat;
         dual_v4_ = dual_v4;
         halfka_hm_v9_ = hm_v9;
-        accumulator_.values.resize((dual_v4 || hm_v9) ? hidden_units * 2U : hidden_units);
-        accumulator_.bottleneck_values.resize(threat ? hidden_units :
-            (halfka_v4 ? halfka_v4_head_inputs(weights_->manifest) :
-            (hm_v9 ? std::size_t{0} : weights_->manifest.layer_sizes[2])));
     }
+}
+
+void NnueWorker::ensure_accumulator_storage() {
+    if (!network_usable_ || !accumulator_.values.empty()) {
+        return;
+    }
+    const std::size_t hidden_units = weights_->manifest.layer_sizes[1];
+    const bool threat = uses_halfka_threat_features(weights_->manifest);
+    const bool halfka_v4 = is_halfka_king_bucket_v1(weights_->manifest);
+    const bool dual_v4 = is_halfka_dual_v4(weights_->manifest);
+    const bool hm_v9 = is_halfka_hm_v9(weights_->manifest);
+    accumulator_.values.resize((dual_v4 || hm_v9) ? hidden_units * 2U : hidden_units);
+    accumulator_.bottleneck_values.resize(threat ? hidden_units :
+        (halfka_v4 ? halfka_v4_head_inputs(weights_->manifest) :
+        (hm_v9 ? std::size_t{0} : weights_->manifest.layer_sizes[2])));
 }
 
 int NnueWorker::evaluate(const EvaluationFeatures& features, const Color perspective,
@@ -109,6 +120,7 @@ int NnueWorker::evaluate(const EvaluationFeatures& features, const Color perspec
     if (!network_usable_) {
         return 0;
     }
+    ensure_accumulator_storage();
     const bool use_hm_v9 = is_halfka_hm_v9(weights_->manifest);
     const bool use_halfka = is_halfka_king_bucket_v1(weights_->manifest);
     const bool use_dual_halfka = is_halfka_dual_v4(weights_->manifest);
@@ -190,6 +202,9 @@ KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
     const NnueInferencePath path) {
     if (!supports_incremental()) {
         return evaluate(EvaluationFeatureExtractor::extract(state), perspective, path);
+    }
+    if constexpr (WriteAccumulator) {
+        ensure_accumulator_storage();
     }
     if (!storage_ready_) {
         ensure_incremental_storage();
@@ -341,6 +356,9 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
                                     const NnueInferencePath path) {
     if (!supports_incremental() || !storage_ready_ || !int16_safe_) [[unlikely]] {
         return evaluate_state_fallback_impl<WriteAccumulator>(state, perspective, path);
+    }
+    if constexpr (WriteAccumulator) {
+        ensure_accumulator_storage();
     }
     const Color mover = state.side_to_move();
     const std::size_t mover_index = mover == Color::white ? 0U : 1U;

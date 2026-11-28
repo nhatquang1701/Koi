@@ -749,6 +749,10 @@ std::chrono::milliseconds TimeManager::effective_soft_budget() const noexcept {
 }
 
 bool TimeManager::hard_extension_affordable() const noexcept {
+    if (timing_.overhead > std::chrono::milliseconds::zero() &&
+        remaining_clock_ <= scale_fraction(timing_.overhead, 5, 1)) {
+        return false;
+    }
     const auto elapsed = std::chrono::milliseconds{
         (now_nanoseconds() - started_ns_.load(std::memory_order_relaxed)) / 1'000'000};
     const auto remaining = nonnegative_difference(timing_.usable, elapsed);
@@ -792,6 +796,13 @@ bool TimeManager::should_stop_after_iteration() const noexcept {
     }
     if (stable_observations_ >= 2 && (!hard_position_ || !hard_extension_affordable()) &&
         elapsed >= soft_target) {
+        return true;
+    }
+    if (!hard_position_ && has_effort_sample_ && best_move_effort_permille_ >= 900U &&
+        last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
+        best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
+        !last_aspiration_researched_ &&
+        elapsed >= scale_fraction(soft_target, 60, 100)) {
         return true;
     }
     // Even if shallow iterations had a best-move change or score jump, do not

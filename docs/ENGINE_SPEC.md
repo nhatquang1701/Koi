@@ -678,14 +678,17 @@ the search but cannot push it past the cap.
   confirmed forced-mate fast exit (`>= 2` stable deep mate iterations, capped
   at `250 ms`), and asymmetric conversion speedup (`score >= +500` cp winning
   or `<= -700` cp decisively lost with a stable deep line).
-- A hard position may exceed the soft budget only while the remaining usable
-  clock is at least `2 × soft budget + overhead` (`hard_extension_affordable`).
-  Near the end the soft budget wins.
+- A hard position may exceed the soft budget only while fewer than five
+  overheads remain is false (`remaining_clock > 5 × overhead`) and the remaining
+  usable clock is at least `2 × soft budget + overhead`
+  (`hard_extension_affordable`). Near the end or on high-latency links the soft
+  budget wins.
 - `should_stop_after_iteration`: stops at the hard deadline, on confirmed forced
   mates or single-legal moves after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
-  and in clock mode at soft after at least 2 stable observations when the
-  extension is unaffordable.
+  in calm high-effort positions (`>= 90%` best-move node share) past `60%` of the
+  soft/optimum target, and in clock mode at soft after at least 2 stable
+  observations when the extension is unaffordable.
 - `should_start_next_iteration`: honors emergency pacing, forced-mate / single-move
   exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm
   `75%` soft-target cutoffs, and adaptive EWMA branching-factor lookahead

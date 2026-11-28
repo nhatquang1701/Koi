@@ -153,24 +153,6 @@ template <typename Scorer>
         TableQuietScorer{tables, side, history_context});
 }
 
-[[nodiscard]] int non_tt_priority_preloaded(
-    const SearchOrderingTables& tables,
-    const Color side,
-    const MoveMetadata& metadata,
-    const SearchHistoryContext& history_context,
-    const Move killer0,
-    const Move killer1,
-    const Move proven_counter) noexcept {
-    if (metadata.is_capture()) {
-        return capture_priority_no_tt(tables, metadata);
-    }
-    if (metadata.move.promotion() != Promotion::none) {
-        return kPromotionPriority + promotion_value(metadata.move.promotion());
-    }
-    return quiet_priority_preloaded(
-        tables, side, metadata, history_context, killer0, killer1, proven_counter);
-}
-
 [[nodiscard]] int priority_with_side(
     const SearchOrderingTables& tables,
     const Color side,
@@ -586,7 +568,6 @@ MoveMetadata SearchMovePicker::materialize(const std::size_t index) {
 void SearchMovePicker::prepare_quiescence_candidates() {
     captures_prepared_ = true;
     quiet_checks_scored_ = false;
-    const Color side = state_.side_to_move();
     std::size_t capture_count = 0;
     std::size_t check_count = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
@@ -610,12 +591,9 @@ void SearchMovePicker::prepare_quiescence_candidates() {
             }
             continue;
         }
-        // Same SEE resolution as materialize(), minus its main-mode
-        // capture-check probe: a quiescence picker never sets that bit,
-        // so every tactical candidate is ranked with its resolved
-        // exchange score exactly like the generic path ranks it.
-        MoveMetadata materialized = source;
-        if (materialized.is_capture()) {
+        int priority = 0;
+        if (source.is_capture()) {
+            MoveMetadata materialized = source;
             if (!see_computed_[index]) {
                 if (materialized.see_computed) {
                     see_scores_[index] = materialized.see_score;
@@ -632,12 +610,12 @@ void SearchMovePicker::prepare_quiescence_candidates() {
             }
             materialized.see_score = see_scores_[index];
             materialized.see_computed = true;
+            priority = capture_priority_no_tt(ordering_.tables_, materialized);
+        } else {
+            priority = kPromotionPriority + promotion_value(source.move.promotion());
         }
-        const int priority = non_tt_priority_preloaded(
-            ordering_.tables_, side, materialized, *history_context_, Move::no_move(),
-            Move::no_move(), Move::no_move());
         staged_[capture_count++] = pack_candidate(
-            priority, generated_move_tie_break_key(materialized.move), index);
+            priority, generated_move_tie_break_key(source.move), index);
     }
     const std::size_t cap_rank = static_cast<std::size_t>(Stage::good_captures);
     const std::size_t chk_rank = static_cast<std::size_t>(Stage::quiet_checks);

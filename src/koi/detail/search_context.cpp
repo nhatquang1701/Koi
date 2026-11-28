@@ -1168,7 +1168,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // This node's search key is stable for its whole lifetime, so compute
         // it once and let the cluster prefetch overlap the static evaluation,
         // pruning gates, and move ordering before the probe below.
-        const std::uint64_t transposition_key = search_transposition_key(state);
+        const std::uint64_t position_key = state.position_key();
+        const std::uint64_t transposition_key = search_transposition_key(
+            position_key, state.halfmove_clock(), state.repetition_history_suppressed());
         table_access.prefetch(transposition_key);
 
         // Quiescence performs its own terminal-aware tactical/evasion move
@@ -1482,7 +1484,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // transposition hit may already carry the unadjusted evaluation
             // from an earlier visit, in which case evaluate() is skipped.
             const int raw_eval = (tt_entry.has_value() && tt_entry->eval != kNoEvaluation) ?
-                tt_entry->eval : evaluate(state, side_to_move);
+                tt_entry->eval : evaluate_with_key(state, side_to_move, position_key);
             raw_static_eval = raw_eval;
             if (ply == 0) {
                 frame.material_signature_valid = false;

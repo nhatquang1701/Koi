@@ -832,6 +832,39 @@ void test_adaptive_branching_factor_lookahead() {
             "flat branching growth (~1.2x) must continue when projection fits inside 1.2x optimum_budget");
 }
 
+void test_high_latency_hard_extension_guard_and_symmetric_effort_stop() {
+    auto latency_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits high_lat_limits = clock_limits(milliseconds{5'000}, milliseconds{0});
+    TimeManager high_latency(high_lat_limits, koi::Color::white, 100, 30, 100,
+                             RootTimingContext{}, [latency_now] { return *latency_now; },
+                             true, {}, 1'200);
+    for (int depth = 4; depth <= 5; ++depth) {
+        SearchIterationObservation unstable_obs{depth, 10, depth == 4, true, false, 10'000, 5'000, milliseconds{20}};
+        high_latency.observe_iteration(unstable_obs);
+    }
+    *latency_now += high_latency.diagnostics().optimum_budget + milliseconds{1};
+    require(high_latency.should_stop_after_iteration(),
+            "high-latency clock with <= 5 overheads remaining must decline hard-position extensions");
+
+    auto effort_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto mod_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits normal_limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    TimeManager high_effort(normal_limits, koi::Color::white, 100, 30, 100, warm_context(),
+                            [effort_now] { return *effort_now; });
+    TimeManager mod_effort(normal_limits, koi::Color::white, 100, 30, 100, warm_context(),
+                           [mod_now] { return *mod_now; });
+    for (int depth = 4; depth <= 6; ++depth) {
+        high_effort.observe_iteration({depth, 30, false, false, false, 10'000, 9'200, milliseconds{40}});
+        mod_effort.observe_iteration({depth, 30, false, false, false, 10'000, 5'000, milliseconds{40}});
+    }
+    *effort_now += (high_effort.diagnostics().optimum_budget * 65) / 100;
+    *mod_now += (mod_effort.diagnostics().optimum_budget * 65) / 100;
+    require(high_effort.should_stop_after_iteration(),
+            "calm high-effort search (>= 90%) must stop symmetrically past 60% of optimum_budget");
+    require(!mod_effort.should_stop_after_iteration(),
+            "moderate-effort calm search must not trigger the 60% high-effort early stop");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -864,6 +897,8 @@ int main(int argc, char** argv) {
          test_asymmetric_conversion_and_high_effort_recapture_cutoff},
         {"adaptive branching factor lookahead",
          test_adaptive_branching_factor_lookahead},
+        {"high-latency guard and symmetric effort stop",
+         test_high_latency_hard_extension_guard_and_symmetric_effort_stop},
     };
     return koi::test::run_tests(tests, argc, argv);
 }
