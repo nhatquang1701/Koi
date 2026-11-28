@@ -2409,10 +2409,15 @@ void test_scramble_and_emergency_depth4_effort_speedup() {
 }
 
 void test_repeating_high_latency_net_increment_and_subsecond_multi_move() {
-    TimeManager laggy(clock_limits(milliseconds{20'000}, milliseconds{1'000}, 10U),
+    auto repeating_limits = [](milliseconds rem, milliseconds inc, std::uint32_t mtg) {
+        SearchLimits limits = clock_limits(rem, inc);
+        limits.moves_to_go = mtg;
+        return limits;
+    };
+    TimeManager laggy(repeating_limits(milliseconds{20'000}, milliseconds{1'000}, 10U),
                       koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
                       {}, true, {}, 800);
-    TimeManager clean(clock_limits(milliseconds{20'000}, milliseconds{1'000}, 10U),
+    TimeManager clean(repeating_limits(milliseconds{20'000}, milliseconds{1'000}, 10U),
                       koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
                       {}, true, {}, 30);
     require(laggy.diagnostics().soft_budget <=
@@ -2421,7 +2426,7 @@ void test_repeating_high_latency_net_increment_and_subsecond_multi_move() {
             "high latency (>100ms) repeating movestogo clock must credit net increment only");
 
     auto now_multi = std::make_shared<Clock::time_point>(Clock::now());
-    TimeManager mtg5(clock_limits(milliseconds{800}, milliseconds{0}, 5U),
+    TimeManager mtg5(repeating_limits(milliseconds{800}, milliseconds{0}, 5U),
                      koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
                      [now_multi] { return *now_multi; });
     mtg5.observe_iteration({4, 50, true, false, true, 10'000, 2'500, milliseconds{5}});
