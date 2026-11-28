@@ -176,10 +176,12 @@ void test_pawn_king_and_piece_terms_are_directional() {
     require(free_pawn > blocked,
             "a free advanced pawn must outscore a blocked one");
 
+    // Compare unblocked 7th- vs 6th-rank passers so an enemy king on e8 does
+    // not blockade the 7th-rank square.
     const int advanced = evaluator.evaluate(
-        state_from_fen("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1"), Color::white);
+        state_from_fen("7k/4P3/8/8/8/8/8/4K3 w - - 0 1"), Color::white);
     const int initial = evaluator.evaluate(
-        state_from_fen("4k3/8/4P3/8/8/8/8/4K3 w - - 0 1"), Color::white);
+        state_from_fen("7k/8/4P3/8/8/8/8/4K3 w - - 0 1"), Color::white);
     require(advanced > initial, "a more advanced passed pawn must score higher");
 
     const int bishop_pair = evaluator.evaluate(
