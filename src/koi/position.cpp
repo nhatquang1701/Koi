@@ -1491,10 +1491,12 @@ public:
         const std::uint64_t unpinned_diag =
             (state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::bishop)] |
              state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)]) & ~pinned;
-        if ((((unpinned_diag & ~kFileHMask) << 9) |
-             ((unpinned_diag & ~kFileAMask) << 7) |
-             ((unpinned_diag & ~kFileHMask) >> 7) |
-             ((unpinned_diag & ~kFileAMask) >> 9)) & valid_targets) != 0) {
+        const std::uint64_t diag_targets =
+            ((unpinned_diag & ~kFileHMask) << 9) |
+            ((unpinned_diag & ~kFileAMask) << 7) |
+            ((unpinned_diag & ~kFileHMask) >> 7) |
+            ((unpinned_diag & ~kFileAMask) >> 9);
+        if ((diag_targets & valid_targets) != 0) {
             return true;
         }
 
@@ -1502,14 +1504,16 @@ public:
         constexpr std::uint64_t kFileGHMask = 0xC0C0C0C0C0C0C0C0ULL;
         const std::uint64_t unpinned_knights =
             state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::knight)] & ~pinned;
-        return ((((unpinned_knights & ~kFileHMask) << 17) |
-                 ((unpinned_knights & ~kFileAMask) << 15) |
-                 ((unpinned_knights & ~kFileGHMask) << 10) |
-                 ((unpinned_knights & ~kFileABMask) << 6) |
-                 ((unpinned_knights & ~kFileAMask) >> 17) |
-                 ((unpinned_knights & ~kFileHMask) >> 15) |
-                 ((unpinned_knights & ~kFileABMask) >> 10) |
-                 ((unpinned_knights & ~kFileGHMask) >> 6)) & valid_targets) != 0;
+        const std::uint64_t knight_targets =
+            ((unpinned_knights & ~kFileHMask) << 17) |
+            ((unpinned_knights & ~kFileAMask) << 15) |
+            ((unpinned_knights & ~kFileGHMask) << 10) |
+            ((unpinned_knights & ~kFileABMask) << 6) |
+            ((unpinned_knights & ~kFileAMask) >> 17) |
+            ((unpinned_knights & ~kFileHMask) >> 15) |
+            ((unpinned_knights & ~kFileABMask) >> 10) |
+            ((unpinned_knights & ~kFileGHMask) >> 6);
+        return (knight_targets & valid_targets) != 0;
     }
 
     // Stops at the first legal candidate instead of materializing the whole
