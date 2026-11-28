@@ -100,10 +100,11 @@ std::string debug_limits(const SearchLimits& limits) {
            << ",ponder=" << (limits.ponder ? "true" : "false")
            << ",searchmoves=" << (limits.search_moves_specified ? "true" : "false");
     if (limits.search_moves_specified) {
+        std::array<char, 5> move_buf{};
         stream << ",searchmove_list=";
         for (std::size_t index = 0; index < limits.search_moves.size(); ++index) {
             if (index != 0) stream << ',';
-            stream << limits.search_moves[index].uci();
+            stream << limits.search_moves[index].format_uci(move_buf);
         }
     }
     return stream.str();
@@ -646,11 +647,12 @@ std::string format_book_entries(const std::string_view book_name,
     buffer << "Opening book : " << book_name << " (" << entries.size()
            << " moves, total weight " << total_weight << ")\n"
            << std::fixed << std::setprecision(1);
+    std::array<char, 5> move_buf{};
     for (const BookChoice& entry : entries) {
         const double pct = total_weight > 0
             ? (100.0 * static_cast<double>(entry.weight) / static_cast<double>(total_weight))
             : 0.0;
-        buffer << "  " << entry.move.uci() << "  weight=" << entry.weight
+        buffer << "  " << entry.move.format_uci(move_buf) << "  weight=" << entry.weight
                << " (" << pct << "%)\n";
     }
     return buffer.str();
@@ -692,8 +694,9 @@ std::string format_syzygy_probe(const SyzygyTablebase* const syzygy, const GameS
         if (root->moves.empty()) {
             buffer << " (none)";
         } else {
+            std::array<char, 5> move_buf{};
             for (const Move& move : root->moves) {
-                buffer << ' ' << move.uci();
+                buffer << ' ' << move.format_uci(move_buf);
             }
         }
         buffer << '\n';
@@ -1129,11 +1132,13 @@ std::uint32_t derive_network_overhead_ms(const std::int64_t previous_remaining_m
 
 std::string format_annotate_move_line(const MoveAnnotationResult& result) {
     std::ostringstream line;
+    std::array<char, 5> played_buf{};
+    std::array<char, 5> best_buf{};
     line << std::fixed;
-    line << "annotate move " << result.played_move.uci()
+    line << "annotate move " << result.played_move.format_uci(played_buf)
          << " ply " << result.ply
          << " side " << (result.side_to_move == Color::white ? "white" : "black")
-         << " best " << result.best_move.uci()
+         << " best " << result.best_move.format_uci(best_buf)
          << " classification " << move_annotation_name(result.annotation)
          << " cpl " << result.centipawn_loss
          << " accuracy " << std::setprecision(1) << result.accuracy_percent
@@ -1151,7 +1156,7 @@ std::string format_annotate_move_line(const MoveAnnotationResult& result) {
     if (!result.best_pv.empty()) {
         line << " pv";
         for (const Move& pv_move : result.best_pv) {
-            line << ' ' << pv_move.uci();
+            line << ' ' << pv_move.format_uci(best_buf);
         }
     }
     return line.str();
@@ -1551,6 +1556,8 @@ std::string format_book_completion_debug_json(
     const std::uint64_t generation, const GameState& root,
     const CompletionCandidate& candidate, const CompletionValidation& validation,
     const Move book_move, const std::string_view last_command) {
+    std::array<char, 5> book_buf{};
+    std::array<char, 5> validated_buf{};
     return "\"message\":" + debug_quoted(
                "book_completion_record generation=" + std::to_string(generation)) +
            ",\"generation\":" + std::to_string(generation) +
@@ -1561,7 +1568,7 @@ std::string format_book_completion_debug_json(
            ",\"root_key_match\":true" +
            ",\"root_fen_match\":true" +
            ",\"identity_match\":" + (validation.identity_match ? "true" : "false") +
-           ",\"candidate\":" + debug_quoted(book_move.uci()) +
+           ",\"candidate\":" + debug_quoted(book_move.format_uci(book_buf)) +
            ",\"native_legal\":" + (validation.native_legal ? "true" : "false") +
            ",\"shadow_legal\":" + (validation.shadow_legal ? "true" : "false") +
            ",\"searchmoves_legal\":" + (validation.searchmoves_legal ? "true" : "false") +
@@ -1569,7 +1576,9 @@ std::string format_book_completion_debug_json(
            ",\"ponder_legal\":" + (validation.ponder_legal ? "true" : "false") +
            ",\"fallback_used\":" + (validation.fallback_used ? "true" : "false") +
            ",\"validated\":" + debug_quoted(
-               validation.best_move.has_value() ? validation.best_move->uci() : "0000") +
+               validation.best_move.has_value()
+                   ? validation.best_move->format_uci(validated_buf)
+                   : std::string_view("0000")) +
            ",\"source\":\"book\"" +
            ",\"disposition\":" + debug_quoted(disposition_name(validation.disposition)) +
            ",\"reason\":" + debug_quoted(validation.reason) +

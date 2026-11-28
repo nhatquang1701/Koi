@@ -137,6 +137,10 @@ header surface and the test tree, not by a future redesign.
 - **Optional layers**
   `detail/` is private implementation without ABI promises; and
   `modules/` remain optional (no implementation imports the named modules).
+- **Locale-independent ASCII parsing**
+  Production engine sources (`src/`) and developer C++ CLI tools (`tools/engine/`)
+  must not include `<cctype>` or call locale-sensitive character classifiers; this
+  invariant is enforced by `architecture_boundaries_test.ps1`.
 
 ## Ownership and threading
 

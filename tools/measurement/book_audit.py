@@ -42,13 +42,14 @@ def _build_parser() -> argparse.ArgumentParser:
         default=elo_oracle.DEFAULT_THREADS,
         help="oracle thread count; the approved contract requires 4",
     )
-    parser.add_argument(
+    evaluator = parser.add_mutually_exclusive_group()
+    evaluator.add_argument(
         "--koi-eval-file",
         type=Path,
         default=None,
         help="explicit NNUE network path forwarded to Koi via KOI_NNUE_PATH",
     )
-    parser.add_argument(
+    evaluator.add_argument(
         "--hce",
         action="store_true",
         help="run Koi with the built-in classical evaluator (KOI_EVALUATOR=hce)",

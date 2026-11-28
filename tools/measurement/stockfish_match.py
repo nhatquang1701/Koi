@@ -86,7 +86,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Koi OwnBook value (default: no book, matching the documented measurement)",
     )
     parser.add_argument("--book-file", default="book.bin", help="Koi BookFile value")
-    parser.add_argument("--book-depth", type=int, default=16, help="Koi BookDepth value")
+    parser.add_argument("--book-depth", type=_nonnegative_int, default=16, help="Koi BookDepth value")
     parser.add_argument("--book-random", choices=("true", "false"), default="false", help="Koi BookRandom value")
     parser.add_argument("--threads", type=_positive_int, default=4, help="Koi and opponent Threads")
     parser.add_argument("--hash", type=_positive_int, default=512, dest="hash_mb", help="Koi Hash in MiB")

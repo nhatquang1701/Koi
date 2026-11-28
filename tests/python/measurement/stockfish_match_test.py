@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tests" / "support"))
 import unittest_progress  # noqa: E402,F401
 
-from tools.measurement import stockfish_match
+from tools.measurement import book_audit, stockfish_match
 
 
 class StockfishMatchOptionsTests(unittest.TestCase):
@@ -83,6 +83,28 @@ class StockfishMatchOptionsTests(unittest.TestCase):
 
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             self.parser.parse_args(self.base + ["--koi-evaluator-mode", "nnue-v99"])
+
+    def test_book_depth_rejects_negative_values_and_book_audit_rejects_conflicting_evaluator_flags(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.parser.parse_args(self.base + ["--book-depth", "-1"])
+
+        args_zero = self.parser.parse_args(self.base + ["--book-depth", "0"])
+        command_zero = stockfish_match.build_command(args_zero, powershell="pwsh-test")
+        self.assertEqual(command_zero[command_zero.index("-KoiBookDepth") + 1], "0")
+
+        audit_parser = book_audit._build_parser()
+        audit_base = [
+            "--pgn",
+            "games.pgn",
+            "--koi",
+            r"C:\Koi\koi.exe",
+            "--stockfish",
+            r"C:\Stockfish\stockfish.exe",
+            "--book",
+            "book.bin",
+        ]
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            audit_parser.parse_args(audit_base + ["--koi-eval-file", "net.nnue", "--hce"])
 
 
 if __name__ == "__main__":
