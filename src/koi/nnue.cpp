@@ -67,6 +67,14 @@ using detail::finish_inference_v4_neon_t;
     return detail::nnue_arrays_match_manifest(network);
 }
 
+void apply_finny_diffs_s16(
+    const std::int16_t* base,
+    std::size_t count,
+    std::int16_t* cached_sums,
+    std::int16_t* target_sums,
+    std::span<const std::uint16_t> removed,
+    std::span<const std::uint16_t> added) noexcept;
+
 } // namespace
 
 NnueWorker::NnueWorker(std::shared_ptr<const NnueNetwork> weights)
