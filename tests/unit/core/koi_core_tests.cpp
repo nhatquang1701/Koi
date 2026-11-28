@@ -808,9 +808,24 @@ void test_consistency_snapshot_agrees_with_the_live_state() {
     require(state.native_shadow_consistent(), "mirror must remain consistent after a move");
 }
 
+void test_move_format_uci_matches_uci_without_allocating() {
+    const std::array<std::string_view, 5> samples{"e2e4", "a7a8n", "a7a8b", "a7a8r", "a7a8q"};
+    for (const std::string_view text : samples) {
+        const koi::Move move = koi::test::require_value(koi::Move::parse_uci(text), "sample move must parse");
+        std::array<char, 5> buffer{};
+        require(move.format_uci(buffer) == move.uci() && move.uci() == text,
+                "Move::format_uci must match Move::uci for standard and promotion moves");
+    }
+    std::array<char, 5> no_move_buf{};
+    const koi::Move empty = koi::Move::no_move();
+    require(empty.format_uci(no_move_buf) == "0000" && empty.uci() == "0000",
+            "Move::format_uci must return 0000 for no_move");
+}
+
 int main(int argc, char** argv) {
     const std::vector<koi::test::TestCase> tests{
         {"consistency snapshot agrees with live state", test_consistency_snapshot_agrees_with_the_live_state},
+        {"move format_uci matches uci", test_move_format_uci_matches_uci_without_allocating},
         {"default position", test_default_position_has_initial_fen_and_twenty_moves},
         {"legal UCI sequence", test_legal_uci_sequence_updates_position},
         {"native position undo and key", test_native_position_undo_restores_state_and_key},

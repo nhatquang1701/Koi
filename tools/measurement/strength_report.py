@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import json
 import sys
-from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -152,7 +151,7 @@ def build_report(paths: list[Path], expected_suite: str) -> dict[str, Any]:
             seen_ids.add(position_id)
             positions.append(position)
 
-    category_rows: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+    category_rows: dict[str, list[dict[str, Any]]] = {}
     for position in positions:
         category = position.get("category") or _category(position["id"])
         if not isinstance(category, str) or not category:
@@ -162,7 +161,7 @@ def build_report(paths: list[Path], expected_suite: str) -> dict[str, Any]:
     mismatch_ids: list[str] = []
     expected_count = 0
     accepted_count = 0
-    categories: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    categories: dict[str, dict[str, Any]] = {}
     for category, rows in category_rows.items():
         category_expected = 0
         category_accepted = 0
@@ -186,42 +185,40 @@ def build_report(paths: list[Path], expected_suite: str) -> dict[str, Any]:
             "acceptance_rate": (
                 round(category_accepted / category_expected, 6) if category_expected else None
             ),
-            "mean_score_cp": _mean([_number(row["score_cp"], "score_cp", row["id"]) for row in rows]),
+            "mean_score_cp": _mean([row["score_cp"] for row in rows]),
             "mean_elapsed_ms": _mean(
-                [_number(row["elapsed_ms"], "elapsed_ms", row["id"]) for row in rows if "elapsed_ms" in row]
+                [row["elapsed_ms"] for row in rows if "elapsed_ms" in row]
             ),
-            "total_nodes": sum(_number(row["nodes"], "nodes", row["id"]) for row in rows),
-            "total_qnodes": sum(_number(row["qnodes"], "qnodes", row["id"]) for row in rows),
+            "total_nodes": sum(row["nodes"] for row in rows),
+            "total_qnodes": sum(row["qnodes"] for row in rows),
             "mismatch_ids": category_mismatches,
         }
 
-    report = OrderedDict(
-        (
-            ("schema", "koi-strength-report-v1"),
-            ("suite", expected_suite),
-            ("engine", profiles[0]["engine"]),
-            ("build", profiles[0]["build"]),
-            ("profile_sha256", hashes if len(hashes) > 1 else hashes[0]),
-            ("profile_count", len(profiles)),
-            ("hash_mb", profiles[0]["hash_mb"]),
-            ("hash_state", profiles[0]["hash_state"]),
-            ("threads", profiles[0]["threads"]),
-            ("speed", profiles[0]["speed"]),
-            ("timed", profiles[0]["timed"]),
-            ("position_count", len(positions)),
-            ("expected_move_count", expected_count),
-            ("accepted_count", accepted_count),
-            ("acceptance_rate", round(accepted_count / expected_count, 6) if expected_count else None),
-            ("mismatch_ids", mismatch_ids),
-            ("mean_score_cp", _mean([_number(row["score_cp"], "score_cp", row["id"]) for row in positions])),
-            ("mean_elapsed_ms", _mean(
-                [_number(row["elapsed_ms"], "elapsed_ms", row["id"]) for row in positions if "elapsed_ms" in row]
-            )),
-            ("total_nodes", sum(_number(row["nodes"], "nodes", row["id"]) for row in positions)),
-            ("total_qnodes", sum(_number(row["qnodes"], "qnodes", row["id"]) for row in positions)),
-            ("categories", categories),
-        )
-    )
+    report = {
+        "schema": "koi-strength-report-v1",
+        "suite": expected_suite,
+        "engine": profiles[0]["engine"],
+        "build": profiles[0]["build"],
+        "profile_sha256": hashes if len(hashes) > 1 else hashes[0],
+        "profile_count": len(profiles),
+        "hash_mb": profiles[0]["hash_mb"],
+        "hash_state": profiles[0]["hash_state"],
+        "threads": profiles[0]["threads"],
+        "speed": profiles[0]["speed"],
+        "timed": profiles[0]["timed"],
+        "position_count": len(positions),
+        "expected_move_count": expected_count,
+        "accepted_count": accepted_count,
+        "acceptance_rate": round(accepted_count / expected_count, 6) if expected_count else None,
+        "mismatch_ids": mismatch_ids,
+        "mean_score_cp": _mean([row["score_cp"] for row in positions]),
+        "mean_elapsed_ms": _mean(
+            [row["elapsed_ms"] for row in positions if "elapsed_ms" in row]
+        ),
+        "total_nodes": sum(row["nodes"] for row in positions),
+        "total_qnodes": sum(row["qnodes"] for row in positions),
+        "categories": categories,
+    }
     return report
 
 

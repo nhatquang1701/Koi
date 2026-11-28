@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <array>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace koi::detail {

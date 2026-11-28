@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -28,10 +29,6 @@ constexpr std::uintmax_t kMaximumNetworkBytes = 256ull * 1024ull * 1024ull;
 
 NnueError make_error(NnueErrorCode code, std::string message) {
     return NnueError{code, std::move(message)};
-}
-
-constexpr std::uint32_t rotate_right(std::uint32_t value, unsigned amount) noexcept {
-    return (value >> amount) | (value << (32U - amount));
 }
 
 class Sha256 final {
@@ -110,8 +107,8 @@ private:
         for (std::size_t index = 16; index < schedule.size(); ++index) {
             const std::uint32_t first = schedule[index - 15];
             const std::uint32_t second = schedule[index - 2];
-            const std::uint32_t sigma0 = rotate_right(first, 7) ^ rotate_right(first, 18) ^ (first >> 3);
-            const std::uint32_t sigma1 = rotate_right(second, 17) ^ rotate_right(second, 19) ^ (second >> 10);
+            const std::uint32_t sigma0 = std::rotr(first, 7) ^ std::rotr(first, 18) ^ (first >> 3);
+            const std::uint32_t sigma1 = std::rotr(second, 17) ^ std::rotr(second, 19) ^ (second >> 10);
             schedule[index] = schedule[index - 16] + sigma0 + schedule[index - 7] + sigma1;
         }
 
@@ -124,10 +121,10 @@ private:
         std::uint32_t g = state_[6];
         std::uint32_t h = state_[7];
         for (std::size_t index = 0; index < schedule.size(); ++index) {
-            const std::uint32_t sigma1 = rotate_right(e, 6) ^ rotate_right(e, 11) ^ rotate_right(e, 25);
+            const std::uint32_t sigma1 = std::rotr(e, 6) ^ std::rotr(e, 11) ^ std::rotr(e, 25);
             const std::uint32_t choose = (e & f) ^ (~e & g);
             const std::uint32_t temporary1 = h + sigma1 + choose + kRoundConstants[index] + schedule[index];
-            const std::uint32_t sigma0 = rotate_right(a, 2) ^ rotate_right(a, 13) ^ rotate_right(a, 22);
+            const std::uint32_t sigma0 = std::rotr(a, 2) ^ std::rotr(a, 13) ^ std::rotr(a, 22);
             const std::uint32_t majority = (a & b) ^ (a & c) ^ (b & c);
             const std::uint32_t temporary2 = sigma0 + majority;
             h = g;

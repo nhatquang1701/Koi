@@ -21,7 +21,6 @@ import sys
 MAGIC = b"KOI-NNUE"
 HEADER = struct.Struct("<8sIIIIIBBBBHHQ")
 SCALE_U8_U8_U16 = struct.Struct("<BBH")
-SUPPORTED_LAYOUTS = {4, 5, 6, 8, 9}
 
 
 class NnueInfoError(RuntimeError):

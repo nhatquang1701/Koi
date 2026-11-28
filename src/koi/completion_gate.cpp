@@ -7,43 +7,6 @@
 
 namespace koi {
 
-namespace {
-
-[[nodiscard]] std::string_view format_move_uci_stack(
-    const Move& move, std::array<char, 5>& buffer) noexcept {
-    if (move.is_no_move()) {
-        buffer = {'0', '0', '0', '0', '\0'};
-        return std::string_view(buffer.data(), 4);
-    }
-    if (move.from().index() == Square::kInvalid || move.to().index() == Square::kInvalid) {
-        return {};
-    }
-    buffer[0] = move.from().file();
-    buffer[1] = move.from().rank();
-    buffer[2] = move.to().file();
-    buffer[3] = move.to().rank();
-    std::size_t length = 4;
-    switch (move.promotion()) {
-    case Promotion::none:
-        break;
-    case Promotion::knight:
-        buffer[length++] = 'n';
-        break;
-    case Promotion::bishop:
-        buffer[length++] = 'b';
-        break;
-    case Promotion::rook:
-        buffer[length++] = 'r';
-        break;
-    case Promotion::queen:
-        buffer[length++] = 'q';
-        break;
-    }
-    return std::string_view(buffer.data(), length);
-}
-
-} // namespace
-
 bool CompletionOnce::try_claim() noexcept {
     bool expected = false;
     return claimed_.compare_exchange_strong(expected, true, std::memory_order_acq_rel,
@@ -62,7 +25,7 @@ bool CompletionGate::allowed_root_move(const SearchLimits& limits,
 bool CompletionGate::contains_uci(const std::vector<std::string>& moves,
                                   const Move& move) noexcept {
     std::array<char, 5> buffer{};
-    const std::string_view target = format_move_uci_stack(move, buffer);
+    const std::string_view target = move.format_uci(buffer);
     return std::find(moves.begin(), moves.end(), target) != moves.end();
 }
 
@@ -93,8 +56,7 @@ std::optional<Move> CompletionGate::common_fallback(
     std::sort(legal.begin(), legal_end, [](const Move& left, const Move& right) {
         std::array<char, 5> left_buf{};
         std::array<char, 5> right_buf{};
-        return format_move_uci_stack(left, left_buf) <
-            format_move_uci_stack(right, right_buf);
+        return left.format_uci(left_buf) < right.format_uci(right_buf);
     });
     for (std::size_t index = 0; index < move_count; ++index) {
         const Move& move = legal[index];

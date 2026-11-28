@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -78,6 +79,7 @@ public:
     [[nodiscard]] constexpr Promotion promotion() const noexcept;
     [[nodiscard]] constexpr bool is_no_move() const noexcept;
     [[nodiscard]] std::string uci() const;
+    [[nodiscard]] std::string_view format_uci(std::array<char, 5>& buffer) const noexcept;
 
     friend constexpr bool operator==(const Move&, const Move&) noexcept = default;
 

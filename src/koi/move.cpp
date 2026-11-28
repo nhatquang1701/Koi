@@ -58,15 +58,19 @@ std::optional<Move> Move::parse_uci(std::string_view uci) noexcept {
     return Move(*from, *to, promotion);
 }
 
-std::string Move::uci() const {
+std::string_view Move::format_uci(std::array<char, 5>& buffer) const noexcept {
     if (is_no_move()) {
-        return "0000";
+        buffer = {'0', '0', '0', '0', '\0'};
+        return std::string_view(buffer.data(), 4);
     }
     if (from().index() == Square::kInvalid || to().index() == Square::kInvalid) {
         return {};
     }
 
-    char buffer[5]{from().file(), from().rank(), to().file(), to().rank(), '\0'};
+    buffer[0] = from().file();
+    buffer[1] = from().rank();
+    buffer[2] = to().file();
+    buffer[3] = to().rank();
     std::size_t length = 4;
     switch (promotion()) {
         case Promotion::none:
@@ -84,7 +88,12 @@ std::string Move::uci() const {
             buffer[length++] = 'q';
             break;
     }
-    return std::string(buffer, length);
+    return std::string_view(buffer.data(), length);
+}
+
+std::string Move::uci() const {
+    std::array<char, 5> buffer{};
+    return std::string(format_uci(buffer));
 }
 
 } // namespace koi

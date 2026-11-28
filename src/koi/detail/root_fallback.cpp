@@ -6,7 +6,6 @@
 #include <mutex>
 #include <optional>
 #include <utility>
-#include <vector>
 
 #include "koi/detail/search_context_support.hpp"
 #include "koi/evaluator.hpp"
@@ -1720,11 +1719,5 @@ static bool quiet_move_leaves_safe_capture(
                                opponent_move.captured_piece != PieceType::pawn;
                        });
 }
-
-// Root workers consume a shared atomic index.  At a short time limit the
-// order of that queue is therefore part of playing strength: moves that were
-// strong at the preceding completed iteration should be handed to workers
-// before previously unseen tail moves.  Keep the identity separate from the
-// current vector position so reordering does not change deterministic ties.
 
 } // namespace koi::detail
