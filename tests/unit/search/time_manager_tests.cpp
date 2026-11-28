@@ -2478,8 +2478,8 @@ void test_decisive_loss_noise_immunity_preserves_defense_above_minus900() {
             {4 + i, defense_scores[static_cast<std::size_t>(i)], false, false, false,
              10'000, 5'000, times[static_cast<std::size_t>(i)]});
     }
-    *now_look_decided += (look_decided.diagnostics().optimum_budget * 60) / 100;
-    *now_look_defense += (look_defense.diagnostics().optimum_budget * 60) / 100;
+    *now_look_decided += (look_decided.diagnostics().optimum_budget * 70) / 100;
+    *now_look_defense += (look_defense.diagnostics().optimum_budget * 70) / 100;
     require(!look_decided.should_start_next_iteration(milliseconds{1}),
             "decisive loss (-950 -> -1030) must not latch hard_position_ when best move holds");
     require(look_defense.should_start_next_iteration(milliseconds{1}),
