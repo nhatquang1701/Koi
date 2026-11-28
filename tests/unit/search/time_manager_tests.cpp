@@ -1871,8 +1871,8 @@ void test_emergency_single_move_and_winning_mate_fast_exit() {
 
     TimeManager emg_mate(tight_emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
                          warm_context(), [now_mate] { return *now_mate; });
-    emg_mate.observe_iteration({3, 30'000, false, false, false, 1'000, 800, milliseconds{2}});
-    emg_mate.observe_iteration({4, 30'000, false, false, false, 1'000, 800, milliseconds{3}});
+    emg_mate.observe_iteration({3, 99'900, false, false, false, 1'000, 800, milliseconds{2}});
+    emg_mate.observe_iteration({4, 99'900, false, false, false, 1'000, 800, milliseconds{3}});
     emg_mate.reconfigure(tight_emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
                          warm_context(), false, *now_mate, 0);
     require(emg_mate.diagnostics().emergency_pacing &&
@@ -1884,8 +1884,8 @@ void test_emergency_single_move_and_winning_mate_fast_exit() {
     auto now_mated = std::make_shared<Clock::time_point>(Clock::now());
     TimeManager emg_mated(tight_emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
                           warm_context(), [now_mated] { return *now_mated; });
-    emg_mated.observe_iteration({3, -30'000, false, false, false, 1'000, 800, milliseconds{2}});
-    emg_mated.observe_iteration({4, -30'000, false, false, false, 1'000, 800, milliseconds{3}});
+    emg_mated.observe_iteration({3, -99'900, false, false, false, 1'000, 800, milliseconds{2}});
+    emg_mated.observe_iteration({4, -99'900, false, false, false, 1'000, 800, milliseconds{3}});
     emg_mated.reconfigure(tight_emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
                           warm_context(), false, *now_mated, 0);
     require(!emg_mated.should_stop_after_iteration() &&
@@ -1895,8 +1895,8 @@ void test_emergency_single_move_and_winning_mate_fast_exit() {
     auto now_healthy_m = std::make_shared<Clock::time_point>(Clock::now());
     TimeManager healthy_mate(healthy_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
                              warm_context(), [now_healthy_m] { return *now_healthy_m; });
-    healthy_mate.observe_iteration({3, 30'000, false, false, false, 1'000, 800, milliseconds{2}});
-    healthy_mate.observe_iteration({4, 30'000, false, false, false, 1'000, 800, milliseconds{3}});
+    healthy_mate.observe_iteration({3, 99'900, false, false, false, 1'000, 800, milliseconds{2}});
+    healthy_mate.observe_iteration({4, 99'900, false, false, false, 1'000, 800, milliseconds{3}});
     healthy_mate.reconfigure(healthy_live, koi::Color::white, 100, kMoveOverheadMs, 100,
                              warm_context(), false, *now_healthy_m, 0);
     require(!healthy_mate.diagnostics().emergency_pacing &&
