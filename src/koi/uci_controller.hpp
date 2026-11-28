@@ -150,10 +150,11 @@ private:
     [[nodiscard]] bool debug_logging_enabled() const noexcept;
     bool try_install_nnue_file(const std::filesystem::path& path, std::string_view option_label,
                                std::filesystem::path* resolved_out = nullptr);
-    // Records the clock baseline for the previous/current timed move and folds
-    // the observed GUI round trip into `observed_gui_overhead_ms_`.
-    void note_clock_baseline(const SearchLimits& limits) noexcept;
-    [[nodiscard]] std::uint32_t effective_move_overhead_ms() const noexcept;
+    // Records the clock baseline for the current timed move and folds observed
+    // GUI/network round-trip latency from the previous completed search into
+    // `observed_gui_overhead_ms_`.
+    void note_clock_baseline(const SearchLimits& limits, std::uint64_t generation,
+                             std::chrono::steady_clock::time_point started) noexcept;
     void stop_active_search();
     void stop_and_suppress_active_search();
     void start_perft(int depth);
@@ -217,12 +218,16 @@ private:
     std::uint32_t move_overhead_ms_ = 30;
     bool dynamic_overhead_ = false;
     // GUI/network overhead learned from clock discrepancies (clock searches
-    // only; never from movetime).  Added to the configured Move Overhead.
+    // only; never from movetime).  Protected by `output_mutex_`.
     std::uint32_t observed_gui_overhead_ms_ = 0;
     bool clock_baseline_valid_ = false;
+    bool previous_clock_search_completed_ = false;
+    std::uint64_t active_clock_search_generation_ = 0;
     std::int64_t previous_clock_remaining_ms_ = -1;
     std::int64_t previous_clock_increment_ms_ = 0;
+    std::int64_t previous_clock_search_elapsed_ms_ = 0;
     std::chrono::steady_clock::time_point previous_clock_search_start_{};
+    std::optional<int> previous_search_score_;
     std::uint32_t slow_mover_percent_ = 100;
     std::uint32_t contempt_cp_ = 0;
     bool strength_mode_ = false;

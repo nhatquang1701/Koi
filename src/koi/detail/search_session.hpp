@@ -14,6 +14,11 @@
 
 namespace koi::detail {
 
+struct PonderhitConversion {
+    SearchLimits limits;
+    std::chrono::steady_clock::time_point received_at{};
+};
+
 // Owns the lifecycle of exactly one search request. The request snapshots are
 // immutable after construction; the working search context is owned by the
 // worker launched for this session.
@@ -43,13 +48,14 @@ public:
                                           const SearchResult& result) noexcept;
 
     // Records a UCI ponderhit conversion for the running worker. The worker
-    // consumes it at the top of the next iteration and re-arms timing.
+    // consumes it at the top of the next iteration and re-arms timing from
+    // `received_at`.
     void request_ponderhit(SearchLimits limits);
     // Arms a bounded fallback deadline: the search is stopped after `delay`
     // unless it completed or was stopped earlier.  A jthread timer owned by the
     // session; re-arming joins the previous timer.
     void request_stop_after(std::chrono::milliseconds delay);
-    [[nodiscard]] std::optional<SearchLimits> take_ponderhit_limits();
+    [[nodiscard]] std::optional<PonderhitConversion> take_ponderhit();
 
 private:
     void mark_finished() noexcept;
@@ -65,7 +71,7 @@ private:
     std::mutex stop_mutex_;
     std::condition_variable stop_condition_;
     std::mutex ponderhit_mutex_;
-    std::optional<SearchLimits> ponderhit_limits_;
+    std::optional<PonderhitConversion> ponderhit_conversion_;
     WorkerThread worker_;
     std::jthread stop_timer_;
 };

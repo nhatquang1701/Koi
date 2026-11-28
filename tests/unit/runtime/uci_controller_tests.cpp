@@ -74,7 +74,7 @@ void test_network_overhead_estimator_tracks_gui_latency() {
     require(derive_network_overhead_ms(5'000, 1'000, 500, 5'500, 0) == 0,
             "the increment must be accounted for before comparing clocks");
     // Pathological stalls stay bounded.
-    require(derive_network_overhead_ms(60'000, 0, 1'000, 10'000, 0) == 500,
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 10'000, 0) == 1'500,
             "the learned overhead must stay bounded");
 }
 
@@ -2102,7 +2102,12 @@ void test_network_overhead_is_learned_from_clock_discrepancy() {
         "debug on\n"
         "position startpos\n"
         "go wtime 1000 btime 1000 winc 0 binc 0\n"
+        "wait\n"
         "go wtime 200 btime 200 winc 0 binc 0\n"
+        "wait\n"
+        "options\n"
+        "ucinewgame\n"
+        "options\n"
         "quit\n",
         files.path());
     require(result.exit_code == 0 && result.diagnostics.empty(),
@@ -2111,6 +2116,72 @@ void test_network_overhead_is_learned_from_clock_discrepancy() {
     const std::string contents((std::istreambuf_iterator<char>(log)), {});
     require(contents.find("network overhead estimate") != std::string::npos,
             "a clock that drops faster than Koi's search time must update the learned overhead");
+    require(result.output.find("observed: 0 ms") != std::string::npos,
+            "ucinewgame must reset the learned observed overhead");
+    // Simulate a 200 ms opponent pause between bestmove and next go:
+    // the second search must measure only the engine's own search duration, not
+    // the opponent pause, so a 150 ms clock discrepancy still triggers overhead learning.
+    koi::test::TempDirectory spaced_files;
+    StagedGatedInputBuffer spaced_buffer({
+        "setoption name DebugFile value network-spaced.log\n"
+        "debug on\n"
+        "position startpos\n"
+        "go wtime 10000 btime 10000 winc 0 binc 0 depth 1\n"
+        "wait\n",
+        "position startpos moves e2e4 e7e5\n"
+        "go wtime 9850 btime 10000 winc 0 binc 0 depth 1\n"
+        "wait\n"
+        "options\n"
+        "quit\n",
+    });
+    std::mutex bestmove_mutex;
+    std::condition_variable bestmove_cv;
+    bool first_bestmove_seen = false;
+    class FirstBestmoveNotifyBuf final : public std::stringbuf {
+    public:
+        FirstBestmoveNotifyBuf(std::mutex& m, std::condition_variable& cv, bool& seen)
+            : mutex_(m), cv_(cv), seen_(seen) {}
+
+        int sync() override {
+            if (str().find("bestmove ") != std::string::npos) {
+                {
+                    std::lock_guard lock(mutex_);
+                    seen_ = true;
+                }
+                cv_.notify_all();
+            }
+            return std::stringbuf::sync();
+        }
+
+    private:
+        std::mutex& mutex_;
+        std::condition_variable& cv_;
+        bool& seen_;
+    };
+    FirstBestmoveNotifyBuf spaced_out_buf(bestmove_mutex, bestmove_cv, first_bestmove_seen);
+    std::istream spaced_in(&spaced_buffer);
+    std::ostream spaced_out(&spaced_out_buf);
+    std::ostringstream spaced_diag;
+    std::jthread spaced_releaser([&] {
+        std::unique_lock lock(bestmove_mutex);
+        bestmove_cv.wait_for(lock, scale_test_wait_timeout(std::chrono::milliseconds{2'000}),
+                             [&] { return first_bestmove_seen; });
+        lock.unlock();
+        std::this_thread::sleep_for(std::chrono::milliseconds{200});
+        spaced_buffer.release_stage();
+    });
+    UciController spaced_controller(
+        spaced_in, spaced_out, spaced_diag,
+        koi::SearchService{std::make_shared<koi::test::MaterialEvaluator>()},
+        spaced_files.path());
+    const int spaced_exit = spaced_controller.run();
+    spaced_releaser.join();
+    require(spaced_exit == 0 && spaced_diag.str().empty(),
+            "spaced clock searches must stay protocol-clean");
+    std::ifstream spaced_log(spaced_files.path() / "network-spaced.log", std::ios::binary);
+    const std::string spaced_contents((std::istreambuf_iterator<char>(spaced_log)), {});
+    require(spaced_contents.find("network overhead estimate") != std::string::npos,
+            "opponent wait time between moves must not suppress network overhead learning");
 }
 void test_evalfile_autodiscovery_marker_is_informational() {
     const ControllerResult marked = run_controller_with_autodiscovery("uci\nquit\n", true);

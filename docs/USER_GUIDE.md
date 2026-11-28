@@ -870,13 +870,14 @@ or node limits, and changing one while searching cancels and joins the old
 generation before the next search uses the new snapshot.
 
 For online bots and network GUIs, Koi also learns the GUI round trip: when a
-clock search reports less remaining time than Koi's own elapsed search plus the
-reported increment explains (excess ≥ 25 ms), the learned overhead rises up to
-500 ms and is added to `Move Overhead` for reserve and hard-safety purposes; a
+clock search reports less remaining time than Koi's own completed search
+duration plus the reported increment explains (excess ≥ 25 ms), the learned
+overhead rises up to 1500 ms and sets a floor alongside `Move Overhead` (even
+when `Dynamic Overhead` is enabled) for reserve and hard-safety purposes; a
 clean or faster clock decays it. This makes repeated small network stalls
 self-correcting without slowing `movetime` analysis searches. `ucinewgame`
-resets the estimate. If a bot's link is consistently slower than 500 ms, set
-`Move Overhead` explicitly (for example 800–1500 ms for a high-latency server)
+resets the estimate. If a bot's link is consistently slower than 1500 ms, set
+`Move Overhead` explicitly (for example 1500–2500 ms for a very slow link)
 and/or enable `Dynamic Overhead`.
 
 Clock searches are additionally flag-proof. A single move can never consume more

@@ -1118,7 +1118,7 @@ std::uint32_t derive_network_overhead_ms(const std::int64_t previous_remaining_m
     // GUI clock is newer than Koi's elapsed estimate (or the increment was
     // applied differently): decay rather than permanently slowing the engine.
     constexpr std::int64_t kNoiseFloorMs = 25;
-    constexpr std::int64_t kMaximumEstimateMs = 500;
+    constexpr std::int64_t kMaximumEstimateMs = 1'500;
     if (excess >= kNoiseFloorMs) {
         const auto candidate = static_cast<std::uint32_t>(
             std::min<std::int64_t>(excess, kMaximumEstimateMs));

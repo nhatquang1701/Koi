@@ -301,17 +301,23 @@ void UciController::set_initial_syzygy_path(const std::string_view path) {
 void UciController::reset_new_game() {
     stop_and_suppress_active_search();
     search_service_.clear_hash();
-    observed_gui_overhead_ms_ = 0;
-    clock_baseline_valid_ = false;
-    previous_clock_remaining_ms_ = -1;
-    previous_clock_increment_ms_ = 0;
-    previous_clock_search_start_ = {};
+    {
+        std::lock_guard lock(output_mutex_);
+        observed_gui_overhead_ms_ = 0;
+        clock_baseline_valid_ = false;
+        previous_clock_search_completed_ = false;
+        active_clock_search_generation_ = 0;
+        previous_clock_remaining_ms_ = -1;
+        previous_clock_increment_ms_ = 0;
+        previous_clock_search_elapsed_ms_ = 0;
+        previous_clock_search_start_ = {};
+        previous_search_score_.reset();
+        xboard_pending_move_.reset();
+    }
     debug_json_event("ucinewgame", "\"hash_cleared\":true");
     position_ = GameState::startpos();
     position_origin_ = GameState::startpos();
     position_moves_.clear();
-    std::lock_guard lock(output_mutex_);
-    xboard_pending_move_.reset();
 }
 
 void UciController::apply_pending_xboard_move() {
@@ -1902,8 +1908,19 @@ void UciController::handle_ponderhit() {
         // exact root the GUI ponders after, so the ponderhit is converted in
         // place. The worker keeps its TT-warm state, identity, and generation;
         // only time management switches from unbounded to the real budget.
+        const auto ponderhit_now = std::chrono::steady_clock::now();
         SearchLimits converted_for_timing = converted;
-        note_clock_baseline(converted_for_timing);
+        std::uint64_t current_generation = 0;
+        std::uint32_t observed_overhead = 0;
+        {
+            std::lock_guard lock(output_mutex_);
+            current_generation = generation_;
+        }
+        note_clock_baseline(converted_for_timing, current_generation, ponderhit_now);
+        {
+            std::lock_guard lock(output_mutex_);
+            observed_overhead = observed_gui_overhead_ms_;
+        }
         active_search_->request_ponderhit(std::move(converted));
         // The worker consumes the conversion only at the next iteration
         // boundary; until then the pondering search has no deadline even though
@@ -1912,8 +1929,9 @@ void UciController::handle_ponderhit() {
         try {
             koi::TimeManager converted_timing(
                 converted_for_timing, position_.side_to_move(), kFixedSpeedPercent,
-                effective_move_overhead_ms(), slow_mover_percent_,
-                koi::RootTimingContext{}, {}, dynamic_overhead_);
+                move_overhead_ms_, slow_mover_percent_,
+                koi::RootTimingContext{}, {}, dynamic_overhead_, ponderhit_now,
+                observed_overhead);
             if (const auto budget = converted_timing.time_budget();
                 budget.has_value() && budget->count() > 0) {
                 // The timer is only a fallback until the worker consumes the
@@ -1953,35 +1971,51 @@ void UciController::handle_ponderhit() {
     start_search(position_, converted, true);
 }
 
-void UciController::note_clock_baseline(const SearchLimits& limits) noexcept {
+void UciController::note_clock_baseline(
+    const SearchLimits& limits, const std::uint64_t generation,
+    const std::chrono::steady_clock::time_point started) noexcept {
     const bool clock_search = !limits.infinite && !limits.ponder && !limits.movetime.has_value();
     const std::optional<ClockLimit>& clock =
         position_.side_to_move() == Color::white ? limits.white_clock : limits.black_clock;
-    if (!clock_search || !clock.has_value()) {
-        clock_baseline_valid_ = false;
-        return;
+    std::uint32_t logged_overhead = 0;
+    std::int64_t logged_elapsed = 0;
+    bool overhead_updated = false;
+    {
+        std::lock_guard lock(output_mutex_);
+        if (!clock_search || !clock.has_value()) {
+            clock_baseline_valid_ = false;
+            previous_clock_search_completed_ = false;
+            return;
+        }
+        // Only measure round-trip discrepancy using our engine's actual
+        // go-to-bestmove duration; including the opponent's think time made the
+        // expected clock smaller than reality and suppressed overhead learning.
+        if (clock_baseline_valid_ && previous_clock_search_completed_) {
+            const std::uint32_t updated = uci::derive_network_overhead_ms(
+                previous_clock_remaining_ms_, previous_clock_increment_ms_,
+                previous_clock_search_elapsed_ms_, clock->remaining.count(),
+                observed_gui_overhead_ms_);
+            if (updated != observed_gui_overhead_ms_) {
+                observed_gui_overhead_ms_ = updated;
+                logged_overhead = updated;
+                logged_elapsed = previous_clock_search_elapsed_ms_;
+                overhead_updated = true;
+            }
+        }
+        previous_clock_remaining_ms_ = clock->remaining.count();
+        previous_clock_increment_ms_ = clock->increment.count();
+        previous_clock_search_start_ = started;
+        active_clock_search_generation_ = generation;
+        previous_clock_search_completed_ = false;
+        clock_baseline_valid_ = true;
     }
-    const auto now = std::chrono::steady_clock::now();
-    if (clock_baseline_valid_) {
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - previous_clock_search_start_).count();
-        const std::uint32_t updated = uci::derive_network_overhead_ms(
-            previous_clock_remaining_ms_, previous_clock_increment_ms_, elapsed,
-            clock->remaining.count(), observed_gui_overhead_ms_);
-        if (updated != observed_gui_overhead_ms_) {
-            debug_event("network overhead estimate " + std::to_string(updated) +
-                        " ms elapsed " + std::to_string(elapsed) + " ms");
-            observed_gui_overhead_ms_ = updated;
+    if (overhead_updated) {
+        try {
+            debug_event("network overhead estimate " + std::to_string(logged_overhead) +
+                        " ms elapsed " + std::to_string(logged_elapsed) + " ms");
+        } catch (...) {
         }
     }
-    previous_clock_remaining_ms_ = clock->remaining.count();
-    previous_clock_increment_ms_ = clock->increment.count();
-    previous_clock_search_start_ = now;
-    clock_baseline_valid_ = true;
-}
-
-std::uint32_t UciController::effective_move_overhead_ms() const noexcept {
-    return std::min(kMaximumMoveOverheadMs, std::max(move_overhead_ms_, observed_gui_overhead_ms_));
 }
 
 void UciController::start_search(GameState root, SearchLimits limits, bool skip_book,
@@ -1991,7 +2025,6 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         search_started = std::chrono::steady_clock::now();
     }
     const std::uint64_t generation = begin_generation();
-    note_clock_baseline(limits);
     ProtocolMode search_protocol = ProtocolMode::uci;
     bool xboard_thinking = false;
     bool xboard_analyze_snapshot = false;
@@ -2190,14 +2223,25 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                                 xboard_analyze_snapshot, search_root);
     };
 
+    note_clock_baseline(limits, generation, search_started);
+    std::uint32_t observed_overhead = 0;
+    std::optional<int> previous_score;
+    {
+        std::lock_guard lock(output_mutex_);
+        observed_overhead = observed_gui_overhead_ms_;
+        previous_score = previous_search_score_;
+    }
+
     SearchOptions options;
     options.threads = threads_;
     options.multi_pv = multi_pv_;
     options.random_seed = random_seed_;
     options.analyse_mode = analyse_mode_ || force_analyze;
     options.show_wdl = show_wdl_;
-    options.move_overhead_ms = effective_move_overhead_ms();
+    options.move_overhead_ms = move_overhead_ms_;
     options.dynamic_move_overhead = dynamic_overhead_;
+    options.observed_overhead_ms = observed_overhead;
+    options.previous_search_score = previous_score;
     options.slow_mover_percent = slow_mover_percent_;
     options.contempt_cp = static_cast<int>(contempt_cp_);
     options.generation = generation;
@@ -2210,7 +2254,8 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
         const TimeManager preview(
             limits, search_root.side_to_move(), kFixedSpeedPercent,
             options.move_overhead_ms, options.slow_mover_percent,
-            RootTimingContext{}, {}, options.dynamic_move_overhead, search_started);
+            RootTimingContext{}, {}, options.dynamic_move_overhead, search_started,
+            options.observed_overhead_ms);
         movetime_watchdog_budget = preview.time_budget();
     }
     const bool has_search_moves = limits.search_moves_specified;
@@ -2743,6 +2788,16 @@ void UciController::write_search_completion(const std::uint64_t generation,
         output_ << " ponder " << result.ponder_move->uci();
     }
     output_ << '\n' << std::flush;
+    if (generation == active_clock_search_generation_ && clock_baseline_valid_) {
+        previous_clock_search_elapsed_ms_ = std::max<std::int64_t>(
+            0, std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - previous_clock_search_start_)
+                   .count());
+        previous_clock_search_completed_ = true;
+    }
+    if (!is_ponder_search && result.completed_depth > 0 && !result.mate.has_value()) {
+        previous_search_score_ = result.score_cp;
+    }
 }
 
 void UciController::write_book_completion(const std::uint64_t generation, const GameState& root,

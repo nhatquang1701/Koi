@@ -605,28 +605,31 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    Soft and hard budgets are both this value.
 4. **Clock search**:
    - `remaining` is the side-to-move clock, clamped to ≥ 0.
-   - Dynamic overhead (if enabled) is `clamp(remaining / 50, 10, 100)` ms;
-     otherwise the fixed `Move Overhead` is used.
    - Observed GUI/network overhead (clock searches only): `UciController`
-     compares the previous reported clock plus increment minus Koi's own search
-     time against the newly reported clock. Positive excess ≥ 25 ms raises a
-     learned overhead (capped at 500 ms); a negative or sub-threshold excess
-     decays it by 1/8. The effective overhead is
-     `max(Move Overhead, learned overhead)` and feeds the reserve and the final
-     hard-safety ceiling, so an online bot's network round trip is paid for
-     instead of flagging. `movetime` searches never learn or use it, and
-     `ucinewgame` resets it.
-   - Horizon: `movestogo` when supplied, otherwise phase-adjusted from base
-     defaults of **25** with a positive increment (`22` when `phase >= 14` and
-     `fullmove` in `8..32`; `28` when `phase <= 6`) and **50** for sudden
-     death (`44` when `phase >= 14` and `fullmove` in `8..32`; `42` when
-     `phase <= 6` and `fullmove >= 35`).
-   - Reserve: `min(750 ms, max(50 ms, 3% of remaining, 2 × overhead))`, then
-     `min(reserve, remaining)`.
+     compares the previous reported clock plus increment minus Koi's own
+     completed `go`-to-`bestmove` search duration (excluding opponent think time)
+     against the newly reported clock. Positive excess ≥ 25 ms raises a learned
+     overhead (capped at 1500 ms); a negative or sub-threshold excess decays it
+     by 1/8. `movetime` searches never learn or use it, and `ucinewgame` resets
+     it.
+   - Effective overhead: `max(Move Overhead, learned overhead)`, or when
+     `Dynamic Overhead` is enabled, `max(clamp(remaining / 50, 10, 100),
+     learned overhead, Move Overhead > 30 ? Move Overhead : 0)`.
+   - Horizon: `movestogo` when supplied, otherwise phase/move-adjusted from
+     base defaults of **28** with a positive increment (`36` in early opening
+     `fullmove <= 10`; `28` in complex middlegame `phase >= 10` and `11..32`;
+     `34` in endgame `phase <= 6`; `32` otherwise) and **50** for sudden death
+     (`56` in early opening; `46` in complex middlegame; `42` in endgame
+     `fullmove >= 35`; `50` otherwise).
+   - Reserve: `min(remaining, max(min(750 ms, max(50 ms, 3% of remaining)),
+     2 × overhead))` so two effective overheads are always protected.
    - Usable: `remaining - reserve`.
    - Emergency pacing starts when `remaining <= 3000 ms`.
    - Base allocation: `usable / horizon`.
-   - Increment credit: `min(3/4 × increment, 1/4 × usable)`.
+   - Increment credit: `min(3/4 × credit_inc, 1/4 × usable)`, where
+     `credit_inc` is `max(0, increment - overhead)` once `remaining <= 15 ×
+     increment` without `movestogo` (keeping low-clock incremental endgames
+     sustainable) and `increment` otherwise.
    - Raw soft: `base + increment_credit`.
    - Raw hard: `hard_units × base + 1.5 × increment_credit`, where
      `hard_units = 3` only at ≤ 3000 ms remaining, otherwise 2. Earlier builds
@@ -637,12 +640,18 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      `usable`; soft is capped at hard.
    - Emergency taper: horizon `max(10, horizon / 2)`, emergency base
      `usable / horizon`; soft becomes `min(soft, emergency_base + credit)`; the
-     hard extension is `max(5 ms, emergency_base / 2)` and is suppressed for a
-     non-hard position; hard is raised to at least soft.
+     hard extension is `max(15 ms, 2 × emergency_base)` for hard positions and
+     `max(5 ms, emergency_base / 2)` otherwise; hard is capped by `emergency_hard`
+     and raised to at least soft.
    - Flag-safety caps are applied last: safety margin
      `max(2 × overhead + 15 ms, min(50 ms, remaining / 20))`; hard is capped at
      `usable - safety` and at `max(5 ms, usable / 4)`; hard has a 1 ms floor and
      soft is capped at hard.
+   - Every bounded timed search (both clock searches and `movetime`, including
+     converted `ponderhit` searches) arms a wall-clock `stop_after` watchdog on
+     its `SearchSession`, and `SearchContext` adapts its node clock-poll
+     cadence (`32` nodes for `<= 500 ms`, `128` for `<= 2000 ms`, `256`
+     otherwise).
 
 The hard deadline is fixed when the search starts. Iteration evidence can pace
 the search but cannot push it past the cap.
@@ -659,21 +668,28 @@ the search but cannot push it past the cap.
   `depth >= 4` on `best_move_changed`, `score_drop_cp_ >= 50`, or
   `aspiration_researched && score_drop_cp_ >= 25`. Stable means no change and
   `|Δ| <= 25`.
-- Continuous pacing (`effective_soft_budget`) scales the soft budget using
-  `best_move_effort_permille_`, `best_move_stability_`, `score_drop_cp_`,
-  `score_gain_cp_`, and `last_aspiration_researched_`.
+- Continuous pacing (`effective_soft_budget`) scales the soft budget within
+  `[max(1 ms, soft / 3), hard]` using `best_move_effort_permille_`,
+  `best_move_stability_`, decayed cumulative `instability_permille_`, inter-move
+  and intra-search `score_drop_cp_`, `score_gain_cp_`,
+  `last_aspiration_researched_`, forced-mate fast exit (`>= 2` stable deep mate
+  iterations), and winning-endgame conversion speedup (`|score| >= 500` cp,
+  stable deep line).
 - A hard position may exceed the soft budget only while the remaining usable
   clock is at least `2 × soft budget + overhead` (`hard_extension_affordable`).
   Near the end the soft budget wins.
-- `should_stop_after_iteration`: stops at the hard deadline; in emergency pacing
-  stops at soft when the extension is unaffordable or the position is not hard;
-  in clock mode stops at soft after at least 2 stable observations when the
+- `should_stop_after_iteration`: stops at the hard deadline, on confirmed forced
+  mates or single-legal moves after reaching soft/optimum time, in emergency
+  pacing at soft when the extension is unaffordable or the position is not hard,
+  and in clock mode at soft after at least 2 stable observations when the
   extension is unaffordable.
-- `should_start_next_iteration`: refuses a new iteration when projected 2× the
-  previous iteration would cross the hard deadline, and in emergency pacing at
-  soft.
-- `ponderhit` calls `reconfigure`: limits/root context are replaced, the start
-  time resets, and the new budget is fully available.
+- `should_start_next_iteration`: honors emergency pacing, forced-mate / single-move
+  exits, calm `75%` soft-target cutoff, and `1.5×` previous-iteration wall-clock
+  lookahead (avoiding doomed partial iterations past `1.2×` soft target), in
+  addition to the hard deadline.
+- `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)
+  and calls `reconfigure`: limits/root context are replaced, the clock starts
+  from `received_at`, and the session watchdog is re-armed.
 
 ### 6.3 Limit interactions
 

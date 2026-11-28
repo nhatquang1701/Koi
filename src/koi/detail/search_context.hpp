@@ -169,6 +169,7 @@ struct SearchContext {
     // itself through the same heuristic it is meant to validate.
     int null_verification_min_ply = 0;
     int clock_poll_countdown = 0;
+    int clock_poll_interval = kClockPollInterval;
     int quiescence_check_depth_limit = kMaximumQuiescenceCheckDepth;
     SearchStack stack;
     struct FrameScratch;
@@ -283,12 +284,18 @@ struct SearchContext {
           tablebase(std::move(tablebase_binding)),
           frame_scratch(create_frame_scratch()),
           evaluation_cache(std::make_unique<EvaluationCacheEntry[]>(kEvaluationCacheSize)) {
-        if (const auto budget = time_manager.time_budget(); budget.has_value() &&
-            *budget <= kShortTimedSerialThreshold) {
-            // A short timed search must finish its first root iteration before
-            // spending time on the deepest quiet-checking layer. Fixed-depth
-            // searches remain on the full horizon.
-            quiescence_check_depth_limit = std::max(1, kMaximumQuiescenceCheckDepth - 1);
+        if (const auto budget = time_manager.time_budget(); budget.has_value()) {
+            if (*budget <= std::chrono::milliseconds{500}) {
+                clock_poll_interval = 32;
+            } else if (*budget <= std::chrono::milliseconds{2000}) {
+                clock_poll_interval = 128;
+            }
+            if (*budget <= kShortTimedSerialThreshold) {
+                // A short timed search must finish its first root iteration before
+                // spending time on the deepest quiet-checking layer. Fixed-depth
+                // searches remain on the full horizon.
+                quiescence_check_depth_limit = std::max(1, kMaximumQuiescenceCheckDepth - 1);
+            }
         }
     }
 
@@ -457,7 +464,7 @@ struct SearchContext {
             --clock_poll_countdown;
             return false;
         }
-        clock_poll_countdown = kClockPollInterval;
+        clock_poll_countdown = clock_poll_interval;
         return poll_clock_slow();
     }
 

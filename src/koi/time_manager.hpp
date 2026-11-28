@@ -22,7 +22,8 @@ public:
                 std::uint32_t move_overhead_ms, std::uint32_t slow_mover_percent,
                 RootTimingContext root_context, TimePointProvider now = {},
                 bool dynamic_move_overhead = false,
-                std::chrono::steady_clock::time_point search_started = {});
+                std::chrono::steady_clock::time_point search_started = {},
+                std::uint32_t observed_overhead_ms = 0);
 
     [[nodiscard]] std::optional<std::chrono::milliseconds> time_budget() const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> node_limit() const noexcept;
@@ -39,11 +40,15 @@ public:
     void reconfigure(const SearchLimits& limits, Color side_to_move, std::uint8_t speed_percent,
                      std::uint32_t move_overhead_ms, std::uint32_t slow_mover_percent,
                      const RootTimingContext& root_context,
-                     bool dynamic_move_overhead = false);
+                     bool dynamic_move_overhead = false,
+                     std::chrono::steady_clock::time_point search_started = {},
+                     std::uint32_t observed_overhead_ms = 0);
 
 private:
     [[nodiscard]] std::chrono::steady_clock::time_point now() const noexcept;
     [[nodiscard]] std::int64_t now_nanoseconds() const noexcept;
+    [[nodiscard]] std::int64_t resolve_start_ns(
+        std::chrono::steady_clock::time_point search_started) const noexcept;
     [[nodiscard]] static int initial_hardness(const RootTimingContext& context) noexcept;
     // A hard position may run past the soft budget only while the clock can
     // still pay for several more hard moves; near the end the soft budget wins.
@@ -52,7 +57,7 @@ private:
     void update_optimum_budget() noexcept;
     void initialize(Color side_to_move, std::uint8_t speed_percent, std::uint32_t move_overhead_ms,
                     std::uint32_t slow_mover_percent, bool dynamic_move_overhead,
-                    std::int64_t start_ns);
+                    std::uint32_t observed_overhead_ms, std::int64_t start_ns);
 
     SearchLimits limits_;
     RootTimingContext root_context_;
@@ -62,10 +67,16 @@ private:
     std::optional<int> average_score_;
     std::uint32_t stable_observations_ = 0;
     std::uint32_t best_move_stability_ = 0;
+    std::uint32_t instability_permille_ = 0;
+    std::uint32_t mate_stable_observations_ = 0;
+    int last_mate_sign_ = 0;
     int last_observed_depth_ = 0;
     int score_drop_cp_ = 0;
     int score_gain_cp_ = 0;
     std::uint32_t best_move_effort_permille_ = 0;
+    std::chrono::milliseconds last_iteration_elapsed_{0};
+    std::chrono::milliseconds remaining_clock_{0};
+    std::chrono::milliseconds increment_clock_{0};
     bool has_effort_sample_ = false;
     bool last_aspiration_researched_ = false;
     bool hard_position_ = false;

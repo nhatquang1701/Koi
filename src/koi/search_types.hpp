@@ -57,6 +57,9 @@ struct RootTimingContext {
     // pacing; negative game_phase / zero fullmove_number keeps default horizon.
     int game_phase = -1;
     std::uint16_t fullmove_number = 0;
+    // Best-move evaluation from the previous search in the same game, used to
+    // detect unexpected inter-move score drops.
+    std::optional<int> previous_search_score;
 };
 
 struct SearchIterationObservation {
@@ -69,6 +72,9 @@ struct SearchIterationObservation {
     // Nodes spent searching the root best move during this iteration (0 when
     // unavailable). Used by dynamic node-effort scaling in clock mode.
     std::uint64_t best_move_nodes = 0;
+    // Wall-clock duration spent on this completed iteration (0 when
+    // unavailable). Used by pre-iteration lookahead to avoid doomed plies.
+    std::chrono::milliseconds iteration_elapsed{0};
 };
 
 struct TimeManagementStats {
@@ -360,8 +366,11 @@ struct SearchOptions {
     std::uint32_t move_overhead_ms = 30;
     std::uint32_t slow_mover_percent = 100;
     // Derive the per-move overhead from the time control instead of using the
-    // fixed Move Overhead value (2% of the remaining clock, 10..100 ms).
+    // fixed Move Overhead value (2% of the remaining clock, 10..100 ms), while
+    // never dropping below observed GUI/network latency or explicit Move Overhead.
     bool dynamic_move_overhead = false;
+    std::uint32_t observed_overhead_ms = 0;
+    std::optional<int> previous_search_score;
     // Centipawns added against drawing: a draw scores -contempt for the root
     // side and +contempt for its opponent, so the engine only settles for a
     // draw when every alternative is worse.  0 keeps the historical neutral

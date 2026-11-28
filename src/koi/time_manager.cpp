@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <limits>
 
+#include "koi/detail/search_constants.hpp"
+
 namespace koi {
 namespace {
 
@@ -100,8 +102,28 @@ TimeManager::TimeManager(SearchLimits limits, Color side_to_move, std::uint8_t s
                          std::uint32_t move_overhead_ms, std::uint32_t slow_mover_percent,
                          RootTimingContext root_context,
                          TimePointProvider now, bool dynamic_move_overhead,
-                         std::chrono::steady_clock::time_point search_started)
+                         std::chrono::steady_clock::time_point search_started,
+                         std::uint32_t observed_overhead_ms)
     : limits_(std::move(limits)), root_context_(root_context), now_(std::move(now)) {
+    initialize(side_to_move, speed_percent, move_overhead_ms, slow_mover_percent,
+               dynamic_move_overhead, observed_overhead_ms, resolve_start_ns(search_started));
+}
+
+void TimeManager::reconfigure(const SearchLimits& limits, Color side_to_move,
+                              std::uint8_t speed_percent, std::uint32_t move_overhead_ms,
+                              std::uint32_t slow_mover_percent,
+                              const RootTimingContext& root_context,
+                              bool dynamic_move_overhead,
+                              std::chrono::steady_clock::time_point search_started,
+                              std::uint32_t observed_overhead_ms) {
+    limits_ = limits;
+    root_context_ = root_context;
+    initialize(side_to_move, speed_percent, move_overhead_ms, slow_mover_percent,
+               dynamic_move_overhead, observed_overhead_ms, resolve_start_ns(search_started));
+}
+
+std::int64_t TimeManager::resolve_start_ns(
+    const std::chrono::steady_clock::time_point search_started) const noexcept {
     std::int64_t start_ns = now_nanoseconds();
     if (!now_ && search_started != std::chrono::steady_clock::time_point{}) {
         const std::int64_t supplied_ns =
@@ -110,25 +132,13 @@ TimeManager::TimeManager(SearchLimits limits, Color side_to_move, std::uint8_t s
                 .count();
         start_ns = std::min(start_ns, supplied_ns);
     }
-    initialize(side_to_move, speed_percent, move_overhead_ms, slow_mover_percent,
-               dynamic_move_overhead, start_ns);
-}
-
-void TimeManager::reconfigure(const SearchLimits& limits, Color side_to_move,
-                              std::uint8_t speed_percent, std::uint32_t move_overhead_ms,
-                              std::uint32_t slow_mover_percent,
-                              const RootTimingContext& root_context,
-                              bool dynamic_move_overhead) {
-    const std::int64_t start_ns = now_nanoseconds();
-    limits_ = limits;
-    root_context_ = root_context;
-    initialize(side_to_move, speed_percent, move_overhead_ms, slow_mover_percent,
-               dynamic_move_overhead, start_ns);
+    return start_ns;
 }
 
 void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
                              std::uint32_t move_overhead_ms, std::uint32_t slow_mover_percent,
-                             bool dynamic_move_overhead, std::int64_t start_ns) {
+                             bool dynamic_move_overhead,
+                             std::uint32_t observed_overhead_ms, std::int64_t start_ns) {
     const auto publish_controls = [this, start_ns](const std::int64_t next_budget_ms) noexcept {
         // Publish computed limits in release order before flipping unbounded_
         // off so concurrent SMP helper checks never see a transient -1 budget
@@ -150,10 +160,16 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     average_score_.reset();
     stable_observations_ = 0;
     best_move_stability_ = 0;
+    instability_permille_ = 0;
+    mate_stable_observations_ = 0;
+    last_mate_sign_ = 0;
     last_observed_depth_ = 0;
     score_drop_cp_ = 0;
     score_gain_cp_ = 0;
     best_move_effort_permille_ = 0;
+    last_iteration_elapsed_ = std::chrono::milliseconds::zero();
+    remaining_clock_ = std::chrono::milliseconds::zero();
+    increment_clock_ = std::chrono::milliseconds::zero();
     has_effort_sample_ = false;
     last_aspiration_researched_ = false;
     hard_position_ = false;
@@ -207,14 +223,18 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
 
     clock_mode_ = true;
     const auto remaining = std::max(clock->remaining, std::chrono::milliseconds::zero());
-    std::uint32_t effective_overhead_ms = move_overhead_ms;
+    remaining_clock_ = remaining;
+    increment_clock_ = clock->increment;
+    std::uint32_t effective_overhead_ms = std::max(move_overhead_ms, observed_overhead_ms);
     if (dynamic_move_overhead_) {
-        // Derive the overhead from the time control: 2% of the remaining clock,
-        // floored at 10 ms and capped at 100 ms.  Bullet keeps a small margin,
-        // longer controls get a larger safety buffer.
+        // Scale proportionally on bullet clocks (2% of the remaining clock,
+        // 10..100 ms), while never undercutting observed GUI/network latency
+        // or an explicit Move Overhead configured above the 30 ms default.
         const std::int64_t derived =
             std::clamp<std::int64_t>(remaining.count() / 50, 10, 100);
-        effective_overhead_ms = static_cast<std::uint32_t>(derived);
+        const std::uint32_t floor_ms = std::max<std::uint32_t>(
+            observed_overhead_ms, move_overhead_ms > 30U ? move_overhead_ms : 0U);
+        effective_overhead_ms = std::max(static_cast<std::uint32_t>(derived), floor_ms);
     }
     const auto overhead = std::chrono::milliseconds{
         static_cast<std::chrono::milliseconds::rep>(std::min<std::uint64_t>(
@@ -223,44 +243,61 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     timing_.overhead = overhead;
     // Horizon: how many moves this allocation plans for.  A GUI may send
     // `movestogo`, but lichess-bot and most GUIs do not, so the fallback decides
-    // the pacing.  Sudden death needs a long horizon: planning to spend the whole
-    // clock inside 20 moves let a 5+0 game burn 30-45 s per move and flag.  With
-    // an increment part of every move is refunded, so a shorter horizon is safe.
+    // the pacing.  Sudden death needs a long horizon; incremental controls still
+    // pace the opening conservatively before spending more in complex middlegames
+    // and speed up once winning endgames simplify.
     const bool has_increment = clock->increment > std::chrono::milliseconds::zero();
-    std::uint32_t default_horizon = has_increment ? 25U : 50U;
+    std::uint32_t default_horizon = has_increment ? 28U : 50U;
     if (!limits_.moves_to_go.has_value() && root_context_.game_phase >= 0) {
         const int phase = std::clamp(root_context_.game_phase, 0, 24);
         const std::uint16_t fullmove = root_context_.fullmove_number;
         if (has_increment) {
-            if (phase >= 14 && fullmove >= 8 && fullmove <= 32) {
-                default_horizon = 22U;
-            } else if (phase <= 6) {
+            if (fullmove > 0 && fullmove <= 10) {
+                default_horizon = 36U;
+            } else if (phase >= 10 && fullmove >= 11 && fullmove <= 32) {
                 default_horizon = 28U;
+            } else if (phase <= 6) {
+                default_horizon = 34U;
+            } else {
+                default_horizon = 32U;
             }
         } else {
-            if (phase >= 14 && fullmove >= 8 && fullmove <= 32) {
-                default_horizon = 44U;
+            if (fullmove > 0 && fullmove <= 10) {
+                default_horizon = 56U;
+            } else if (phase >= 10 && fullmove >= 11 && fullmove <= 32) {
+                default_horizon = 46U;
             } else if (phase <= 6 && fullmove >= 35) {
                 default_horizon = 42U;
+            } else {
+                default_horizon = 50U;
             }
         }
     }
     timing_.horizon = std::max<std::uint32_t>(
         1, limits_.moves_to_go.value_or(default_horizon));
-    const auto reserve_floor = std::max(
-        std::chrono::milliseconds{50},
-        std::max(scale_duration(remaining, 3), saturating_add(overhead, overhead)));
-    timing_.reserve = std::min(std::chrono::milliseconds{750}, reserve_floor);
-    timing_.reserve = std::min(timing_.reserve, remaining);
+    // Always protect at least two effective move overheads (unbounded by the
+    // 750 ms proportional reserve cap) so high-latency network links keep a real
+    // buffer before flagging.
+    const auto two_overheads = saturating_add(overhead, overhead);
+    const auto proportional_reserve = std::min(
+        std::chrono::milliseconds{750},
+        std::max(std::chrono::milliseconds{50}, scale_duration(remaining, 3)));
+    timing_.reserve = std::min(remaining, std::max(proportional_reserve, two_overheads));
     timing_.usable = nonnegative_difference(remaining, timing_.reserve);
     emergency_pacing_ = remaining <= std::chrono::milliseconds{3000};
     timing_.emergency_pacing = emergency_pacing_;
 
     const auto base_allocation = timing_.usable / timing_.horizon;
-    // The increment may only pay for a bounded share of the clock. On a fast
-    // control such as 6+1 an uncapped 3/4 increment credit alone can approach
-    // the whole remaining time and leave a single move free to burn it.
-    const auto increment_credit = std::min(three_quarters(clock->increment),
+    // The increment credit only spends net post-overhead increment when low on
+    // time (<= 15 increments remaining) and is capped at a quarter of usable
+    // time, preventing fast incremental endgames from bleeding past zero.
+    const auto net_increment = nonnegative_difference(clock->increment, overhead);
+    const auto low_inc_threshold = scale_fraction(clock->increment, 15, 1);
+    const auto raw_inc_credit =
+        (!limits_.moves_to_go.has_value() && has_increment && remaining <= low_inc_threshold)
+            ? three_quarters(net_increment)
+            : three_quarters(clock->increment);
+    const auto increment_credit = std::min(raw_inc_credit,
                                            scale_fraction(timing_.usable, 1, 4));
     const auto raw_soft = saturating_add(base_allocation, increment_credit);
     // A single unstable move may only take two base units.  The old increment
@@ -282,28 +319,21 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     timing_.soft_budget = std::min(timing_.soft_budget, timing_.hard_budget);
 
     // A three-move extension is useful with a normal clock, but it is unsafe
-    // when the entire remaining clock is only a few seconds. TT misses are
-    // common in that regime and would otherwise classify almost every move as
-    // hard, allowing repeated hard budgets to consume the whole clock. Pace
-    // low-clock searches over three times the normal horizon and retain only
-    // a small hard-position extension while preserving the reserve.
+    // when the entire remaining clock is only a few seconds. Pace low-clock
+    // searches tightly while giving verified hard positions a bounded extension.
     if (emergency_pacing_) {
-        // Pace low-clock searches over a horizon that still allows a usable
-        // think time: with the sudden-death horizon of 50 a naive tripling would
-        // allocate tens of milliseconds per move and throw the clock away.
         const std::uint32_t emergency_horizon = std::max<std::uint32_t>(
             10, timing_.horizon / 2);
         const auto emergency_base = timing_.usable / emergency_horizon;
         const auto emergency_soft = std::min(
             timing_.usable, saturating_add(emergency_base, increment_credit));
-        const auto emergency_extension = std::max(
-            std::chrono::milliseconds{5}, emergency_base / 2);
+        const auto emergency_extension = hard_position_
+            ? std::max(std::chrono::milliseconds{15}, emergency_base * 2)
+            : std::max(std::chrono::milliseconds{5}, emergency_base / 2);
         const auto emergency_hard = std::min(
             timing_.usable, saturating_add(emergency_soft, emergency_extension));
         timing_.soft_budget = std::min(timing_.soft_budget, emergency_soft);
-        if (!hard_position_) {
-            timing_.hard_budget = std::min(timing_.hard_budget, emergency_hard);
-        }
+        timing_.hard_budget = std::min(timing_.hard_budget, emergency_hard);
         timing_.hard_budget = std::max(timing_.hard_budget, timing_.soft_budget);
     }
 
@@ -426,6 +456,29 @@ bool TimeManager::should_stop(std::uint64_t nodes) const noexcept {
 void TimeManager::observe_iteration(const SearchIterationObservation& observation) noexcept {
     last_observed_depth_ = std::max(last_observed_depth_, observation.depth);
     last_aspiration_researched_ = observation.aspiration_researched;
+    if (observation.iteration_elapsed > std::chrono::milliseconds::zero()) {
+        last_iteration_elapsed_ = observation.iteration_elapsed;
+    }
+
+    if (observation.depth >= 4) {
+        instability_permille_ /= 2U;
+        if (observation.best_move_changed) {
+            instability_permille_ = std::min<std::uint32_t>(4000U, instability_permille_ + 1000U);
+        }
+    }
+
+    if (std::abs(observation.score_cp) >= detail::kMateThreshold) {
+        const int sign = observation.score_cp > 0 ? 1 : -1;
+        if (sign == last_mate_sign_ && !observation.best_move_changed) {
+            mate_stable_observations_ = std::min<std::uint32_t>(8U, mate_stable_observations_ + 1U);
+        } else {
+            last_mate_sign_ = sign;
+            mate_stable_observations_ = 1U;
+        }
+    } else {
+        last_mate_sign_ = 0;
+        mate_stable_observations_ = 0U;
+    }
 
     bool score_swing = false;
     long long delta = 0;
@@ -441,9 +494,16 @@ void TimeManager::observe_iteration(const SearchIterationObservation& observatio
         best_move_stability_ = std::min<std::uint32_t>(8, best_move_stability_ + 1);
     }
 
+    const long long drop_from_prev_move =
+        (observation.depth >= 4 && root_context_.previous_search_score.has_value())
+            ? std::max<long long>(
+                  0, static_cast<long long>(*root_context_.previous_search_score) -
+                         static_cast<long long>(observation.score_cp)) / 2
+            : 0;
+
     if (!average_score_.has_value()) {
         average_score_ = observation.score_cp;
-        score_drop_cp_ = 0;
+        score_drop_cp_ = static_cast<int>(std::clamp<long long>(drop_from_prev_move, 0, 400));
         score_gain_cp_ = 0;
     } else {
         const long long drop_from_prev = previous_score_.has_value() ?
@@ -453,7 +513,7 @@ void TimeManager::observe_iteration(const SearchIterationObservation& observatio
             0, static_cast<long long>(*average_score_) -
                static_cast<long long>(observation.score_cp));
         score_drop_cp_ = static_cast<int>(std::clamp<long long>(
-            std::max(drop_from_prev, drop_from_avg), 0, 400));
+            std::max({drop_from_prev, drop_from_avg, drop_from_prev_move}), 0, 400));
         score_gain_cp_ = static_cast<int>(std::clamp<long long>(
             std::max<long long>(0, delta), 0, 400));
         average_score_ = static_cast<int>(
@@ -525,30 +585,41 @@ void TimeManager::update_optimum_budget() noexcept {
             std::max(std::chrono::milliseconds{2}, timing_.soft_budget / 8));
         return;
     }
+    if (mate_stable_observations_ >= 2 && last_observed_depth_ >= 4) {
+        timing_.optimum_budget = std::min(
+            timing_.soft_budget,
+            std::max(std::chrono::milliseconds{20}, timing_.soft_budget / 6));
+        return;
+    }
 
     // Dynamic soft-budget scaling (in permille, 1000 = 1.00x soft_budget).
-    // Preserves the exact unit-test contract when no best-move node effort is
-    // supplied (synthetic observations keep optimum_budget <= soft_budget once
-    // stable), while scaling real searches continuously by stability, root
-    // node-effort concentration, and falling-vs-rising evaluation asymmetry.
+    // Preserves the synthetic unit-test contract when no best-move node effort
+    // is supplied, while scaling real searches continuously by best-move
+    // stability, decayed cumulative instability, node-effort concentration,
+    // winning-endgame conversion speedup, and falling-vs-rising evaluation
+    // asymmetry.
     std::uint64_t scale_permille = 1000;
     if (last_observed_depth_ >= 4) {
         static constexpr std::uint32_t kStabilityPermille[6] = {
-            1240, 1060, 1000, 920, 850, 780
+            1200, 1040, 960, 880, 800, 720
         };
         const std::size_t stability_idx =
             std::min<std::size_t>(best_move_stability_, 5);
         scale_permille = (scale_permille * kStabilityPermille[stability_idx]) / 1000;
+        if (instability_permille_ > 0) {
+            const std::uint64_t instability_bonus = 1000ULL + (instability_permille_ * 200ULL) / 1000ULL;
+            scale_permille = (scale_permille * instability_bonus) / 1000;
+        }
     }
 
     if (has_effort_sample_ && last_observed_depth_ >= 5) {
         // High effort on the best move (e.g., 900 permille) means all sibling
-        // root moves failed low quickly -> scale down to ~0.77x. Low effort on
+        // root moves failed low quickly -> scale down strongly. Low effort on
         // the best move (e.g., 250 permille) means heavy competition among
-        // alternatives -> scale up to ~1.26x.
+        // alternatives -> scale up.
         const std::uint64_t effort_factor = static_cast<std::uint64_t>(
-            std::clamp<int>(1450 - static_cast<int>(best_move_effort_permille_ * 75 / 100),
-                            720, 1380));
+            std::clamp<int>(1480 - static_cast<int>(best_move_effort_permille_ * 82 / 100),
+                            660, 1380));
         scale_permille = (scale_permille * effort_factor) / 1000;
     } else if (stable_observations_ >= 2 && score_drop_cp_ <= 15 && !last_aspiration_researched_) {
         // Without a node-effort sample, cap stable quiet iterations at 1.00x
@@ -560,20 +631,31 @@ void TimeManager::update_optimum_budget() noexcept {
         // Falling evaluation demands extra defensive verification time, whereas
         // a rising score only needs a modest check if the jump was tactical.
         const std::uint64_t drop_bonus = static_cast<std::uint64_t>(
-            std::min(450, (score_drop_cp_ - 15) * 3));
+            std::min(550, (score_drop_cp_ - 15) * 4));
         scale_permille = (scale_permille * (1000 + drop_bonus)) / 1000;
     } else if (score_gain_cp_ >= 80) {
-        scale_permille = (scale_permille * 1080) / 1000;
+        scale_permille = (scale_permille * 1060) / 1000;
     }
 
     if (last_aspiration_researched_) {
         scale_permille = (scale_permille * 1120) / 1000;
     }
 
-    scale_permille = std::clamp<std::uint64_t>(scale_permille, 450, 1850);
+    // Winning-position conversion speedup: when clearly ahead (>= 500 cp) with
+    // a stable deep best move and no score collapse, move faster — especially
+    // once the clock is below 20 seconds — so decided games never flag.
+    if (previous_score_.has_value() && std::abs(*previous_score_) >= 500 &&
+        last_observed_depth_ >= 8 && best_move_stability_ >= 2 &&
+        score_drop_cp_ <= 25 && !last_aspiration_researched_) {
+        const std::uint64_t conversion_scale =
+            remaining_clock_ <= std::chrono::milliseconds{20'000} ? 580ULL : 760ULL;
+        scale_permille = (scale_permille * conversion_scale) / 1000;
+    }
+
+    scale_permille = std::clamp<std::uint64_t>(scale_permille, 380, 1850);
     const auto scaled = scale_fraction(timing_.soft_budget, scale_permille, 1000);
     const auto floor_budget = std::max(
-        std::chrono::milliseconds{1}, timing_.soft_budget / 2);
+        std::chrono::milliseconds{1}, timing_.soft_budget / 3);
     timing_.optimum_budget = std::clamp(scaled, floor_budget, timing_.hard_budget);
 }
 
@@ -607,8 +689,10 @@ bool TimeManager::should_stop_after_iteration() const noexcept {
         return true;
     }
     const auto soft_target = effective_soft_budget();
-    if (clock_mode_ && root_context_.legal_move_count == 1 &&
-        last_observed_depth_ >= 4 && elapsed >= soft_target) {
+    if (clock_mode_ &&
+        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
+         (mate_stable_observations_ >= 2 && last_observed_depth_ >= 4)) &&
+        elapsed >= soft_target) {
         return true;
     }
     // At a low clock the cold-TT "hard" classification is intentionally not
@@ -648,19 +732,33 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         elapsed >= soft_target) {
         return false;
     }
-    if (clock_mode_ && root_context_.legal_move_count == 1 &&
-        last_observed_depth_ >= 4 && elapsed >= soft_target) {
+    if (clock_mode_ &&
+        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
+         (mate_stable_observations_ >= 2 && last_observed_depth_ >= 4)) &&
+        elapsed >= soft_target) {
         return false;
     }
     // Pre-iteration lookahead for stable clock searches: when we have already
-    // spent >= 75% of the dynamic soft target on a calm, stable position (at
-    // depth >= 6), starting another iteration will almost certainly exceed the
-    // soft budget or be aborted mid-way without changing the best move.
-    if (clock_mode_ && last_observed_depth_ >= 6 && !hard_position_ &&
-        stable_observations_ >= 2 && best_move_stability_ >= 3 &&
-        score_drop_cp_ <= 15 &&
-        elapsed >= scale_fraction(soft_target, 75, 100)) {
-        return false;
+    // spent >= 75% of the dynamic soft target (or when the previous iteration
+    // duration indicates a 1.5x next ply would blow past 1.2x soft_target),
+    // skip starting a doomed partial iteration.
+    if (clock_mode_ && !hard_position_) {
+        if (last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
+            best_move_stability_ >= 3 && score_drop_cp_ <= 15 &&
+            elapsed >= scale_fraction(soft_target, 75, 100)) {
+            return false;
+        }
+        if (last_observed_depth_ >= 5 && best_move_stability_ >= 2 &&
+            score_drop_cp_ <= 20 && !last_aspiration_researched_ &&
+            last_iteration_elapsed_ > std::chrono::milliseconds::zero()) {
+            const auto predicted_next = saturating_add(
+                last_iteration_elapsed_, last_iteration_elapsed_ / 2);
+            if (elapsed >= scale_fraction(soft_target, 55, 100) &&
+                saturating_add(elapsed, predicted_next) >
+                    scale_fraction(soft_target, 120, 100)) {
+                return false;
+            }
+        }
     }
     const auto budget = std::chrono::milliseconds{budget_ms};
     const auto needed = std::max(estimated_next_iteration, std::chrono::milliseconds{1});

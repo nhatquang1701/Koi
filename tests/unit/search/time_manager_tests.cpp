@@ -498,6 +498,144 @@ void test_should_start_next_iteration_avoids_overflow_and_reconfigure_races() {
             "ponderhit reconfigure must publish valid start timestamps and budgets before clearing unbounded_");
 }
 
+void test_dynamic_overhead_respects_floors_and_reserve_unbounded() {
+    SearchLimits limits = clock_limits(milliseconds{10'000}, milliseconds{1'000});
+
+    // Dynamic Overhead must never undercut learned online GUI/network latency.
+    TimeManager with_observed(limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              RootTimingContext{}, {}, true, {}, 250);
+    const TimeManagementStats observed_stats = with_observed.diagnostics();
+    require(observed_stats.overhead == milliseconds{250},
+            "dynamic overhead must preserve observed GUI/network latency");
+    require(observed_stats.reserve == milliseconds{500},
+            "reserve must cover two observed overheads");
+
+    // Explicit Move Overhead above the 30 ms default also forms a floor under dynamic overhead.
+    TimeManager with_explicit_floor(limits, koi::Color::white, 100, 120, 100,
+                                    RootTimingContext{}, {}, true, {}, 0);
+    require(with_explicit_floor.diagnostics().overhead == milliseconds{120},
+            "dynamic overhead must preserve explicit Move Overhead above default");
+
+    // Reserve must not clip 2 * overhead at 750 ms on high-latency links.
+    SearchLimits long_clock = clock_limits(milliseconds{60'000}, milliseconds{0});
+    TimeManager high_latency(long_clock, koi::Color::white, 100, 30, 100,
+                             RootTimingContext{}, {}, true, {}, 900);
+    const TimeManagementStats high_stats = high_latency.diagnostics();
+    require(high_stats.overhead == milliseconds{900},
+            "high observed latency up to 1500 ms must be preserved");
+    require(high_stats.reserve == milliseconds{1'800},
+            "reserve must protect two full overheads above the 750 ms proportional cap");
+}
+
+void test_tmbpusok_opening_and_winning_conversion_pacing() {
+    // Opening move 8 on 180+1 must pace conservatively instead of burning 10-17 s.
+    RootTimingContext opening_ctx;
+    opening_ctx.legal_move_count = 32;
+    opening_ctx.game_phase = 16;
+    opening_ctx.fullmove_number = 8;
+    TimeManager opening(clock_limits(milliseconds{170'000}, milliseconds{1'000}),
+                        koi::Color::white, 100, 100, 100, opening_ctx, {}, true, {}, 0);
+    const TimeManagementStats opening_stats = opening.diagnostics();
+    require(opening_stats.horizon == 36,
+            "incremental opening must plan over an extended 36-move horizon");
+    require(opening_stats.soft_budget <= milliseconds{6'500} &&
+                opening_stats.hard_budget <= milliseconds{12'500},
+            "180+1 opening move must avoid burning double-digit seconds");
+
+    // Winning +7.00 endgame on 10s+1s must convert quickly so clock grows instead of flagging.
+    RootTimingContext endgame_ctx;
+    endgame_ctx.table_available = true;
+    endgame_ctx.tt_hit = true;
+    endgame_ctx.tt_exact = true;
+    endgame_ctx.tt_has_best_move = true;
+    endgame_ctx.tt_depth = 12;
+    endgame_ctx.legal_move_count = 14;
+    endgame_ctx.game_phase = 8;
+    endgame_ctx.fullmove_number = 48;
+    TimeManager winning(clock_limits(milliseconds{10'000}, milliseconds{1'000}),
+                        koi::Color::white, 100, 100, 100, endgame_ctx, {}, true, {}, 100);
+    for (int depth = 5; depth <= 9; ++depth) {
+        SearchIterationObservation obs;
+        obs.depth = depth;
+        obs.score_cp = 700;
+        obs.nodes = 10'000;
+        obs.best_move_nodes = 8'500;
+        winning.observe_iteration(obs);
+    }
+    require(winning.diagnostics().optimum_budget < milliseconds{800},
+            "stable winning conversion on 10s+1s must spend less than net increment");
+}
+
+void test_forced_mate_lookahead_and_instability_signals() {
+    auto now = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+
+    // Forced mate confirmed twice at depth >= 4 exits rapidly.
+    TimeManager mate_mgr(limits, koi::Color::white, 100, 30, 100,
+                         RootTimingContext{}, [now] { return *now; });
+    for (int depth = 4; depth <= 5; ++depth) {
+        SearchIterationObservation mate_obs;
+        mate_obs.depth = depth;
+        mate_obs.score_cp = 99'500;
+        mate_obs.best_move_changed = false;
+        mate_mgr.observe_iteration(mate_obs);
+    }
+    const TimeManagementStats mate_stats = mate_mgr.diagnostics();
+    require(mate_stats.optimum_budget <= mate_stats.soft_budget / 6 ||
+                mate_stats.optimum_budget == milliseconds{20},
+            "confirmed forced mate must collapse optimum_budget");
+    *now += mate_stats.optimum_budget + milliseconds{1};
+    require(mate_mgr.should_stop_after_iteration(),
+            "confirmed forced mate must stop promptly once collapsed optimum_budget is reached");
+
+    // Cumulative best-move changes and inter-move score drop expand optimum_budget.
+    RootTimingContext calm_ctx;
+    calm_ctx.table_available = true;
+    calm_ctx.tt_hit = true;
+    calm_ctx.tt_exact = true;
+    calm_ctx.tt_has_best_move = true;
+    calm_ctx.tt_depth = 10;
+    calm_ctx.previous_search_score = 100;
+    RootTimingContext drop_ctx = calm_ctx;
+    drop_ctx.previous_search_score = 320;
+    TimeManager calm(limits, koi::Color::white, 100, 30, 100, calm_ctx);
+    TimeManager dropped(limits, koi::Color::white, 100, 30, 100, drop_ctx);
+    for (int depth = 4; depth <= 6; ++depth) {
+        SearchIterationObservation c_obs{depth, 100, false, false, false, 10'000, 6'000, milliseconds{50}};
+        SearchIterationObservation d_obs{depth, 100, depth == 5, false, false, 10'000, 6'000, milliseconds{50}};
+        calm.observe_iteration(c_obs);
+        dropped.observe_iteration(d_obs);
+    }
+    require(dropped.diagnostics().optimum_budget > calm.diagnostics().optimum_budget,
+            "cumulative best-move changes and inter-move score drops must increase optimum_budget");
+
+    // Pre-iteration lookahead declines starting a doomed next iteration.
+    auto look_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager look(limits, koi::Color::white, 100, 30, 100, calm_ctx,
+                     [look_now] { return *look_now; });
+    const auto soft = look.diagnostics().soft_budget;
+    for (int depth = 4; depth <= 6; ++depth) {
+        SearchIterationObservation obs;
+        obs.depth = depth;
+        obs.score_cp = 20;
+        obs.nodes = 10'000;
+        obs.best_move_nodes = 5'000;
+        obs.iteration_elapsed = soft;
+        look.observe_iteration(obs);
+    }
+    *look_now += (look.diagnostics().optimum_budget * 6) / 10;
+    require(!look.should_start_next_iteration(milliseconds{1}),
+            "pre-iteration lookahead must decline doomed iterations that would overrun optimum_budget");
+
+    // Backdated reconfigure preserves elapsed ponderhit time.
+    TimeManager ponder_reconf(limits, koi::Color::white, 100, 30, 100);
+    const auto backdated = Clock::now() - milliseconds{50'000};
+    ponder_reconf.reconfigure(limits, koi::Color::white, 100, 30, 100,
+                              RootTimingContext{}, false, backdated, 0);
+    require(ponder_reconf.should_stop(0),
+            "reconfigure must measure elapsed time from the ponderhit arrival timestamp");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -516,6 +654,12 @@ int main(int argc, char** argv) {
         {"single legal move fast pacing", test_single_legal_move_paces_fast_in_clock_mode},
         {"overflow-safe lookahead and reconfigure ordering",
          test_should_start_next_iteration_avoids_overflow_and_reconfigure_races},
+        {"dynamic overhead floors and reserve bounds",
+         test_dynamic_overhead_respects_floors_and_reserve_unbounded},
+        {"opening and winning endgame pacing",
+         test_tmbpusok_opening_and_winning_conversion_pacing},
+        {"forced mate, lookahead, and instability signals",
+         test_forced_mate_lookahead_and_instability_signals},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

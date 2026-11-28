@@ -112,11 +112,12 @@ uci_options:
   UCI_ShowWDL: true
   Contempt: 50
   Dynamic Overhead: true
+  Move Overhead: 100
   EvalFile: "/Users/<you>/koi-bot/engines/koi.nnue"
 ```
 
 !!! note "Absolute `EvalFile` path"
-    Keep `EvalFile` absolute: the engine resolves relative network paths against its own working directory and falls back to `koi.nnue` beside the binary on failure. Setting `move_overhead: 150` leaves a comfortable margin for Lichess network latency.
+    Keep `EvalFile` absolute: the engine resolves relative network paths against its own working directory and falls back to `koi.nnue` beside the binary on failure. Setting `move_overhead: 300` in lichess-bot alongside `Move Overhead: 100` + `Dynamic Overhead: true` leaves a resilient buffer for Lichess HTTP latency spikes while keeping fast time controls agile.
 
 ## Opening book
 
@@ -164,9 +165,10 @@ the opening, which matters most in short games.
   close-on-exit step uses AppleScript and is silently skipped if macOS denies
   Automation access (the window then shows LICHESS BOT OFFLINE instead).
 - **All time controls.** The generated config accepts bullet, blitz, rapid and
-  normal challenges with `move_overhead: 150` ms, `Contempt: 50` (play for a
-  win; accept a draw only when forced) and `Dynamic Overhead: true` (the engine
-  derives its per-move overhead from the remaining clock). The last two options
+  normal challenges with `move_overhead: 300` ms, `Contempt: 50` (play for a
+  win; accept a draw only when forced), `Dynamic Overhead: true`, and
+  `Move Overhead: 100` ms (the engine scales bullet overhead proportionally while
+  never dropping below the configured floor or auto-learned HTTP round trip). The last options
   are active from the first engine release that advertises them; older engines
   ignore unknown options.
 - The bridge is AGPLv3; it is cloned at setup time and never vendored here.

@@ -904,6 +904,7 @@ void SearchRunner::run_impl() {
         timing_context.in_check = root.in_check();
         timing_context.game_phase = root.game_phase();
         timing_context.fullmove_number = root.fullmove_number();
+        timing_context.previous_search_score = options.previous_search_score;
 
         MoveMetadataList legal_moves = all_legal_moves;
         if (limits.search_moves_specified) {
@@ -921,9 +922,31 @@ void SearchRunner::run_impl() {
         TimeManager time_manager(limits, root.side_to_move(), options.speed_percent,
                                  options.move_overhead_ms, options.slow_mover_percent,
                                  timing_context, {}, options.dynamic_move_overhead,
-                                 options.search_started);
+                                 options.search_started, options.observed_overhead_ms);
         const FallbackControl fallback_control{&time_manager, &session->stop_requested()};
         result.timing = time_manager.diagnostics();
+        const auto arm_session_watchdog =
+            [&](const SearchLimits& active_limits,
+                const std::chrono::steady_clock::time_point anchor) {
+            if (active_limits.infinite || active_limits.ponder) {
+                return;
+            }
+            if (const auto budget = time_manager.time_budget();
+                budget.has_value() && *budget >= std::chrono::milliseconds{50}) {
+                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - anchor);
+                if (elapsed >= *budget) {
+                    session->stop();
+                } else {
+                    session->request_stop_after(*budget - elapsed);
+                }
+            }
+        };
+        arm_session_watchdog(
+            limits,
+            options.search_started != std::chrono::steady_clock::time_point{}
+                ? options.search_started
+                : started);
         result.best_move = legal_moves.empty() ? std::nullopt :
             std::optional<Move>{legal_moves.front().move};
         if (result.best_move.has_value()) {
@@ -1280,15 +1303,17 @@ void SearchRunner::run_impl() {
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
                 in_flight_depth = depth;
                 pv.clear();
-                if (auto conversion = session->take_ponderhit_limits(); conversion.has_value()) {
-                    limits = std::move(*conversion);
+                if (auto conversion = session->take_ponderhit(); conversion.has_value()) {
+                    limits = std::move(conversion->limits);
                     time_manager.reconfigure(limits, root.side_to_move(), options.speed_percent,
                                              options.move_overhead_ms, options.slow_mover_percent,
-                                             timing_context, options.dynamic_move_overhead);
+                                             timing_context, options.dynamic_move_overhead,
+                                             conversion->received_at, options.observed_overhead_ms);
                     maximum_depth = std::min(
                         kMaximumSearchDepth,
                         std::max(1, limits.depth.value_or(kMaximumSearchDepth)));
                     unbounded = limits.infinite || limits.ponder;
+                    arm_session_watchdog(limits, conversion->received_at);
                 }
                 if (!unbounded && depth > maximum_depth) {
                     break;
@@ -1630,6 +1655,8 @@ void SearchRunner::run_impl() {
                     main_visited >= previous_report_main_visited ?
                         main_visited - previous_report_main_visited : main_visited;
                 previous_report_main_visited = main_visited;
+                const auto iteration_elapsed = std::max(
+                    std::chrono::milliseconds{1}, elapsed - previous_report_elapsed);
                 time_manager.observe_iteration(SearchIterationObservation{
                     depth,
                     iteration_observation_score,
@@ -1639,7 +1666,8 @@ void SearchRunner::run_impl() {
                         (had_completed_iteration && previous_pv != result.pv),
                     aspiration_researched,
                     iteration_main_visited,
-                    best_move_iteration_nodes});
+                    best_move_iteration_nodes,
+                    iteration_elapsed});
                 result.timing = time_manager.diagnostics();
                 // Keep aspiration centered on the completed search evaluation
                 // across selective depths as well as authoritative ones; reset
@@ -1765,15 +1793,17 @@ void SearchRunner::run_impl() {
             std::chrono::milliseconds previous_report_elapsed{0};
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
                 in_flight_depth = depth;
-                if (auto conversion = session->take_ponderhit_limits(); conversion.has_value()) {
-                    limits = std::move(*conversion);
+                if (auto conversion = session->take_ponderhit(); conversion.has_value()) {
+                    limits = std::move(conversion->limits);
                     time_manager.reconfigure(limits, root.side_to_move(), options.speed_percent,
                                              options.move_overhead_ms, options.slow_mover_percent,
-                                             timing_context, options.dynamic_move_overhead);
+                                             timing_context, options.dynamic_move_overhead,
+                                             conversion->received_at, options.observed_overhead_ms);
                     maximum_depth = std::min(
                         kMaximumSearchDepth,
                         std::max(1, limits.depth.value_or(kMaximumSearchDepth)));
                     unbounded = limits.infinite || limits.ponder;
+                    arm_session_watchdog(limits, conversion->received_at);
                 }
                 if (!unbounded && depth > maximum_depth) {
                     break;
@@ -2553,7 +2583,8 @@ void SearchRunner::run_impl() {
                     iteration_lines.push_back(info);
                 }
                 publish_iteration_lines(sink, interim_state, std::move(iteration_lines));
-                const auto iteration_elapsed = elapsed - previous_report_elapsed;
+                const auto iteration_elapsed = std::max(
+                    std::chrono::milliseconds{1}, elapsed - previous_report_elapsed);
                 const int iteration_observation_score = bounded_fallback_result ?
                     searched_iteration_score : result.score_cp;
                 time_manager.observe_iteration(SearchIterationObservation{
@@ -2568,7 +2599,9 @@ void SearchRunner::run_impl() {
                     bounded_fallback_result ? searched_pv_changed :
                         (had_completed_iteration && previous_pv != result.pv),
                     aspiration_researched,
-                    visited});
+                    visited,
+                    0,
+                    iteration_elapsed});
                 result.timing = time_manager.diagnostics();
                 if (!bounded_fallback_result && !root_is_forced_draw &&
                     std::abs(iteration_observation_score) < (kMateThreshold - 1'000)) {
@@ -2615,7 +2648,7 @@ void SearchRunner::run_impl() {
             // kMaximumSearchDepth. The conversion (if any) is consumed so the
             // caller can see the converted limits.
             session->wait_until_stopped_or_ponderhit();
-            (void)session->take_ponderhit_limits();
+            (void)session->take_ponderhit();
         } else if (limits.infinite && !limits.nodes.has_value() &&
                    !session->stop_requested().load(std::memory_order_relaxed)) {
             // Pure infinite search (without a node cap) must wait for explicit
@@ -2674,7 +2707,7 @@ void SearchRunner::run_impl() {
             // ponderhit answers a second time.
             try {
                 session->wait_until_stopped_or_ponderhit();
-                (void)session->take_ponderhit_limits();
+                (void)session->take_ponderhit();
             } catch (...) {
             }
         }
