@@ -3,8 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <string_view>
 
 #include "koi/detail/attack_tables.hpp"
 #include "koi/detail/search_constants.hpp"
@@ -61,12 +64,13 @@ struct HceTuning {
     if (value == nullptr || *value == '\0') {
         return fallback;
     }
-    char* end = nullptr;
-    const long parsed = std::strtol(value, &end, 10);
-    if (end == value || *end != '\0' || parsed < 0 || parsed > 400) {
+    const std::string_view text{value};
+    int parsed = 0;
+    const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), parsed);
+    if (ec != std::errc{} || end != text.data() + text.size() || parsed < 0 || parsed > 400) {
         return fallback;
     }
-    return static_cast<int>(parsed);
+    return parsed;
 }
 
 [[nodiscard]] const HceTuning& hce_tuning() noexcept {
@@ -337,28 +341,20 @@ struct EvalBoard {
 
     for (std::size_t color = 0; color < 2; ++color) {
         const std::uint64_t own = eval.colors[color];
-        std::uint64_t pawns = eval.pieces[color][type_index(PieceType::pawn)];
-        while (pawns != 0) {
-            const int square = std::countr_zero(pawns);
-            pawns &= pawns - 1;
-            eval.pawn_attacks[color] |=
-                detail::pawn_attacks(square, color == kWhite);
-        }
-        // Pawn attacks were already accumulated into the map above; seed the
-        // aggregate with them and skip recomputing each pawn below.
+        const std::uint64_t pawns = eval.pieces[color][type_index(PieceType::pawn)];
+        constexpr std::uint64_t kNotFileA = 0xFEFEFEFEFEFEFEFEULL;
+        constexpr std::uint64_t kNotFileH = 0x7F7F7F7F7F7F7F7FULL;
+        eval.pawn_attacks[color] = color == kWhite
+            ? (((pawns & kNotFileA) << 7) | ((pawns & kNotFileH) << 9))
+            : (((pawns & kNotFileA) >> 9) | ((pawns & kNotFileH) >> 7));
+
         std::uint64_t attacks = eval.pawn_attacks[color];
-        for (int square = 0; square < 64; ++square) {
+        for (std::uint64_t non_pawns = own & ~pawns; non_pawns != 0;) {
+            const int square = std::countr_zero(non_pawns);
+            non_pawns &= non_pawns - 1;
             const Piece piece = eval.board[static_cast<std::size_t>(square)];
-            if (piece.empty() || index_of(piece.color) != color) {
-                continue;
-            }
-            if (piece.type == PieceType::pawn) {
-                continue;
-            }
             std::uint64_t piece_attacks = 0;
             switch (piece.type) {
-            case PieceType::pawn:
-                break;
             case PieceType::knight:
                 piece_attacks = detail::knight_attacks(square);
                 break;
@@ -374,6 +370,7 @@ struct EvalBoard {
             case PieceType::king:
                 piece_attacks = detail::king_attacks(square);
                 break;
+            case PieceType::pawn:
             case PieceType::none:
                 break;
             }
@@ -399,7 +396,77 @@ struct EvalBoard {
     return eval;
 }
 
-[[nodiscard]] Score pawn_structure(const EvalBoard& eval, std::size_t color) {
+using PawnMaskTable = std::array<std::array<std::uint64_t, 64>, 2>;
+
+[[nodiscard]] constexpr PawnMaskTable make_passed_pawn_masks() noexcept {
+    PawnMaskTable masks{};
+    for (std::size_t color = 0; color < 2; ++color) {
+        const bool white = color == kWhite;
+        for (int square = 0; square < 64; ++square) {
+            const int file = file_of(square);
+            const int rank = rank_of(square);
+            std::uint64_t mask = 0;
+            for (int ff = std::max(0, file - 1); ff <= std::min(7, file + 1); ++ff) {
+                for (int fr = white ? rank + 1 : rank - 1; fr >= 0 && fr < 8;
+                     fr += white ? 1 : -1) {
+                    mask |= bit_of(fr * 8 + ff);
+                }
+            }
+            masks[color][static_cast<std::size_t>(square)] = mask;
+        }
+    }
+    return masks;
+}
+
+[[nodiscard]] constexpr PawnMaskTable make_forward_file_masks() noexcept {
+    PawnMaskTable masks{};
+    for (std::size_t color = 0; color < 2; ++color) {
+        const bool white = color == kWhite;
+        for (int square = 0; square < 64; ++square) {
+            const int file = file_of(square);
+            const int rank = rank_of(square);
+            std::uint64_t mask = 0;
+            for (int fr = white ? rank + 1 : rank - 1; fr >= 0 && fr < 8;
+                 fr += white ? 1 : -1) {
+                mask |= bit_of(fr * 8 + file);
+            }
+            masks[color][static_cast<std::size_t>(square)] = mask;
+        }
+    }
+    return masks;
+}
+
+[[nodiscard]] constexpr PawnMaskTable make_connected_pawn_masks() noexcept {
+    PawnMaskTable masks{};
+    for (std::size_t color = 0; color < 2; ++color) {
+        const bool white = color == kWhite;
+        for (int square = 0; square < 64; ++square) {
+            const int file = file_of(square);
+            const int rank = rank_of(square);
+            std::uint64_t mask = 0;
+            for (int neighbor_file : {file - 1, file + 1}) {
+                if (neighbor_file < 0 || neighbor_file > 7) {
+                    continue;
+                }
+                for (int neighbor_rank : {rank, white ? rank - 1 : rank + 1}) {
+                    if (neighbor_rank < 0 || neighbor_rank > 7) {
+                        continue;
+                    }
+                    mask |= bit_of(neighbor_rank * 8 + neighbor_file);
+                }
+            }
+            masks[color][static_cast<std::size_t>(square)] = mask;
+        }
+    }
+    return masks;
+}
+
+inline constexpr PawnMaskTable kPassedPawnMask = make_passed_pawn_masks();
+inline constexpr PawnMaskTable kForwardFileMask = make_forward_file_masks();
+inline constexpr PawnMaskTable kConnectedPawnMask = make_connected_pawn_masks();
+
+[[nodiscard]] Score pawn_structure(const EvalBoard& eval, std::size_t color,
+                                   const HceTuning& tuning) {
     Score score{};
     const std::uint64_t own_pawns = eval.pieces[color][type_index(PieceType::pawn)];
     const std::uint64_t enemy_pawns =
@@ -408,16 +475,10 @@ struct EvalBoard {
 
     // File counts for doubled/isolated detection.
     std::array<int, 8> own_file_count{};
-    std::array<int, 8> enemy_file_count{};
     for (std::uint64_t pawns = own_pawns; pawns != 0;) {
         const int square = std::countr_zero(pawns);
         pawns &= pawns - 1;
         ++own_file_count[static_cast<std::size_t>(file_of(square))];
-    }
-    for (std::uint64_t pawns = enemy_pawns; pawns != 0;) {
-        const int square = std::countr_zero(pawns);
-        pawns &= pawns - 1;
-        ++enemy_file_count[static_cast<std::size_t>(file_of(square))];
     }
 
     for (int file = 0; file < 8; ++file) {
@@ -442,22 +503,12 @@ struct EvalBoard {
         const int rank = rank_of(square);
         const int own_rank = white ? rank : 7 - rank;
 
-        // Passed pawn: no enemy pawn on the same or adjacent file ahead.
-        std::uint64_t forward_mask = 0;
-        for (int forward_file = std::max(0, file - 1); forward_file <= std::min(7, file + 1);
-             ++forward_file) {
-            for (int forward_rank = white ? rank + 1 : rank - 1;
-                 forward_rank >= 0 && forward_rank < 8;
-                 forward_rank += white ? 1 : -1) {
-                forward_mask |= bit_of(forward_rank * 8 + forward_file);
-            }
-        }
-        const bool passed = (enemy_pawns & forward_mask) == 0;
+        const bool passed = (enemy_pawns & kPassedPawnMask[color][static_cast<std::size_t>(square)]) == 0;
         if (passed) {
             Score bonus = percent_of(
                 Score{kPassedMg[static_cast<std::size_t>(own_rank)],
                       kPassedEg[static_cast<std::size_t>(own_rank)]},
-                hce_tuning().passed_rank);
+                tuning.passed_rank);
             // The attacking king escorts a passer while the defending king is
             // pushed away; this is mostly an endgame term.
             if (eval.kings[color] >= 0 && eval.kings[1 - color] >= 0) {
@@ -473,42 +524,21 @@ struct EvalBoard {
                 ((eval.occupied >> (ahead_rank * 8 + file)) & 1U) != 0) {
                 bonus += Score{-10, -16};
             }
-            score += percent_of(bonus, hce_tuning().passed);
+            score += percent_of(bonus, tuning.passed);
             continue;
         }
 
         // Connected/phalanx: a friendly pawn on an adjacent file at the same
         // rank or one rank behind supports this pawn.
-        bool connected = false;
-        for (int neighbor_file : {file - 1, file + 1}) {
-            if (neighbor_file < 0 || neighbor_file > 7) {
-                continue;
-            }
-            for (int neighbor_rank : {rank, white ? rank - 1 : rank + 1}) {
-                if (neighbor_rank < 0 || neighbor_rank > 7) {
-                    continue;
-                }
-                const int neighbor = neighbor_rank * 8 + neighbor_file;
-                if (((own_pawns >> neighbor) & 1U) != 0) {
-                    connected = true;
-                }
-            }
-        }
+        const bool connected =
+            (own_pawns & kConnectedPawnMask[color][static_cast<std::size_t>(square)]) != 0;
         if (connected) {
             score += Score{6, 8};
-        }
-
-        // Candidate: no enemy pawn ahead on this file and a friendly pawn
-        // behind/level on an adjacent file.
-        bool enemy_ahead_on_file = false;
-        for (int ahead = white ? rank + 1 : rank - 1; ahead >= 0 && ahead < 8;
-             ahead += white ? 1 : -1) {
-            if (((enemy_pawns >> (ahead * 8 + file)) & 1U) != 0) {
-                enemy_ahead_on_file = true;
+            // Candidate: no enemy pawn ahead on this file and a friendly pawn
+            // behind/level on an adjacent file.
+            if ((enemy_pawns & kForwardFileMask[color][static_cast<std::size_t>(square)]) == 0) {
+                score += Score{5, 8};
             }
-        }
-        if (!enemy_ahead_on_file && connected) {
-            score += Score{5, 8};
         }
     }
     return score;
@@ -567,13 +597,10 @@ struct EvalBoard {
         Score{}, Score{12, 18}, Score{40, 35}, Score{40, 35},
         Score{80, 60}, Score{150, 120}, Score{}};
 
-    for (std::uint64_t remaining = enemy_pieces; remaining != 0;) {
+    for (std::uint64_t remaining = enemy_pieces & own_attacks; remaining != 0;) {
         const int square = std::countr_zero(remaining);
         remaining &= remaining - 1;
         const std::uint64_t square_bit = bit_of(square);
-        if ((own_attacks & square_bit) == 0) {
-            continue;
-        }
         const PieceType type = eval.board[static_cast<std::size_t>(square)].type;
         if ((enemy_defended & square_bit) == 0) {
             score += kHangingBonus[type_index(type)];
@@ -688,144 +715,78 @@ struct EvalBoard {
     return (score.mg * phase + score.eg * (kPhaseMaximum - phase)) / kPhaseMaximum;
 }
 
-} // namespace
-
-int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) const {
-    const EvalBoard eval = make_eval_board(state);
-    if (insufficient_material(eval)) {
-        return 0;
-    }
-
-    Score total{};
-    for (int square = 0; square < 64; ++square) {
-        const Piece piece = eval.board[static_cast<std::size_t>(square)];
-        if (piece.empty()) {
-            continue;
-        }
-        const std::size_t color = index_of(piece.color);
-        const Score value = material(piece.type) + piece_square(piece.type, square, piece.color);
-        total += scaled(value, sign_of(color), sign_of(color));
-    }
-
-    for (std::size_t color = 0; color < 2; ++color) {
-        const int sign = sign_of(color);
-        Score side{};
-
-        // Mobility by piece type.
-        for (int square = 0; square < 64; ++square) {
-            const Piece piece = eval.board[static_cast<std::size_t>(square)];
-            if (piece.empty() || index_of(piece.color) != color) {
-                continue;
-            }
-            const Score weight = mobility_weight(piece.type);
-            const int mobility = eval.piece_mobility[static_cast<std::size_t>(square)];
-            int piece_mobility_scale = 100;
-            switch (piece.type) {
-            case PieceType::knight: piece_mobility_scale = hce_tuning().mobility_knight; break;
-            case PieceType::bishop: piece_mobility_scale = hce_tuning().mobility_bishop; break;
-            case PieceType::rook: piece_mobility_scale = hce_tuning().mobility_rook; break;
-            case PieceType::queen: piece_mobility_scale = hce_tuning().mobility_queen; break;
-            default: break;
-            }
-            side += percent_of(
-                Score{weight.mg * mobility, weight.eg * mobility},
-                hce_tuning().mobility * piece_mobility_scale / 100);
-        }
-
-        side += percent_of(pawn_structure(eval, color), hce_tuning().pawn_structure);
-        side += percent_of(king_safety(eval, color), hce_tuning().king_safety);
-        side += percent_of(threats(eval, color), hce_tuning().threats);
-        side += percent_of(piece_features(eval, color), hce_tuning().piece_terms);
-
-        // Space/development are opening components.
-        side += Score{eval.center_control[color] * 3, 0};
-        side += Score{static_cast<int>(eval.development[color]) * 4, 0};
-
-        total += scaled(side, sign, sign);
-    }
-
-    // Side-to-move tempo.  The score is White-positive, so Black's tempo
-    // subtracts.
-    const Score tempo = eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10};
-    total += percent_of(tempo, hce_tuning().tempo);
-
-    total.eg = total.eg * hce_tuning().eg_component / 100;
-    int score = tapered(total, eval.phase);
-    // Opposite bishops with no other material is drawish, but not a strict
-    // rule draw; damp rather than zero it so small residual imbalances survive.
-    if (opposite_bishop_draw(eval)) {
-        score = score / 4;
-    }
-    score = score * hce_tuning().evaluation / 100;
-    score = std::clamp(score, -detail::kMateThreshold + 1, detail::kMateThreshold - 1);
-    return perspective == Color::white ? score : -score;
+constexpr void add_trace_scaled(ClassicalScore& dst, const Score value, const int sign) noexcept {
+    dst.mg += value.mg * sign;
+    dst.eg += value.eg * sign;
 }
 
-ClassicalEvalTrace ClassicalEvaluator::trace(const GameState& state) const {
+template <bool CollectTrace>
+auto evaluate_classical_impl(const GameState& state, const Color perspective) {
     const EvalBoard eval = make_eval_board(state);
-    ClassicalEvalTrace tr{};
-    tr.phase = eval.phase;
+    [[maybe_unused]] ClassicalEvalTrace tr{};
+    if constexpr (CollectTrace) {
+        tr.phase = eval.phase;
+    }
     if (insufficient_material(eval)) {
-        tr.insufficient_material = true;
-        return tr;
+        if constexpr (CollectTrace) {
+            tr.insufficient_material = true;
+            return tr;
+        } else {
+            return 0;
+        }
     }
 
-    auto to_public = [](const Score s) noexcept { return ClassicalScore{s.mg, s.eg}; };
-
-    Score material_sum{};
-    Score pst_sum{};
+    const HceTuning& tuning = hce_tuning();
     Score total{};
-    for (int square = 0; square < 64; ++square) {
+    for (std::uint64_t occ = eval.occupied; occ != 0;) {
+        const int square = std::countr_zero(occ);
+        occ &= occ - 1;
         const Piece piece = eval.board[static_cast<std::size_t>(square)];
-        if (piece.empty()) {
-            continue;
-        }
-        const std::size_t color = index_of(piece.color);
-        const int s = sign_of(color);
+        const int s = sign_of(index_of(piece.color));
         const Score mat = material(piece.type);
         const Score pst = piece_square(piece.type, square, piece.color);
-        material_sum += scaled(mat, s, s);
-        pst_sum += scaled(pst, s, s);
+        if constexpr (CollectTrace) {
+            add_trace_scaled(tr.material, mat, s);
+            add_trace_scaled(tr.pst, pst, s);
+        }
         total += scaled(mat + pst, s, s);
     }
 
-    Score mobility_sum{};
-    Score pawns_sum{};
-    Score king_safety_sum{};
-    Score threats_sum{};
-    Score piece_terms_sum{};
-    Score space_dev_sum{};
-
     for (std::size_t color = 0; color < 2; ++color) {
         const int sign = sign_of(color);
         Score side{};
 
-        for (int square = 0; square < 64; ++square) {
+        // Mobility by piece type (pawns and kings have zero mobility weight).
+        std::uint64_t mob_pieces = eval.colors[color] &
+            ~eval.pieces[color][type_index(PieceType::pawn)] &
+            ~eval.pieces[color][type_index(PieceType::king)];
+        while (mob_pieces != 0) {
+            const int square = std::countr_zero(mob_pieces);
+            mob_pieces &= mob_pieces - 1;
             const Piece piece = eval.board[static_cast<std::size_t>(square)];
-            if (piece.empty() || index_of(piece.color) != color) {
-                continue;
-            }
             const Score weight = mobility_weight(piece.type);
             const int mobility = eval.piece_mobility[static_cast<std::size_t>(square)];
             int piece_mobility_scale = 100;
             switch (piece.type) {
-            case PieceType::knight: piece_mobility_scale = hce_tuning().mobility_knight; break;
-            case PieceType::bishop: piece_mobility_scale = hce_tuning().mobility_bishop; break;
-            case PieceType::rook: piece_mobility_scale = hce_tuning().mobility_rook; break;
-            case PieceType::queen: piece_mobility_scale = hce_tuning().mobility_queen; break;
+            case PieceType::knight: piece_mobility_scale = tuning.mobility_knight; break;
+            case PieceType::bishop: piece_mobility_scale = tuning.mobility_bishop; break;
+            case PieceType::rook: piece_mobility_scale = tuning.mobility_rook; break;
+            case PieceType::queen: piece_mobility_scale = tuning.mobility_queen; break;
             default: break;
             }
             const Score mob_term = percent_of(
                 Score{weight.mg * mobility, weight.eg * mobility},
-                hce_tuning().mobility * piece_mobility_scale / 100);
+                tuning.mobility * piece_mobility_scale / 100);
             side += mob_term;
-            mobility_sum += scaled(mob_term, sign, sign);
+            if constexpr (CollectTrace) {
+                add_trace_scaled(tr.mobility, mob_term, sign);
+            }
         }
 
-        const Score pawns_term = percent_of(pawn_structure(eval, color), hce_tuning().pawn_structure);
-        const Score king_term = percent_of(king_safety(eval, color), hce_tuning().king_safety);
-        const Score threats_term = percent_of(threats(eval, color), hce_tuning().threats);
-        const Score piece_term = percent_of(piece_features(eval, color), hce_tuning().piece_terms);
+        const Score pawns_term = percent_of(pawn_structure(eval, color, tuning), tuning.pawn_structure);
+        const Score king_term = percent_of(king_safety(eval, color), tuning.king_safety);
+        const Score threats_term = percent_of(threats(eval, color), tuning.threats);
+        const Score piece_term = percent_of(piece_features(eval, color), tuning.piece_terms);
         const Score center_term{eval.center_control[color] * 3, 0};
         const Score dev_term{static_cast<int>(eval.development[color]) * 4, 0};
 
@@ -836,40 +797,54 @@ ClassicalEvalTrace ClassicalEvaluator::trace(const GameState& state) const {
         side += center_term;
         side += dev_term;
 
-        pawns_sum += scaled(pawns_term, sign, sign);
-        king_safety_sum += scaled(king_term, sign, sign);
-        threats_sum += scaled(threats_term, sign, sign);
-        piece_terms_sum += scaled(piece_term, sign, sign);
-        space_dev_sum += scaled(center_term + dev_term, sign, sign);
+        if constexpr (CollectTrace) {
+            add_trace_scaled(tr.pawns, pawns_term, sign);
+            add_trace_scaled(tr.king_safety, king_term, sign);
+            add_trace_scaled(tr.threats, threats_term, sign);
+            add_trace_scaled(tr.piece_terms, piece_term, sign);
+            add_trace_scaled(tr.space_dev, center_term + dev_term, sign);
+        }
 
         total += scaled(side, sign, sign);
     }
 
+    // Side-to-move tempo.  The score is White-positive, so Black's tempo
+    // subtracts.
     const Score tempo = eval.side_to_move == Color::white ? Score{10, 10} : Score{-10, -10};
-    const Score tempo_term = percent_of(tempo, hce_tuning().tempo);
+    const Score tempo_term = percent_of(tempo, tuning.tempo);
     total += tempo_term;
 
-    total.eg = total.eg * hce_tuning().eg_component / 100;
+    total.eg = total.eg * tuning.eg_component / 100;
     int score = tapered(total, eval.phase);
+    // Opposite bishops with no other material is drawish, but not a strict
+    // rule draw; damp rather than zero it so small residual imbalances survive.
     if (opposite_bishop_draw(eval)) {
-        tr.opposite_bishop_draw = true;
+        if constexpr (CollectTrace) {
+            tr.opposite_bishop_draw = true;
+        }
         score = score / 4;
     }
-    score = score * hce_tuning().evaluation / 100;
+    score = score * tuning.evaluation / 100;
     score = std::clamp(score, -detail::kMateThreshold + 1, detail::kMateThreshold - 1);
 
-    tr.material = to_public(material_sum);
-    tr.pst = to_public(pst_sum);
-    tr.mobility = to_public(mobility_sum);
-    tr.pawns = to_public(pawns_sum);
-    tr.king_safety = to_public(king_safety_sum);
-    tr.threats = to_public(threats_sum);
-    tr.piece_terms = to_public(piece_terms_sum);
-    tr.space_dev = to_public(space_dev_sum);
-    tr.tempo = to_public(tempo_term);
-    tr.total = to_public(total);
-    tr.total_white_cp = score;
-    return tr;
+    if constexpr (CollectTrace) {
+        tr.tempo = {tempo_term.mg, tempo_term.eg};
+        tr.total = {total.mg, total.eg};
+        tr.total_white_cp = score;
+        return tr;
+    } else {
+        return perspective == Color::white ? score : -score;
+    }
+}
+
+} // namespace
+
+int ClassicalEvaluator::evaluate(const GameState& state, Color perspective) const {
+    return evaluate_classical_impl<false>(state, perspective);
+}
+
+ClassicalEvalTrace ClassicalEvaluator::trace(const GameState& state) const {
+    return evaluate_classical_impl<true>(state, Color::white);
 }
 
 } // namespace koi

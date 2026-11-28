@@ -34,7 +34,7 @@ struct FileSignature {
 };
 
 template <class UInt>
-UInt read_big_endian(const std::array<unsigned char, 16>& bytes, std::size_t offset) noexcept {
+UInt read_big_endian(const unsigned char* bytes, std::size_t offset) noexcept {
     UInt value = 0;
     for (std::size_t index = 0; index < sizeof(UInt); ++index) {
         value = static_cast<UInt>((value << 8) | bytes[offset + index]);
@@ -200,6 +200,7 @@ bool safe_book_move(const GameState& state, const Move& move, std::uint8_t safet
         return false;
     }
     GameState after = state;
+    after.detach_mirror();
     if (!after.make_legal_move(*metadata)) {
         return false;
     }
@@ -285,25 +286,26 @@ public:
                 return {};
             }
 
-            replacement = std::make_shared<Cache>();
-            replacement->signature = *signature;
             std::ifstream stream(signature->path, std::ios::binary);
             if (!stream) {
                 // Transient open failure (lock, AV scan, share violation): do
                 // not publish a negative cache entry, so the next probe retries.
                 return {};
             }
-            for (std::uintmax_t offset = 0; offset < size; offset += 16) {
-                std::array<unsigned char, 16> bytes{};
-                stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-                if (!stream) {
-                    return {};
-                }
-                const std::uint64_t key = read_big_endian<std::uint64_t>(bytes, 0);
+            std::vector<unsigned char> buffer(static_cast<std::size_t>(size));
+            if (!stream.read(reinterpret_cast<char*>(buffer.data()),
+                             static_cast<std::streamsize>(buffer.size()))) {
+                return {};
+            }
+            replacement = std::make_shared<Cache>();
+            replacement->signature = *signature;
+            replacement->records.reserve(buffer.size() / 32U + 1U);
+            for (std::size_t offset = 0; offset < buffer.size(); offset += 16U) {
+                const std::uint64_t key = read_big_endian<std::uint64_t>(buffer.data(), offset);
                 replacement->records[key].push_back(Record{
-                    read_big_endian<std::uint16_t>(bytes, 8),
-                    read_big_endian<std::uint16_t>(bytes, 10),
-                    read_big_endian<std::uint32_t>(bytes, 12),
+                    read_big_endian<std::uint16_t>(buffer.data(), offset + 8U),
+                    read_big_endian<std::uint16_t>(buffer.data(), offset + 10U),
+                    read_big_endian<std::uint32_t>(buffer.data(), offset + 12U),
                 });
             }
             replacement->usable = !replacement->records.empty();

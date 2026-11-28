@@ -4,6 +4,7 @@
 #include <array>
 #include <bit>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -38,13 +39,30 @@ public:
                  0x510e527fU, 0x9b05688cU, 0x1f83d9abU, 0x5be0cd19U} {}
 
     void update(std::span<const std::uint8_t> bytes) noexcept {
-        for (const std::uint8_t byte : bytes) {
-            buffer_[buffer_size_++] = byte;
+        std::size_t offset = 0;
+        if (buffer_size_ > 0) {
+            const std::size_t take = std::min(bytes.size(), buffer_.size() - buffer_size_);
+            if (take > 0) {
+                std::memcpy(buffer_.data() + buffer_size_, bytes.data(), take);
+                buffer_size_ += take;
+                offset += take;
+            }
             if (buffer_size_ == buffer_.size()) {
                 transform();
                 bit_count_ += 512;
                 buffer_size_ = 0;
             }
+        }
+        while (bytes.size() - offset >= buffer_.size()) {
+            std::memcpy(buffer_.data(), bytes.data() + offset, buffer_.size());
+            transform();
+            bit_count_ += 512;
+            offset += buffer_.size();
+        }
+        const std::size_t remaining = bytes.size() - offset;
+        if (remaining > 0) {
+            std::memcpy(buffer_.data(), bytes.data() + offset, remaining);
+            buffer_size_ = remaining;
         }
     }
 
@@ -180,6 +198,46 @@ template <typename Integer>
     }
     value = static_cast<Integer>(assembled);
     return true;
+}
+
+template <typename Integer>
+void append_little_endian_span(std::vector<std::uint8_t>& output,
+                               const std::span<const Integer> values) {
+    if (values.empty()) {
+        return;
+    }
+    if constexpr (std::endian::native == std::endian::little) {
+        const auto* raw = reinterpret_cast<const std::uint8_t*>(values.data());
+        output.insert(output.end(), raw, raw + values.size_bytes());
+    } else {
+        for (const Integer value : values) {
+            append_little_endian(output, value);
+        }
+    }
+}
+
+template <typename Integer>
+[[nodiscard]] bool read_little_endian_span(std::span<const std::uint8_t> bytes,
+                                         std::size_t& offset,
+                                         const std::span<Integer> destination) noexcept {
+    if (destination.empty()) {
+        return true;
+    }
+    if (offset > bytes.size() || bytes.size() - offset < destination.size_bytes()) {
+        return false;
+    }
+    if constexpr (std::endian::native == std::endian::little) {
+        std::memcpy(destination.data(), bytes.data() + offset, destination.size_bytes());
+        offset += destination.size_bytes();
+        return true;
+    } else {
+        for (Integer& value : destination) {
+            if (!read_little_endian(bytes, offset, value)) {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 
 [[nodiscard]] std::optional<std::size_t> payload_size_for(const NnueManifest& manifest) noexcept {
@@ -478,35 +536,19 @@ std::expected<std::vector<std::uint8_t>, NnueError> NnueLoader::serialize(
 
     std::vector<std::uint8_t> payload;
     payload.reserve(*expected_payload_size);
-    for (const std::int16_t weight : network.feature_weights) {
-        append_little_endian(payload, weight);
-    }
-    for (const std::int32_t bias : network.hidden_bias) {
-        append_little_endian(payload, bias);
-    }
+    append_little_endian_span<std::int16_t>(payload, network.feature_weights);
+    append_little_endian_span<std::int32_t>(payload, network.hidden_bias);
     if (detail::uses_halfka_threat_features(network.manifest)) {
-        for (const std::int8_t weight : network.l1_weights) {
-            payload.push_back(static_cast<std::uint8_t>(weight));
-        }
-        for (const std::int8_t weight : network.l1_diff_weights) {
-            payload.push_back(static_cast<std::uint8_t>(weight));
-        }
-        for (const std::int32_t bias : network.l1_bias) {
-            append_little_endian(payload, bias);
-        }
+        append_little_endian_span<std::int8_t>(payload, network.l1_weights);
+        append_little_endian_span<std::int8_t>(payload, network.l1_diff_weights);
+        append_little_endian_span<std::int32_t>(payload, network.l1_bias);
     }
-    for (const std::int8_t weight : network.bottleneck_weights) {
-        payload.push_back(static_cast<std::uint8_t>(weight));
-    }
-    for (const std::int32_t bias : network.bottleneck_bias) {
-        append_little_endian(payload, bias);
-    }
+    append_little_endian_span<std::int8_t>(payload, network.bottleneck_weights);
+    append_little_endian_span<std::int32_t>(payload, network.bottleneck_bias);
     if (!detail::is_halfka_king_bucket_v1(network.manifest) &&
         !detail::uses_halfka_threat_features(network.manifest) &&
         !detail::is_halfka_hm_v9(network.manifest)) {
-        for (const std::int8_t weight : network.output_weights) {
-            payload.push_back(static_cast<std::uint8_t>(weight));
-        }
+        append_little_endian_span<std::int8_t>(payload, network.output_weights);
         append_little_endian(payload, network.output_bias);
     }
     if (payload.size() != *expected_payload_size) {
@@ -707,44 +749,29 @@ std::expected<NnueNetwork, NnueError> NnueLoader::load(
     const std::size_t feature_weight_count = input_units * hidden_units;
     std::size_t payload_offset = 0;
     network.feature_weights.resize(feature_weight_count);
-    for (std::int16_t& weight : network.feature_weights) {
-        if (!read_little_endian(payload, payload_offset, weight)) {
-            return std::unexpected(invalid_file_size_error());
-        }
+    if (!read_little_endian_span<std::int16_t>(payload, payload_offset, network.feature_weights)) {
+        return std::unexpected(invalid_file_size_error());
     }
     network.hidden_bias.resize(hidden_units);
-    for (std::int32_t& bias : network.hidden_bias) {
-        std::uint32_t encoded = 0;
-        if (!read_little_endian(payload, payload_offset, encoded)) {
-            return std::unexpected(invalid_file_size_error());
-        }
-        bias = static_cast<std::int32_t>(encoded);
+    if (!read_little_endian_span<std::int32_t>(payload, payload_offset, network.hidden_bias)) {
+        return std::unexpected(invalid_file_size_error());
     }
     if (threat) {
         network.l1_weights.resize(l1_units * hidden_units);
-        for (std::int8_t& weight : network.l1_weights) {
-            if (payload_offset >= payload.size()) {
-                return std::unexpected(invalid_file_size_error());
-            }
-            weight = static_cast<std::int8_t>(payload[payload_offset++]);
+        if (!read_little_endian_span<std::int8_t>(payload, payload_offset, network.l1_weights)) {
+            return std::unexpected(invalid_file_size_error());
         }
         if (detail::is_halfka_threat_v6(network.manifest) ||
             detail::is_halfka_threat_v8(network.manifest)) {
             network.l1_diff_weights.resize(l1_units * hidden_units);
-            for (std::int8_t& weight : network.l1_diff_weights) {
-                if (payload_offset >= payload.size()) {
-                    return std::unexpected(invalid_file_size_error());
-                }
-                weight = static_cast<std::int8_t>(payload[payload_offset++]);
+            if (!read_little_endian_span<std::int8_t>(
+                    payload, payload_offset, network.l1_diff_weights)) {
+                return std::unexpected(invalid_file_size_error());
             }
         }
         network.l1_bias.resize(l1_units);
-        for (std::int32_t& bias : network.l1_bias) {
-            std::uint32_t encoded = 0;
-            if (!read_little_endian(payload, payload_offset, encoded)) {
-                return std::unexpected(invalid_file_size_error());
-            }
-            bias = static_cast<std::int32_t>(encoded);
+        if (!read_little_endian_span<std::int32_t>(payload, payload_offset, network.l1_bias)) {
+            return std::unexpected(invalid_file_size_error());
         }
     }
     const std::size_t v4_head_inputs = detail::halfka_v4_head_inputs(network.manifest);
@@ -752,27 +779,17 @@ std::expected<NnueNetwork, NnueError> NnueLoader::load(
         threat ? output_units * l1_units :
         (halfka_v9 ? output_units * (2U * hidden_units) :
         (halfka_v4 ? output_units * v4_head_inputs : hidden_units * output_units)));
-    for (std::int8_t& weight : network.bottleneck_weights) {
-        if (payload_offset >= payload.size()) {
-            return std::unexpected(invalid_file_size_error());
-        }
-        weight = static_cast<std::int8_t>(payload[payload_offset++]);
+    if (!read_little_endian_span<std::int8_t>(payload, payload_offset, network.bottleneck_weights)) {
+        return std::unexpected(invalid_file_size_error());
     }
     network.bottleneck_bias.resize(output_units);
-    for (std::int32_t& bias : network.bottleneck_bias) {
-        std::uint32_t encoded = 0;
-        if (!read_little_endian(payload, payload_offset, encoded)) {
-            return std::unexpected(invalid_file_size_error());
-        }
-        bias = static_cast<std::int32_t>(encoded);
+    if (!read_little_endian_span<std::int32_t>(payload, payload_offset, network.bottleneck_bias)) {
+        return std::unexpected(invalid_file_size_error());
     }
     if (!halfka_v4 && !halfka_v9 && !threat) {
         network.output_weights.resize(output_units);
-        for (std::int8_t& weight : network.output_weights) {
-            if (payload_offset >= payload.size()) {
-                return std::unexpected(invalid_file_size_error());
-            }
-            weight = static_cast<std::int8_t>(payload[payload_offset++]);
+        if (!read_little_endian_span<std::int8_t>(payload, payload_offset, network.output_weights)) {
+            return std::unexpected(invalid_file_size_error());
         }
         std::uint32_t output_bias = 0;
         if (!read_little_endian(payload, payload_offset, output_bias)) {
