@@ -394,8 +394,9 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     // when the entire remaining clock is only a few seconds. Pace low-clock
     // searches tightly while giving verified hard positions a bounded extension.
     if (emergency_pacing_) {
-        const std::uint32_t emergency_horizon = std::max<std::uint32_t>(
-            10, timing_.horizon / 2);
+        const std::uint32_t emergency_horizon = limits_.moves_to_go.has_value()
+            ? std::max<std::uint32_t>(2U, timing_.horizon)
+            : std::max<std::uint32_t>(10U, timing_.horizon / 2);
         const auto emergency_base = timing_.usable / emergency_horizon;
         const auto emergency_soft = std::min(
             timing_.usable, saturating_add(emergency_base, increment_credit));
@@ -820,6 +821,11 @@ bool TimeManager::should_stop_after_iteration() const noexcept {
         return true;
     }
     const auto soft_target = effective_soft_budget();
+    if (clock_mode_ && ponderhit_converted_ &&
+        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
+         (mate_stable_observations_ >= 2 && last_observed_depth_ >= 6))) {
+        return true;
+    }
     if (clock_mode_ &&
         ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
          (mate_stable_observations_ >= 2 && last_observed_depth_ >= 4)) &&
@@ -868,6 +874,11 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
     const auto soft_target = effective_soft_budget();
     if (emergency_pacing_ && !hard_extension_affordable() &&
         elapsed >= soft_target) {
+        return false;
+    }
+    if (clock_mode_ && ponderhit_converted_ &&
+        ((root_context_.legal_move_count == 1 && last_observed_depth_ >= 4) ||
+         (mate_stable_observations_ >= 2 && last_observed_depth_ >= 6))) {
         return false;
     }
     if (clock_mode_ &&

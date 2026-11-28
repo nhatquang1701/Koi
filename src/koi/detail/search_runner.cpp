@@ -940,13 +940,12 @@ void SearchRunner::run_impl() {
             if (active_limits.infinite || active_limits.ponder) {
                 return;
             }
-            if (const auto budget = time_manager.time_budget();
-                budget.has_value() && *budget >= std::chrono::milliseconds{50}) {
+            if (const auto budget = time_manager.time_budget(); budget.has_value()) {
                 const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - anchor);
                 if (elapsed >= *budget) {
                     session->stop();
-                } else {
+                } else if (*budget >= std::chrono::milliseconds{50}) {
                     session->request_stop_after(*budget - elapsed);
                 }
             }
@@ -1323,6 +1322,7 @@ void SearchRunner::run_impl() {
                         conversion->received_at,
                         conversion->observed_overhead_ms.value_or(options.observed_overhead_ms));
                     context.refresh_budget_tuning();
+                    result.timing = time_manager.diagnostics();
                     maximum_depth = std::min(
                         kMaximumSearchDepth,
                         std::max(1, limits.depth.value_or(kMaximumSearchDepth)));
@@ -1347,7 +1347,6 @@ void SearchRunner::run_impl() {
                 }
                 context.begin_profile_iteration(depth);
                 const std::optional<Move> previous_best_move = result.best_move;
-                const std::vector<Move> previous_pv = result.pv;
                 const bool had_completed_iteration = result.completed_depth > 0;
                 context.root_move_hint = had_completed_iteration ? result.best_move : std::nullopt;
                 bool aspiration_researched = false;
@@ -1508,8 +1507,6 @@ void SearchRunner::run_impl() {
                 const int searched_iteration_score = score;
                 const bool searched_best_move_changed = had_completed_iteration &&
                     previous_best_move != result.best_move;
-                const bool searched_pv_changed = had_completed_iteration &&
-                    previous_pv != result.pv;
                 bool bounded_fallback_result = false;
 
                 // The correction must also cover depth-two blind iterations in
@@ -1676,8 +1673,7 @@ void SearchRunner::run_impl() {
                     iteration_observation_score,
                     bounded_fallback_result ? searched_best_move_changed :
                         (had_completed_iteration && previous_best_move != result.best_move),
-                    bounded_fallback_result ? searched_pv_changed :
-                        (had_completed_iteration && previous_pv != result.pv),
+                    false,
                     aspiration_researched,
                     iteration_main_visited,
                     best_move_iteration_nodes,
@@ -1817,6 +1813,7 @@ void SearchRunner::run_impl() {
                         conversion->received_at,
                         conversion->observed_overhead_ms.value_or(options.observed_overhead_ms));
                     root_context.refresh_budget_tuning();
+                    result.timing = time_manager.diagnostics();
                     maximum_depth = std::min(
                         kMaximumSearchDepth,
                         std::max(1, limits.depth.value_or(kMaximumSearchDepth)));
@@ -2327,7 +2324,6 @@ void SearchRunner::run_impl() {
                 }
 
                 const std::optional<Move> previous_best_move = result.best_move;
-                const std::vector<Move> previous_pv = result.pv;
                 const bool had_completed_iteration = result.completed_depth > 0;
                 const bool complete_root_coverage = std::all_of(
                     lines.begin(), lines.end(), [](const RootLine& line) {
@@ -2412,8 +2408,6 @@ void SearchRunner::run_impl() {
                 const int searched_iteration_score = result.score_cp;
                 const bool searched_best_move_changed = had_completed_iteration &&
                     previous_best_move != result.best_move;
-                const bool searched_pv_changed = had_completed_iteration &&
-                    previous_pv != result.pv;
                 bool bounded_fallback_result = false;
 
                 // The correction must also cover depth-two blind iterations in
@@ -2618,8 +2612,7 @@ void SearchRunner::run_impl() {
                     iteration_observation_score,
                     bounded_fallback_result ? searched_best_move_changed :
                         (had_completed_iteration && previous_best_move != result.best_move),
-                    bounded_fallback_result ? searched_pv_changed :
-                        (had_completed_iteration && previous_pv != result.pv),
+                    false,
                     aspiration_researched,
                     iteration_visited,
                     0,

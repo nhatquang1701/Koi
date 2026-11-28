@@ -851,12 +851,17 @@ std::optional<TranspositionEntry> TranspositionTable::probe_storage(
     const std::size_t cluster = cluster_index(key, storage->cluster_count);
     const AtomicSlot* const cluster_entries = storage->cluster_base(cluster);
 
-    for (std::size_t offset = 0; offset < kClusterSize; ++offset) {
+    const std::size_t offset_start = static_cast<std::size_t>(key) & (kClusterSize - 1U);
+    for (std::size_t step = 0; step < kClusterSize; ++step) {
+        const std::size_t offset = (offset_start + step) & (kClusterSize - 1U);
         const AtomicSlot& slot = cluster_entries[offset];
+        const std::uint64_t w2 = slot.word2.load(std::memory_order_relaxed);
+        if (!slot_occupied(w2) || slot_epoch(w2) != epoch) {
+            continue;
+        }
         const std::uint64_t tag = slot.key_tag.load(std::memory_order_relaxed);
         const std::uint64_t w1 = slot.word1.load(std::memory_order_relaxed);
-        const std::uint64_t w2 = slot.word2.load(std::memory_order_relaxed);
-        if ((tag ^ w1 ^ w2) != key || !slot_occupied(w2) || slot_epoch(w2) != epoch) {
+        if ((tag ^ w1 ^ w2) != key) {
             continue;
         }
         TranspositionEntry result;
@@ -907,7 +912,8 @@ void TranspositionTable::prefetch_storage(const Storage* storage, std::uint64_t 
         return;
     }
     const std::size_t cluster = cluster_index(key, storage->cluster_count);
-    KOI_TT_PREFETCH(storage->cluster_base(cluster));
+    const std::size_t offset_start = static_cast<std::size_t>(key) & (kClusterSize - 1U);
+    KOI_TT_PREFETCH(storage->cluster_base(cluster) + offset_start);
 }
 
 void TranspositionTable::prefetch(std::uint64_t key) const noexcept {

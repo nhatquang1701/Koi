@@ -1000,6 +1000,55 @@ void test_subsecond_sudden_death_bullet_scramble_protection() {
             "2.5s+0 sudden-death may continue inside hard_budget on unstable iterations");
 }
 
+void test_ponderhit_instant_exit_and_repeating_emergency_horizon() {
+    auto single_now = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits ponder_limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    ponder_limits.ponder = true;
+    const SearchLimits clock = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+
+    RootTimingContext single_ctx = warm_context();
+    single_ctx.legal_move_count = 1;
+    TimeManager ponder_single(ponder_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              single_ctx, [single_now] { return *single_now; });
+    ponder_single.observe_iteration({4, 10, false, false, false, 10'000, 10'000, milliseconds{5}});
+    ponder_single.reconfigure(clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              single_ctx, false, {}, 0);
+    require(!ponder_single.should_start_next_iteration(milliseconds{1}) &&
+                ponder_single.should_stop_after_iteration(),
+            "ponderhit with verified depth-4 single legal move must exit immediately at 0 ms");
+
+    auto mate_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto unpondered_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager ponder_mate(ponder_limits, koi::Color::white, 100, kMoveOverheadMs, 100,
+                            warm_context(), [mate_now] { return *mate_now; });
+    TimeManager unpondered_mate(clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                                warm_context(), [unpondered_now] { return *unpondered_now; });
+    for (int depth = 5; depth <= 6; ++depth) {
+        const SearchIterationObservation obs{depth, 99'500, false, false, false, 10'000, 9'000, milliseconds{15}};
+        ponder_mate.observe_iteration(obs);
+        unpondered_mate.observe_iteration(obs);
+    }
+    ponder_mate.reconfigure(clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                            warm_context(), false, {}, 0);
+    require(!ponder_mate.should_start_next_iteration(milliseconds{1}) &&
+                ponder_mate.should_stop_after_iteration(),
+            "ponderhit with twice-confirmed depth-6 forced mate must exit immediately at 0 ms");
+    require(unpondered_mate.should_start_next_iteration(milliseconds{1}),
+            "unpondered search with forced mate must not exit at 0 ms before elapsed reaches optimum");
+
+    const TimeManager mtg1 = make_clock_manager(milliseconds{2'500}, milliseconds{0}, 1, true);
+    const auto safety2500 = expected_hard_safety(milliseconds{2'500});
+    require(mtg1.diagnostics().emergency_pacing &&
+                mtg1.diagnostics().soft_budget > milliseconds{1'000} &&
+                mtg1.time_budget().value() <= (mtg1.diagnostics().usable * 3) / 4 &&
+                mtg1.time_budget().value() <= nonnegative_difference(mtg1.diagnostics().usable, safety2500),
+            "emergency repeating movestogo=1 must not collapse to 10-move sudden-death horizon");
+
+    const TimeManager mtg20 = make_clock_manager(milliseconds{2'500}, milliseconds{0}, 20, true);
+    require(mtg20.diagnostics().soft_budget <= mtg20.diagnostics().usable / 20,
+            "emergency repeating movestogo=20 must honor movestogo instead of halving it to 10");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1040,6 +1089,8 @@ int main(int argc, char** argv) {
          test_repeating_movestogo_end_of_control_and_sudden_death_ramp},
         {"sub-second sudden-death bullet scramble protection",
          test_subsecond_sudden_death_bullet_scramble_protection},
+        {"ponderhit instant exit and repeating emergency horizon",
+         test_ponderhit_instant_exit_and_repeating_emergency_horizon},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

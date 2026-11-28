@@ -642,8 +642,9 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      Emergency pacing tightens the low-clock case further.
    - Budgets are scaled by `Slow Mover` and capped at
      `usable`; soft is capped at hard.
-   - Emergency taper: horizon `max(10, horizon / 2)`, emergency base
-     `usable / horizon`; soft becomes `min(soft, emergency_base + credit)`; the
+   - Emergency taper: horizon `max(2, horizon)` when `movestogo` is set,
+     otherwise `max(10, horizon / 2)`, emergency base `usable / horizon`; soft
+     becomes `min(soft, emergency_base + credit)`; the
      hard extension is `max(15 ms, 2 × emergency_base)` for hard positions and
      `max(5 ms, emergency_base / 2)` otherwise; hard is capped by `emergency_hard`
      and raised to at least soft.
@@ -692,13 +693,16 @@ the search but cannot push it past the cap.
   usable clock is at least `2 × soft budget + overhead`
   (`hard_extension_affordable`). Near the end or on high-latency links the soft
   budget wins.
-- `should_stop_after_iteration`: stops at the hard deadline, on confirmed forced
-  mates or single-legal moves after reaching soft/optimum time, in emergency
+- `should_stop_after_iteration`: stops at the hard deadline, immediately on a
+  converted `ponderhit` with a verified single legal reply (`depth >= 4`) or
+  twice-confirmed forced mate (`depth >= 6`), on confirmed forced mates or
+  single-legal moves after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
   in calm high-effort positions (`>= 90%` best-move node share) past `60%` of the
   soft/optimum target, and in clock mode at soft after at least 2 stable
   observations when the extension is unaffordable.
-- `should_start_next_iteration`: honors emergency pacing, forced-mate / single-move
+- `should_start_next_iteration`: honors instant post-`ponderhit` forced-mate /
+  single-move exits, emergency pacing, forced-mate / single-move
   exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm
   `75%` soft-target cutoffs, adaptive EWMA branching-factor lookahead
   (`1.3×..3.2×`, starting at `1.5×`, avoiding doomed partial iterations past
@@ -708,7 +712,8 @@ the search but cannot push it past the cap.
 - `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)
   and calls `reconfigure`: limits/root context are replaced while preserving
   iteration observations gathered during pondering (recomputing `optimum_budget`
-  immediately for fast conversion on forced mates or clear moves and applying
+  immediately for fast conversion — including instant exit at `elapsed = 0` for
+  pre-verified depth-4 single-move or depth-6 mate lines — and applying
   the updated learned GUI overhead), the clock starts from `received_at`,
   `SearchContext::refresh_budget_tuning()` updates clock-poll and qcheck limits,
   and the session watchdog is re-armed.
