@@ -996,7 +996,7 @@ public:
             candidate.board[static_cast<std::size_t>(square)] = piece_from_char(value);
             if (value == 'K') ++white_kings;
             if (value == 'k') ++black_kings;
-            if (std::isupper(static_cast<unsigned char>(value))) {
+            if (value >= 'A' && value <= 'Z') {
                 ++white_pieces;
                 if (value == 'P') ++white_pawns;
             } else {

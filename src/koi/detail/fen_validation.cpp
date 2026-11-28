@@ -77,7 +77,7 @@ bool valid_piece_placement(std::string_view placement, FenLayout& layout) {
                 layout.black_king_square = square;
                 ++layout.black_kings;
             }
-            if (std::isupper(static_cast<unsigned char>(character))) {
+            if (character >= 'A' && character <= 'Z') {
                 ++layout.white_pieces;
                 if (character == 'P') ++layout.white_pawns;
             } else {
