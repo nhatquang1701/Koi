@@ -471,6 +471,14 @@ void test_unquoted_fen_and_inspection_subcommands() {
                                out.str().find(" Nf3 ") != std::string::npos &&
                                out.str().find(" Qh5 ") != std::string::npos,
                            "zero-network moves --san must list SAN moves; got:\n" + out.str());
+
+        env.clear_all();
+        koi::cli::CliOptions san_alias_opts;
+        koi::test::require(
+            !invoke_parse({"moves", "san", "moves", "e4", "e5"}, san_alias_opts).has_value() &&
+                san_alias_opts.moves && san_alias_opts.moves_san &&
+                san_alias_opts.inspect_fen == "moves e4 e5",
+            "moves san alias must set moves_san and preserve trailing position spec");
     }
     {
         env.clear_all();

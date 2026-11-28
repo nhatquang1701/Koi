@@ -173,6 +173,10 @@ class CliSubcommandsTest(unittest.TestCase):
             "Legal moves (20): Na3 Nc3 Nf3 Nh3 a3 a4 b3 b4 c3 c4 d3 d4 e3 e4 f3 f4 g3 g4 h3 h4",
         )
 
+        moves_san_alias = self._run(["moves", "san"], disable_nnue=True)
+        self.assertEqual(moves_san_alias.returncode, 0, moves_san_alias.stderr)
+        self.assertEqual(moves_san_alias.stdout, moves_san.stdout)
+
         mate_moves_san = self._run(
             ["moves", "--san", "moves", "f3", "e5", "g4", "Qh4#"],
             disable_nnue=True,
@@ -1188,7 +1192,29 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(epd_lines[2].split(",")[1], "")
             self.assertIsInstance(int(epd_lines[2].split(",")[2]), int)
 
-            for bad_eval_args in (["--nnue"], ["--input="], ["--output"]):
+            limit_corpus = (
+                "# comment\n"
+                "   \n"
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\n"
+                "6k1/5ppp/8/8/8/8/8/3R2K1 w - -\n"
+                "4k3/8/8/8/8/8/4P3/4K3 w - -\n"
+            )
+            for args_extra, expected_rows in (
+                (["--limit", "1"], 2),
+                (["--limit=2"], 3),
+            ):
+                limited = subprocess.run(
+                    [str(eval_features_exe), "--hce", *args_extra],
+                    input=limit_corpus,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                self.assertEqual(limited.returncode, 0, limited.stderr)
+                self.assertEqual(limited.stderr, "")
+                self.assertEqual(len(limited.stdout.splitlines()), expected_rows, limited.stdout)
+
+            for bad_eval_args in (["--nnue"], ["--input="], ["--output"], ["--limit"], ["--limit", "0"], ["--limit=abc"]):
                 bad_eval = subprocess.run(
                     [str(eval_features_exe), *bad_eval_args],
                     capture_output=True,
@@ -1196,7 +1222,7 @@ class CliSubcommandsTest(unittest.TestCase):
                     timeout=15,
                 )
                 self.assertEqual(bad_eval.returncode, 2, bad_eval.stdout)
-                self.assertIn("missing value for", bad_eval.stderr)
+                self.assertTrue("missing value for" in bad_eval.stderr or "invalid --limit" in bad_eval.stderr, bad_eval.stderr)
 
             for bad_fixture_args, expected_err in (
                 (["--arch"], "missing value for --arch"),

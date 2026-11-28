@@ -78,38 +78,35 @@ latest_tag() {
         python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])'
 }
 
-asset_url() {
-    local pattern="$1" json="$2"
-    printf '%s' "$json" | PATTERN="$pattern" python3 -c '
+asset_field() {
+    local field="$1" pattern="$2" json="$3"
+    printf '%s' "$json" | FIELD="$field" PATTERN="$pattern" python3 -c '
 import json, os, sys
+field = os.environ["FIELD"]
 pattern = os.environ["PATTERN"]
 want_sidecar = pattern.endswith(".sha256")
 for asset in json.load(sys.stdin).get("assets", []):
     name = asset["name"]
     is_sidecar = name.endswith(".sha256")
     if pattern in name and is_sidecar == want_sidecar:
-        print(asset["browser_download_url"])
+        if field == "url":
+            print(asset["browser_download_url"])
+        else:
+            digest = asset.get("digest") or ""
+            if digest.startswith("sha256:"):
+                digest = digest[len("sha256:"):]
+            if digest:
+                print(digest.lower())
         break
 '
 }
 
+asset_url() {
+    asset_field url "$1" "$2"
+}
+
 asset_digest() {
-    local pattern="$1" json="$2"
-    printf '%s' "$json" | PATTERN="$pattern" python3 -c '
-import json, os, sys
-pattern = os.environ["PATTERN"]
-want_sidecar = pattern.endswith(".sha256")
-for asset in json.load(sys.stdin).get("assets", []):
-    name = asset["name"]
-    is_sidecar = name.endswith(".sha256")
-    if pattern in name and is_sidecar == want_sidecar:
-        digest = asset.get("digest") or ""
-        if digest.startswith("sha256:"):
-            digest = digest[len("sha256:"):]
-        if digest:
-            print(digest.lower())
-        break
-'
+    asset_field digest "$1" "$2"
 }
 
 verify_sha256() {

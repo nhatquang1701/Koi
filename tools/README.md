@@ -52,7 +52,7 @@ examples live in [CLI & Interactive Reference](../docs/CLI.md):
 - `koi-bench` — 64-position fixed-depth tactical/positional suite (`--nnue` or `--hce`), `--hash MB`, `--fen-file` / `--epd` (supporting 4/6-field FENs, EPD `bm`/`am`/`id`/`hmvc`/`fmvn` ops, and UCI/SAN move lists), timing sweeps (`--timed`, `--depth-sweep`), `--report`, and `--profile-json`.
 - `koi-perft` — fast standalone perft runner supporting `--divide`, `--suite` (6-position CPW depth-4 verification), and `[startpos|fen [moves <move>...]]`.
 - `koi-replay` — deterministic UCI and FIDE SAN game replay driver with optional `--pgn` export.
-- `koi-eval-features` — exports NNUE or HCE static evaluations for a FEN or EPD corpus to CSV.
+- `koi-eval-features` — exports NNUE or HCE static evaluations for a FEN or EPD corpus to CSV (`--input`, `--output`, `--limit N`, `--flag=value` supported).
 - `koi-nnue-fixture` — generates valid synthetic `.nnue` test fixtures for CI and local testing.
 
 ## Speed program gate
@@ -231,8 +231,8 @@ selectable for development/measurement:
 - `koi-bench --hce` runs the built-in tactical/positional suite with the HCE
   (no network required); `koi-bench --nnue NET` remains the NNUE path.
 - Term-level tests are in `tests/unit/evaluation/classical_evaluator_tests.cpp`.
-- `koi-eval-features --hce` dumps HCE static evaluations for a FEN corpus in
-  CSV (no network required); `--nnue NET` remains the NNUE dump mode.
+- `koi-eval-features --hce` dumps HCE static evaluations for a FEN or EPD corpus in
+  CSV (no network required; supports `--input`, `--output`, `--limit N`, and `--flag=value`); `--nnue NET` remains the NNUE dump mode.
 
 ## PGN extraction and oracle analysis
 

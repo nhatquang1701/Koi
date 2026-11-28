@@ -7,7 +7,7 @@ direction, and every node names a real translation unit or header.
 ```mermaid
 flowchart TD
     GUI["UCI / XBoard GUI · Arena<br/>Cute Chess · lichess-bot"] -- "UCI / XBoard" --> UCI
-    UCI["uci_controller.cpp<br/>options · protocol output<br/>d · fen · key · moves · book · tb<br/>bench · speedtest · options · eval · nnue<br/>flip · makemove · undo · history · pgn · see · perft · wait"]
+    UCI["uci_controller.cpp<br/>options · protocol output<br/>d · fen · epd · key · moves · book · tb<br/>bench · speedtest · options · eval · nnue<br/>flip · makemove · undo · history · pgn · annotate · see · perft · wait"]
     UCI --> UCISUPPORT["detail/uci_support.*<br/>parsers · go limits · formatters"]
     UCI --> TIME["time_manager.cpp<br/>soft/hard budgets<br/>move overhead"]
     UCI --> SERVICE["search_service.cpp<br/>request snapshot<br/>cancellation · exactly-once"]
@@ -29,9 +29,9 @@ flowchart TD
 
 | File | Responsibility |
 | --- | --- |
-| `src/main.cpp`, `src/cli_support.*` | Entry point, signal/stack setup, CPU variant guard & dispatch, pre-boot CLI/env option & NNUE resolution (`resolve_boot_nnue_path`, `version`, `help`, `--engine-json`, `--hash`, `--threads`, `-c`/`--cmd` batch script, `speedtest`, `--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), and zero-network CLI subcommands (`compiler`, `nnue`, `d`, `fen`, `key`, `moves`, `pgn`, `flip`, `book`, `tb`, `see`, `perft`). |
+| `src/main.cpp`, `src/cli_support.*` | Entry point, signal/stack setup, CPU variant guard & dispatch, pre-boot CLI/env option & NNUE resolution (`resolve_boot_nnue_path`, `version`, `help`, `--engine-json`, `--hash`, `--threads`, `-c`/`--cmd` batch script, `speedtest`, `--hce`, `--nnue`, `--book`, `--syzygy`, `--protocol`), and zero-network CLI subcommands (`compiler`, `nnue`, `d`, `fen`, `epd`, `key`, `moves [--san]`, `history`, `pgn`, `flip`, `book`, `tb`, `see`, `perft [--suite]`). |
 | `uci_controller.cpp` | Owns the current position and the search-worker lifecycle; the only layer that writes UCI output (`detail/uci_support.*` never emits `"info string` literals). |
-| `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, `parse_cli_position_with_history` / `parse_cli_position_spec` (`[startpos|fen] [moves <uci|san>...]`), `move_to_san` / `parse_san_move` / `parse_move_uci_or_san`, `go` limit parser, network overhead estimator, debug-JSON payload builders, WDL conversion, FEN flip helper, ASCII board/key/moves/book/tb/nnue/eval/options/bench/speedtest/history/pgn/see/perft/annotate/compiler formatters, and benchmark FEN suite. |
+| `detail/uci_support.*` | Pure protocol-literal-free UCI/XBoard/annotation parsers, `parse_cli_position_with_history` / `parse_cli_position_spec` (`[startpos|fen] [moves <uci|san>...]`), `move_to_san` / `parse_san_move` / `parse_move_uci_or_san`, `go` limit parser, network overhead estimator, debug-JSON payload builders, WDL conversion, FEN flip helper, ASCII board/key/moves (`format_legal_moves_san`)/epd (`format_epd`)/book/tb/nnue/eval/options/bench/speedtest/history/pgn/see/perft/annotate/compiler formatters, `kPerftSuite`, `run_perft_suite`, and benchmark FEN suite. |
 | `search_service.cpp` | Public search lifecycle boundary: request snapshot, cancellation, exactly-once completion. |
 | `detail/search_session.cpp` | One immutable request, worker ownership, cancellation/ponderhit timer, completion claim. |
 | `detail/root_fallback.*` | Bounded root-fallback policy: emergency static/one-ply scanners used when a short search cannot complete an authoritative iteration. |

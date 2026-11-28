@@ -14,6 +14,8 @@
 
 #include <array>
 #include <cctype>
+#include <charconv>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -136,6 +138,8 @@ int main(int argc, char** argv) {
     std::string input_path;
     std::string output_path;
     std::string nnue_path;
+    std::string limit_text;
+    std::optional<std::uint64_t> limit;
     bool use_hce = false;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument = argv[index];
@@ -147,10 +151,26 @@ int main(int argc, char** argv) {
                 std::cerr << "koi-eval-features: " << parse_error << '\n';
                 return 2;
             }
+        } else if (consume_value_flag(argument, "--limit", index, argc, argv, limit_text,
+                                      parse_error)) {
+            if (!parse_error.empty()) {
+                std::cerr << "koi-eval-features: " << parse_error << '\n';
+                return 2;
+            }
+            std::uint64_t parsed_limit = 0;
+            const auto [end, error] = std::from_chars(
+                limit_text.data(), limit_text.data() + limit_text.size(), parsed_limit);
+            if (error != std::errc{} || end != limit_text.data() + limit_text.size() ||
+                parsed_limit == 0) {
+                std::cerr << "koi-eval-features: invalid --limit '" << limit_text
+                          << "' (expected positive integer)\n";
+                return 2;
+            }
+            limit = parsed_limit;
         } else if (argument == "--hce") {
             use_hce = true;
         } else if (argument == "-h" || argument == "--help") {
-            std::cout << "usage: koi-eval-features (--nnue NET | --hce) [--input FILE] [--output FILE]\n"
+            std::cout << "usage: koi-eval-features (--nnue NET | --hce) [--input FILE] [--output FILE] [--limit N]\n"
                          "  reads FEN, EPD, or FEN;cp;... rows (stdin by default) and writes\n"
                          "  CSV rows fen,label_cp,<evaluator>_cp from the side-to-move perspective\n";
             return 0;
@@ -213,9 +233,11 @@ int main(int argc, char** argv) {
     *output << (use_hce ? "fen,label_cp,hce_cp\n" : "fen,label_cp,nnue_cp\n");
     const koi::Evaluator& evaluator = *selection.evaluator;
     std::string line;
-    while (std::getline(*input, line)) {
+    std::uint64_t emitted = 0;
+    while ((!limit.has_value() || emitted < *limit) && std::getline(*input, line)) {
         line = strip_carriage_return(std::move(line));
-        if (line.empty() || line.front() == '#') {
+        const std::string_view trimmed = trim_ascii(line);
+        if (trimmed.empty() || trimmed.front() == '#') {
             continue;
         }
         const auto parsed = parse_fen_or_epd_line(line);
@@ -231,6 +253,7 @@ int main(int argc, char** argv) {
         }
         *output << parsed->fen << ',' << parsed->label << ','
                 << evaluator.evaluate(parsed->state, parsed->state.side_to_move()) << '\n';
+        ++emitted;
     }
     return 0;
 }

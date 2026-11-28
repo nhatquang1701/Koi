@@ -395,10 +395,13 @@ std::optional<int> parse_cli_options(
             continue;
         }
         if (arg == "moves") {
-            if (index + 1 < argc && std::string_view(argv[index + 1]) == "--san") {
-                out.moves_san = true;
-                set_environment_value("KOI_CLI_MOVES_SAN", "1");
-                ++index;
+            if (index + 1 < argc) {
+                const std::string_view next_arg(argv[index + 1]);
+                if (next_arg == "--san" || next_arg == "san") {
+                    out.moves_san = true;
+                    set_environment_value("KOI_CLI_MOVES_SAN", "1");
+                    ++index;
+                }
             }
             set_inspect_command(index, out.moves, "KOI_CLI_MOVES");
             continue;

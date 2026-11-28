@@ -540,8 +540,7 @@ std::string format_ascii_board(const GameState& position) {
     const std::uint64_t checkers_mask = position.checkers();
     buffer << "   a   b   c   d   e   f   g   h\n\n"
            << "Fen   : " << fen << '\n'
-           << "Key   : " << std::hex << std::setfill('0') << std::setw(16) << key
-           << std::dec << std::setfill(' ') << '\n'
+           << "Key   : " << debug_hex(key) << '\n'
            << "Side  : " << (white_to_move ? "white" : "black") << '\n'
            << "Check : " << (checked ? "yes" : "no");
     if (checkers_mask != 0) {
