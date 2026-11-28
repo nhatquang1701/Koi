@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -146,14 +145,11 @@ void set_environment_value(const char* name, std::string_view value) noexcept {
 
 bool parse_bounded_uint(std::string_view token, std::size_t minimum, std::size_t maximum,
                         std::size_t& value_out) noexcept {
-    std::size_t parsed = 0;
-    const auto [end, error] =
-        std::from_chars(token.data(), token.data() + token.size(), parsed);
-    if (error != std::errc{} || end != token.data() + token.size() ||
-        parsed < minimum || parsed > maximum) {
+    std::uint64_t parsed = 0;
+    if (!detail::parse_uint64(token, parsed) || parsed < minimum || parsed > maximum) {
         return false;
     }
-    value_out = parsed;
+    value_out = static_cast<std::size_t>(parsed);
     return true;
 }
 
@@ -274,20 +270,8 @@ bool hce_requested_from_environment() noexcept {
         return false;
     }
     const std::string_view requested(value);
-    const auto equals_ignore_case = [requested](std::string_view candidate) {
-        if (requested.size() != candidate.size()) {
-            return false;
-        }
-        for (std::size_t index = 0; index < requested.size(); ++index) {
-            const char lhs = static_cast<char>(std::tolower(static_cast<unsigned char>(requested[index])));
-            const char rhs = static_cast<char>(std::tolower(static_cast<unsigned char>(candidate[index])));
-            if (lhs != rhs) {
-                return false;
-            }
-        }
-        return true;
-    };
-    return equals_ignore_case("hce") || equals_ignore_case("classical");
+    return detail::equals_ignore_case(requested, "hce") ||
+        detail::equals_ignore_case(requested, "classical");
 }
 
 std::optional<int> parse_cli_options(

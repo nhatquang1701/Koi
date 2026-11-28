@@ -6,7 +6,6 @@
 // an embedding API.
 
 #include <array>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -123,24 +122,62 @@ inline constexpr std::array<UciOptionDescriptor, 29> kUciOptions{{
      false, ""},
 }};
 
-[[nodiscard]] inline const UciOptionDescriptor* find_uci_option(std::string_view name) noexcept {
+[[nodiscard]] constexpr bool uci_option_name_equals(
+    std::string_view left, std::string_view right) noexcept {
+    if (left.size() != right.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < left.size(); ++index) {
+        const auto lower = [](char c) noexcept -> unsigned char {
+            const unsigned char u = static_cast<unsigned char>(c);
+            return (u >= 'A' && u <= 'Z')
+                ? static_cast<unsigned char>(u + ('a' - 'A'))
+                : u;
+        };
+        if (lower(left[index]) != lower(right[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] constexpr const UciOptionDescriptor* find_uci_option(
+    std::string_view name) noexcept {
     for (const UciOptionDescriptor& option : kUciOptions) {
-        if (option.name.size() != name.size()) {
-            continue;
-        }
-        bool equal = true;
-        for (std::size_t index = 0; index < name.size(); ++index) {
-            if (std::tolower(static_cast<unsigned char>(option.name[index])) !=
-                std::tolower(static_cast<unsigned char>(name[index]))) {
-                equal = false;
-                break;
-            }
-        }
-        if (equal) {
+        if (uci_option_name_equals(option.name, name)) {
             return &option;
         }
     }
     return nullptr;
 }
+
+[[nodiscard]] constexpr bool uci_option_catalog_valid() noexcept {
+    for (std::size_t i = 0; i < kUciOptions.size(); ++i) {
+        const UciOptionDescriptor& opt = kUciOptions[i];
+        if (opt.name.empty()) {
+            return false;
+        }
+        if (opt.kind == UciOptionKind::spin && !opt.dynamic_maximum &&
+            opt.minimum > opt.maximum) {
+            return false;
+        }
+        if (opt.kind == UciOptionKind::combo && opt.combo_values.empty()) {
+            return false;
+        }
+        for (std::size_t j = i + 1; j < kUciOptions.size(); ++j) {
+            if (opt.id == kUciOptions[j].id ||
+                uci_option_name_equals(opt.name, kUciOptions[j].name)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static_assert(uci_option_catalog_valid(),
+              "kUciOptions must contain unique, well-formed option definitions");
+static_assert(find_uci_option("hash") != nullptr &&
+              find_uci_option("hash")->id == UciOptionId::hash &&
+              find_uci_option("nonexistent") == nullptr);
 
 } // namespace koi::detail

@@ -1,5 +1,7 @@
 #include "koi/move.hpp"
 
+#include <cstddef>
+
 namespace koi {
 
 std::optional<Square> Square::parse(std::string_view coordinate) noexcept {
@@ -64,24 +66,25 @@ std::string Move::uci() const {
         return {};
     }
 
-    std::string result = from().uci() + to().uci();
+    char buffer[5]{from().file(), from().rank(), to().file(), to().rank(), '\0'};
+    std::size_t length = 4;
     switch (promotion()) {
         case Promotion::none:
             break;
         case Promotion::knight:
-            result += 'n';
+            buffer[length++] = 'n';
             break;
         case Promotion::bishop:
-            result += 'b';
+            buffer[length++] = 'b';
             break;
         case Promotion::rook:
-            result += 'r';
+            buffer[length++] = 'r';
             break;
         case Promotion::queen:
-            result += 'q';
+            buffer[length++] = 'q';
             break;
     }
-    return result;
+    return std::string(buffer, length);
 }
 
 } // namespace koi
