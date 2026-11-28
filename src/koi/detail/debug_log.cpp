@@ -90,7 +90,7 @@ void DebugLog::set_enabled(bool enabled) noexcept {
     enabled_ = enabled;
 }
 
-std::filesystem::path DebugLog::path() const {
+std::filesystem::path DebugLog::path_locked() const {
     std::error_code error;
     const std::filesystem::path base = executable_directory_.empty() ?
         std::filesystem::current_path(error) : executable_directory_;
@@ -105,6 +105,17 @@ std::filesystem::path DebugLog::path() const {
     return base / requested;
 }
 
+bool DebugLog::ensure_open_locked(const std::filesystem::path& target) {
+    if (file_.is_open()) {
+        return true;
+    }
+    if (!is_openable_regular_file(target)) {
+        return false;
+    }
+    file_.open(target, std::ios::binary | std::ios::app);
+    return file_.is_open();
+}
+
 void DebugLog::configure_locked() {
     if (file_.is_open()) {
         file_.close();
@@ -112,17 +123,14 @@ void DebugLog::configure_locked() {
     if (!enabled_) {
         return;
     }
-    const std::filesystem::path target = path();
+    const std::filesystem::path target = path_locked();
     std::error_code error;
     const bool oversized = std::filesystem::exists(target, error) && !error &&
         std::filesystem::file_size(target, error) >= kDebugRotationBytes;
     if (oversized && !error) {
-        rotate_if_needed_locked(0);
+        rotate_if_needed_locked(target, 0);
     }
-    if (!is_openable_regular_file(target)) {
-        return;
-    }
-    file_.open(target, std::ios::binary | std::ios::app);
+    (void)ensure_open_locked(target);
 }
 
 void DebugLog::configure() {
@@ -130,8 +138,8 @@ void DebugLog::configure() {
     configure_locked();
 }
 
-void DebugLog::rotate_if_needed_locked(std::size_t incoming_bytes) {
-    const std::filesystem::path target = path();
+void DebugLog::rotate_if_needed_locked(const std::filesystem::path& target,
+                                       std::size_t incoming_bytes) {
     std::error_code error;
     const std::uintmax_t current_size =
         std::filesystem::exists(target, error) && !error ? std::filesystem::file_size(target, error)
@@ -162,13 +170,8 @@ void DebugLog::write_event(std::string_view event, std::string_view fields) noex
         if (!enabled_) {
             return;
         }
-        if (!file_.is_open()) {
-            if (!is_openable_regular_file(path())) {
-                return;
-            }
-            file_.open(path(), std::ios::binary | std::ios::app);
-        }
-        if (!file_.is_open()) {
+        const std::filesystem::path target = path_locked();
+        if (!ensure_open_locked(target)) {
             return;
         }
         std::string message = "{\"event\":" + quoted(event);
@@ -177,14 +180,8 @@ void DebugLog::write_event(std::string_view event, std::string_view fields) noex
             message += fields;
         }
         message += "}\n";
-        rotate_if_needed_locked(message.size());
-        if (!file_.is_open()) {
-            if (!is_openable_regular_file(path())) {
-                return;
-            }
-            file_.open(path(), std::ios::binary | std::ios::app);
-        }
-        if (!file_.is_open()) {
+        rotate_if_needed_locked(target, message.size());
+        if (!ensure_open_locked(target)) {
             return;
         }
         file_.write(message.data(), static_cast<std::streamsize>(message.size()));

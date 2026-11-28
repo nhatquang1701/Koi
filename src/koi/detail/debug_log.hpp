@@ -36,9 +36,10 @@ public:
     void write_event(std::string_view event, std::string_view fields) noexcept;
 
 private:
-    [[nodiscard]] std::filesystem::path path() const;
+    [[nodiscard]] std::filesystem::path path_locked() const;
+    [[nodiscard]] bool ensure_open_locked(const std::filesystem::path& target);
     void configure_locked();
-    void rotate_if_needed_locked(std::size_t incoming_bytes);
+    void rotate_if_needed_locked(const std::filesystem::path& target, std::size_t incoming_bytes);
 
     mutable std::mutex mutex_;
     std::ofstream file_;

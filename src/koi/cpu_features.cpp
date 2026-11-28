@@ -19,7 +19,8 @@
 namespace koi {
 namespace {
 
-#if KOI_CPU_ARCH_X86 && (defined(__GNUC__) || defined(__clang__))
+#if KOI_CPU_ARCH_X86
+#if defined(__GNUC__) || defined(__clang__)
 // Reads XCR0 through inline assembly.  The probe cannot use
 // __builtin_cpu_supports(): this translation unit is compiled once per CPU
 // flavor, and a compiler may fold that builtin to a constant when the feature
@@ -34,72 +35,9 @@ namespace {
 }
 #endif
 
-} // namespace
-
-namespace {
-
-[[nodiscard]] bool detect_avx2_support() noexcept {
-#if !KOI_CPU_ARCH_X86
-    return false;
-#elif defined(_MSC_VER)
-    int maximum_leaf[4]{};
-    __cpuid(maximum_leaf, 0);
-    if (maximum_leaf[0] < 1) {
-        return false;
-    }
-
-    int features[4]{};
-    __cpuidex(features, 1, 0);
-    const bool osxsave = (features[2] & (1 << 27)) != 0;
-    const bool avx = (features[2] & (1 << 28)) != 0;
-    if (!osxsave || !avx || (_xgetbv(0) & 0x6) != 0x6 || maximum_leaf[0] < 7) {
-        return false;
-    }
-
-    int extended_features[4]{};
-    __cpuidex(extended_features, 7, 0);
-    return (extended_features[1] & (1 << 5)) != 0;
-#elif defined(__GNUC__) || defined(__clang__)
-    unsigned int eax = 0;
-    unsigned int ebx = 0;
-    unsigned int ecx = 0;
-    unsigned int edx = 0;
-    const unsigned int maximum_leaf = __get_cpuid_max(0, nullptr);
-    if (maximum_leaf < 1U) {
-        return false;
-    }
-
-    __cpuid(1U, eax, ebx, ecx, edx);
-    const bool osxsave = (ecx & (1U << 27U)) != 0;
-    const bool avx = (ecx & (1U << 28U)) != 0;
-    if (!osxsave || !avx || (read_xcr0() & 0x6U) != 0x6U || maximum_leaf < 7U) {
-        return false;
-    }
-
-    __cpuid_count(7U, 0U, eax, ebx, ecx, edx);
-    return (ebx & (1U << 5U)) != 0;
-#else
-    return false;
-#endif
-}
-
-} // namespace
-
-bool cpu_supports_avx2() noexcept {
-    // CPUID and XGETBV are serializing and can be a hypervisor exit.  The NNUE
-    // hot path (feature deltas, accumulator refresh, inference finish) calls
-    // this per move and per evaluation, and the answer cannot change for a
-    // running process, so detect the host once.
-    static const bool supported = detect_avx2_support();
-    return supported;
-}
-
-namespace {
-
-[[nodiscard]] bool detect_avx512_support() noexcept {
-#if !KOI_CPU_ARCH_X86
-    return false;
-#elif defined(_MSC_VER)
+[[nodiscard]] bool x86_leaf7_ebx_with_xcr0(std::uint64_t required_xcr0_mask,
+                                           unsigned int& leaf7_ebx) noexcept {
+#if defined(_MSC_VER)
     int maximum_leaf[4]{};
     __cpuid(maximum_leaf, 0);
     if (maximum_leaf[0] < 7) {
@@ -110,23 +48,14 @@ namespace {
     __cpuidex(features, 1, 0);
     const bool osxsave = (features[2] & (1 << 27)) != 0;
     const bool avx = (features[2] & (1 << 28)) != 0;
-    // XCR0 bits 1-2 enable XMM/YMM state, bits 5-7 the opmask, ZMM_Hi256 and
-    // Hi16_ZMM state that every AVX-512 instruction needs.
-    if (!osxsave || !avx || (_xgetbv(0) & 0xE6) != 0xE6) {
+    if (!osxsave || !avx || (_xgetbv(0) & required_xcr0_mask) != required_xcr0_mask) {
         return false;
     }
 
     int extended_features[4]{};
     __cpuidex(extended_features, 7, 0);
-    constexpr int kAvx512Foundation = 16;
-    constexpr int kAvx512DoublewordQuadword = 17;
-    constexpr int kAvx512ConflictDetection = 28;
-    constexpr int kAvx512ByteWord = 30;
-    constexpr int kAvx512VectorLength = 31;
-    const int required = (1 << kAvx512Foundation) | (1 << kAvx512DoublewordQuadword) |
-                         (1 << kAvx512ConflictDetection) | (1 << kAvx512ByteWord) |
-                         (1 << kAvx512VectorLength);
-    return (extended_features[1] & required) == required;
+    leaf7_ebx = static_cast<unsigned int>(extended_features[1]);
+    return true;
 #elif defined(__GNUC__) || defined(__clang__)
     unsigned int eax = 0;
     unsigned int ebx = 0;
@@ -137,36 +66,53 @@ namespace {
     }
 
     __cpuid(1U, eax, ebx, ecx, edx);
-    const bool osxsave = (ecx & (1U << 27U)) != 0;
-    const bool avx = (ecx & (1U << 28U)) != 0;
-    if (!osxsave || !avx || (read_xcr0() & 0xE6U) != 0xE6U) {
+    const bool osxsave = (ecx & (1U << 27U)) != 0U;
+    const bool avx = (ecx & (1U << 28U)) != 0U;
+    if (!osxsave || !avx || (read_xcr0() & required_xcr0_mask) != required_xcr0_mask) {
         return false;
     }
 
     __cpuid_count(7U, 0U, eax, ebx, ecx, edx);
+    leaf7_ebx = ebx;
+    return true;
+#else
+    (void)required_xcr0_mask;
+    leaf7_ebx = 0U;
+    return false;
+#endif
+}
+#endif
+
+[[nodiscard]] bool detect_avx2_support() noexcept {
+#if !KOI_CPU_ARCH_X86
+    return false;
+#else
+    unsigned int ebx = 0U;
+    return x86_leaf7_ebx_with_xcr0(0x6ULL, ebx) && (ebx & (1U << 5U)) != 0U;
+#endif
+}
+
+[[nodiscard]] bool detect_avx512_support() noexcept {
+#if !KOI_CPU_ARCH_X86
+    return false;
+#else
+    unsigned int ebx = 0U;
+    if (!x86_leaf7_ebx_with_xcr0(0xE6ULL, ebx)) {
+        return false;
+    }
     constexpr unsigned int kAvx512Foundation = 16U;
     constexpr unsigned int kAvx512DoublewordQuadword = 17U;
     constexpr unsigned int kAvx512ConflictDetection = 28U;
     constexpr unsigned int kAvx512ByteWord = 30U;
     constexpr unsigned int kAvx512VectorLength = 31U;
-    const unsigned int required = (1U << kAvx512Foundation) | (1U << kAvx512DoublewordQuadword) |
-                                  (1U << kAvx512ConflictDetection) | (1U << kAvx512ByteWord) |
-                                  (1U << kAvx512VectorLength);
-    return (ebx & required) == required;
-#else
-    return false;
+    constexpr unsigned int kRequired = (1U << kAvx512Foundation) |
+                                       (1U << kAvx512DoublewordQuadword) |
+                                       (1U << kAvx512ConflictDetection) |
+                                       (1U << kAvx512ByteWord) |
+                                       (1U << kAvx512VectorLength);
+    return (ebx & kRequired) == kRequired;
 #endif
 }
-
-} // namespace
-
-bool cpu_supports_avx512() noexcept {
-    // Same rationale as cpu_supports_avx2(): detect once per process.
-    static const bool supported = detect_avx512_support();
-    return supported;
-}
-
-namespace {
 
 [[nodiscard]] bool detect_fast_pext_support() noexcept {
 #if !KOI_CPU_ARCH_X86
@@ -225,6 +171,21 @@ namespace {
 }
 
 } // namespace
+
+bool cpu_supports_avx2() noexcept {
+    // CPUID and XGETBV are serializing and can be a hypervisor exit.  The NNUE
+    // hot path (feature deltas, accumulator refresh, inference finish) calls
+    // this per move and per evaluation, and the answer cannot change for a
+    // running process, so detect the host once.
+    static const bool supported = detect_avx2_support();
+    return supported;
+}
+
+bool cpu_supports_avx512() noexcept {
+    // Same rationale as cpu_supports_avx2(): detect once per process.
+    static const bool supported = detect_avx512_support();
+    return supported;
+}
 
 bool cpu_supports_fast_pext() noexcept {
     static const bool supported = detect_fast_pext_support();

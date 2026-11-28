@@ -2924,8 +2924,18 @@ void test_annotate_rejects_invalid_limits_and_debug_log_stays_nonthrowing() {
     log.set_requested_path("clean-debug.log");
     log.configure();
     log.write_event("probe", "\"ok\":true");
+    log.write_event("quote\"line\n", "\"n\":2");
     require(std::filesystem::exists(temp.path() / "clean-debug.log"),
             "DebugLog must recover and write once configured with a valid directory");
+    {
+        std::ifstream log_stream(temp.path() / "clean-debug.log");
+        const std::string log_text((std::istreambuf_iterator<char>(log_stream)),
+                                   std::istreambuf_iterator<char>());
+        require(log_text.find(R"({"event":"probe","ok":true})" "\n") != std::string::npos &&
+                    log_text.find(R"({"event":"quote\"line\n","n":2})" "\n") !=
+                        std::string::npos,
+                "DebugLog must write properly escaped JSON lines; got:\n" + log_text);
+    }
 }
 
 void test_xboard_suppresses_uci_info_strings_across_all_handlers() {
