@@ -17,15 +17,16 @@ namespace koi::detail {
 // state in the private search key without changing the public TT format or
 // the identity key used by UCI/search-session cancellation.
 [[nodiscard]] inline std::uint64_t search_transposition_key(
-    const GameState& state) noexcept {
-    std::uint64_t key = state.position_key() ^
-        (static_cast<std::uint64_t>(state.halfmove_clock()) +
+    const std::uint64_t position_key, const int halfmove_clock,
+    const bool repetition_history_suppressed) noexcept {
+    std::uint64_t key = position_key ^
+        (static_cast<std::uint64_t>(halfmove_clock) +
          0x9E3779B97F4A7C15ULL);
     // The reversible-history fingerprint deliberately stays out of the key:
     // it is order-sensitive and would defeat transposition reuse across move
     // orders, while the negamax and quiescence cut sites already refuse cuts
     // for checked, claimable-draw, and repetition-sensitive positions.
-    if (state.repetition_history_suppressed()) {
+    if (repetition_history_suppressed) {
         // A null branch deliberately suppresses legal repetition and clock
         // draws. Keep its artificial history domain separate even when the
         // board, halfmove clock, and real-history fingerprint collide with a
@@ -37,6 +38,13 @@ namespace koi::detail {
     key ^= key >> 27U;
     key *= 0x94D049BB133111EBULL;
     return key ^ (key >> 31U);
+}
+
+[[nodiscard]] inline std::uint64_t search_transposition_key(
+    const GameState& state) noexcept {
+    return search_transposition_key(
+        state.position_key(), state.halfmove_clock(),
+        state.repetition_history_suppressed());
 }
 
 // One search component's view of the shared transposition table.  Every TT

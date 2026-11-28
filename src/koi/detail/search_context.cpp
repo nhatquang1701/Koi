@@ -601,10 +601,12 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // cutoff_count belongs to the parent's move loop: qsearch never
         // increments it, and clearing it here destroyed the accumulated
         // fail-high count that LMR reads for later siblings.
-        const bool use_qsearch_cache = qsearch_cache_allowed(state, repetition_sensitive) &&
+        const int halfmove_clock = state.halfmove_clock();
+        const std::uint64_t position_key = state.position_key();
+        const bool use_qsearch_cache = !repetition_sensitive && halfmove_clock == 0 &&
             !(checked && qdepth >= kMaximumQuiescenceSafetyDepth);
         const std::uint64_t qsearch_key = use_qsearch_cache ?
-            qsearch_cache_key(state, ply, qdepth, previous_move,
+            qsearch_cache_key(position_key, halfmove_clock, ply, qdepth, previous_move,
                               quiescence_check_depth_limit) : 0;
         if (use_qsearch_cache) {
             const QSearchCacheEntry& entry = *qsearch_cache_entry(qsearch_key);
@@ -627,7 +629,8 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // The transposition key is stable for the whole node lifetime.  Hoist
         // it above the terminal checks so this cluster prefetch can overlap
         // them; the probe below reuses the same key without recomputing it.
-        const std::uint64_t qsearch_transposition_key = search_transposition_key(state);
+        const std::uint64_t qsearch_transposition_key = search_transposition_key(
+            position_key, halfmove_clock, state.repetition_history_suppressed());
         table_access.prefetch(qsearch_transposition_key);
 
         // A checked qsearch node has no stand-pat value.  At the native
@@ -722,7 +725,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             // one is available; the stored eval is perspective-raw exactly
             // like the evaluator's own return value.
             const int raw_eval = (tt_entry.has_value() && tt_entry->eval != kNoEvaluation) ?
-                tt_entry->eval : evaluate(state, state.side_to_move());
+                tt_entry->eval : evaluate_with_key(state, state.side_to_move(), position_key);
             qsearch_eval = raw_eval;
             best = claimable_draw ? std::max(draw_value(state), raw_eval) : raw_eval;
             // Stand-pat is a legal null continuation in qsearch terms, so it

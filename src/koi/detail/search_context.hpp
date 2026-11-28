@@ -520,8 +520,9 @@ struct SearchContext {
         return state.side_to_move() == root_color ? -contempt_cp : contempt_cp;
     }
 
-    [[nodiscard]] int evaluate(const GameState& state, Color perspective) {
-        const std::uint64_t key = state.position_key() ^
+    [[nodiscard]] int evaluate_with_key(const GameState& state, Color perspective,
+                                        std::uint64_t position_key) {
+        const std::uint64_t key = position_key ^
             (perspective == Color::black ? 0xD6E8FEB86659FD93ULL : 0ULL);
         EvaluationCacheEntry& entry =
             evaluation_cache[static_cast<std::size_t>(key) & (kEvaluationCacheSize - 1)];
@@ -534,6 +535,10 @@ struct SearchContext {
         const int score = evaluation.evaluate(state, perspective);
         entry = EvaluationCacheEntry{key, score, true};
         return score;
+    }
+
+    [[nodiscard]] int evaluate(const GameState& state, Color perspective) {
+        return evaluate_with_key(state, perspective, state.position_key());
     }
 
     // Bounded static-eval correction history.  The keys are cheap structural
@@ -706,13 +711,13 @@ struct SearchContext {
     }
 
     [[nodiscard]] static std::uint64_t qsearch_cache_key(
-        const GameState& state, const int ply, const int qdepth,
+        std::uint64_t position_key, const int halfmove_clock, const int ply, const int qdepth,
         const std::optional<Move> previous_move, const int check_depth_limit) noexcept {
         // The regular TT key intentionally excludes qsearch-only context. A
         // private cache can include it without changing the public TT format;
         // mix every dimension before direct-mapped indexing so common move
         // pairs do not cluster in the small worker-local table.
-        std::uint64_t key = state.position_key();
+        std::uint64_t key = position_key;
         key ^= (qsearch_move_key(previous_move.value_or(Move::no_move())) +
                 0x9E3779B97F4A7C15ULL) * 0xBF58476D1CE4E5B9ULL;
         key ^= (static_cast<std::uint64_t>(std::max(0, ply)) + 1ULL) *
@@ -721,13 +726,20 @@ struct SearchContext {
             0xD6E8FEB86659FD93ULL;
         key ^= (static_cast<std::uint64_t>(std::max(0, check_depth_limit)) + 1ULL) *
             0xA24BAED4963EE407ULL;
-        key ^= (static_cast<std::uint64_t>(state.halfmove_clock()) + 1ULL) *
+        key ^= (static_cast<std::uint64_t>(halfmove_clock) + 1ULL) *
             0x369DEA0F31A53F85ULL;
         key ^= key >> 30U;
         key *= 0xBF58476D1CE4E5B9ULL;
         key ^= key >> 27U;
         key *= 0x94D049BB133111EBULL;
         return key ^ (key >> 31U);
+    }
+
+    [[nodiscard]] static std::uint64_t qsearch_cache_key(
+        const GameState& state, const int ply, const int qdepth,
+        const std::optional<Move> previous_move, const int check_depth_limit) noexcept {
+        return qsearch_cache_key(state.position_key(), state.halfmove_clock(),
+                                 ply, qdepth, previous_move, check_depth_limit);
     }
 
     [[nodiscard]] QSearchCacheEntry* qsearch_cache_entry(

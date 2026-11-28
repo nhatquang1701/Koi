@@ -75,6 +75,7 @@ private:
     int score_drop_cp_ = 0;
     int score_gain_cp_ = 0;
     std::uint32_t best_move_effort_permille_ = 0;
+    std::uint32_t branching_permille_ = 1500;
     std::chrono::milliseconds last_iteration_elapsed_{0};
     std::chrono::milliseconds remaining_clock_{0};
     std::chrono::milliseconds increment_clock_{0};

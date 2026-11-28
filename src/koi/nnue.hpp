@@ -211,8 +211,11 @@ private:
     friend class NnueEvaluator;
 
     explicit NnueWorker(std::shared_ptr<const NnueNetwork> weights,
+                        bool prevalidated_usable,
                         bool int16_safe_known,
-                        bool precomputed_int16_safe);
+                        bool precomputed_int16_safe,
+                        bool overflow_safe_known = false,
+                        bool precomputed_overflow_safe = false);
 
     // Root slot plus the deepest search line the engine can reach.  Slots past
     // the cursor are never trusted, so an overrun only costs a refresh.
@@ -293,14 +296,14 @@ private:
     std::size_t hidden_units_ = 0;
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> slot_values_;
     std::array<std::vector<std::int16_t>, kIncrementalPerspectives> slot_values_16_;
-    std::array<std::vector<std::uint8_t>, kIncrementalPerspectives> slot_buckets_;
-    std::array<std::vector<std::uint8_t>, kIncrementalPerspectives> slot_computed_;
-    std::vector<PendingMoveV4> slot_pending_move_;
-    std::vector<std::uint64_t> slot_keys_;
-    std::vector<std::uint8_t> slot_valid_;
+    std::array<std::array<std::uint8_t, kIncrementalSlotCount>, kIncrementalPerspectives> slot_buckets_{};
+    std::array<std::array<std::uint8_t, kIncrementalSlotCount>, kIncrementalPerspectives> slot_computed_{};
+    std::array<PendingMoveV4, kIncrementalSlotCount> slot_pending_move_{};
+    std::array<std::uint64_t, kIncrementalSlotCount> slot_keys_{};
+    std::array<std::uint8_t, kIncrementalSlotCount> slot_valid_{};
     // Piece count per slot (capped at 32).  Cached so an incremental
     // evaluation can pick the output bucket without rescanning the board.
-    std::vector<std::uint8_t> slot_pieces_;
+    std::array<std::uint8_t, kIncrementalSlotCount> slot_pieces_{};
     int slot_cursor_ = -1;
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> scratch_values_;
     std::array<std::vector<std::int16_t>, kIncrementalPerspectives> scratch_values_16_;
@@ -328,6 +331,7 @@ private:
     bool threat_features_ = false;
     bool dual_v4_ = false;
     bool halfka_hm_v9_ = false;
+    bool overflow_safe_known_ = false;
     bool overflow_safe_ = false;
     bool int16_safe_known_ = false;
     bool int16_safe_ = false;
@@ -348,7 +352,9 @@ public:
 
 private:
     std::shared_ptr<const NnueNetwork> weights_;
+    bool network_usable_ = false;
     bool int16_accumulator_safe_ = false;
+    bool overflow_safe_ = false;
 };
 
 // NNUE selection seam used by the engine entry points and by the advertised

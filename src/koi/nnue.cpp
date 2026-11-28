@@ -70,16 +70,23 @@ using detail::finish_inference_v4_neon_t;
 } // namespace
 
 NnueWorker::NnueWorker(std::shared_ptr<const NnueNetwork> weights)
-    : NnueWorker(std::move(weights), false, false) {}
+    : NnueWorker(std::move(weights), false, false, false, false, false) {}
 
 NnueWorker::NnueWorker(std::shared_ptr<const NnueNetwork> weights,
+                       const bool prevalidated_usable,
                        const bool int16_safe_known,
-                       const bool precomputed_int16_safe)
+                       const bool precomputed_int16_safe,
+                       const bool overflow_safe_known,
+                       const bool precomputed_overflow_safe)
     : weights_(std::move(weights)),
+      overflow_safe_known_(overflow_safe_known),
+      overflow_safe_(precomputed_overflow_safe),
       int16_safe_known_(int16_safe_known),
       int16_safe_(precomputed_int16_safe) {
-    network_usable_ = weights_ && !validate_manifest(weights_->manifest).has_value() &&
-        arrays_match_manifest(*weights_);
+    network_usable_ = prevalidated_usable ?
+        static_cast<bool>(weights_) :
+        (weights_ && !validate_manifest(weights_->manifest).has_value() &&
+         arrays_match_manifest(*weights_));
     if (network_usable_) {
         const std::size_t hidden_units = weights_->manifest.layer_sizes[1];
         const bool threat = uses_halfka_threat_features(weights_->manifest);
@@ -478,8 +485,8 @@ void NnueWorker::ensure_incremental_storage() {
                 finny_valid_[index].fill(0);
             }
         }
-        slot_buckets_[index].assign(kIncrementalSlotCount, 0);
-        slot_computed_[index].assign(kIncrementalSlotCount, 0);
+        slot_buckets_[index].fill(0);
+        slot_computed_[index].fill(0);
         if (threat_features_) {
             slot_threats_[index].assign(kIncrementalSlotCount * kThreatListCapacity, 0);
             slot_threat_counts_[index].assign(kIncrementalSlotCount, 0);
@@ -487,21 +494,24 @@ void NnueWorker::ensure_incremental_storage() {
         }
     }
     if (!threat_features_) {
-        slot_pending_move_.assign(kIncrementalSlotCount, PendingMoveV4{});
+        slot_pending_move_.fill(PendingMoveV4{});
     }
-    slot_keys_.assign(kIncrementalSlotCount, 0);
-    slot_valid_.assign(kIncrementalSlotCount, 0);
-    slot_pieces_.assign(kIncrementalSlotCount, 0);
+    slot_keys_.fill(0);
+    slot_valid_.fill(0);
+    slot_pieces_.fill(0);
     // All active piece counts (<= 32) plus up to kIncrementalSlotCount plies of
     // signed int16 deltas stay strictly within int32 range whenever every bias
     // lies within +/- 1e9, letting hot fused-delta loops skip per-element
     // clamping and auto-vectorize cleanly.
-    overflow_safe_ = true;
-    for (const std::int32_t bias : weights_->hidden_bias) {
-        if (bias < -1'000'000'000 || bias > 1'000'000'000) {
-            overflow_safe_ = false;
-            break;
+    if (!overflow_safe_known_) {
+        overflow_safe_ = true;
+        for (const std::int32_t bias : weights_->hidden_bias) {
+            if (bias < -1'000'000'000 || bias > 1'000'000'000) {
+                overflow_safe_ = false;
+                break;
+            }
         }
+        overflow_safe_known_ = true;
     }
     storage_ready_ = true;
 }
@@ -1628,8 +1638,9 @@ namespace {
 
 class NnueEvaluatorWorker final : public EvaluatorWorker {
 public:
-    explicit NnueEvaluatorWorker(NnueWorker worker)
-        : worker_(std::move(worker)) {}
+    template <typename Factory>
+    explicit NnueEvaluatorWorker(Factory&& factory)
+        : worker_(std::forward<Factory>(factory)()) {}
 
     [[nodiscard]] int evaluate(const GameState& state, const Color perspective) override {
         return worker_.evaluate_score_only(state, perspective);
@@ -1666,36 +1677,48 @@ bool network_is_usable(const NnueNetwork& network) {
     return detail::nnue_network_is_usable(network);
 }
 
+bool compute_overflow_safe(const NnueNetwork& network) noexcept {
+    for (const std::int32_t bias : network.hidden_bias) {
+        if (bias < -1'000'000'000 || bias > 1'000'000'000) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 NnueEvaluator::NnueEvaluator(std::shared_ptr<const NnueNetwork> weights)
     : weights_(std::move(weights)),
-      int16_accumulator_safe_(weights_ && network_is_usable(*weights_) ?
-          compute_int16_accumulator_safe(*weights_) : false) {}
+      network_usable_(weights_ && network_is_usable(*weights_)),
+      int16_accumulator_safe_(network_usable_ ?
+          compute_int16_accumulator_safe(*weights_) : false),
+      overflow_safe_(network_usable_ ? compute_overflow_safe(*weights_) : false) {}
 
 int NnueEvaluator::evaluate(const GameState& state, const Color perspective) const {
     // The factory only constructs this evaluator for a loaded, usable network;
     // a missing network under default NNUE selection is a boot error, so this
     // is an unreachable defensive path and must not silently become a score.
-    if (!weights_ || !network_is_usable(*weights_)) {
+    if (!network_usable_) {
         return 0;
     }
     // One-shot evaluation uses the stateless feature overload: the worker is a
     // temporary, so allocating and zeroing the per-ply incremental slots would
     // only add ~1 MB of pointless work to every one-shot evaluation.
-    NnueWorker worker(weights_, true, int16_accumulator_safe_);
+    NnueWorker worker(weights_, true, true, int16_accumulator_safe_, true, overflow_safe_);
     return worker.evaluate(EvaluationFeatureExtractor::extract(state), perspective);
 }
 
 std::unique_ptr<EvaluatorWorker> NnueEvaluator::create_worker() const {
-    if (!weights_ || !network_is_usable(*weights_)) {
+    if (!network_usable_) {
         return {};
     }
-    return std::make_unique<NnueEvaluatorWorker>(make_worker());
+    return std::make_unique<NnueEvaluatorWorker>([this] { return make_worker(); });
 }
 
 NnueWorker NnueEvaluator::make_worker() const {
-    return NnueWorker(weights_, true, int16_accumulator_safe_);
+    return NnueWorker(weights_, network_usable_, true, int16_accumulator_safe_, true,
+                      overflow_safe_);
 }
 
 } // namespace koi

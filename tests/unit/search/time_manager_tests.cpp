@@ -797,6 +797,41 @@ void test_asymmetric_conversion_and_high_effort_recapture_cutoff() {
             "moderate best-move node share must continue past 65% of optimum_budget");
 }
 
+void test_adaptive_branching_factor_lookahead() {
+    auto steep_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto flat_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits limits = clock_limits(milliseconds{30'000}, milliseconds{0});
+    TimeManager steep(limits, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                      [steep_now] { return *steep_now; });
+    TimeManager flat(limits, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                     [flat_now] { return *flat_now; });
+
+    const auto opt = std::max(milliseconds{100}, steep.diagnostics().optimum_budget);
+    const std::array<milliseconds, 3> steep_times{
+        std::max(milliseconds{10}, opt / 18),
+        std::max(milliseconds{15}, opt / 6),
+        std::max(milliseconds{30}, opt / 3),
+    };
+    const std::array<milliseconds, 3> flat_times{
+        std::max(milliseconds{20}, (opt * 22) / 100),
+        std::max(milliseconds{25}, (opt * 27) / 100),
+        std::max(milliseconds{30}, opt / 3),
+    };
+    for (int i = 0; i < 3; ++i) {
+        SearchIterationObservation s_obs{4 + i, 30, false, false, false, 10'000, 5'000, steep_times[static_cast<std::size_t>(i)]};
+        SearchIterationObservation f_obs{4 + i, 30, false, false, false, 10'000, 5'000, flat_times[static_cast<std::size_t>(i)]};
+        steep.observe_iteration(s_obs);
+        flat.observe_iteration(f_obs);
+    }
+    const auto check_elapsed = (opt * 65) / 100;
+    *steep_now += check_elapsed;
+    *flat_now += check_elapsed;
+    require(!steep.should_start_next_iteration(milliseconds{1}),
+            "steep branching growth (~2.5x) must skip doomed partial iterations");
+    require(flat.should_start_next_iteration(milliseconds{1}),
+            "flat branching growth (~1.2x) must continue when projection fits inside 1.2x optimum_budget");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -827,6 +862,8 @@ int main(int argc, char** argv) {
          test_continuous_horizon_and_opponent_clock_asymmetry},
         {"asymmetric conversion and high-effort cutoff",
          test_asymmetric_conversion_and_high_effort_recapture_cutoff},
+        {"adaptive branching factor lookahead",
+         test_adaptive_branching_factor_lookahead},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

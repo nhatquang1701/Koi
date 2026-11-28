@@ -223,6 +223,7 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
         score_drop_cp_ = 0;
         score_gain_cp_ = 0;
         best_move_effort_permille_ = 0;
+        branching_permille_ = 1500;
         last_iteration_elapsed_ = std::chrono::milliseconds::zero();
         has_effort_sample_ = false;
         last_aspiration_researched_ = false;
@@ -518,6 +519,17 @@ void TimeManager::observe_iteration(const SearchIterationObservation& observatio
     last_observed_depth_ = std::max(last_observed_depth_, observation.depth);
     last_aspiration_researched_ = observation.aspiration_researched;
     if (observation.iteration_elapsed > std::chrono::milliseconds::zero()) {
+        if (observation.depth >= 5 &&
+            last_iteration_elapsed_ >= std::chrono::milliseconds{10} &&
+            observation.iteration_elapsed >= std::chrono::milliseconds{10}) {
+            const std::uint64_t prev_ms =
+                static_cast<std::uint64_t>(last_iteration_elapsed_.count());
+            const std::uint64_t curr_ms =
+                static_cast<std::uint64_t>(observation.iteration_elapsed.count());
+            const std::uint32_t sample = static_cast<std::uint32_t>(
+                std::clamp<std::uint64_t>((curr_ms * 1000ULL) / prev_ms, 1300ULL, 3200ULL));
+            branching_permille_ = (branching_permille_ + sample * 2U) / 3U;
+        }
         last_iteration_elapsed_ = observation.iteration_elapsed;
     }
 
@@ -829,8 +841,8 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         if (last_observed_depth_ >= 5 && best_move_stability_ >= 2 &&
             score_drop_cp_ <= 20 && !last_aspiration_researched_ &&
             last_iteration_elapsed_ > std::chrono::milliseconds::zero()) {
-            const auto predicted_next = saturating_add(
-                last_iteration_elapsed_, last_iteration_elapsed_ / 2);
+            const auto predicted_next = scale_fraction(
+                last_iteration_elapsed_, branching_permille_, 1000);
             if (elapsed >= scale_fraction(soft_target, 55, 100) &&
                 saturating_add(elapsed, predicted_next) >
                     scale_fraction(soft_target, 120, 100)) {

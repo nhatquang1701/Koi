@@ -688,9 +688,9 @@ the search but cannot push it past the cap.
   extension is unaffordable.
 - `should_start_next_iteration`: honors emergency pacing, forced-mate / single-move
   exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm
-  `75%` soft-target cutoffs, and `1.5×` previous-iteration wall-clock lookahead
-  (avoiding doomed partial iterations past `1.2×` soft target), in addition to
-  the hard deadline.
+  `75%` soft-target cutoffs, and adaptive EWMA branching-factor lookahead
+  (`1.3×..3.2×`, starting at `1.5×`, avoiding doomed partial iterations past
+  `1.2×` soft target), in addition to the hard deadline.
 - `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)
   and calls `reconfigure`: limits/root context are replaced while preserving
   iteration observations gathered during pondering (recomputing `optimum_budget`
