@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -69,7 +68,7 @@ int main(int argc, char* argv[]) {
         if (!depth.has_value()) {
             if (argument.starts_with("--") ||
                 (argument.size() >= 2 && argument[0] == '-' &&
-                 std::isdigit(static_cast<unsigned char>(argument[1])) == 0)) {
+                 (argument[1] < '0' || argument[1] > '9'))) {
                 std::cerr << "koi-perft: unknown option '" << argument << "'\n";
                 return 2;
             }

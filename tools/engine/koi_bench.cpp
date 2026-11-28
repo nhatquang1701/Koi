@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -329,14 +328,16 @@ std::vector<BenchPosition> load_suite_positions(const bool optional) {
     return positions;
 }
 
-std::string_view trim(std::string_view value) {
-    const auto is_space = [](const char character) {
-        return std::isspace(static_cast<unsigned char>(character)) != 0;
-    };
-    while (!value.empty() && is_space(value.front())) {
+[[nodiscard]] constexpr bool is_ascii_space(const char character) noexcept {
+    return character == ' ' || character == '\t' || character == '\r' ||
+        character == '\n' || character == '\v' || character == '\f';
+}
+
+std::string_view trim(std::string_view value) noexcept {
+    while (!value.empty() && is_ascii_space(value.front())) {
         value.remove_prefix(1);
     }
-    while (!value.empty() && is_space(value.back())) {
+    while (!value.empty() && is_ascii_space(value.back())) {
         value.remove_suffix(1);
     }
     return value;
@@ -349,13 +350,11 @@ void parse_epd_move_list(const koi::GameState& state, std::string_view operand,
     std::size_t move_count = 0;
     std::size_t pos = 0;
     while (pos < operand.size()) {
-        while (pos < operand.size() &&
-               std::isspace(static_cast<unsigned char>(operand[pos])) != 0) {
+        while (pos < operand.size() && is_ascii_space(operand[pos])) {
             ++pos;
         }
         const std::size_t tok_start = pos;
-        while (pos < operand.size() &&
-               std::isspace(static_cast<unsigned char>(operand[pos])) == 0) {
+        while (pos < operand.size() && !is_ascii_space(operand[pos])) {
             ++pos;
         }
         if (tok_start == pos) {
@@ -438,8 +437,7 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
                             continue;
                         }
                         std::size_t split = 0;
-                        while (split < op.size() &&
-                               std::isspace(static_cast<unsigned char>(op[split])) == 0) {
+                        while (split < op.size() && !is_ascii_space(op[split])) {
                             ++split;
                         }
                         const std::string_view opcode = op.substr(0, split);
@@ -501,11 +499,11 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
             koi::GameState state = koi::GameState::startpos();
             std::size_t cursor = 0;
             while (cursor < payload.size()) {
-                while (cursor < payload.size() && std::isspace(static_cast<unsigned char>(payload[cursor])) != 0) {
+                while (cursor < payload.size() && is_ascii_space(payload[cursor])) {
                     ++cursor;
                 }
                 const std::size_t token_start = cursor;
-                while (cursor < payload.size() && std::isspace(static_cast<unsigned char>(payload[cursor])) == 0) {
+                while (cursor < payload.size() && !is_ascii_space(payload[cursor])) {
                     ++cursor;
                 }
                 if (token_start == cursor) {

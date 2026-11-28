@@ -173,6 +173,30 @@ void test_request_identity_helper_builds_and_matches() {
     require(!built.matches(same), "a different root fen must not match");
 }
 
+void test_common_fallback_orders_moves_lexicographically_including_promotions() {
+    const auto parsed = GameState::from_fen("7k/P7/8/8/8/8/8/7K w - - 0 1");
+    require(parsed.has_value(), "promotion fallback fixture must parse");
+    const GameState root = *parsed;
+    CompletionGate gate;
+
+    const auto unconstrained =
+        gate.validate(root, SearchLimits{}, identity(root), candidate(root, "e2e4"));
+    require(unconstrained.disposition == CompletionDisposition::fallback,
+            "an illegal candidate must fall back");
+    require(unconstrained.best_move == move("a7a8b"),
+            "fallback must pick the lexicographically first UCI move including promotions");
+
+    SearchLimits restricted;
+    restricted.search_moves_specified = true;
+    restricted.search_moves = {move("a7a8r"), move("a7a8q"), move("a7a8n")};
+    const auto filtered =
+        gate.validate(root, restricted, identity(root), candidate(root, "e2e4"));
+    require(filtered.disposition == CompletionDisposition::fallback,
+            "an illegal candidate under searchmoves must fall back");
+    require(filtered.best_move == move("a7a8n"),
+            "fallback must pick the lexicographically first allowed promotion");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -187,6 +211,8 @@ int main(int argc, char** argv) {
         {"terminal 0000", test_terminal_root_emits_0000},
         {"completion once", test_completion_once_accepts_only_one_claim},
         {"request identity helper", test_request_identity_helper_builds_and_matches},
+        {"fallback promotion lexicographical order",
+         test_common_fallback_orders_moves_lexicographically_including_promotions},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

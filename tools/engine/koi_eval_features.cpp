@@ -13,8 +13,6 @@
 #include "koi/game_state.hpp"
 #include "koi/nnue.hpp"
 
-#include <cctype>
-#include <charconv>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -40,11 +38,15 @@ std::string strip_carriage_return(std::string line) {
     return line;
 }
 
+[[nodiscard]] constexpr bool is_ascii_space(const char ch) noexcept {
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f';
+}
+
 std::string_view trim_ascii(std::string_view value) noexcept {
-    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0) {
+    while (!value.empty() && is_ascii_space(value.front())) {
         value.remove_prefix(1);
     }
-    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0) {
+    while (!value.empty() && is_ascii_space(value.back())) {
         value.remove_suffix(1);
     }
     return value;
@@ -133,10 +135,7 @@ int main(int argc, char** argv) {
                 return 2;
             }
             std::uint64_t parsed_limit = 0;
-            const auto [end, error] = std::from_chars(
-                limit_text.data(), limit_text.data() + limit_text.size(), parsed_limit);
-            if (error != std::errc{} || end != limit_text.data() + limit_text.size() ||
-                parsed_limit == 0) {
+            if (!koi::detail::parse_uint64(limit_text, parsed_limit) || parsed_limit == 0) {
                 std::cerr << "koi-eval-features: invalid --limit '" << limit_text
                           << "' (expected positive integer)\n";
                 return 2;

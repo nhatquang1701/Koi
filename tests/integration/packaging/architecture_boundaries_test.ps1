@@ -314,6 +314,19 @@ if ($cliSupportImpl -notmatch 'discover_opening_book\(' -or $cliSupportImpl.Cont
     Fail 'src/cli_support.cpp must delegate book discovery to discover_opening_book() instead of hardcoding candidate paths'
 }
 
+# 3k. Production engine and CLI tool sources stay locale-independent (no <cctype>).
+$cctypePattern = '#include\s*<cctype>|\b(?:std::)?(?:is(?:space|upper|lower|digit|alpha|alnum|xdigit|print|cntrl|punct|graph)|to(?:upper|lower))\s*\('
+foreach ($scanRoot in @('src', 'tools/engine')) {
+    $cppFiles = Get-ChildItem -LiteralPath (Join-Path $repositoryRoot $scanRoot) -Recurse -File -Include '*.cpp','*.hpp'
+    foreach ($cppFile in $cppFiles) {
+        $cppContent = Get-Content -LiteralPath $cppFile.FullName -Raw
+        if ($cppContent -match $cctypePattern) {
+            $rel = $cppFile.FullName.Substring($repositoryRoot.Length + 1).Replace('\', '/')
+            Fail "$rel must not depend on locale-sensitive <cctype> functions"
+        }
+    }
+}
+
 # 4. Engine core sources must not contain dead/tooling translation units.
 Write-Output '[4/4] check CMake core sources, reliability fuzzer location, and architecture docs'
 $cmake = Read-RepositoryFile 'CMakeLists.txt'

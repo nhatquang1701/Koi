@@ -1,4 +1,3 @@
-#include <cctype>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -27,8 +26,8 @@ struct ReplayResult {
 int fen_field_count(std::string_view fen) noexcept {
     int count = 0;
     bool in_token = false;
-    for (const unsigned char ch : fen) {
-        if (std::isspace(ch) != 0) {
+    for (const char ch : fen) {
+        if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f') {
             in_token = false;
         } else if (!in_token) {
             ++count;
