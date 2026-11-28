@@ -49,6 +49,7 @@ extra_css:
 
 extra_javascript:
   - assets/mermaid-controls.js
+  - assets/source-facts-refresh.js
 
 extra:
   social:
