@@ -1925,13 +1925,13 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             const Move move = metadata.move;
             const int next_move_number = move_number + 1;
             const bool is_tt_move = tt_move.has_value() && move == *tt_move;
-            const bool is_quiet_non_check_non_promo =
-                !metadata.is_capture() && !metadata.gives_check &&
-                move.promotion() == Promotion::none;
             // The killer probe is consumed only by gates that require
-            // depth >= 3, move_number >= 2, and a non-TT, non-tactical move.
+            // depth >= 3, move_number >= 2, and a non-TT, non-checked,
+            // non-checking, non-promoting move (captures can share from/to
+            // squares with quiet killers, so is_capture() cannot skip it).
             const bool is_killer_move = depth >= 3 && next_move_number >= 2 &&
-                !is_tt_move && is_quiet_non_check_non_promo &&
+                !is_tt_move && !checked && !metadata.gives_check &&
+                move.promotion() == Promotion::none &&
                 ordering.is_killer(move, ply);
             const int capture_history =
                 (next_move_number >= 2 && !is_tt_move && metadata.is_capture()) ?
