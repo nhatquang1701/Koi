@@ -633,10 +633,11 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      increment` without `movestogo` (keeping low-clock incremental endgames
      sustainable) and `increment` otherwise.
    - Raw soft: `base + increment_credit`.
-   - Raw hard: `2 × base + 1.5 × increment_credit` (earlier builds used `3`
-     whenever an increment existed or in the ≤ 3000 ms bucket; on a 10+2 clock
-     that let an unstable move take ~74 s twice in a row and drained the game
-     clock). Emergency pacing tightens the low-clock case further.
+   - Raw hard: `hard_units × base + 1.5 × increment_credit`, where
+     `hard_units = 3` at ≤ 3000 ms remaining and `2` otherwise (earlier builds
+     also used `3` whenever an increment existed; on a 10+2 clock that let an
+     unstable move take ~74 s twice in a row and drained the game clock).
+     Emergency pacing tightens the low-clock case further.
    - Budgets are scaled by `Slow Mover` and capped at
      `usable`; soft is capped at hard.
    - Emergency taper: horizon `max(10, horizon / 2)`, emergency base
