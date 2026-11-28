@@ -2188,6 +2188,109 @@ void test_sudden_death_scramble_conversion_drawn_and_ponderhit_bank() {
             "incremental 6s+1s calm depth-7 ponderhit must retain depth>=8 doomed-ply bank threshold");
 }
 
+void test_sudden_death_scramble_lookahead_and_ponderhit_discount_exit() {
+    auto steep_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto flat_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits scr_clock = clock_limits(milliseconds{6'000}, milliseconds{0});
+    TimeManager steep(scr_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                      warm_context(), [steep_now] { return *steep_now; });
+    TimeManager flat(scr_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                     warm_context(), [flat_now] { return *flat_now; });
+
+    const auto d4 = std::max(milliseconds{18}, (steep.diagnostics().soft_budget * 30) / 100);
+    const auto d3_steep = std::max(milliseconds{6}, d4 / 3);
+    const auto d3_flat = d4;
+    steep.observe_iteration({3, 20, false, false, false, 10'000, 5'000, d3_steep});
+    steep.observe_iteration({4, 20, false, false, false, 10'000, 5'000, d4});
+    flat.observe_iteration({3, 20, false, false, false, 10'000, 5'000, d3_flat});
+    flat.observe_iteration({4, 20, false, false, false, 10'000, 5'000, d4});
+
+    *steep_now += (steep.diagnostics().optimum_budget * 62) / 100;
+    *flat_now += (flat.diagnostics().optimum_budget * 62) / 100;
+    require(!steep.diagnostics().emergency_pacing &&
+                !steep.should_stop_after_iteration() &&
+                !steep.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble depth-4 branching EWMA must feed lookahead when d3->d4 grows steeply");
+    require(flat.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble depth-4 flat d3->d4 timing must keep branching low enough to continue");
+
+    auto healthy_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits inc_clock = clock_limits(milliseconds{6'000}, milliseconds{1'000});
+    TimeManager healthy(inc_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), [healthy_now] { return *healthy_now; });
+    const auto healthy_d4 =
+        std::max(milliseconds{30}, (healthy.diagnostics().soft_budget * 30) / 100);
+    healthy.observe_iteration({3, 20, false, false, false, 10'000, 5'000, healthy_d4 / 3});
+    healthy.observe_iteration({4, 20, false, false, false, 10'000, 5'000, healthy_d4});
+    *healthy_now += (healthy.diagnostics().optimum_budget * 62) / 100;
+    require(healthy.should_start_next_iteration(milliseconds{1}),
+            "incremental 6s+1s at depth 4 must retain depth>=5 lookahead gate");
+
+    auto now_scr_ph = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits scr_ponder = scr_clock;
+    scr_ponder.ponder = true;
+    TimeManager scr_ponderhit(scr_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              warm_context(), [now_scr_ph] { return *now_scr_ph; });
+    TimeManager scr_direct(scr_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                           warm_context());
+    for (TimeManager* tm : {&scr_ponderhit, &scr_direct}) {
+        tm->observe_iteration({4, 25, false, false, false, 10'000, 5'000, milliseconds{6}});
+        tm->observe_iteration({5, 25, false, false, false, 10'000, 5'000, milliseconds{10}});
+    }
+    scr_ponderhit.reconfigure(scr_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              warm_context(), false, *now_scr_ph, 0);
+    require(!scr_ponderhit.diagnostics().emergency_pacing &&
+                scr_ponderhit.diagnostics().optimum_budget <
+                    scr_direct.diagnostics().optimum_budget,
+            "sudden-death scramble calm depth-5 stability-2 ponderhit must apply 20% discount");
+
+    auto now_inc_ph = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits inc_ponder = inc_clock;
+    inc_ponder.ponder = true;
+    TimeManager inc_ponderhit(inc_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              warm_context(), [now_inc_ph] { return *now_inc_ph; });
+    TimeManager inc_direct(inc_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                           warm_context());
+    for (TimeManager* tm : {&inc_ponderhit, &inc_direct}) {
+        tm->observe_iteration({4, 25, false, false, false, 10'000, 5'000, milliseconds{10}});
+        tm->observe_iteration({5, 25, false, false, false, 10'000, 5'000, milliseconds{15}});
+    }
+    inc_ponderhit.reconfigure(inc_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              warm_context(), false, *now_inc_ph, 0);
+    require(inc_ponderhit.diagnostics().optimum_budget ==
+                inc_direct.diagnostics().optimum_budget,
+            "incremental 6s+1s depth-5 ponderhit must retain depth>=6/stability>=3 discount gate");
+
+    auto scr_effort_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_effort(scr_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                           warm_context(), [scr_effort_now] { return *scr_effort_now; });
+    for (int d = 6; d <= 8; ++d) {
+        scr_effort.observe_iteration(
+            {d, 25, false, false, false, 10'000, 9'500, milliseconds{10}});
+    }
+    scr_effort.reconfigure(scr_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                           warm_context(), false, *scr_effort_now, 0);
+    *scr_effort_now += (scr_effort.diagnostics().optimum_budget * 27) / 100;
+    require(!scr_effort.diagnostics().emergency_pacing &&
+                scr_effort.should_stop_after_iteration() &&
+                !scr_effort.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble high-effort depth-8 stability-3 ponderhit must exit past 25% target");
+
+    auto inc_effort_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager inc_effort(inc_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                           warm_context(), [inc_effort_now] { return *inc_effort_now; });
+    for (int d = 6; d <= 8; ++d) {
+        inc_effort.observe_iteration(
+            {d, 25, false, false, false, 10'000, 9'500, milliseconds{10}});
+    }
+    inc_effort.reconfigure(inc_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                           warm_context(), false, *inc_effort_now, 0);
+    *inc_effort_now += (inc_effort.diagnostics().optimum_budget * 27) / 100;
+    require(!inc_effort.should_stop_after_iteration() &&
+                inc_effort.should_start_next_iteration(milliseconds{1}),
+            "incremental 6s+1s high-effort depth-8 ponderhit must retain depth>=10/stability>=4 exit gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2282,6 +2385,8 @@ int main(int argc, char** argv) {
          test_high_latency_pre_emergency_ramp_and_scramble_overrun_guards},
         {"sudden death scramble conversion drawn and ponderhit bank",
          test_sudden_death_scramble_conversion_drawn_and_ponderhit_bank},
+        {"sudden death scramble lookahead and ponderhit discount exit",
+         test_sudden_death_scramble_lookahead_and_ponderhit_discount_exit},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

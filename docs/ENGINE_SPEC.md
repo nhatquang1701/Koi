@@ -708,7 +708,8 @@ the search but cannot push it past the cap.
   or `depth >= 6` / `stability >= 2` under emergency pacing, `score_drop <= 10`
   cp, and no aspiration re-research), and a 20% ponder-time-saved discount when a
   `ponderhit` arrives with a calm deep line (`depth >= 6`, `stability >= 3`, or
-  `depth >= 5`, `stability >= 2` under emergency pacing, no aspiration
+  `depth >= 5`, `stability >= 2` under emergency pacing or sudden-death
+  scrambles, no aspiration
   re-research, `score_drop <= 15` cp, `!hard_position_`).
 - A hard position may exceed the soft budget only when not in a
   sub-second sudden-death scramble without `movestogo`
@@ -731,7 +732,8 @@ the search but cannot push it past the cap.
   single-legal moves (`depth >= 4`, or `depth >= 2` under emergency pacing)
   after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
-  on deep (`depth >= 10`, `stability >= 4`, or `depth >= 6`, `stability >= 2`
+  on deep (`depth >= 10`, `stability >= 4`, `depth >= 8`, `stability >= 3` in
+  sudden-death scrambles, or `depth >= 6`, `stability >= 2`
   under emergency pacing) `>= 90%` best-move-share
   converted `ponderhit` searches past `25%` of the soft/optimum target,
   in calm high-effort positions (`>= 90%` best-move node share at
@@ -751,8 +753,10 @@ the search but cannot push it past the cap.
 - `should_start_next_iteration`: honors the shared `clock_early_stop_reached`
   rules (including `!last_aspiration_researched`), plus adaptive EWMA
   branching-factor lookahead (`depth >= 5`, or `depth >= 4` under emergency
-  pacing for both branching-factor updates and lookahead gating, `1.3×..3.2×`,
-  starting at `1.5×`, `4 ms` sample floor in emergency pacing vs `10 ms`
+  pacing or sudden-death scrambles for both branching-factor updates and
+  lookahead gating, `1.3×..3.2×`,
+  starting at `1.5×`, `4 ms` sample floor in emergency pacing vs `6 ms` in
+  sudden-death scrambles vs `10 ms`
   otherwise, used uniformly across both serial and parallel iterative-deepening
   drivers to avoid doomed partial iterations past `1.2×` soft target), and a
   doomed hard-ply guard once past

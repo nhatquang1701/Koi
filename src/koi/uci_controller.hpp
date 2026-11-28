@@ -155,7 +155,9 @@ private:
     // search into `observed_gui_overhead_ms_`.
     void note_clock_baseline(const GameState& root, const SearchLimits& limits,
                              std::uint64_t generation,
-                             std::chrono::steady_clock::time_point started) noexcept;
+                             std::chrono::steady_clock::time_point started,
+                             std::uint32_t* observed_overhead_out = nullptr,
+                             std::optional<int>* previous_score_out = nullptr) noexcept;
     void stop_active_search();
     void stop_and_suppress_active_search();
     void start_perft(int depth);

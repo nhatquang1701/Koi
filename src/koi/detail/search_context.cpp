@@ -1634,8 +1634,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     // root provenance remains conservative.
                     bool null_cutoff_proven = true;
                     const bool verify_null = null_move_decision.verify ||
-                        node_game_phase() < 8 ||
-                        node_piece_count <= kNullMoveSparsePieceLimit;
+                        node_piece_count <= kNullMoveSparsePieceLimit ||
+                        node_game_phase() < 8;
                     // A verification search may not start another nested
                     // verification (Stockfish's nmpMinPly guard).
                     if (verify_null && null_verification_min_ply == 0) {
@@ -1923,15 +1923,18 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // remainder of this node's candidate-prune tail, and no candidate
             // can recurse without passing a child node-entry sample.
             const Move move = metadata.move;
-            // The killer probe is consumed only by gates that cannot observe
-            // it below depth 3: negative_continuation_history requires
-            // depth >= 4, and late_move_gate (reached through lmr_gate and
-            // dynamic_late_move) requires depth >= 3 for its candidate to
-            // exist.  Table reads are pure, so skipping the probe below depth
-            // 3 changes no decision.
-            const bool is_killer_move = depth >= 3 && ordering.is_killer(move, ply);
             const int next_move_number = move_number + 1;
-            const int capture_history = (next_move_number >= 2 && metadata.is_capture()) ?
+            const bool is_tt_move = tt_move.has_value() && move == *tt_move;
+            const bool is_quiet_non_check_non_promo =
+                !metadata.is_capture() && !metadata.gives_check &&
+                move.promotion() == Promotion::none;
+            // The killer probe is consumed only by gates that require
+            // depth >= 3, move_number >= 2, and a non-TT, non-tactical move.
+            const bool is_killer_move = depth >= 3 && next_move_number >= 2 &&
+                !is_tt_move && is_quiet_non_check_non_promo &&
+                ordering.is_killer(move, ply);
+            const int capture_history =
+                (next_move_number >= 2 && !is_tt_move && metadata.is_capture()) ?
                 ordering.capture_history_score(metadata) : 0;
             // Once a cut node has already examined enough candidates, keep
             // Stockfish's staged-picker behavior: tactical moves and the
@@ -1950,7 +1953,6 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 }
                 selective_pruning = true;
             }
-            const bool is_tt_move = tt_move.has_value() && move == *tt_move;
             const bool root_pawn_move = ply == 0 && metadata.moving_piece == PieceType::pawn;
             // Both history reads feed only gates that require depth >= 3,
             // move_number >= 2, and a non-TT, non-killer, non-checking,

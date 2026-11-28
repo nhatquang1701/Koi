@@ -554,10 +554,11 @@ void TimeManager::observe_iteration(const SearchIterationObservation& observatio
     last_observed_depth_ = std::max(last_observed_depth_, observation.depth);
     last_aspiration_researched_ = observation.aspiration_researched;
     if (observation.iteration_elapsed > std::chrono::milliseconds::zero()) {
+        const bool scramble = is_sudden_death_scramble();
         const auto min_branch_ms = emergency_pacing_
             ? std::chrono::milliseconds{4}
-            : std::chrono::milliseconds{10};
-        const int min_branch_depth = emergency_pacing_ ? 4 : 5;
+            : (scramble ? std::chrono::milliseconds{6} : std::chrono::milliseconds{10});
+        const int min_branch_depth = (emergency_pacing_ || scramble) ? 4 : 5;
         if (observation.depth >= min_branch_depth &&
             last_iteration_elapsed_ >= min_branch_ms &&
             observation.iteration_elapsed >= min_branch_ms) {
@@ -809,10 +810,12 @@ void TimeManager::update_optimum_budget() noexcept {
 
     // Pondering already banked opponent think time: when the move arrives and
     // our ponder search is calm and stable (`depth >= 6, stability >= 3`, or
-    // `depth >= 5, stability >= 2` under emergency pacing), save 20% on
-    // optimum_budget.
-    const int min_ponderhit_discount_depth = emergency_pacing_ ? 5 : 6;
-    const std::uint32_t min_ponderhit_discount_stability = emergency_pacing_ ? 2U : 3U;
+    // `depth >= 5, stability >= 2` under emergency pacing or sudden-death
+    // scrambles), save 20% on optimum_budget.
+    const int min_ponderhit_discount_depth =
+        (emergency_pacing_ || sudden_death_scramble) ? 5 : 6;
+    const std::uint32_t min_ponderhit_discount_stability =
+        (emergency_pacing_ || sudden_death_scramble) ? 2U : 3U;
     if (ponderhit_converted_ && !hard_position_ &&
         last_observed_depth_ >= min_ponderhit_discount_depth &&
         best_move_stability_ >= min_ponderhit_discount_stability &&
@@ -911,8 +914,10 @@ bool TimeManager::clock_early_stop_reached(
                 return true;
             }
         }
-        const int min_ponderhit_effort_depth = emergency_pacing_ ? 6 : 10;
-        const std::uint32_t min_ponderhit_effort_stability = emergency_pacing_ ? 2U : 4U;
+        const int min_ponderhit_effort_depth =
+            emergency_pacing_ ? 6 : (sudden_death_scramble ? 8 : 10);
+        const std::uint32_t min_ponderhit_effort_stability =
+            emergency_pacing_ ? 2U : (sudden_death_scramble ? 3U : 4U);
         if (ponderhit_converted_ && has_effort_sample_ &&
             best_move_effort_permille_ >= 900U &&
             last_observed_depth_ >= min_ponderhit_effort_depth &&
@@ -1003,9 +1008,10 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         }
         // Pre-iteration lookahead for stable clock searches: when adaptive
         // branching shows the next ply will push past 1.2x soft_target after
-        // 55% elapsed, skip starting it (`depth >= 4` in emergency pacing,
-        // `depth >= 5` on healthy clocks).
-        const int min_lookahead_depth = emergency_pacing_ ? 4 : 5;
+        // 55% elapsed, skip starting it (`depth >= 4` in emergency pacing or
+        // sudden-death scrambles, `depth >= 5` on healthy clocks).
+        const int min_lookahead_depth =
+            (emergency_pacing_ || is_sudden_death_scramble()) ? 4 : 5;
         if (!hard_position_ && last_observed_depth_ >= min_lookahead_depth &&
             best_move_stability_ >= 2 &&
             score_drop_cp_ <= 20 && !last_aspiration_researched_ &&

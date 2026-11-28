@@ -1986,17 +1986,41 @@ void UciController::handle_ponderhit() {
 
 void UciController::note_clock_baseline(
     const GameState& root, const SearchLimits& limits, const std::uint64_t generation,
-    const std::chrono::steady_clock::time_point started) noexcept {
-    if (limits.ponder) {
+    const std::chrono::steady_clock::time_point started,
+    std::uint32_t* const observed_overhead_out,
+    std::optional<int>* const previous_score_out) noexcept {
+    if (limits.ponder && observed_overhead_out == nullptr &&
+        previous_score_out == nullptr) {
         // Speculative pondering is unbounded and precedes our next real clock
         // move or ponderhit; keep the previous clock baseline intact so ponder
         // traffic never disables GUI/network overhead learning.
         return;
     }
-    const bool clock_search = !limits.infinite && !limits.movetime.has_value();
     const Color side_to_move = root.side_to_move();
     const std::uint16_t fullmove_number = root.fullmove_number();
     const std::uint64_t position_key = root.position_key();
+    const auto capture_search_context = [this, observed_overhead_out, previous_score_out,
+                                         side_to_move, fullmove_number, position_key]() noexcept {
+        if (observed_overhead_out != nullptr) {
+            *observed_overhead_out = observed_gui_overhead_ms_;
+        }
+        if (previous_score_out != nullptr) {
+            if (previous_search_score_.has_value() &&
+                side_to_move == previous_search_side_ &&
+                (fullmove_number == static_cast<std::uint16_t>(previous_search_fullmove_ + 1U) ||
+                 position_key == previous_search_position_key_)) {
+                *previous_score_out = previous_search_score_;
+            } else {
+                previous_score_out->reset();
+            }
+        }
+    };
+    if (limits.ponder) {
+        std::lock_guard lock(output_mutex_);
+        capture_search_context();
+        return;
+    }
+    const bool clock_search = !limits.infinite && !limits.movetime.has_value();
     const std::optional<ClockLimit>& clock =
         side_to_move == Color::white ? limits.white_clock : limits.black_clock;
     std::uint32_t logged_overhead = 0;
@@ -2004,6 +2028,7 @@ void UciController::note_clock_baseline(
     bool overhead_updated = false;
     {
         std::lock_guard lock(output_mutex_);
+        capture_search_context();
         if (!clock_search || !clock.has_value()) {
             clock_baseline_valid_ = false;
             previous_clock_search_completed_ = false;
@@ -2029,6 +2054,9 @@ void UciController::note_clock_baseline(
                 observed_gui_overhead_ms_);
             if (updated != observed_gui_overhead_ms_) {
                 observed_gui_overhead_ms_ = updated;
+                if (observed_overhead_out != nullptr) {
+                    *observed_overhead_out = updated;
+                }
                 logged_overhead = updated;
                 logged_elapsed = previous_clock_search_elapsed_ms_;
                 overhead_updated = true;
@@ -2271,22 +2299,10 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
                                 xboard_analyze_snapshot, search_root);
     };
 
-    note_clock_baseline(search_root, limits, generation, search_started);
     std::uint32_t observed_overhead = 0;
     std::optional<int> previous_score;
-    const Color search_side = search_root.side_to_move();
-    const std::uint16_t search_fullmove = search_root.fullmove_number();
-    const std::uint64_t search_key = search_root.position_key();
-    {
-        std::lock_guard lock(output_mutex_);
-        observed_overhead = observed_gui_overhead_ms_;
-        if (previous_search_score_.has_value() &&
-            search_side == previous_search_side_ &&
-            (search_fullmove == static_cast<std::uint16_t>(previous_search_fullmove_ + 1U) ||
-             search_key == previous_search_position_key_)) {
-            previous_score = previous_search_score_;
-        }
-    }
+    note_clock_baseline(search_root, limits, generation, search_started,
+                        &observed_overhead, &previous_score);
 
     SearchOptions options;
     options.threads = threads_;
