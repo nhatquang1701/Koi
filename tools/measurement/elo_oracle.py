@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Sequence
 
 
 SCHEMA = "koi-elo-oracle"
@@ -92,27 +92,27 @@ class UciScore:
 @dataclass(frozen=True)
 class ParsedInfo:
     score: UciScore
-    depth: Optional[int]
-    seldepth: Optional[int]
-    nodes: Optional[int]
-    nps: Optional[int]
-    time_ms: Optional[int]
-    multipv: Optional[int]
-    bound: Optional[str]
-    pv: List[str]
+    depth: int | None
+    seldepth: int | None
+    nodes: int | None
+    nps: int | None
+    time_ms: int | None
+    multipv: int | None
+    bound: str | None
+    pv: list[str]
     raw: str
 
 
 @dataclass(frozen=True)
 class SearchResult:
     bestmove: str
-    ponder: Optional[str]
+    ponder: str | None
     elapsed_ms: int
-    final_info: Optional[ParsedInfo]
+    final_info: ParsedInfo | None
     info_count: int
     book_used: bool
-    book_move: Optional[str]
-    book_ply: Optional[int]
+    book_move: str | None
+    book_ply: int | None
 
 
 def normalize_score(score_type: str, value: int, root_side: str) -> int:
@@ -143,7 +143,7 @@ def calculate_cpl(root_score_white_cp: int, resulting_score_white_cp: int, movin
     return max(0, int(loss))
 
 
-def classify_cpl(cpl: Optional[int]) -> Optional[str]:
+def classify_cpl(cpl: int | None) -> str | None:
     """Return the stable forensic band for a derived centipawn loss."""
 
     if cpl is None:
@@ -160,7 +160,7 @@ def classify_cpl(cpl: Optional[int]) -> Optional[str]:
     return "blunder"
 
 
-def _effective_side_cp(score_cp: int, mate: Optional[int]) -> int:
+def _effective_side_cp(score_cp: int, mate: int | None) -> int:
     if mate is not None:
         clamped = min(abs(int(mate)), 1000)
         return (MATE_SCORE_CP - clamped) if int(mate) > 0 else (-MATE_SCORE_CP + clamped)
@@ -170,8 +170,8 @@ def _effective_side_cp(score_cp: int, mate: Optional[int]) -> int:
 def compute_eval_cpl(
     best_cp: int,
     played_cp: int,
-    best_mate: Optional[int] = None,
-    played_mate: Optional[int] = None,
+    best_mate: int | None = None,
+    played_mate: int | None = None,
 ) -> int:
     """Return non-negative centipawn loss between side-to-move normalized evaluations."""
 
@@ -185,7 +185,7 @@ def win_probability_from_cp(score_cp: int) -> float:
     return 1.0 / (1.0 + math.exp(-WIN_PROB_SCALE * clamped))
 
 
-def win_probability_from_eval(score_cp: int, mate: Optional[int] = None) -> float:
+def win_probability_from_eval(score_cp: int, mate: int | None = None) -> float:
     """Convert a side-to-move score or mate distance into expected win probability."""
 
     if mate is not None:
@@ -209,13 +209,13 @@ def classify_move_annotation(
     best_cp: int,
     played_cp: int,
     *,
-    best_mate: Optional[int] = None,
-    played_mate: Optional[int] = None,
-    second_best_cp: Optional[int] = None,
-    second_best_mate: Optional[int] = None,
+    best_mate: int | None = None,
+    played_mate: int | None = None,
+    second_best_cp: int | None = None,
+    second_best_mate: int | None = None,
     legal_move_count: int = 2,
-    played_move: Optional[str] = None,
-    best_move: Optional[str] = None,
+    played_move: str | None = None,
+    best_move: str | None = None,
     is_book_move: bool = False,
     is_sacrifice: bool = False,
     is_capture_move: bool = False,
@@ -333,19 +333,19 @@ def annotate_move_eval(
     best_cp: int,
     played_cp: int,
     *,
-    best_mate: Optional[int] = None,
-    played_mate: Optional[int] = None,
-    second_best_cp: Optional[int] = None,
-    second_best_mate: Optional[int] = None,
+    best_mate: int | None = None,
+    played_mate: int | None = None,
+    second_best_cp: int | None = None,
+    second_best_mate: int | None = None,
     legal_move_count: int = 2,
-    played_move: Optional[str] = None,
-    best_move: Optional[str] = None,
+    played_move: str | None = None,
+    best_move: str | None = None,
     is_book_move: bool = False,
     is_sacrifice: bool = False,
     is_capture_move: bool = False,
     in_check: bool = False,
     gives_check: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return full move annotation metrics (classification, glyph, NAG, CPL, win%, accuracy%)."""
 
     cpl = compute_eval_cpl(best_cp, played_cp, best_mate=best_mate, played_mate=played_mate)
@@ -408,7 +408,7 @@ def format_pgn_move_annotation(
     return " ".join(parts)
 
 
-def parse_info_line(line: str, root_side: str) -> Optional[ParsedInfo]:
+def parse_info_line(line: str, root_side: str) -> ParsedInfo | None:
     """Parse a scored UCI info line and ignore non-scored info lines."""
 
     if not INFO_RE.match(line) or BOOK_INFO_RE.fullmatch(line):
@@ -417,7 +417,7 @@ def parse_info_line(line: str, root_side: str) -> Optional[ParsedInfo]:
     if score_match is None:
         return None
 
-    def integer_field(name: str) -> Optional[int]:
+    def integer_field(name: str) -> int | None:
         match = re.search(rf"(?:^|\s){name}\s+(-?\d+)(?=\s|$)", line)
         return int(match.group(1)) if match else None
 
@@ -443,7 +443,7 @@ def parse_info_line(line: str, root_side: str) -> Optional[ParsedInfo]:
     )
 
 
-def parse_book_info_line(line: str) -> Optional[Tuple[str, int]]:
+def parse_book_info_line(line: str) -> tuple[str, int] | None:
     """Parse Koi's book marker without treating it as search info."""
 
     match = BOOK_INFO_RE.fullmatch(line)
@@ -452,7 +452,7 @@ def parse_book_info_line(line: str) -> Optional[Tuple[str, int]]:
     return match.group("move").lower(), int(match.group("ply"))
 
 
-def parse_bestmove_line(line: str) -> Optional[Tuple[str, Optional[str]]]:
+def parse_bestmove_line(line: str) -> tuple[str, str | None] | None:
     """Parse a coordinate UCI bestmove line, including Stockfish's terminal form."""
 
     match = BESTMOVE_RE.fullmatch(line)
@@ -471,7 +471,7 @@ def parse_bestmove_line(line: str) -> Optional[Tuple[str, Optional[str]]]:
     return move, ponder
 
 
-def _load_chess_modules() -> Tuple[Any, Any]:
+def _load_chess_modules() -> tuple[Any, Any]:
     module_dir = Path(__file__).resolve().parent
     if str(module_dir) not in sys.path:
         sys.path.insert(0, str(module_dir))
@@ -500,7 +500,7 @@ def default_report_path(stem: str = "elo-oracle") -> Path:
     return default_results_directory() / f"{stem}-{timestamp}-{os.getpid()}.json"
 
 
-def _read_pgn(path: Path) -> Tuple[str, bytes]:
+def _read_pgn(path: Path) -> tuple[str, bytes]:
     try:
         data = path.read_bytes()
     except OSError as error:
@@ -524,9 +524,9 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _node_annotations(node: Any) -> Dict[str, Any]:
+def _node_annotations(node: Any) -> dict[str, Any]:
     comment = str(getattr(node, "comment", "") or "").strip()
-    annotations: Dict[str, Any] = {
+    annotations: dict[str, Any] = {
         "comment": comment or None,
         "nags": sorted(int(nag) for nag in getattr(node, "nags", set())),
     }
@@ -540,7 +540,7 @@ def _node_annotations(node: Any) -> Dict[str, Any]:
     return annotations
 
 
-def classify_position(chess: Any, board: Any, ply: int) -> Dict[str, Any]:
+def classify_position(chess: Any, board: Any, ply: int) -> dict[str, Any]:
     """Return stable, engine-independent labels for a root position."""
 
     piece_values = {
@@ -585,13 +585,13 @@ def classify_position(chess: Any, board: Any, ply: int) -> Dict[str, Any]:
     }
 
 
-def extract_games(pgn_text: str) -> List[Dict[str, Any]]:
+def extract_games(pgn_text: str) -> list[dict[str, Any]]:
     """Return every PGN game's mainline positions in source order."""
 
     chess, pgn_module = _load_chess_modules()
     from io import StringIO
 
-    games: List[Dict[str, Any]] = []
+    games: list[dict[str, Any]] = []
     stream = StringIO(pgn_text)
     while True:
         with contextlib.redirect_stderr(io.StringIO()):
@@ -603,7 +603,7 @@ def extract_games(pgn_text: str) -> List[Dict[str, Any]]:
             raise OracleError(f"PGN contains parse errors: {details}")
 
         board = game.board()
-        positions: List[Dict[str, Any]] = []
+        positions: list[dict[str, Any]] = []
         for ply, node in enumerate(game.mainline(), start=1):
             move = node.move
             if move is None:
@@ -643,11 +643,11 @@ def extract_games(pgn_text: str) -> List[Dict[str, Any]]:
 def build_extraction_report(
     pgn_path: Path,
     pgn_text: str,
-    games: List[Dict[str, Any]],
+    games: list[dict[str, Any]],
     movetime_ms: int,
     threads: int,
-    pgn_sha256: Optional[str] = None,
-) -> Dict[str, Any]:
+    pgn_sha256: str | None = None,
+) -> dict[str, Any]:
     created_at = _utc_timestamp()
     return {
         "schema": SCHEMA,
@@ -677,11 +677,11 @@ def build_extraction_report(
     }
 
 
-def _json_options(options: Dict[str, Any]) -> Dict[str, Any]:
+def _json_options(options: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in options.items()}
 
 
-def _hardware_metadata() -> Dict[str, Any]:
+def _hardware_metadata() -> dict[str, Any]:
     return {
         "os": platform.system() or "unknown",
         "os_release": platform.release() or "unknown",
@@ -693,8 +693,8 @@ def _hardware_metadata() -> Dict[str, Any]:
 
 
 def _measurement_metadata(
-    mode: str, movetime_ms: int, threads: int, book_path: Optional[Path]
-) -> Dict[str, Any]:
+    mode: str, movetime_ms: int, threads: int, book_path: Path | None
+) -> dict[str, Any]:
     book_active = book_path is not None or mode == "book-audit"
     return {
         "network": {
@@ -730,20 +730,20 @@ class UciEngine:
         path: Path,
         label: str,
         *,
-        extra_env: Optional[Dict[str, str]] = None,
+        extra_env: dict[str, str] | None = None,
     ):
         self.path = path
         self.label = label
         self.extra_env = dict(extra_env) if extra_env else None
-        self.process: Optional[subprocess.Popen[str]] = None
-        self._stdout_queue: "queue.Queue[Optional[str]]" = queue.Queue()
-        self._stderr_lines: List[str] = []
-        self._stdout_thread: Optional[threading.Thread] = None
-        self._stderr_thread: Optional[threading.Thread] = None
-        self.handshake_lines: List[str] = []
-        self.option_lines: List[str] = []
-        self.id_name: Optional[str] = None
-        self.id_author: Optional[str] = None
+        self.process: subprocess.Popen[str] | None = None
+        self._stdout_queue: "queue.Queue[str | None]" = queue.Queue()
+        self._stderr_lines: list[str] = []
+        self._stdout_thread: threading.Thread | None = None
+        self._stderr_thread: threading.Thread | None = None
+        self.handshake_lines: list[str] = []
+        self.option_lines: list[str] = []
+        self.id_name: str | None = None
+        self.id_author: str | None = None
 
     def __enter__(self) -> "UciEngine":
         self.start()
@@ -755,7 +755,7 @@ class UciEngine:
     def start(self) -> None:
         if self.process is not None:
             return
-        popen_kwargs: Dict[str, Any] = {
+        popen_kwargs: dict[str, Any] = {
             "args": [str(self.path)],
             "stdin": subprocess.PIPE,
             "stdout": subprocess.PIPE,
@@ -791,12 +791,10 @@ class UciEngine:
             self.handshake_lines.append(line)
             if line == "uciok":
                 break
-            name_match = re.match(r"^id name (.+)$", line)
-            author_match = re.match(r"^id author (.+)$", line)
-            if name_match:
-                self.id_name = name_match.group(1).strip()
-            elif author_match:
-                self.id_author = author_match.group(1).strip()
+            if line.startswith("id name ") and len(line) > 8:
+                self.id_name = line[8:].strip()
+            elif line.startswith("id author ") and len(line) > 10:
+                self.id_author = line[10:].strip()
             elif line.startswith("option "):
                 self.option_lines.append(line)
         self._wait_ready()
@@ -853,7 +851,7 @@ class UciEngine:
             return "true" if value else "false"
         return str(value)
 
-    def _set_options(self, options: Dict[str, Any]) -> None:
+    def _set_options(self, options: dict[str, Any]) -> None:
         for name, value in options.items():
             self._send(
                 f"setoption name {name} value {self._format_option_value(value)}"
@@ -864,7 +862,7 @@ class UciEngine:
         fen: str,
         root_side: str,
         movetime_ms: int,
-        options: Dict[str, Any],
+        options: dict[str, Any],
         require_score: bool,
     ) -> SearchResult:
         self._set_options(options)
@@ -873,12 +871,12 @@ class UciEngine:
         started = time.perf_counter()
         self._send(f"go movetime {movetime_ms}")
 
-        infos: List[ParsedInfo] = []
+        infos: list[ParsedInfo] = []
         book_used = False
-        book_move: Optional[str] = None
-        book_ply: Optional[int] = None
-        bestmove: Optional[str] = None
-        ponder: Optional[str] = None
+        book_move: str | None = None
+        book_ply: int | None = None
+        bestmove: str | None = None
+        ponder: str | None = None
         while bestmove is None:
             line = self._read_line("bestmove")
             book_marker = parse_book_info_line(line)
@@ -919,13 +917,13 @@ class UciEngine:
         )
 
     @staticmethod
-    def _version_from_identity(identity: Optional[str]) -> str:
+    def _version_from_identity(identity: str | None) -> str:
         if not identity:
             return "unknown"
         match = ENGINE_VERSION_RE.search(identity)
         return match.group(1) if match else "unknown"
 
-    def metadata(self, options: Dict[str, Any]) -> Dict[str, Any]:
+    def metadata(self, options: dict[str, Any]) -> dict[str, Any]:
         return {
             "path": str(self.path),
             "engine_id": self.id_name or "unknown",
@@ -970,7 +968,7 @@ class UciEngine:
         self.process = None
 
 
-def _resolve_file(raw_path: Optional[Path], label: str, option: str) -> Path:
+def _resolve_file(raw_path: Path | None, label: str, option: str) -> Path:
     if raw_path is None:
         raise OracleError(f"{label} requires {option}.")
     try:
@@ -983,9 +981,9 @@ def _resolve_file(raw_path: Optional[Path], label: str, option: str) -> Path:
 
 
 def _resolve_engine_paths(
-    koi_raw: Optional[Path], stockfish_raw: Optional[Path], mode: str
-) -> Tuple[Path, Path]:
-    missing: List[str] = []
+    koi_raw: Path | None, stockfish_raw: Path | None, mode: str
+) -> tuple[Path, Path]:
+    missing: list[str] = []
     if koi_raw is None:
         missing.append("--koi <koi-engine.exe>")
     if stockfish_raw is None:
@@ -1007,7 +1005,7 @@ def _side_from_fen(fen: str) -> str:
 
 def _child_position(
     chess: Any, fen: str, move_uci: str, description: str
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     if not UCI_MOVE_RE.fullmatch(move_uci):
         raise OracleError(f"{description} returned an invalid UCI move '{move_uci}'.")
     try:
@@ -1022,7 +1020,7 @@ def _child_position(
     return board.fen(), san
 
 
-def _score_dict(score: Optional[UciScore]) -> Optional[Dict[str, Any]]:
+def _score_dict(score: UciScore | None) -> dict[str, Any] | None:
     if score is None:
         return None
     return {
@@ -1037,9 +1035,9 @@ def _score_dict(score: Optional[UciScore]) -> Optional[Dict[str, Any]]:
     }
 
 
-def _result_dict(result: SearchResult, include_book: bool = False) -> Dict[str, Any]:
+def _result_dict(result: SearchResult, include_book: bool = False) -> dict[str, Any]:
     info = result.final_info
-    data: Dict[str, Any] = {
+    data: dict[str, Any] = {
         "bestmove": result.bestmove,
         "ponder": result.ponder,
         "elapsed_ms": result.elapsed_ms,
@@ -1069,7 +1067,7 @@ def _scored_result(result: SearchResult, label: str) -> UciScore:
     return result.final_info.score
 
 
-def _metric_summary(values: Sequence[int]) -> Dict[str, Any]:
+def _metric_summary(values: Sequence[int]) -> dict[str, Any]:
     if not values:
         return {
             "count": 0,
@@ -1098,9 +1096,9 @@ def _report_header(
     finished_at: str,
     movetime_ms: int,
     threads: int,
-    engines: Dict[str, Any],
-    book_path: Optional[Path] = None,
-) -> Dict[str, Any]:
+    engines: dict[str, Any],
+    book_path: Path | None = None,
+) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
@@ -1130,35 +1128,35 @@ def _report_header(
     }
 
 
-def _position_record(position: Dict[str, Any]) -> Dict[str, Any]:
+def _position_record(position: dict[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(position)
 
 
 def run_search_analysis(
-    games: List[Dict[str, Any]],
+    games: list[dict[str, Any]],
     pgn_path: Path,
     pgn_sha256: str,
     koi_path: Path,
     stockfish_path: Path,
     movetime_ms: int,
     threads: int,
-    koi_env: Optional[Dict[str, str]] = None,
-) -> Dict[str, Any]:
+    koi_env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     chess, _pgn_module = _load_chess_modules()
     started_at = _utc_timestamp()
-    koi_options: Dict[str, Any] = {
+    koi_options: dict[str, Any] = {
         "OwnBook": False,
         "Threads": threads,
         "Speed": 100,
     }
-    stockfish_options: Dict[str, Any] = {"Threads": threads}
-    result_games: List[Dict[str, Any]] = []
-    actual_cpls: List[int] = []
-    koi_cpls: List[int] = []
+    stockfish_options: dict[str, Any] = {"Threads": threads}
+    result_games: list[dict[str, Any]] = []
+    actual_cpls: list[int] = []
+    koi_cpls: list[int] = []
 
     with UciEngine(koi_path, "Koi", extra_env=koi_env) as koi, UciEngine(stockfish_path, "Stockfish") as stockfish:
         for game in games:
-            result_positions: List[Dict[str, Any]] = []
+            result_positions: list[dict[str, Any]] = []
             for position in game["positions"]:
                 fen = position["fen"]
                 root_side = _side_from_fen(fen)
@@ -1213,7 +1211,7 @@ def run_search_analysis(
                 actual_cpls.append(actual_cpl)
                 koi_cpls.append(koi_cpl)
 
-                def _mover_eval(score: UciScore, is_child: bool) -> Tuple[int, Optional[int]]:
+                def _mover_eval(score: UciScore, is_child: bool) -> tuple[int, int | None]:
                     mover_cp = (
                         score.normalized_cp if moving_side == "white" else -score.normalized_cp
                     )
@@ -1233,7 +1231,7 @@ def run_search_analysis(
                 koi_side_cp, koi_side_mate = _mover_eval(koi_score, True)
                 legal_count = len(chess.Board(fen).legal_moves)
 
-                def _annotation_for(played_move: str, played_cp: int, played_mate: Optional[int]) -> Dict[str, Any]:
+                def _annotation_for(played_move: str, played_cp: int, played_mate: int | None) -> dict[str, Any]:
                     return annotate_move_eval(
                         best_side_cp,
                         played_cp,
@@ -1250,8 +1248,8 @@ def run_search_analysis(
                     resulting_fen: str,
                     child_result: SearchResult,
                     cpl: int,
-                    annotation: Dict[str, Any],
-                ) -> Dict[str, Any]:
+                    annotation: dict[str, Any],
+                ) -> dict[str, Any]:
                     return {
                         "uci": move_uci,
                         "san": san,
@@ -1324,7 +1322,7 @@ def run_search_analysis(
 
 
 def run_book_audit(
-    games: List[Dict[str, Any]],
+    games: list[dict[str, Any]],
     pgn_path: Path,
     pgn_sha256: str,
     koi_path: Path,
@@ -1332,11 +1330,11 @@ def run_book_audit(
     book_path: Path,
     movetime_ms: int,
     threads: int,
-    koi_env: Optional[Dict[str, str]] = None,
-) -> Dict[str, Any]:
+    koi_env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     chess, _pgn_module = _load_chess_modules()
     started_at = _utc_timestamp()
-    koi_options: Dict[str, Any] = {
+    koi_options: dict[str, Any] = {
         "OwnBook": True,
         "BookFile": str(book_path),
         "BookDepth": BOOK_DEPTH,
@@ -1344,15 +1342,15 @@ def run_book_audit(
         "Threads": threads,
         "Speed": 100,
     }
-    stockfish_options: Dict[str, Any] = {"Threads": threads}
-    result_games: List[Dict[str, Any]] = []
-    book_cpls: List[int] = []
-    actual_cpls: List[int] = []
+    stockfish_options: dict[str, Any] = {"Threads": threads}
+    result_games: list[dict[str, Any]] = []
+    book_cpls: list[int] = []
+    actual_cpls: list[int] = []
     book_hits = 0
 
     with UciEngine(koi_path, "Koi", extra_env=koi_env) as koi, UciEngine(stockfish_path, "Stockfish") as stockfish:
         for game in games:
-            result_positions: List[Dict[str, Any]] = []
+            result_positions: list[dict[str, Any]] = []
             for position in game["positions"]:
                 fen = position["fen"]
                 root_side = _side_from_fen(fen)
@@ -1383,12 +1381,12 @@ def run_book_audit(
                 )
                 actual_cpls.append(actual_cpl)
 
-                book_move: Optional[str] = None
-                book_ply: Optional[int] = None
-                book_san: Optional[str] = None
-                book_child_fen: Optional[str] = None
-                book_result: Optional[SearchResult] = None
-                book_cpl: Optional[int] = None
+                book_move: str | None = None
+                book_ply: int | None = None
+                book_san: str | None = None
+                book_child_fen: str | None = None
+                book_result: SearchResult | None = None
+                book_cpl: int | None = None
                 if koi_result.book_used:
                     book_hits += 1
                     book_move = koi_result.book_move
@@ -1550,8 +1548,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_koi_env(
-    koi_eval_file: Optional[Path], hce: bool
-) -> Optional[Dict[str, str]]:
+    koi_eval_file: Path | None, hce: bool
+) -> dict[str, str] | None:
     if koi_eval_file is not None and hce:
         raise OracleError("--koi-eval-file and --hce cannot be combined")
     if koi_eval_file is not None:
@@ -1562,7 +1560,7 @@ def _resolve_koi_env(
     return None
 
 
-def _write_json(path: Path, report: Dict[str, Any]) -> None:
+def _write_json(path: Path, report: dict[str, Any]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
@@ -1573,7 +1571,7 @@ def _write_json(path: Path, report: Dict[str, Any]) -> None:
         raise OracleError(f"Unable to write report '{path}': {error}") from error
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.extract_only and args.book_audit:
         raise OracleError("--extract-only and --book-audit cannot be combined")

@@ -29,6 +29,13 @@ NNUE_EVALUATOR_MODES = frozenset({"nnue-v4", "nnue-v5", "nnue-v6", "nnue-v8", "n
 EVALUATOR_MODES = frozenset({"classical"}) | NNUE_EVALUATOR_MODES
 SHA256_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
 GIT_SHA_HEX = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
+PGN_EVENT_SPLIT_RE = re.compile(r"(?m)(?=^\[Event )")
+PGN_RESULT_HEADER_RE = re.compile(r'(?m)^\[Result\s+"([^"]+)"\]\s*$')
+PGN_COMMENT_RE = re.compile(r"\{[^}]*\}|;[^\n]*")
+PGN_UCI_MOVE_RE = re.compile(r"(?<![A-Za-z0-9])[a-h][1-8][a-h][1-8][nbrq]?(?![A-Za-z0-9])")
+BESTMOVE_LINE_RE = re.compile(
+    r"bestmove\s+([a-h][1-8][a-h][1-8][nbrq]?)(?:\s+ponder\s+[a-h][1-8][a-h][1-8][nbrq]?)?"
+)
 
 
 def _opening_fens(openings: dict[str, tuple[str, ...]]) -> dict[str, str]:
@@ -108,20 +115,20 @@ def _uci_pgn_games(path: pathlib.Path, errors: list[str]):
     except (OSError, UnicodeError) as error:
         errors.append(f"PGN could not be read: {error}")
         return []
-    blocks = [block for block in re.split(r"(?m)(?=^\[Event )", text.strip()) if block.strip()]
+    blocks = [block for block in PGN_EVENT_SPLIT_RE.split(text.strip()) if block.strip()]
     parsed = []
     for index, block in enumerate(blocks, 1):
         if '[MoveFormat "UCI coordinate notation"]' not in block:
             errors.append(f"PGN game {index} is missing its UCI coordinate move format")
-        result_match = re.search(r'(?m)^\[Result\s+"([^"]+)"\]\s*$', block)
+        result_match = PGN_RESULT_HEADER_RE.search(block)
         result = result_match.group(1) if result_match else None
         if "\n\n" not in block:
             errors.append(f"PGN game {index} has no movetext")
             movetext = ""
         else:
             movetext = block.split("\n\n", 1)[1]
-        movetext = re.sub(r"\{[^}]*\}|;[^\n]*", " ", movetext)
-        tokens = re.findall(r"(?<![A-Za-z0-9])[a-h][1-8][a-h][1-8][nbrq]?(?![A-Za-z0-9])", movetext)
+        movetext = PGN_COMMENT_RE.sub(" ", movetext)
+        tokens = PGN_UCI_MOVE_RE.findall(movetext)
         parsed.append({"moves": tokens, "result": result})
     return parsed
 
@@ -318,11 +325,8 @@ def _validate_uci_game_moves(
             if move_record.get("engine_label") != "opening" or bestmove:
                 errors.append(f"game {index} ply {ply} has an invalid curated opening record")
         else:
-            expected_bestmove = re.fullmatch(
-                rf"bestmove\s+{re.escape(move_text)}(?:\s+ponder\s+[a-h][1-8][a-h][1-8][nbrq]?)?",
-                str(bestmove or ""),
-            )
-            if expected_bestmove is None:
+            match = BESTMOVE_LINE_RE.fullmatch(str(bestmove or ""))
+            if match is None or match.group(1) != move_text:
                 errors.append(f"game {index} ply {ply} has missing, duplicate, or mismatched bestmove")
         if move_record.get("book_used") is True:
             errors.append(f"game {index} ply {ply} used the Koi opening book")

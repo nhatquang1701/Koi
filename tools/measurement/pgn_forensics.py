@@ -10,7 +10,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -49,7 +49,7 @@ def _require_output_path(path: Path) -> Path:
     return resolved
 
 
-def discover_pgns(directory: Path) -> List[Path]:
+def discover_pgns(directory: Path) -> list[Path]:
     """Return all PGNs below a directory in stable relative-path order."""
 
     try:
@@ -62,7 +62,7 @@ def discover_pgns(directory: Path) -> List[Path]:
     return sorted(paths, key=lambda path: path.relative_to(resolved).as_posix().casefold())
 
 
-def _canonical_hash(files: List[Dict[str, Any]]) -> str:
+def _canonical_hash(files: list[dict[str, Any]]) -> str:
     canonical = json.dumps(
         {"schema": SCHEMA, "files": files},
         ensure_ascii=False,
@@ -72,11 +72,11 @@ def _canonical_hash(files: List[Dict[str, Any]]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def build_corpus_report(directory: Path) -> Dict[str, Any]:
+def build_corpus_report(directory: Path) -> dict[str, Any]:
     """Read and parse every PGN below ``directory`` without starting an engine."""
 
     resolved_directory = directory.expanduser().resolve(strict=True)
-    files: List[Dict[str, Any]] = []
+    files: list[dict[str, Any]] = []
     game_count = 0
     position_count = 0
     for path in discover_pgns(resolved_directory):
@@ -120,7 +120,7 @@ def _default_report_path() -> Path:
     return elo_oracle.default_results_directory() / f"pgn-forensics-{timestamp}-{os.getpid()}.json"
 
 
-def _write_json(path: Path, report: Dict[str, Any]) -> None:
+def _write_json(path: Path, report: dict[str, Any]) -> None:
     output_path = _require_output_path(path)
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +148,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     report = build_corpus_report(args.pgn_dir)
     output_path = args.output or _default_report_path()

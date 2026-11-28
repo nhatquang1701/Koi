@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import List, Optional
 
 try:
     from . import elo_oracle
@@ -57,7 +56,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     output_path = args.output or elo_oracle.default_report_path("book-audit")
     forwarded = [

@@ -10,7 +10,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Sequence
 
 try:
     from tools.measurement import elo_oracle
@@ -37,7 +37,7 @@ ANNOTATION_CATEGORIES = (
 )
 
 
-def parse_annotate_move_line(line: str) -> Optional[Dict[str, Any]]:
+def parse_annotate_move_line(line: str) -> dict[str, Any] | None:
     """Parse one `info string annotate move ...` protocol line emitted by Koi."""
 
     stripped = line.strip()
@@ -47,7 +47,7 @@ def parse_annotate_move_line(line: str) -> Optional[Dict[str, Any]]:
     if not tokens:
         return None
 
-    record: Dict[str, Any] = {
+    record: dict[str, Any] = {
         "move": tokens[0],
         "ply": 0,
         "side": "white",
@@ -102,7 +102,7 @@ def parse_annotate_move_line(line: str) -> Optional[Dict[str, Any]]:
     return record
 
 
-def parse_annotate_summary_line(line: str) -> Optional[Dict[str, Any]]:
+def parse_annotate_summary_line(line: str) -> dict[str, Any] | None:
     """Parse one `info string annotate summary <side> ...` line emitted by Koi."""
 
     stripped = line.strip()
@@ -126,8 +126,8 @@ def parse_annotate_summary_line(line: str) -> Optional[Dict[str, Any]]:
     return summary
 
 
-def empty_summary(side: str) -> Dict[str, Any]:
-    summary: Dict[str, Any] = {
+def empty_summary(side: str) -> dict[str, Any]:
+    summary: dict[str, Any] = {
         "side": side,
         "moves": 0,
         "accuracy": 100.0,
@@ -138,7 +138,7 @@ def empty_summary(side: str) -> Dict[str, Any]:
     return summary
 
 
-def format_pgn_eval_tag(score_cp: int, mate: Optional[int], side: str) -> str:
+def format_pgn_eval_tag(score_cp: int, mate: int | None, side: str) -> str:
     """Format a PGN `[%eval ...]` token from White's perspective."""
 
     if mate is not None:
@@ -156,12 +156,12 @@ def _has_control_chars(value: str) -> bool:
 
 
 def _validate_annotation_options(
-    depth: Optional[int],
-    movetime_ms: Optional[int],
-    nodes: Optional[int],
+    depth: int | None,
+    movetime_ms: int | None,
+    nodes: int | None,
     threads: int,
-    hash_mb: Optional[int],
-    max_games: Optional[int],
+    hash_mb: int | None,
+    max_games: int | None,
 ) -> None:
     if depth is not None and int(depth) <= 0:
         raise elo_oracle.OracleError(f"Annotation --depth must be positive (got {depth}).")
@@ -181,14 +181,14 @@ def _validate_annotation_options(
 
 def _annotate_game_with_engine(
     engine: elo_oracle.UciEngine,
-    start_fen: Optional[str],
+    start_fen: str | None,
     uci_moves: Sequence[str],
     *,
-    depth: Optional[int],
-    movetime_ms: Optional[int],
-    nodes: Optional[int],
-    engine_options: Dict[str, Any],
-) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    depth: int | None,
+    movetime_ms: int | None,
+    nodes: int | None,
+    engine_options: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     if not uci_moves:
         return [], {"white": empty_summary("white"), "black": empty_summary("black")}
 
@@ -205,7 +205,7 @@ def _annotate_game_with_engine(
     position_cmd += " moves " + " ".join(uci_moves)
     engine._send(position_cmd)
 
-    limit_parts: List[str] = []
+    limit_parts: list[str] = []
     if movetime_ms is not None:
         limit_parts.extend(["movetime", str(movetime_ms)])
     if depth is not None:
@@ -218,8 +218,8 @@ def _annotate_game_with_engine(
     engine._send("annotate game " + " ".join(limit_parts))
     engine._send("isready")
 
-    move_records: List[Dict[str, Any]] = []
-    summaries: Dict[str, Dict[str, Any]] = {
+    move_records: list[dict[str, Any]] = []
+    summaries: dict[str, dict[str, Any]] = {
         "white": empty_summary("white"),
         "black": empty_summary("black"),
     }
@@ -240,7 +240,7 @@ def _annotate_game_with_engine(
 
 
 def _wrap_pgn_tokens(tokens: Sequence[str], width: int = 80) -> str:
-    lines: List[str] = []
+    lines: list[str] = []
     current = ""
     for token in tokens:
         if not current:
@@ -258,19 +258,19 @@ def _wrap_pgn_tokens(tokens: Sequence[str], width: int = 80) -> str:
 def _format_annotated_pgn(
     chess: Any,
     game: Any,
-    move_records: Sequence[Dict[str, Any]],
-    summaries: Dict[str, Dict[str, Any]],
+    move_records: Sequence[dict[str, Any]],
+    summaries: dict[str, dict[str, Any]],
     *,
     include_glyphs: bool,
-) -> Tuple[str, List[Dict[str, Any]]]:
+) -> tuple[str, list[dict[str, Any]]]:
     headers = dict(game.headers)
     headers["Annotator"] = "Koi"
     headers["WhiteAccuracy"] = f"{summaries['white']['accuracy']:.1f}%"
     headers["BlackAccuracy"] = f"{summaries['black']['accuracy']:.1f}%"
 
     board = game.board()
-    tokens: List[str] = []
-    json_moves: List[Dict[str, Any]] = []
+    tokens: list[str] = []
+    json_moves: list[dict[str, Any]] = []
     force_move_number = True
 
     mainline_nodes = list(game.mainline())
@@ -348,24 +348,24 @@ def annotate_pgn_file(
     pgn_path: Path,
     koi_path: Path,
     *,
-    depth: Optional[int] = None,
-    movetime_ms: Optional[int] = None,
-    nodes: Optional[int] = None,
+    depth: int | None = None,
+    movetime_ms: int | None = None,
+    nodes: int | None = None,
     threads: int = 1,
-    hash_mb: Optional[int] = None,
+    hash_mb: int | None = None,
     own_book: bool = False,
-    max_games: Optional[int] = None,
+    max_games: int | None = None,
     include_glyphs: bool = False,
-    eval_file: Optional[Path] = None,
+    eval_file: Path | None = None,
     hce: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Read `pgn_path`, annotate every game with Koi, and return PGN text + structured JSON."""
 
     _validate_annotation_options(depth, movetime_ms, nodes, threads, hash_mb, max_games)
     if eval_file is not None and hce:
         raise elo_oracle.OracleError("--eval-file and --hce cannot be combined.")
-    resolved_eval_file: Optional[Path] = None
-    engine_env: Optional[Dict[str, str]] = None
+    resolved_eval_file: Path | None = None
+    engine_env: dict[str, str] | None = None
     if eval_file is not None:
         resolved_eval_file = elo_oracle._resolve_file(
             eval_file, "NNUE file", "--eval-file <path.nnue>"
@@ -381,7 +381,7 @@ def annotate_pgn_file(
     raw_pgn, pgn_bytes = elo_oracle._read_pgn(pgn_path)
     stream = io.StringIO(raw_pgn)
 
-    games: List[Any] = []
+    games: list[Any] = []
     while True:
         if max_games is not None and len(games) >= max_games:
             break
@@ -395,15 +395,15 @@ def annotate_pgn_file(
     if not games:
         raise elo_oracle.OracleError(f"No PGN games found in '{pgn_path}'.")
 
-    engine_options: Dict[str, Any] = {
+    engine_options: dict[str, Any] = {
         "OwnBook": bool(own_book),
         "Threads": max(1, int(threads)),
     }
     if hash_mb is not None:
         engine_options["Hash"] = max(1, int(hash_mb))
 
-    annotated_pgn_blocks: List[str] = []
-    report_games: List[Dict[str, Any]] = []
+    annotated_pgn_blocks: list[str] = []
+    report_games: list[dict[str, Any]] = []
 
     with elo_oracle.UciEngine(koi_path, "Koi", extra_env=engine_env) as koi:
         engine_metadata = koi.metadata(engine_options)
@@ -491,7 +491,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:

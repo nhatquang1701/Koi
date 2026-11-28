@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Sequence
 
 try:
     from .elo_oracle import default_results_directory
@@ -144,11 +144,11 @@ def _find_powershell() -> str:
     raise MatchToolError("PowerShell (pwsh or powershell) is required to run uci_match.ps1.")
 
 
-def _append(command: List[str], name: str, value: object) -> None:
+def _append(command: list[str], name: str, value: object) -> None:
     command.extend((name, str(value)))
 
 
-def build_command(args: argparse.Namespace, powershell: Optional[str] = None) -> List[str]:
+def build_command(args: argparse.Namespace, powershell: str | None = None) -> list[str]:
     """Build a shell-free command for the existing PowerShell match harness."""
 
     script = Path(__file__).resolve().parents[1] / "stability" / "uci_match.ps1"
@@ -204,7 +204,7 @@ def build_command(args: argparse.Namespace, powershell: Optional[str] = None) ->
     return command
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if (args.time_control is None and args.movetime_ms is None and
             args.nodes is None and args.depth == 4):

@@ -16,7 +16,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping, Sequence
 
 
 SCHEMA = "koi-rough-elo-estimate-v1"
@@ -80,7 +80,7 @@ class Anchor:
     path: Path
     rating: int
     rating_source: str
-    stockfish_elo: Optional[int]
+    stockfish_elo: int | None
 
 
 @dataclass(frozen=True)
@@ -130,7 +130,7 @@ class MatchGame:
 
 @dataclass(frozen=True)
 class RatingFit:
-    elo: Optional[int]
+    elo: int | None
     raw_elo: float
     lower_bound: int
     upper_bound: int
@@ -318,7 +318,7 @@ def normalize_result(result: str, koi_color: str) -> float:
     return white_scores[result] if koi_color == "white" else 1.0 - white_scores[result]
 
 
-def _normalize_opening_names(opening_names: Optional[Sequence[str]]) -> tuple[str, ...]:
+def _normalize_opening_names(opening_names: Sequence[str] | None) -> tuple[str, ...]:
     if opening_names is None:
         return ()
     normalized = tuple(str(name).strip() for name in opening_names)
@@ -331,8 +331,8 @@ def plan_schedule(
     anchors: Sequence[Anchor],
     prior_elo: int,
     target_games: int,
-    observed_scores: Optional[Mapping[int, Sequence[float]]] = None,
-    opening_names: Optional[Sequence[str]] = None,
+    observed_scores: Mapping[int, Sequence[float]] | None = None,
+    opening_names: Sequence[str] | None = None,
     include_all_anchors: bool = False,
 ) -> tuple[BatchPlan, ...]:
     """Plan 64-game paired batches; unobserved dry runs are deterministic."""
@@ -394,7 +394,7 @@ def build_schedule_manifest(
     schedule: Sequence[BatchPlan],
     *,
     prior_elo: int,
-    opening_names: Optional[Sequence[str]] = None,
+    opening_names: Sequence[str] | None = None,
     run_labels: Sequence[str] = ("before", "after"),
     include_all_anchors: bool = False,
 ) -> dict[str, Any]:
@@ -459,7 +459,7 @@ def export_schedule(
     schedule: Sequence[BatchPlan],
     *,
     prior_elo: int,
-    opening_names: Optional[Sequence[str]] = None,
+    opening_names: Sequence[str] | None = None,
     run_labels: Sequence[str] = ("before", "after"),
     include_all_anchors: bool = False,
 ) -> dict[str, Any]:
@@ -485,8 +485,8 @@ def import_schedule(
     path: Path,
     anchors: Sequence[Anchor],
     *,
-    expected_openings: Optional[Sequence[str]] = None,
-    prior_elo: Optional[int] = None,
+    expected_openings: Sequence[str] | None = None,
+    prior_elo: int | None = None,
     require_all_anchors: bool = False,
 ) -> tuple[BatchPlan, ...]:
     """Load and validate an exported schedule before launching any engines."""
@@ -601,7 +601,7 @@ def import_schedule(
 load_schedule = import_schedule
 
 
-def koi_option_set(mode: str, book: Optional[Path]) -> dict[str, Any]:
+def koi_option_set(mode: str, book: Path | None) -> dict[str, Any]:
     options: dict[str, Any] = {"Hash": 512, "Threads": 4, "OwnBook": False}
     if mode == "no-book":
         if book is not None:
@@ -681,7 +681,7 @@ def bootstrap_ci(samples: Sequence[int]) -> tuple[int, int]:
 
 
 def reproducibility_hash(value: Any) -> str:
-    def stable(item: Any, context: Optional[str] = None) -> Any:
+    def stable(item: Any, context: str | None = None) -> Any:
         if isinstance(item, Mapping):
             return {
                 str(key): stable(nested, "artifact" if context == "artifact" else str(key))
@@ -822,7 +822,7 @@ def _require_evaluator_attestation(configuration: Mapping[str, Any], evaluator: 
     return attestation
 
 
-def validate_match_manifest(report: Mapping[str, Any], expected_openings: Mapping[str, Sequence[str]], koi_color: str, anchor: Anchor, koi_options: Mapping[str, Any], time_control: Optional[str], movetime_ms: Optional[int], koi_path: Path, evaluator: Optional[KoiEvaluator] = None) -> tuple[MatchGame, ...]:
+def validate_match_manifest(report: Mapping[str, Any], expected_openings: Mapping[str, Sequence[str]], koi_color: str, anchor: Anchor, koi_options: Mapping[str, Any], time_control: str | None, movetime_ms: int | None, koi_path: Path, evaluator: KoiEvaluator | None = None) -> tuple[MatchGame, ...]:
     """Validate a real v2 report before its games affect an Elo estimate."""
 
     if not isinstance(report, Mapping) or report.get("schema") != MATCH_SCHEMA:
@@ -951,13 +951,13 @@ def _harness_command(
     openings: Path,
     output_directory: Path,
     color: str,
-    time_control: Optional[str],
-    movetime_ms: Optional[int],
+    time_control: str | None,
+    movetime_ms: int | None,
     koi_options: Mapping[str, Any],
-    batch: Optional[BatchPlan] = None,
+    batch: BatchPlan | None = None,
     run_label: str = "measurement",
-    evaluator: Optional[KoiEvaluator] = None,
-    options_json: Optional[KoiOptionsJson] = None,
+    evaluator: KoiEvaluator | None = None,
+    options_json: KoiOptionsJson | None = None,
 ) -> list[str]:
     script = Path(__file__).resolve().parents[1] / "stability" / "uci_match.ps1"
     if not script.is_file():
@@ -994,13 +994,13 @@ def _run_color_batch(
     expected_openings: Mapping[str, Sequence[str]],
     output_directory: Path,
     color: str,
-    time_control: Optional[str],
-    movetime_ms: Optional[int],
+    time_control: str | None,
+    movetime_ms: int | None,
     koi_options: Mapping[str, Any],
-    batch: Optional[BatchPlan] = None,
+    batch: BatchPlan | None = None,
     run_label: str = "measurement",
-    evaluator: Optional[KoiEvaluator] = None,
-    options_json: Optional[KoiOptionsJson] = None,
+    evaluator: KoiEvaluator | None = None,
+    options_json: KoiOptionsJson | None = None,
 ) -> tuple[tuple[MatchGame, ...], list[dict[str, str]], Mapping[str, Any]]:
     command = _harness_command(
         powershell,
@@ -1061,7 +1061,7 @@ def _output_is_external(path: Path) -> Path:
     return resolved
 
 
-def _hashes(manifest: AnchorManifest, koi: Path, replay: Path, stockfish: Path, openings: Path, book: Optional[Path]) -> dict[str, Any]:
+def _hashes(manifest: AnchorManifest, koi: Path, replay: Path, stockfish: Path, openings: Path, book: Path | None) -> dict[str, Any]:
     executable_hashes = {"koi": sha256_file(koi, "Koi executable"), "replay": sha256_file(replay, "replay executable"), "stockfish": sha256_file(stockfish, "Stockfish executable")}
     for anchor in manifest.anchors:
         if anchor.stockfish_elo is None:
@@ -1129,9 +1129,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _validate_arguments(args: argparse.Namespace) -> tuple[
-    Path, Path, Path, Path, tuple[Opening, ...], AnchorManifest, Optional[str],
-    Optional[int], dict[str, Any], Path, dict[str, Any],
-    Optional[KoiEvaluator], Optional[KoiOptionsJson],
+    Path, Path, Path, Path, tuple[Opening, ...], AnchorManifest, str | None,
+    int | None, dict[str, Any], Path, dict[str, Any],
+    KoiEvaluator | None, KoiOptionsJson | None,
 ]:
     if args.threads != 4 or args.hash_mb != 512 or args.speed != 100:
         raise EloEstimateError("this estimator requires --threads 4 --hash 512 --speed 100")
@@ -1155,7 +1155,7 @@ def _validate_arguments(args: argparse.Namespace) -> tuple[
     return koi, replay, stockfish, openings_path, openings, manifest, time_control, args.movetime_ms, options, output, _hashes(manifest, koi, replay, stockfish, openings_path, book), evaluator, options_json
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
         koi, replay, stockfish, openings_path, openings, manifest, time_control, movetime_ms, options, output, hashes, evaluator, options_json = _validate_arguments(args)
@@ -1193,7 +1193,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             opening_names=opening_names,
             include_all_anchors=all_anchor_schedule,
         )
-        exported_schedule_path: Optional[Path] = None
+        exported_schedule_path: Path | None = None
         if args.schedule_export is not None:
             exported_schedule_path = _output_is_external(args.schedule_export)
             export_schedule(
@@ -1209,7 +1209,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         pairs: dict[int, list[tuple[float, float]]] = {}
         reports: list[dict[str, Any]] = []
         executed: list[BatchPlan] = []
-        evaluator_attestation: Optional[Mapping[str, Any]] = None
+        evaluator_attestation: Mapping[str, Any] | None = None
         if not args.dry_run:
             powershell = _powershell_executable()
             artifact_root = output.parent / f"{output.stem}-artifacts"

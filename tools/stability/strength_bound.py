@@ -38,6 +38,15 @@ class StrengthBoundError(ValueError):
 
 RESULTS = {"1-0", "0-1", "1/2-1/2", "*"}
 ENGINE_LABELS = {"Koi": "candidate", "Opponent": "baseline"}
+SHA256_HEX_RE = re.compile(r"[0-9a-fA-F]{64}")
+OPTION_DEFAULT_RE = re.compile(
+    r"^option name (.+?) type \S+ default (.*?)(?: min \S+| max \S+| var \S+|$)"
+)
+SETOPTION_RE = re.compile(r"^setoption name (.+?)(?: value (.*))?$")
+PGN_EVENT_SPLIT_RE = re.compile(r'(?m)(?=^\[Event\s+")')
+PGN_RESULT_HEADER_RE = re.compile(r'\[Result\s+"([^"]+)"\]')
+PGN_MOVE_NUMBER_RE = re.compile(r'\d+\.(?:\.\.)?')
+UCI_MOVE_RE = re.compile(r'[a-h][1-8][a-h][1-8][nbrq]?')
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -61,7 +70,7 @@ def _sha256(match: dict[str, Any], label: str, path: Path) -> str:
         raise StrengthBoundError(f"{path} must contain exactly one {label} engine")
     hashes = found[0].get("hashes")
     digest = hashes.get("executable_sha256") if isinstance(hashes, dict) else None
-    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+    if not isinstance(digest, str) or not SHA256_HEX_RE.fullmatch(digest):
         raise StrengthBoundError(f"{path} has invalid {label} executable SHA-256")
     if found[0].get("process_status") != "clean shutdown" or found[0].get("exit_code") != 0:
         raise StrengthBoundError(f"{path} {label} engine did not shut down cleanly")
@@ -110,13 +119,13 @@ def _effective_uci_options(engine: dict[str, Any], label: str, path: Path) -> di
     for line in handshake:
         if not isinstance(line, str):
             continue
-        match = re.match(r"^option name (.+?) type \S+ default (.*?)(?: min \S+| max \S+| var \S+|$)", line)
+        match = OPTION_DEFAULT_RE.match(line)
         if match and match.group(1) in RELEVANT_UCI_OPTIONS:
             effective[match.group(1)] = match.group(2).strip()
     for line in sent_options:
         if not isinstance(line, str):
             raise StrengthBoundError(f"{path} {label} has an invalid UCI option record")
-        match = re.match(r"^setoption name (.+?)(?: value (.*))?$", line)
+        match = SETOPTION_RE.match(line)
         if match and match.group(1) in RELEVANT_UCI_OPTIONS:
             if match.group(2) is None:
                 raise StrengthBoundError(f"{path} {label} UCI option {match.group(1)} lacks a value")
@@ -145,7 +154,7 @@ def _pgn_games(path: Path) -> list[tuple[str, list[str]]]:
         content = path.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeError) as error:
         raise StrengthBoundError(f"cannot read PGN {path}: {error}") from error
-    blocks = [block for block in re.split(r'(?m)(?=^\[Event\s+")', content.strip()) if block.strip()]
+    blocks = [block for block in PGN_EVENT_SPLIT_RE.split(content.strip()) if block.strip()]
     if not blocks:
         raise StrengthBoundError(f"{path} has no PGN games")
     games: list[tuple[str, list[str]]] = []
@@ -156,7 +165,7 @@ def _pgn_games(path: Path) -> list[tuple[str, list[str]]]:
             raise StrengthBoundError(f"{path} PGN game {index} has no header/movetext separator")
         headers = lines[:separator]
         result_headers = [match.group(1) for line in headers
-                          if (match := re.fullmatch(r'\[Result\s+"([^"]+)"\]', line))]
+                          if (match := PGN_RESULT_HEADER_RE.fullmatch(line))]
         if len(result_headers) != 1 or result_headers[0] not in RESULTS:
             raise StrengthBoundError(f"{path} PGN game {index} has invalid result header")
         if '[MoveFormat "UCI coordinate notation"]' not in headers:
@@ -166,9 +175,9 @@ def _pgn_games(path: Path) -> list[tuple[str, list[str]]]:
             raise StrengthBoundError(f"{path} PGN game {index} has missing or mismatched movetext result")
         moves: list[str] = []
         for token in tokens[:-1]:
-            if re.fullmatch(r'\d+\.(?:\.\.)?', token):
+            if PGN_MOVE_NUMBER_RE.fullmatch(token):
                 continue
-            if not re.fullmatch(r'[a-h][1-8][a-h][1-8][nbrq]?', token):
+            if not UCI_MOVE_RE.fullmatch(token):
                 raise StrengthBoundError(f"{path} PGN game {index} has invalid move token {token!r}")
             moves.append(token)
         if not moves:
@@ -351,10 +360,12 @@ def _clopper_pearson_upper(adverse_pairs: int, pair_count: int, alpha: float) ->
 
 def analyze(white_path: Path, black_path: Path, candidate_hash: str,
             baseline_hash: str, expected: dict[str, Any], alpha: float = 0.05) -> dict[str, Any]:
+    if not 0.0 < alpha < 1.0:
+        raise StrengthBoundError("--alpha must be between zero and one")
     candidate_hash = candidate_hash.lower()
     baseline_hash = baseline_hash.lower()
     for label, digest in (("candidate", candidate_hash), ("baseline", baseline_hash)):
-        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        if not SHA256_HEX_RE.fullmatch(digest):
             raise StrengthBoundError(f"expected {label} SHA-256 must be 64 hexadecimal characters")
     white_scores, white_caps, white_config, white_openings = _load_side(
         white_path, "white", expected, candidate_hash, baseline_hash
@@ -381,6 +392,7 @@ def analyze(white_path: Path, black_path: Path, candidate_hash: str,
     cp_lower_score = 0.5 * (1.0 - adverse_upper)
     cp_lower_elo = _elo(cp_lower_score)
     threshold = -10.0
+    all_scores = [*white_scores.values(), *black_scores.values()]
     return {
         "schema": "koi-strength-bound-v1",
         "candidate_sha256": candidate_hash,
@@ -388,9 +400,9 @@ def analyze(white_path: Path, black_path: Path, candidate_hash: str,
         "expected_configuration": expected,
         "paired_openings": len(pair_scores),
         "games": 2 * len(pair_scores),
-        "wins": sum(score == 1.0 for score in [*white_scores.values(), *black_scores.values()]),
-        "draws": sum(score == 0.5 for score in [*white_scores.values(), *black_scores.values()]),
-        "losses": sum(score == 0.0 for score in [*white_scores.values(), *black_scores.values()]),
+        "wins": sum(score == 1.0 for score in all_scores),
+        "draws": sum(score == 0.5 for score in all_scores),
+        "losses": sum(score == 0.0 for score in all_scores),
         "capped_games_counted_as_draws": sum(white_caps.values()) + sum(black_caps.values()),
         "mean_score": mean_score,
         "one_sided_confidence": 1.0 - alpha,
