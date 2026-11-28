@@ -28,38 +28,11 @@ int print_usage(std::ostream& out, const int exit_code) {
 }
 
 int run_perft_suite() {
-    const auto started = std::chrono::steady_clock::now();
-    std::size_t passed = 0;
-    std::uint64_t total_nodes = 0;
-    for (const koi::detail::PerftSuiteCase& entry : koi::detail::kPerftSuite) {
-        const auto parsed = koi::GameState::from_fen(entry.fen);
-        if (!parsed.has_value()) {
-            std::cout << "FAIL " << entry.name << " depth " << entry.depth
-                      << " expected " << entry.expected_nodes << " got 0\n";
-            continue;
-        }
-        koi::GameState state = *parsed;
-        const std::uint64_t actual = koi::perft(state, entry.depth);
-        total_nodes += actual;
-        if (actual == entry.expected_nodes) {
-            ++passed;
-            std::cout << "PASS " << entry.name << " depth " << entry.depth
-                      << " nodes " << actual << '\n';
-        } else {
-            std::cout << "FAIL " << entry.name << " depth " << entry.depth
-                      << " expected " << entry.expected_nodes << " got " << actual << '\n';
-        }
+    const koi::detail::PerftSuiteReport report = koi::detail::run_perft_suite();
+    for (const std::string& line : report.lines) {
+        std::cout << line << '\n';
     }
-    const auto elapsed_ms = std::max<std::int64_t>(
-        1, std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::steady_clock::now() - started)
-               .count());
-    const std::uint64_t nps = (total_nodes * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
-    std::cout << "suite " << passed << '/' << koi::detail::kPerftSuite.size()
-              << " passed | nodes " << total_nodes
-              << " | time_ms " << elapsed_ms
-              << " | nps " << nps << '\n';
-    return passed == koi::detail::kPerftSuite.size() ? 0 : 1;
+    return report.passed == report.total ? 0 : 1;
 }
 
 } // namespace

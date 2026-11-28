@@ -5,6 +5,7 @@
 #include "koi/evaluator.hpp"
 #include "koi/nnue.hpp"
 #include "koi/opening_book.hpp"
+#include "koi/perft.hpp"
 #include "koi/syzygy_tablebase.hpp"
 
 #include <algorithm>
@@ -12,6 +13,7 @@
 #include <bit>
 #include <cctype>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iomanip>
@@ -806,7 +808,7 @@ std::string format_interactive_help() {
         "  pgn                                 Export current position and move history as FIDE PGN\n"
         "  annotate <move|game> [limits]       Classify a UCI/SAN move or game history with accuracy & CPL\n"
         "  see <move>                          Show static exchange evaluation for a legal UCI/SAN move\n"
-        "  perft <depth>                       Run interruptible perft divide (depth 1..10)\n"
+        "  perft <depth|suite>                 Run interruptible perft divide (1..10) or 6-position CPW suite\n"
         "  bench [depth [hash [threads]]]      Run OpenBench-compatible benchmark\n"
         "  speedtest [threads [hash [secs]]]   Run timed NPS throughput benchmark\n"
         "  options                             Show live active UCI option values\n"
@@ -1872,6 +1874,48 @@ std::string format_epd(const GameState& position) {
     epd.append(fields[5]);
     epd += ";\n";
     return epd;
+}
+
+PerftSuiteReport run_perft_suite() {
+    PerftSuiteReport report;
+    report.total = kPerftSuite.size();
+    report.lines.reserve(kPerftSuite.size() + 1U);
+    const auto started = std::chrono::steady_clock::now();
+    for (const PerftSuiteCase& entry : kPerftSuite) {
+        const auto parsed = GameState::from_fen(entry.fen);
+        if (!parsed.has_value()) {
+            report.lines.push_back(
+                "FAIL " + std::string(entry.name) + " depth " + std::to_string(entry.depth) +
+                " expected " + std::to_string(entry.expected_nodes) + " got 0");
+            continue;
+        }
+        GameState state = *parsed;
+        const std::uint64_t actual = koi::perft(state, entry.depth);
+        report.total_nodes += actual;
+        if (actual == entry.expected_nodes) {
+            ++report.passed;
+            report.lines.push_back(
+                "PASS " + std::string(entry.name) + " depth " + std::to_string(entry.depth) +
+                " nodes " + std::to_string(actual));
+        } else {
+            report.lines.push_back(
+                "FAIL " + std::string(entry.name) + " depth " + std::to_string(entry.depth) +
+                " expected " + std::to_string(entry.expected_nodes) + " got " +
+                std::to_string(actual));
+        }
+    }
+    report.elapsed_ms = std::max<std::int64_t>(
+        1, std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - started)
+               .count());
+    const std::uint64_t nps =
+        (report.total_nodes * 1000ULL) / static_cast<std::uint64_t>(report.elapsed_ms);
+    report.lines.push_back(
+        "suite " + std::to_string(report.passed) + '/' + std::to_string(report.total) +
+        " passed | nodes " + std::to_string(report.total_nodes) +
+        " | time_ms " + std::to_string(report.elapsed_ms) +
+        " | nps " + std::to_string(nps));
+    return report;
 }
 
 } // namespace koi::detail

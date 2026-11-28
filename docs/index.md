@@ -83,7 +83,7 @@ koi-engine --version              # Print version and git build commit
 koi-engine --engine-json          # Print En Croissant / Pawn Appétit JSON profile
 ```
 
-Inside a UCI session, Koi also accepts `d`, `fen`, `epd`, `key`, `moves [san]`, `book`, `tb`, `eval`, `nnue`, `flip`, `makemove <move...>`, `undo [plies]`, `history`, `pgn`, `annotate <move|game>`, `see <move>`, `options`, `compiler`, `bench [depth [hash [threads]]]`, `speedtest [threads [hash [seconds]]]`, `perft <depth>`, `wait`, and `help` (and one-shot CLI position arguments accept `startpos`, a FEN, or `moves <uci|san>...`). For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
+Inside a UCI session, Koi also accepts `d`, `fen`, `epd`, `key`, `moves [san]`, `book`, `tb`, `eval`, `nnue`, `flip`, `makemove <move...>`, `undo [plies]`, `history`, `pgn`, `annotate <move|game>`, `see <move>`, `options`, `compiler`, `bench [depth [hash [threads]]]`, `speedtest [threads [hash [seconds]]]`, `perft <depth|suite>`, `wait`, and `help` (and one-shot CLI position arguments accept `startpos`, a FEN, or `moves <uci|san>...`). For full flag details, see the [CLI & Interactive Reference](docs/CLI.md).
 
 ---
 

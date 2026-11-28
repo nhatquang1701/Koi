@@ -92,6 +92,11 @@ std::uint64_t option_maximum(const UciOptionDescriptor& option) {
                                   : option.maximum;
 }
 
+bool parse_bounded_uint64(const std::string_view token, const std::uint64_t min_value,
+                          const std::uint64_t max_value, std::uint64_t& out) noexcept {
+    return parse_uint64(token, out) && out >= min_value && out <= max_value;
+}
+
 std::string display_filename(const std::filesystem::path& path) {
     return path.filename().empty() ? path.string() : path.filename().string();
 }
@@ -1616,9 +1621,28 @@ void UciController::handle_pgn() {
 
 void UciController::handle_perft_command(std::istream& command) {
     std::string token;
+    if (!(command >> token)) {
+        write_uci_info_string("perft ignored invalid depth (expected 1..10 or suite)");
+        return;
+    }
+    std::string extra;
+    if (command >> extra) {
+        write_uci_info_string("perft ignored unexpected trailing argument '" + extra + "'");
+        return;
+    }
+    if (equals_ignore_case(token, "suite") || token == "--suite") {
+        stop_and_suppress_active_search();
+        const detail::PerftSuiteReport report = detail::run_perft_suite();
+        std::lock_guard lock(output_mutex_);
+        for (const std::string& line : report.lines) {
+            output_ << line << '\n';
+        }
+        output_ << std::flush;
+        return;
+    }
     std::uint64_t parsed = 0;
-    if (!(command >> token) || !parse_uint64(token, parsed) || parsed == 0 || parsed > 10) {
-        write_uci_info_string("perft ignored invalid depth (expected 1..10)");
+    if (!parse_bounded_uint64(token, 1, 10, parsed)) {
+        write_uci_info_string("perft ignored invalid depth (expected 1..10 or suite)");
         return;
     }
     stop_and_suppress_active_search();
@@ -1639,7 +1663,7 @@ void UciController::handle_bench(std::istream& command) {
     std::string token;
     if (command >> token) {
         std::uint64_t parsed = 0;
-        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > 64) {
+        if (!parse_bounded_uint64(token, 1, 64, parsed)) {
             write_uci_info_string("bench ignored invalid depth '" + token + "' (expected 1..64)");
             return;
         }
@@ -1647,7 +1671,7 @@ void UciController::handle_bench(std::istream& command) {
     }
     if (command >> token) {
         std::uint64_t parsed = 0;
-        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > kMaximumHashMegabytes) {
+        if (!parse_bounded_uint64(token, 1, kMaximumHashMegabytes, parsed)) {
             write_uci_info_string("bench ignored invalid hash '" + token + "' (expected 1.." +
                                   std::to_string(kMaximumHashMegabytes) + ")");
             return;
@@ -1657,7 +1681,7 @@ void UciController::handle_bench(std::istream& command) {
     if (command >> token) {
         std::uint64_t parsed = 0;
         const std::uint64_t max_threads = static_cast<std::uint64_t>(maximum_search_threads());
-        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > max_threads) {
+        if (!parse_bounded_uint64(token, 1, max_threads, parsed)) {
             write_uci_info_string("bench ignored invalid threads '" + token + "' (expected 1.." +
                                   std::to_string(max_threads) + ")");
             return;
@@ -1748,10 +1772,10 @@ void UciController::handle_options() {
     output_ << detail::format_options_summary(snapshot) << std::flush;
 }
 
-int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads) {
-    depth = std::clamp(depth, 1, 64);
-    hash_mb = std::clamp<std::size_t>(hash_mb, 1, static_cast<std::size_t>(kMaximumHashMegabytes));
-    threads = std::clamp<std::size_t>(threads, 1, maximum_search_threads());
+std::pair<std::uint64_t, std::int64_t> UciController::run_bench_positions(
+    std::size_t position_count, std::size_t hash_mb, std::size_t threads,
+    const SearchLimits& limits) {
+    position_count = std::min(position_count, kBenchFens.size());
     stop_and_suppress_active_search();
 
     const std::size_t saved_hash_mb = search_service_.hash_size_mb();
@@ -1762,101 +1786,6 @@ int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads
     options.multi_pv = 1;
     options.hash_mb = 0;
     options.interim_report_interval = std::chrono::milliseconds{0};
-
-    SearchLimits limits;
-    limits.depth = depth;
-
-    std::uint64_t total_nodes = 0;
-    const auto started = std::chrono::steady_clock::now();
-    for (const std::string_view fen : kBenchFens) {
-        const auto parsed = GameState::from_fen(fen);
-        if (!parsed.has_value()) {
-            continue;
-        }
-        search_service_.clear_hash();
-        SearchResult completed_result;
-        SearchEventSink sink;
-        sink.on_complete = [&completed_result](const SearchResult& result) {
-            completed_result = result;
-        };
-        SearchHandle handle = search_service_.start(*parsed, limits, std::move(sink), options);
-        handle.wait();
-        total_nodes += completed_result.stats.nodes + completed_result.stats.qnodes;
-    }
-    const auto elapsed_ms = std::max<std::int64_t>(
-        1, std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::steady_clock::now() - started)
-               .count());
-
-    (void)search_service_.set_hash_size_mb(saved_hash_mb);
-    search_service_.clear_hash();
-
-    std::lock_guard lock(output_mutex_);
-    output_ << detail::format_bench_summary(total_nodes, elapsed_ms) << std::flush;
-    return 0;
-}
-
-void UciController::handle_speedtest(std::istream& command) {
-    std::size_t threads = kDefaultSpeedtestThreads;
-    std::size_t hash_mb = kDefaultSpeedtestHashMb;
-    int seconds = kDefaultSpeedtestSeconds;
-    const std::uint64_t max_threads = static_cast<std::uint64_t>(maximum_search_threads());
-    std::string token;
-    if (command >> token) {
-        std::uint64_t parsed = 0;
-        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > max_threads) {
-            write_uci_info_string("speedtest ignored invalid threads '" + token + "' (expected 1.." +
-                                  std::to_string(max_threads) + ")");
-            return;
-        }
-        threads = static_cast<std::size_t>(parsed);
-    }
-    if (command >> token) {
-        std::uint64_t parsed = 0;
-        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > kMaximumHashMegabytes) {
-            write_uci_info_string("speedtest ignored invalid hash '" + token + "' (expected 1.." +
-                                  std::to_string(kMaximumHashMegabytes) + ")");
-            return;
-        }
-        hash_mb = static_cast<std::size_t>(parsed);
-    }
-    if (command >> token) {
-        std::uint64_t parsed = 0;
-        if (!parse_uint64(token, parsed) || parsed < 1 || parsed > 60) {
-            write_uci_info_string("speedtest ignored invalid seconds '" + token +
-                                  "' (expected 1..60)");
-            return;
-        }
-        seconds = static_cast<int>(parsed);
-    }
-    if (command >> token) {
-        write_uci_info_string("speedtest ignored unexpected trailing argument '" + token + "'");
-        return;
-    }
-    (void)run_speedtest(threads, hash_mb, seconds);
-}
-
-int UciController::run_speedtest(std::size_t threads, std::size_t hash_mb, int runtime_seconds) {
-    threads = std::clamp<std::size_t>(threads, 1, maximum_search_threads());
-    hash_mb = std::clamp<std::size_t>(hash_mb, 1, static_cast<std::size_t>(kMaximumHashMegabytes));
-    runtime_seconds = std::clamp(runtime_seconds, 1, 60);
-    stop_and_suppress_active_search();
-
-    const std::size_t saved_hash_mb = search_service_.hash_size_mb();
-    (void)search_service_.set_hash_size_mb(hash_mb);
-
-    const std::size_t position_count = std::min<std::size_t>(kBenchFens.size(), 4);
-    const std::chrono::milliseconds per_position_budget{
-        std::max(100, (runtime_seconds * 1000) / static_cast<int>(std::max<std::size_t>(1, position_count)))};
-
-    SearchOptions options;
-    options.threads = threads;
-    options.multi_pv = 1;
-    options.hash_mb = 0;
-    options.interim_report_interval = std::chrono::milliseconds{0};
-
-    SearchLimits limits;
-    limits.movetime = per_position_budget;
 
     std::uint64_t total_nodes = 0;
     const auto started = std::chrono::steady_clock::now();
@@ -1882,6 +1811,76 @@ int UciController::run_speedtest(std::size_t threads, std::size_t hash_mb, int r
 
     (void)search_service_.set_hash_size_mb(saved_hash_mb);
     search_service_.clear_hash();
+    return {total_nodes, elapsed_ms};
+}
+
+int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads) {
+    depth = std::clamp(depth, 1, 64);
+    hash_mb = std::clamp<std::size_t>(hash_mb, 1, static_cast<std::size_t>(kMaximumHashMegabytes));
+    threads = std::clamp<std::size_t>(threads, 1, maximum_search_threads());
+
+    SearchLimits limits;
+    limits.depth = depth;
+    const auto [total_nodes, elapsed_ms] =
+        run_bench_positions(kBenchFens.size(), hash_mb, threads, limits);
+
+    std::lock_guard lock(output_mutex_);
+    output_ << detail::format_bench_summary(total_nodes, elapsed_ms) << std::flush;
+    return 0;
+}
+
+void UciController::handle_speedtest(std::istream& command) {
+    std::size_t threads = kDefaultSpeedtestThreads;
+    std::size_t hash_mb = kDefaultSpeedtestHashMb;
+    int seconds = kDefaultSpeedtestSeconds;
+    const std::uint64_t max_threads = static_cast<std::uint64_t>(maximum_search_threads());
+    std::string token;
+    if (command >> token) {
+        std::uint64_t parsed = 0;
+        if (!parse_bounded_uint64(token, 1, max_threads, parsed)) {
+            write_uci_info_string("speedtest ignored invalid threads '" + token + "' (expected 1.." +
+                                  std::to_string(max_threads) + ")");
+            return;
+        }
+        threads = static_cast<std::size_t>(parsed);
+    }
+    if (command >> token) {
+        std::uint64_t parsed = 0;
+        if (!parse_bounded_uint64(token, 1, kMaximumHashMegabytes, parsed)) {
+            write_uci_info_string("speedtest ignored invalid hash '" + token + "' (expected 1.." +
+                                  std::to_string(kMaximumHashMegabytes) + ")");
+            return;
+        }
+        hash_mb = static_cast<std::size_t>(parsed);
+    }
+    if (command >> token) {
+        std::uint64_t parsed = 0;
+        if (!parse_bounded_uint64(token, 1, 60, parsed)) {
+            write_uci_info_string("speedtest ignored invalid seconds '" + token +
+                                  "' (expected 1..60)");
+            return;
+        }
+        seconds = static_cast<int>(parsed);
+    }
+    if (command >> token) {
+        write_uci_info_string("speedtest ignored unexpected trailing argument '" + token + "'");
+        return;
+    }
+    (void)run_speedtest(threads, hash_mb, seconds);
+}
+
+int UciController::run_speedtest(std::size_t threads, std::size_t hash_mb, int runtime_seconds) {
+    threads = std::clamp<std::size_t>(threads, 1, maximum_search_threads());
+    hash_mb = std::clamp<std::size_t>(hash_mb, 1, static_cast<std::size_t>(kMaximumHashMegabytes));
+    runtime_seconds = std::clamp(runtime_seconds, 1, 60);
+
+    const std::size_t position_count = std::min<std::size_t>(kBenchFens.size(), 4);
+    SearchLimits limits;
+    limits.movetime = std::chrono::milliseconds{
+        std::max(100, (runtime_seconds * 1000) / static_cast<int>(std::max<std::size_t>(1, position_count)))};
+
+    const auto [total_nodes, elapsed_ms] =
+        run_bench_positions(position_count, hash_mb, threads, limits);
 
     std::lock_guard lock(output_mutex_);
     output_ << detail::format_speedtest_summary(threads, hash_mb, total_nodes, elapsed_ms)

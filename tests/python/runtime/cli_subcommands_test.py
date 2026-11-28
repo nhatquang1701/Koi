@@ -733,6 +733,17 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("Contempt        : 15 cp", live_options.stdout)
         self.assertIn("Evaluator       : HCE", live_options.stdout)
 
+        perft_cmd = self._run(
+            ["--hce", "-c", "perft suite", "-c", "perft 2 extra"],
+            disable_nnue=True,
+            timeout=60,
+        )
+        self.assertEqual(perft_cmd.returncode, 0, perft_cmd.stderr)
+        self.assertEqual(perft_cmd.stderr, "")
+        self.assertIn("PASS startpos depth 4 nodes 197281", perft_cmd.stdout)
+        self.assertIn("suite 6/6 passed | nodes 10746536 |", perft_cmd.stdout)
+        self.assertIn("info string perft ignored unexpected trailing argument 'extra'", perft_cmd.stdout)
+
         cli_hash_threads = self._run(
             ["--hce", "--hash", "64", "--threads", "1", "options"],
             disable_nnue=True,

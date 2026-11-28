@@ -113,6 +113,15 @@ inline constexpr std::array<PerftSuiteCase, 6> kPerftSuite{{
     {"position-6", "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 4, 3894594},
 }};
 
+struct PerftSuiteReport {
+    std::vector<std::string> lines;
+    std::size_t passed = 0;
+    std::size_t total = 0;
+    std::uint64_t total_nodes = 0;
+    std::int64_t elapsed_ms = 0;
+};
+[[nodiscard]] PerftSuiteReport run_perft_suite();
+
 // Reads one protocol line while capping the retained size at `limit` bytes.
 // The rest of an oversized line is consumed (so the next command still starts
 // at a line boundary) and `truncated` reports that it must be rejected.

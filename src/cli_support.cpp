@@ -118,7 +118,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  book [fen]                               Probe Polyglot opening book entries for position\n"
               << "  tb [fen]                                 Probe Syzygy tablebases for root WDL and best moves\n"
               << "  see <move> [fen]                         Compute static exchange evaluation gain in cp\n\n"
-              << "Interactive UCI commands also include: d, fen, epd, key, moves [san], book, tb, eval, nnue, flip, makemove <move...>, undo [plies], history, pgn, annotate <move|game>, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth>, wait, help\n";
+              << "Interactive UCI commands also include: d, fen, epd, key, moves [san], book, tb, eval, nnue, flip, makemove <move...>, undo [plies], history, pgn, annotate <move|game>, see <move>, compiler, bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], options, perft <depth|suite>, wait, help\n";
 }
 
 std::optional<GameState> resolve_cli_position(const std::optional<std::string>& fen) {
@@ -651,7 +651,7 @@ std::optional<int> parse_cli_options(
                      "--protocol <name>, --hash <mb>, --threads <n>, -c/--cmd <command>, "
                      "--hce, --nnue <path>, --book <path>, --syzygy <path>, "
                      "bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], "
-                     "compiler, nnue [path], eval [fen], options, perft <depth> [fen], "
+                     "compiler, nnue [path], eval [fen], options, perft <depth|--suite> [fen], "
                      "d [fen], fen [fen], key [fen], moves [fen], pgn [fen], flip [fen], book [fen], "
                      "tb [fen], see <move> [fen]).\n";
         return 2;
@@ -918,38 +918,12 @@ std::optional<int> run_zero_network_cli_command(
         return 0;
     }
     if (options.perft_suite) {
-        const auto started = std::chrono::steady_clock::now();
-        std::size_t passed = 0;
-        std::uint64_t total_nodes = 0;
-        for (const detail::PerftSuiteCase& entry : detail::kPerftSuite) {
-            const auto parsed = GameState::from_fen(entry.fen);
-            if (!parsed.has_value()) {
-                std::cout << "FAIL " << entry.name << " depth " << entry.depth
-                          << " expected " << entry.expected_nodes << " got 0\n";
-                continue;
-            }
-            GameState state = *parsed;
-            const std::uint64_t actual = perft(state, entry.depth);
-            total_nodes += actual;
-            if (actual == entry.expected_nodes) {
-                ++passed;
-                std::cout << "PASS " << entry.name << " depth " << entry.depth
-                          << " nodes " << actual << '\n';
-            } else {
-                std::cout << "FAIL " << entry.name << " depth " << entry.depth
-                          << " expected " << entry.expected_nodes << " got " << actual << '\n';
-            }
+        const detail::PerftSuiteReport report = detail::run_perft_suite();
+        for (const std::string& line : report.lines) {
+            std::cout << line << '\n';
         }
-        const auto elapsed_ms = std::max<std::int64_t>(
-            1, std::chrono::duration_cast<std::chrono::milliseconds>(
-                   std::chrono::steady_clock::now() - started)
-                   .count());
-        const std::uint64_t nps = (total_nodes * 1000ULL) / static_cast<std::uint64_t>(elapsed_ms);
-        std::cout << "suite " << passed << '/' << detail::kPerftSuite.size()
-                  << " passed | nodes " << total_nodes
-                  << " | time_ms " << elapsed_ms
-                  << " | nps " << nps << '\n' << std::flush;
-        return passed == detail::kPerftSuite.size() ? 0 : 1;
+        std::cout << std::flush;
+        return report.passed == report.total ? 0 : 1;
     }
     if (options.perft_depth.has_value()) {
         const std::optional<GameState> resolved = resolve_cli_position(options.perft_fen);

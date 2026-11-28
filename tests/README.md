@@ -229,7 +229,7 @@ with `PYTHONPATH=.` on Python 3.10) from the repository root:
   `help`/`--help`, `--engine-json` including `--threads`/`--hash` overrides,
   `--hash`, `--threads`, `compiler`, `nnue`, `options`, `speedtest`, `-c`/`--cmd`,
   `d`/`--display`, `fen`, `key`, `moves`, `flip`, `book`, `tb`, `see`, `eval`,
-  `perft <depth> [pos]`, `bench`, `--hce`/`--nnue`/`--book`/`--syzygy`/`--protocol`
+  `perft <depth|--suite> [pos]`, `bench`, `--hce`/`--nnue`/`--book`/`--syzygy`/`--protocol`
   both one-shot and in live sessions, and invalid-argument exit codes across
   `koi-engine` and companion tools).
 ## Labels and scheduling

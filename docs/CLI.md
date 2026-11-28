@@ -179,7 +179,7 @@ Inside a live `koi-engine` stdin session, standard UCI commands (`uci`, `isready
 | `pgn` | — | Export the current position and move history as FIDE PGN (Seven Tag Roster, `[SetUp]`/`[FEN]` when custom, SAN movetext, and result) |
 | `annotate` | `<move\|game> [limits]` | Classify a UCI/SAN move or current game history with win-probability accuracy, centipawn loss, and NAG glyphs |
 | `see` | `<move>` | Compute bitboard Static Exchange Evaluation (SEE) gain for a legal UCI or SAN move in centipawns |
-| `perft` | `<depth>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position |
+| `perft` | `<depth\|suite>` | Run an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position, or run the 6-position CPW verification suite (`suite` / `--suite`) |
 | `bench` | `[depth [hash [threads]]]` | Run the 16-position deterministic benchmark inside the active session |
 | `speedtest` | `[threads [hash [seconds]]]` | Run a timed multi-position NPS throughput benchmark (`seconds` in `1..60`) |
 | `options` | — | Print live active protocol, evaluator, search, book, and Syzygy option values |

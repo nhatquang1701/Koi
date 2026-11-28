@@ -138,6 +138,9 @@ private:
     void handle_help();
     void reset_new_game();
     void rewind_position_history(std::size_t plies);
+    [[nodiscard]] std::pair<std::uint64_t, std::int64_t> run_bench_positions(
+        std::size_t position_count, std::size_t hash_mb, std::size_t threads,
+        const SearchLimits& limits);
     bool handle_xboard_command(std::string_view name, std::istream& command, bool& should_quit);
     void start_xboard_search(bool analyze_mode);
     void apply_pending_xboard_move();

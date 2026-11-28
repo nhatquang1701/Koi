@@ -774,17 +774,21 @@ Rules for `setoption`:
 | `debug on/off` | Toggles the debug log (stops/joins if changed). |
 | `d` | Displays the ASCII board, FEN, Zobrist key, side, check state, legal move count, and FIDE game state (`ongoing`, `checkmate`, `stalemate`, or draw reason; also zero-network CLI `d`/`--display [fen]`). |
 | `fen` | Prints the six-field FEN of the current position (also zero-network CLI `fen [fen]` / `fen moves ...`). |
+| `epd` | Prints standard EPD (`hmvc` and `fmvn` opcodes) of the current position (also zero-network CLI `epd [fen]`). |
 | `key` | Prints the hexadecimal 64-bit Zobrist position key, pawn hash key, and Polyglot book key (also zero-network CLI `key [fen]`). |
-| `moves` | Lists all legal moves sorted lexicographically in UCI coordinate notation (also zero-network CLI `moves [fen]`). |
+| `moves [san]` | Lists all legal moves sorted lexicographically in UCI coordinate notation or FIDE SAN (`san` / CLI `moves --san [fen]`). |
 | `book` | Lists all legal Polyglot book entries with weights and selection percentages for the current position (also zero-network CLI `book [fen]` with optional `--book <path>`). |
 | `tb` | Probes active Syzygy tablebases for root WDL classification and optimal root moves (also zero-network CLI `tb [fen]` with optional `--syzygy <path>`). |
 | `eval` | Prints active evaluator details (`NNUE` version/feature set/shape, payload SHA-256 prefix, output bucket, quantization parameters, or `HCE` term breakdown), static score, heuristic WDL triplet, and game phase (also CLI `eval`/`--eval [fen]`). |
 | `nnue` | Prints active loaded NNUE container metadata and payload SHA-256 checksum, or `NNUE : inactive (EvalMode=hce)` when running classical evaluation (also CLI `nnue [path]`). |
 | `flip` | Toggles side to move when legal (rejects positions with the moving king in check; also zero-network CLI `flip [fen]`). |
-| `makemove <uci...>` | Applies one or more legal UCI moves transactionally to the current board and move history (rejects invalid sequences without mutating state). |
+| `makemove <move...>` | Applies one or more legal UCI or FIDE SAN moves transactionally to the current board and move history (rejects invalid sequences without mutating state). |
 | `undo [plies]` | Reverts `N` plies (default `1`) from `position_moves_` when sufficient move history is available. |
-| `see <move>` | Evaluates bitboard static exchange gain for a legal move in centipawns (also zero-network CLI `see <move> [fen]`). |
-| `perft <depth>` | Runs an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position (also CLI `perft <depth> [fen]`). |
+| `history` | Prints the position origin (`startpos` or FEN), ply count, UCI moves, FIDE SAN movetext (`SAN :`), and full `position ...` command (also zero-network CLI `history [pos]`). |
+| `pgn` | Exports the current position and move history as FIDE PGN (Seven Tag Roster, `[SetUp]`/`[FEN]` when non-startpos, SAN movetext, and game result; also zero-network CLI `pgn [pos]`). |
+| `annotate <move\|game> [limits]` | Evaluates a single UCI/SAN move or replays and scores the recorded game history with win-probability accuracy, centipawn loss, and NAG glyphs. |
+| `see <move>` | Evaluates bitboard static exchange gain for a legal UCI or FIDE SAN move in centipawns (also zero-network CLI `see <move> [fen]`). |
+| `perft <depth\|suite>` | Runs an interruptible perft divide (`1..10`) with elapsed time and NPS from the current position, or runs the 6-position CPW verification suite (`suite` / `--suite`; also CLI `perft <depth\|--suite> [fen]`). |
 | `bench [depth [hash [threads]]]` | Runs the 16-position deterministic benchmark (defaults `10 16 1`; also invocable from CLI as `bench` or `--bench`; see [CLI Reference](CLI.md) for full flags and batch `-c`/`--cmd` mode). |
 | `speedtest [threads [hash [seconds]]]` | Runs a timed multi-position NPS throughput benchmark across the leading benchmark positions (defaults `1 128 3`; also invocable as CLI `speedtest` / `--speedtest`). |
 | `options` | Prints the active protocol, evaluator, search, opening-book, and Syzygy option state without mutating search state (also CLI `options` / `--options`). |

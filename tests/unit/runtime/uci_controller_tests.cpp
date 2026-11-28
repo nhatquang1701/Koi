@@ -3121,6 +3121,25 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
             "wait after finite search plus stop after infinite search must emit two bestmoves; got:\n" +
                 wait_raw);
 
+    std::istringstream perft_suite_input(
+        "perft suite\n"
+        "perft --suite\n"
+        "perft 2 extra\n"
+        "quit\n");
+    std::ostringstream perft_suite_output;
+    std::ostringstream perft_suite_diag;
+    auto perft_suite_holder =
+        koi::test::make_uci_controller(perft_suite_input, perft_suite_output, perft_suite_diag);
+    const int perft_suite_exit = perft_suite_holder->run();
+    const std::string perft_suite_raw = perft_suite_output.str();
+    require(perft_suite_exit == 0 && perft_suite_diag.str().empty(),
+            "interactive perft suite command sequence must shut down cleanly");
+    require(perft_suite_raw.find("PASS startpos depth 4 nodes 197281\n") != std::string::npos &&
+                perft_suite_raw.find("suite 6/6 passed | nodes 10746536 |") != std::string::npos &&
+                perft_suite_raw.find("info string perft ignored unexpected trailing argument 'extra'") !=
+                    std::string::npos,
+            "interactive perft suite or trailing-arg diagnostic mismatch; got:\n" + perft_suite_raw);
+
     std::istringstream see_input(
         "position fen 4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1\n"
         "see e4d5\n"
@@ -3377,6 +3396,23 @@ void test_uci_support_helpers_direct() {
                 with_history->state.fen() ==
                     "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2",
             "parse_cli_position_with_history must return origin, applied moves, and state");
+
+    const auto fen4_history = parse_cli_position_with_history(
+        "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - moves O-O", spec_error);
+    require(fen4_history.has_value() &&
+                fen4_history->origin.fen() == "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1" &&
+                fen4_history->moves.size() == 1 &&
+                fen4_history->moves[0].uci() == "e1g1" &&
+                fen4_history->state.fen() == "r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1",
+            "parse_cli_position_with_history must normalize 4-field CLI FENs and apply SAN moves");
+    std::string fen3_err;
+    require(!parse_cli_position_spec("r3k2r/8/8/8/8/8/8/R3K2R w KQkq", fen3_err).has_value() &&
+                fen3_err.find("invalid FEN") != std::string::npos,
+            "parse_cli_position_spec must reject 3-field FENs");
+    std::string fen5_err;
+    require(!parse_cli_position_spec("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0", fen5_err).has_value() &&
+                fen5_err.find("invalid FEN") != std::string::npos,
+            "parse_cli_position_spec must reject 5-field FENs");
 
     const std::optional<koi::Move> e2e4 = koi::Move::parse_uci("e2e4");
     const std::optional<koi::Move> d2d4 = koi::Move::parse_uci("d2d4");
@@ -3788,6 +3824,19 @@ void test_uci_support_helpers_direct() {
     for (const std::string& line : divide_lines) {
         require(line.find("info string") == std::string::npos,
                 "format_perft_divide_lines must remain protocol-literal free");
+    }
+
+    const PerftSuiteReport suite_report = run_perft_suite();
+    require(suite_report.passed == 6 && suite_report.total == 6 &&
+                suite_report.total_nodes == 10'746'536ULL &&
+                suite_report.elapsed_ms >= 1 &&
+                suite_report.lines.size() == 7 &&
+                suite_report.lines.front() == "PASS startpos depth 4 nodes 197281" &&
+                suite_report.lines.back().rfind("suite 6/6 passed | nodes 10746536 |", 0) == 0,
+            "run_perft_suite summary mismatch");
+    for (const std::string& line : suite_report.lines) {
+        require(line.find("info string") == std::string::npos,
+                "run_perft_suite must remain protocol-literal free");
     }
 
     const std::string bench_text = format_bench_summary(400, 250);

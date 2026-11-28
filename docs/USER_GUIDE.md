@@ -668,12 +668,13 @@ cases run as ordinary fatal tests.
 
 In addition to standard UCI/XBoard sessions, `koi-engine` supports standard chess-engine CLI options and interactive terminal commands:
 
-- **CLI subcommands & flags:** `koi-engine -c <cmd>` (`--cmd <cmd>`, repeatable batch execution with automatic `wait` + `quit`), `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine speedtest [threads [hash [seconds]]]` (or `--speedtest`, timed multi-position NPS throughput benchmark), `koi-engine compiler` (`--compiler`), `koi-engine nnue [path]` (zero-Python container metadata & payload SHA-256 verification), `koi-engine d`/`--display [pos]`, `koi-engine fen [pos]`, `koi-engine key [pos]`, `koi-engine moves [pos]`, `koi-engine pgn [pos]`, `koi-engine flip [pos]`, `koi-engine book [pos]` (optional `--book <path>`), `koi-engine tb [pos]` (optional `--syzygy <path>`), `koi-engine see <move> [pos]`, `koi-engine eval [pos]` (`--eval [pos]`), `koi-engine options` (`--options`), `koi-engine perft <depth> [pos]` (`1..10`) — where `[pos]` accepts `startpos`, a quoted/unquoted FEN, or `[startpos|fen] [moves <uci|san>...]` — plus `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine version` (`--version` / `-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine help` (`--help` / `-h`).
+- **CLI subcommands & flags:** `koi-engine -c <cmd>` (`--cmd <cmd>`, repeatable batch execution with automatic `wait` + `quit`), `koi-engine bench [depth [hash [threads]]]` (or `--bench`, OpenBench-compatible deterministic benchmark), `koi-engine speedtest [threads [hash [seconds]]]` (or `--speedtest`, timed multi-position NPS throughput benchmark), `koi-engine compiler` (`--compiler`), `koi-engine nnue [path]` (zero-Python container metadata & payload SHA-256 verification), `koi-engine d`/`--display [pos]`, `koi-engine fen [pos]`, `koi-engine epd [pos]`, `koi-engine key [pos]`, `koi-engine moves [--san] [pos]`, `koi-engine history [pos]`, `koi-engine pgn [pos]`, `koi-engine flip [pos]`, `koi-engine book [pos]` (optional `--book <path>`), `koi-engine tb [pos]` (optional `--syzygy <path>`), `koi-engine see <move> [pos]`, `koi-engine eval [pos]` (`--eval [pos]`), `koi-engine options` (`--options`), `koi-engine perft <depth|--suite> [pos]` (`1..10` or 6-position CPW suite) — where `[pos]` accepts `startpos`, a quoted/unquoted 4-or-6-field FEN, or `[startpos|fen] [moves <uci|san>...]` — plus `koi-engine --hash <mb>`, `koi-engine --threads <n>`, `koi-engine --hce` (force HCE without a network), `koi-engine --nnue <path>` (override `KOI_NNUE_PATH`/`KOI_EVALUATOR`), `koi-engine --book <path>`, `koi-engine --syzygy <path>`, `koi-engine version` (`--version` / `-v`), `koi-engine --engine-json`, `koi-engine --protocol <uci|usi|ucci|ucicyclone|xboard>`, and `koi-engine help` (`--help` / `-h`).
 - **Interactive commands (inside a UCI session):**
   - `d` — prints an ASCII board diagram of the current position, FEN string, Zobrist hash key, check status, legal move count, and FIDE game state (`ongoing`, `checkmate`, `stalemate`, or draw rule).
   - `fen` — prints the six-field FEN of the current position.
+  - `epd` — prints standard EPD (`hmvc` and `fmvn`) of the current position.
   - `key` — prints the hexadecimal 64-bit Zobrist position, pawn, and Polyglot book keys.
-  - `moves` — lists all sorted legal moves in UCI coordinate notation.
+  - `moves [san]` — lists all sorted legal moves in UCI coordinate notation (or FIDE SAN with `san`).
   - `book` — lists weighted legal Polyglot opening book entries for the position.
   - `tb` — probes active Syzygy tablebases for root WDL outcome and best moves.
   - `eval` — prints the active evaluator architecture (`NNUE` container version/feature set/layer shape or `HCE`), static score (side-to-move and White perspectives), heuristic WDL triplet, and game phase / piece count.
@@ -683,12 +684,13 @@ In addition to standard UCI/XBoard sessions, `koi-engine` supports standard ches
   - `undo [plies]` — steps back `N` plies (default `1`) in the current position's move history.
   - `history` — prints the position origin (`startpos` or FEN), ply count, UCI moves, FIDE SAN movetext, and full `position ...` command.
   - `pgn` — exports the current position and move history as FIDE PGN (Seven Tag Roster, SAN movetext, and result).
+  - `annotate <move|game> [limits]` — evaluates a UCI/SAN move or the full game history with win-probability accuracy, centipawn loss, and NAG glyphs.
   - `see <move>` — prints the bitboard static exchange evaluation (SEE) of a legal UCI or FIDE SAN move in centipawns.
   - `compiler` — prints build version, commit hash, compiler toolchain, C++ standard, and compiled ISA (`AVX-512` / `AVX2` / `NEON` / `PEXT`).
   - `bench [depth [hash [threads]]]` — runs the deterministic benchmark (defaults: depth 10, 16 MB hash, 1 thread) and prints `Total time (ms)`, `Nodes searched`, and `Nodes/second`.
   - `speedtest [threads [hash [seconds]]]` — runs a timed multi-position NPS throughput benchmark (defaults: 1 thread, 128 MB hash, 3 seconds).
   - `options` — prints a snapshot of the live configured protocol, evaluator, search, book, and Syzygy option values.
-  - `perft <depth>` / `go perft <depth>` — runs an interruptible perft divide (`depth 1..10`) from the current position.
+  - `perft <depth|suite>` / `go perft <depth>` — runs an interruptible perft divide (`depth 1..10`) from the current position or the 6-position CPW verification suite (`suite` / `--suite`).
   - `wait` — blocks until any finite active search or `perft` completes before executing the next command.
   - `help` — prints a concise interactive command reference.
 
