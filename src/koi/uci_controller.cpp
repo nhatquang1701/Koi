@@ -282,11 +282,6 @@ void UciController::set_initial_syzygy_path(const std::string_view path) {
     }
     syzygy_path_explicit_ = true;
     syzygy_auto_detected_ = false;
-#ifdef _WIN32
-    constexpr char kSyzygyPathSeparator = ';';
-#else
-    constexpr char kSyzygyPathSeparator = ':';
-#endif
     const bool path_list = path.find(kSyzygyPathSeparator) != std::string_view::npos;
     std::filesystem::path resolved(path);
     if (!path_list && resolved.is_relative()) {
@@ -2636,12 +2631,6 @@ void UciController::rebuild_syzygy(const bool emit_diagnostics) {
     // only at probe time (on stderr).  This applies to single directories and
     // to every component of a platform path list.
     const std::string raw_path = syzygy_path_.string();
-#ifdef _WIN32
-    // Fathom uses ';' on Windows; a drive-letter colon is part of one path.
-    constexpr char kSyzygyPathSeparator = ';';
-#else
-    constexpr char kSyzygyPathSeparator = ':';
-#endif
     const bool path_list = raw_path.find(kSyzygyPathSeparator) != std::string::npos;
     if (!syzygy_path_.empty()) {
         const auto reject_unusable = [this, emit_diagnostics](const std::filesystem::path& bad,

@@ -37,12 +37,6 @@ std::filesystem::path normalized_path(const std::filesystem::path& path) {
     return error ? path.lexically_normal() : normalized;
 }
 
-#if defined(_WIN32)
-constexpr char kSyzygyPathSeparator = ';';
-#else
-constexpr char kSyzygyPathSeparator = ':';
-#endif
-
 // Fathom's tb_init has an out-of-bounds read in its path-list splitter when the
 // list ends with a separator (or contains only separators): it allocates
 // strlen+1 bytes, overwrites every separator with NUL, then scans for a
@@ -793,21 +787,42 @@ constexpr std::array<StandardSyzygyFile, 290> kStandardSyzygyFiles{{
     {"KRvKR.rtbz", 3408},
 }};
 
-bool ascii_equals_ignore_case(std::string_view a, std::string_view b) noexcept {
-    if (a.size() != b.size()) {
-        return false;
+constexpr unsigned char ascii_lower(char c) noexcept {
+    const unsigned char u = static_cast<unsigned char>(c);
+    return (u >= 'A' && u <= 'Z') ? static_cast<unsigned char>(u + ('a' - 'A')) : u;
+}
+
+constexpr int ascii_compare_ignore_case(std::string_view a, std::string_view b) noexcept {
+    const std::size_t limit = std::min(a.size(), b.size());
+    for (std::size_t i = 0; i < limit; ++i) {
+        const unsigned char ca = ascii_lower(a[i]);
+        const unsigned char cb = ascii_lower(b[i]);
+        if (ca != cb) {
+            return ca < cb ? -1 : 1;
+        }
     }
-    for (std::size_t i = 0; i < a.size(); ++i) {
-        const auto lower = [](char c) noexcept -> unsigned char {
-            const unsigned char u = static_cast<unsigned char>(c);
-            return (u >= 'A' && u <= 'Z') ? static_cast<unsigned char>(u + ('a' - 'A')) : u;
-        };
-        if (lower(a[i]) != lower(b[i])) {
+    if (a.size() != b.size()) {
+        return a.size() < b.size() ? -1 : 1;
+    }
+    return 0;
+}
+
+constexpr bool ascii_equals_ignore_case(std::string_view a, std::string_view b) noexcept {
+    return a.size() == b.size() && ascii_compare_ignore_case(a, b) == 0;
+}
+
+constexpr bool standard_syzygy_files_sorted() noexcept {
+    for (std::size_t i = 1; i < kStandardSyzygyFiles.size(); ++i) {
+        if (ascii_compare_ignore_case(kStandardSyzygyFiles[i - 1].name,
+                                      kStandardSyzygyFiles[i].name) >= 0) {
             return false;
         }
     }
     return true;
 }
+
+static_assert(standard_syzygy_files_sorted(),
+              "kStandardSyzygyFiles must stay strictly sorted case-insensitively");
 
 std::optional<std::string> ascii_path_text(const std::filesystem::path& path) {
     const auto& native = path.native();
@@ -879,10 +894,13 @@ SyzygyDirectoryStatus validate_table_file_header(const std::filesystem::path& fi
 } // namespace
 
 std::optional<std::uint64_t> expected_standard_syzygy_size(std::string_view filename) {
-    for (const StandardSyzygyFile& file : kStandardSyzygyFiles) {
-        if (ascii_equals_ignore_case(file.name, filename)) {
-            return file.size;
-        }
+    const auto it = std::lower_bound(
+        kStandardSyzygyFiles.begin(), kStandardSyzygyFiles.end(), filename,
+        [](const StandardSyzygyFile& entry, std::string_view target) noexcept {
+            return ascii_compare_ignore_case(entry.name, target) < 0;
+        });
+    if (it != kStandardSyzygyFiles.end() && ascii_equals_ignore_case(it->name, filename)) {
+        return it->size;
     }
     return std::nullopt;
 }

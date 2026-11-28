@@ -8,6 +8,8 @@
 
 namespace koi::detail {
 
+namespace {
+
 struct FenLayout {
     std::array<char, 64> squares{};
     int white_king_square = -1;
@@ -20,7 +22,7 @@ struct FenLayout {
     int black_pieces = 0;
 };
 
-static bool split_fen_fields(std::string_view fen, std::array<std::string_view, 6>& fields) {
+bool split_fen_fields(std::string_view fen, std::array<std::string_view, 6>& fields) {
     std::size_t offset = 0;
     std::size_t count = 0;
     while (offset < fen.size()) {
@@ -43,7 +45,7 @@ static bool split_fen_fields(std::string_view fen, std::array<std::string_view, 
     return count == fields.size();
 }
 
-static bool valid_piece_placement(std::string_view placement, FenLayout& layout) {
+bool valid_piece_placement(std::string_view placement, FenLayout& layout) {
     layout = {};
     int rank = 7;
     int width = 0;
@@ -105,7 +107,7 @@ static bool valid_piece_placement(std::string_view placement, FenLayout& layout)
     return !adjacent_kings;
 }
 
-static bool valid_castling(std::string_view castling, const FenLayout& layout) {
+bool valid_castling(std::string_view castling, const FenLayout& layout) {
     if (castling == "-") {
         return true;
     }
@@ -126,7 +128,7 @@ static bool valid_castling(std::string_view castling, const FenLayout& layout) {
            (!castling.contains('q') || (piece_at(60) == 'k' && piece_at(56) == 'r'));
 }
 
-static bool valid_en_passant(std::string_view en_passant, std::string_view side_to_move,
+bool valid_en_passant(std::string_view en_passant, std::string_view side_to_move,
                       std::string_view halfmove_clock, const FenLayout& layout) {
     if (en_passant == "-") {
         return true;
@@ -148,12 +150,14 @@ static bool valid_en_passant(std::string_view en_passant, std::string_view side_
            layout.squares[static_cast<std::size_t>(origin_square)] == '\0';
 }
 
-static bool valid_counter(std::string_view counter, bool allow_zero, std::uint32_t maximum) {
+bool valid_counter(std::string_view counter, bool allow_zero, std::uint32_t maximum) {
     std::uint32_t value = 0;
     const auto [end, error] = std::from_chars(counter.data(), counter.data() + counter.size(), value);
     return error == std::errc{} && end == counter.data() + counter.size() && (allow_zero || value > 0) &&
            value <= maximum;
 }
+
+} // namespace
 
 bool valid_fen_syntax(std::string_view fen) {
     std::array<std::string_view, 6> fields{};

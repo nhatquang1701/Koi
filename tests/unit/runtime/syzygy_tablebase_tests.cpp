@@ -613,6 +613,21 @@ void test_syzygy_case_insensitive_extensions_and_non_table_files() {
             "unrelated non-ASCII files beside valid tables must not break Syzygy validation");
 }
 
+void test_expected_standard_syzygy_size_case_insensitive_lookup() {
+    require(koi::expected_standard_syzygy_size("KBBBvK.rtbw") == 739600U &&
+                koi::expected_standard_syzygy_size("kbbbvk.rtbw") == 739600U,
+            "expected_standard_syzygy_size must match first entry case-insensitively");
+    require(koi::expected_standard_syzygy_size("KQvK.rtbw") == 272U &&
+                koi::expected_standard_syzygy_size("kqvk.RTBW") == 272U,
+            "expected_standard_syzygy_size must match middle entry case-insensitively");
+    require(koi::expected_standard_syzygy_size("KRvKR.rtbz") == 3408U &&
+                koi::expected_standard_syzygy_size("KRVKR.RTBZ") == 3408U,
+            "expected_standard_syzygy_size must match last entry case-insensitively");
+    require(!koi::expected_standard_syzygy_size("KQQvKRR.rtbw").has_value() &&
+                !koi::expected_standard_syzygy_size("").has_value(),
+            "expected_standard_syzygy_size must return nullopt for unknown or empty names");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -626,6 +641,8 @@ int main(int argc, char** argv) {
         {"Syzygy directory status classification", test_syzygy_directory_status_classification},
         {"zero-filled Syzygy tables", test_zero_payload_tables_are_corrupt},
         {"standard Syzygy size manifest", test_standard_syzygy_size_manifest},
+        {"standard Syzygy binary search lookup",
+         test_expected_standard_syzygy_size_case_insensitive_lookup},
         {"all-empty path-list components are inert", test_empty_path_list_components_are_dropped},
         {"policy setters do not reload Fathom", test_policy_setters_do_not_reload_fathom},
         {"absent and malformed paths disable probing safely",

@@ -76,6 +76,12 @@ enum class SyzygyLoadStatus : std::uint8_t {
     init_failed,
 };
 
+#if defined(_WIN32)
+inline constexpr char kSyzygyPathSeparator = ';';
+#else
+inline constexpr char kSyzygyPathSeparator = ':';
+#endif
+
 // Expected canonical size for a standard 3-4-5 man Syzygy table file name
 // (for example "KQvK.rtbw"); std::nullopt for unknown names such as 6-man
 // tables.  Used to reject truncated/oversized files before Fathom maps them.

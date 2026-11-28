@@ -67,6 +67,20 @@ def _ram_bytes() -> int | None:
         if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
             return int(status.ullTotalPhys)
         return None
+    if sys.platform == "darwin":
+        try:
+            proc = subprocess.run(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True,
+                text=True,
+                timeout=1,
+                check=False,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                return int(proc.stdout.strip())
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return None
+        return None
     if hasattr(os, "sysconf"):
         try:
             return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))

@@ -493,6 +493,33 @@ for raw in sys.stdin:
                 ])
             self.assertEqual(conflict.exception.code, 2)
 
+    def test_ram_bytes_uses_sysctl_on_darwin(self):
+        with mock.patch.object(uci_benchmark.sys, "platform", "darwin"), \
+             mock.patch.object(uci_benchmark.os, "name", "posix"):
+            with mock.patch.object(
+                uci_benchmark.subprocess,
+                "run",
+                return_value=mock.Mock(returncode=0, stdout="17179869184\n"),
+            ) as mocked_run:
+                self.assertEqual(uci_benchmark._ram_bytes(), 17179869184)
+                mocked_run.assert_called_once_with(
+                    ["sysctl", "-n", "hw.memsize"],
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
+                    check=False,
+                )
+
+            with mock.patch.object(
+                uci_benchmark.subprocess,
+                "run",
+                return_value=mock.Mock(returncode=1, stdout=""),
+            ):
+                self.assertIsNone(uci_benchmark._ram_bytes())
+
+            with mock.patch.object(uci_benchmark.subprocess, "run", side_effect=OSError("no sysctl")):
+                self.assertIsNone(uci_benchmark._ram_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()
