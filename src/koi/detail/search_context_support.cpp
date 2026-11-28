@@ -123,6 +123,40 @@ namespace {
     return 0;
 }
 
+[[nodiscard]] constexpr std::array<std::array<std::uint64_t, 64>, 2>
+build_passed_pawn_masks() noexcept {
+    std::array<std::array<std::uint64_t, 64>, 2> masks{};
+    for (int own = 0; own < 2; ++own) {
+        const int direction = own == 0 ? 1 : -1;
+        for (int sq = 0; sq < 64; ++sq) {
+            const int rank = sq / 8;
+            const int file = sq % 8;
+            std::uint64_t ahead = 0;
+            const int min_file = file > 0 ? file - 1 : 0;
+            const int max_file = file < 7 ? file + 1 : 7;
+            for (int candidate_file = min_file; candidate_file <= max_file; ++candidate_file) {
+                for (int candidate_rank = rank + direction;
+                     candidate_rank >= 0 && candidate_rank < 8;
+                     candidate_rank += direction) {
+                    ahead |= std::uint64_t{1} << (candidate_rank * 8 + candidate_file);
+                }
+            }
+            masks[static_cast<std::size_t>(own)][static_cast<std::size_t>(sq)] = ahead;
+        }
+    }
+    return masks;
+}
+
+constexpr std::array<std::array<std::uint64_t, 64>, 2> kPassedPawnMask =
+    build_passed_pawn_masks();
+
+[[nodiscard]] std::uint64_t compact_king_zone_mask(const std::uint8_t square) noexcept {
+    if (square >= Square::kInvalid) {
+        return 0;
+    }
+    return king_attacks(square) | (std::uint64_t{1} << square);
+}
+
 } // namespace
 
 int piece_value(const PieceType type) noexcept {
@@ -200,8 +234,19 @@ bool quiet_move_is_forcing(const PositionFeatures& before,
     if (moved.type == PieceType::pawn && (moved.color == Color::white ? 0U : 1U) == own) {
         const int rank = destination / 8;
         const int file = destination % 8;
+        const bool central_break = (file == 3 || file == 4) &&
+            (rank == 3 || rank == 4);
+        if (central_break) {
+            return true;
+        }
+        const bool advanced = moved.color == Color::white ? rank >= 4 : rank <= 3;
+        if (!advanced) {
+            return false;
+        }
+        if (features.occupied != 0) {
+            return (features.pawns[enemy] & kPassedPawnMask[own][destination]) == 0;
+        }
         const int direction = moved.color == Color::white ? 1 : -1;
-        bool passed = true;
         for (int candidate_file = std::max(0, file - 1);
              candidate_file <= std::min(7, file + 1); ++candidate_file) {
             for (int candidate_rank = rank + direction;
@@ -211,60 +256,14 @@ bool quiet_move_is_forcing(const PositionFeatures& before,
                     static_cast<std::size_t>(candidate_rank * 8 + candidate_file)];
                 if (candidate.type == PieceType::pawn &&
                     (candidate.color == Color::white ? 0U : 1U) == enemy) {
-                    passed = false;
+                    return false;
                 }
             }
         }
-        const bool advanced = moved.color == Color::white ? rank >= 4 : rank <= 3;
-        const bool central_break = (file == 3 || file == 4) &&
-            (rank == 3 || rank == 4);
-        if (passed && advanced) {
-            return true;
-        }
-        if (central_break) {
-            return true;
-        }
+        return true;
     }
     return false;
 }
-
-namespace {
-
-[[nodiscard]] constexpr std::array<std::array<std::uint64_t, 64>, 2>
-build_passed_pawn_masks() noexcept {
-    std::array<std::array<std::uint64_t, 64>, 2> masks{};
-    for (int own = 0; own < 2; ++own) {
-        const int direction = own == 0 ? 1 : -1;
-        for (int sq = 0; sq < 64; ++sq) {
-            const int rank = sq / 8;
-            const int file = sq % 8;
-            std::uint64_t ahead = 0;
-            const int min_file = file > 0 ? file - 1 : 0;
-            const int max_file = file < 7 ? file + 1 : 7;
-            for (int candidate_file = min_file; candidate_file <= max_file; ++candidate_file) {
-                for (int candidate_rank = rank + direction;
-                     candidate_rank >= 0 && candidate_rank < 8;
-                     candidate_rank += direction) {
-                    ahead |= std::uint64_t{1} << (candidate_rank * 8 + candidate_file);
-                }
-            }
-            masks[static_cast<std::size_t>(own)][static_cast<std::size_t>(sq)] = ahead;
-        }
-    }
-    return masks;
-}
-
-constexpr std::array<std::array<std::uint64_t, 64>, 2> kPassedPawnMask =
-    build_passed_pawn_masks();
-
-[[nodiscard]] std::uint64_t compact_king_zone_mask(const std::uint8_t square) noexcept {
-    if (square >= Square::kInvalid) {
-        return 0;
-    }
-    return king_attacks(square) | (std::uint64_t{1} << square);
-}
-
-} // namespace
 
 void build_quiet_forcing_after_view(const GameState& after, const Color mover,
                                     QuietForcingAfterView& out) noexcept {

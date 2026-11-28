@@ -1999,6 +1999,96 @@ void test_sudden_death_scramble_high_effort_depth5_recapture_cutoff() {
             "incremental 8s+1s high-effort search at depth 5 and 62% must retain depth>=6 gate");
 }
 
+void test_high_latency_pre_emergency_ramp_and_scramble_overrun_guards() {
+    RootTimingContext mid_ctx = warm_context();
+    mid_ctx.game_phase = 16;
+    mid_ctx.fullmove_number = 25;
+
+    TimeManager sd_high_lat(clock_limits(milliseconds{16'000}, milliseconds{0}),
+                            koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx,
+                            [] { return Clock::now(); }, false, Clock::now(), 2'000);
+    TimeManager sd_low_lat(clock_limits(milliseconds{16'000}, milliseconds{0}),
+                           koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx,
+                           [] { return Clock::now(); }, false, Clock::now(), 30);
+    require(!sd_high_lat.diagnostics().emergency_pacing &&
+                sd_high_lat.diagnostics().usable < milliseconds{14'000} &&
+                sd_high_lat.diagnostics().horizon > sd_low_lat.diagnostics().horizon,
+            "high-latency 16s+0 clock with usable < 14.25s must engage pre-emergency horizon ramp");
+
+    TimeManager inc_high_lat(clock_limits(milliseconds{16'000}, milliseconds{1'000}),
+                             koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx,
+                             [] { return Clock::now(); }, false, Clock::now(), 2'000);
+    TimeManager inc_low_lat(clock_limits(milliseconds{16'000}, milliseconds{1'000}),
+                            koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx,
+                            [] { return Clock::now(); }, false, Clock::now(), 30);
+    require(inc_high_lat.diagnostics().horizon == inc_low_lat.diagnostics().horizon,
+            "high-latency incremental clock must not engage sudden-death pre-emergency horizon ramp");
+
+    auto scr_doomed_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_doomed(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                           koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                           [scr_doomed_now] { return *scr_doomed_now; });
+    const auto scr_base_hard = scr_doomed.diagnostics().hard_budget;
+    scr_doomed.observe_iteration({4, 25, true, false, false, 10'000, 5'000, milliseconds{10}});
+    scr_doomed.observe_iteration(
+        {5, 25, true, false, false, 10'000, 5'000,
+         std::max(milliseconds{12}, (scr_base_hard * 55) / 100)});
+    const auto scr_opt = scr_doomed.diagnostics().optimum_budget;
+    const auto scr_hard = scr_doomed.diagnostics().hard_budget;
+    const auto scr_check = std::max(scr_opt + milliseconds{1}, scr_hard - milliseconds{30});
+    *scr_doomed_now += std::min(scr_hard - milliseconds{5}, scr_check);
+    require(!scr_doomed.diagnostics().emergency_pacing &&
+                !scr_doomed.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble at depth 5 past optimum_budget with doomed next ply must bank clock");
+
+    auto inc_doomed_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager inc_doomed(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                           koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                           [inc_doomed_now] { return *inc_doomed_now; });
+    inc_doomed.observe_iteration({4, 25, true, false, false, 10'000, 5'000, milliseconds{10}});
+    inc_doomed.observe_iteration(
+        {5, 25, true, false, false, 10'000, 5'000,
+         std::max(milliseconds{12}, (inc_doomed.diagnostics().hard_budget * 55) / 100)});
+    *inc_doomed_now += std::min(inc_doomed.diagnostics().hard_budget - milliseconds{5},
+                                inc_doomed.diagnostics().optimum_budget + milliseconds{1});
+    require(!inc_doomed.diagnostics().emergency_pacing &&
+                inc_doomed.should_start_next_iteration(milliseconds{1}),
+            "incremental 6s+1s at depth 5 past optimum_budget must retain depth>=6 doomed-ply threshold");
+
+    auto scr_overrun_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_overrun(clock_limits(milliseconds{6'000}, milliseconds{0}),
+                            koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                            [scr_overrun_now] { return *scr_overrun_now; });
+    const auto scr_over_hard = scr_overrun.diagnostics().hard_budget;
+    scr_overrun.observe_iteration(
+        {5, 50, true, false, false, 10'000, 2'000,
+         std::max(milliseconds{12}, (scr_over_hard * 30) / 100)});
+    scr_overrun.observe_iteration(
+        {6, 45, false, false, false, 10'000, 2'000,
+         std::max(milliseconds{20}, (scr_over_hard * 55) / 100)});
+    const auto elapsed_66 = (scr_over_hard * 66) / 100;
+    *scr_overrun_now += elapsed_66;
+    require(!scr_overrun.diagnostics().emergency_pacing &&
+                elapsed_66 >= (scr_over_hard * 65) / 100 &&
+                elapsed_66 < scr_overrun.diagnostics().optimum_budget &&
+                !scr_overrun.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble hard position at depth 6 and >=65% hard_budget with >140% overrun next ply must bank clock");
+
+    auto inc_overrun_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager inc_overrun(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+                            koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                            [inc_overrun_now] { return *inc_overrun_now; });
+    const auto inc_over_hard = inc_overrun.diagnostics().hard_budget;
+    inc_overrun.observe_iteration(
+        {5, 50, true, false, false, 10'000, 2'000, (inc_over_hard * 30) / 100});
+    inc_overrun.observe_iteration(
+        {6, 45, false, false, false, 10'000, 2'000, (inc_over_hard * 55) / 100});
+    *inc_overrun_now += (inc_over_hard * 66) / 100;
+    require(!inc_overrun.diagnostics().emergency_pacing &&
+                inc_overrun.should_start_next_iteration(milliseconds{1}),
+            "incremental 6s+1s hard position at depth 6 must retain depth>=7 pre-overrun guard");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2089,6 +2179,8 @@ int main(int argc, char** argv) {
          test_high_latency_usable_clock_sudden_death_scramble_and_subsecond},
         {"sudden death scramble high effort depth 5 cutoff",
          test_sudden_death_scramble_high_effort_depth5_recapture_cutoff},
+        {"high latency pre emergency ramp and scramble overrun guards",
+         test_high_latency_pre_emergency_ramp_and_scramble_overrun_guards},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

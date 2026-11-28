@@ -1813,6 +1813,16 @@ void SearchRunner::run_impl() {
             std::int64_t aspiration_mean_squared_score = 0;
             std::chrono::milliseconds previous_report_elapsed{0};
             std::uint64_t previous_report_visited = 0;
+            std::vector<const RootScheduleRecord*> move_records;
+            std::vector<std::size_t> schedule_indices;
+            std::vector<std::size_t> stable_root_indices;
+            std::vector<int> move_previous_scores;
+            std::vector<bool> move_has_previous;
+            move_records.reserve(parallel_moves.size());
+            schedule_indices.reserve(parallel_moves.size());
+            stable_root_indices.reserve(parallel_moves.size());
+            move_previous_scores.reserve(parallel_moves.size());
+            move_has_previous.reserve(parallel_moves.size());
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
                 in_flight_depth = depth;
                 if (auto conversion = session->take_ponderhit(); conversion.has_value()) {
@@ -1884,15 +1894,18 @@ void SearchRunner::run_impl() {
                     result.best_move = parallel_moves.front().move;
                     result.pv = {*result.best_move};
                 }
+                move_records.resize(parallel_moves.size());
+                for (std::size_t index = 0; index < parallel_moves.size(); ++index) {
+                    move_records[index] = schedule_record_for(parallel_moves[index].move);
+                }
                 if (depth > 1) {
-                    std::vector<std::size_t> schedule_indices;
-                    schedule_indices.reserve(parallel_moves.size());
+                    schedule_indices.resize(parallel_moves.size());
                     for (std::size_t index = 0; index < parallel_moves.size(); ++index) {
-                        schedule_indices.push_back(index);
+                        schedule_indices[index] = index;
                     }
                     std::stable_sort(
                         schedule_indices.begin(), schedule_indices.end(),
-                        [&parallel_moves, &tt_move, &schedule_record_for](
+                        [&parallel_moves, &tt_move, &move_records](
                             const std::size_t left, const std::size_t right) {
                         const Move left_move = parallel_moves[left].move;
                         const Move right_move = parallel_moves[right].move;
@@ -1902,10 +1915,8 @@ void SearchRunner::run_impl() {
                             return left_tt;
                         }
 
-                        const RootScheduleRecord* left_record =
-                            schedule_record_for(left_move);
-                        const RootScheduleRecord* right_record =
-                            schedule_record_for(right_move);
+                        const RootScheduleRecord* left_record = move_records[left];
+                        const RootScheduleRecord* right_record = move_records[right];
                         const bool left_scored = left_record != nullptr &&
                             left_record->has_previous_score;
                         const bool right_scored = right_record != nullptr &&
@@ -1934,14 +1945,21 @@ void SearchRunner::run_impl() {
                         (void)scheduled_moves.push_back(parallel_moves[index]);
                     }
                     parallel_moves = scheduled_moves;
+                    for (std::size_t index = 0; index < parallel_moves.size(); ++index) {
+                        move_records[index] = schedule_record_for(parallel_moves[index].move);
+                    }
                 }
-                std::vector<std::size_t> stable_root_indices;
-                stable_root_indices.reserve(parallel_moves.size());
+                stable_root_indices.resize(parallel_moves.size());
+                move_previous_scores.assign(parallel_moves.size(), 0);
+                move_has_previous.assign(parallel_moves.size(), false);
                 for (std::size_t index = 0; index < parallel_moves.size(); ++index) {
-                    const RootScheduleRecord* record =
-                        schedule_record_for(parallel_moves[index].move);
-                    stable_root_indices.push_back(
-                        record != nullptr ? record->stable_index : index);
+                    const RootScheduleRecord* record = move_records[index];
+                    stable_root_indices[index] =
+                        record != nullptr ? record->stable_index : index;
+                    if (record != nullptr && record->has_previous_score) {
+                        move_previous_scores[index] = record->previous_score;
+                        move_has_previous[index] = true;
+                    }
                 }
 
                 lines.assign(parallel_moves.size(), RootLine{});
@@ -1971,16 +1989,6 @@ void SearchRunner::run_impl() {
                 // stable root ranking is applied.
                 const bool use_root_pvs = !multi_pv && !root.in_check() &&
                     (!limits.depth.has_value() || worker_count < 4);
-                std::vector<int> move_previous_scores(parallel_moves.size(), 0);
-                std::vector<bool> move_has_previous(parallel_moves.size(), false);
-                for (std::size_t index = 0; index < parallel_moves.size(); ++index) {
-                    const RootScheduleRecord* record =
-                        schedule_record_for(parallel_moves[index].move);
-                    if (record != nullptr && record->has_previous_score) {
-                        move_previous_scores[index] = record->previous_score;
-                        move_has_previous[index] = true;
-                    }
-                }
                 for (;;) {
                     SearchStats attempt_stats;
                     bool attempt_aborted = false;
@@ -2213,8 +2221,8 @@ void SearchRunner::run_impl() {
                     if (!best_metadata.is_capture() && !best_metadata.gives_check &&
                         best_metadata.move.promotion() == Promotion::none &&
                         !mate_from_score(shallow_best.score).has_value()) {
-                        std::vector<std::pair<std::size_t, MoveMetadata>> candidates;
-                        candidates.reserve(3);
+                        std::array<std::pair<std::size_t, MoveMetadata>, 3> candidates{};
+                        std::size_t candidate_count = 0;
                         for (const std::size_t candidate_index : ranked_indices) {
                             if (candidate_index == best_candidate_index ||
                                 lines[candidate_index].score <
@@ -2227,13 +2235,13 @@ void SearchRunner::run_impl() {
                                 metadata.move.promotion() == Promotion::none) {
                                 continue;
                             }
-                            candidates.emplace_back(candidate_index, metadata);
-                            if (candidates.size() == 3) {
+                            candidates[candidate_count++] = {candidate_index, metadata};
+                            if (candidate_count == candidates.size()) {
                                 break;
                             }
                         }
 
-                        if (!candidates.empty()) {
+                        if (candidate_count > 0) {
                             // Compare the incumbent at the same horizon as
                             // every forcing alternative.  Comparing a
                             // depth-one quiet score directly with a depth-two
@@ -2257,7 +2265,8 @@ void SearchRunner::run_impl() {
                                 lines[best_candidate_index].selective_upper_bound = false;
                                 needs_nominal_root_refresh = true;
 
-                                for (const auto& [candidate_index, metadata] : candidates) {
+                                for (std::size_t idx = 0; idx < candidate_count; ++idx) {
+                                    const auto& [candidate_index, metadata] = candidates[idx];
                                     ++root_context.stats.root_selective_candidates;
                                     const SearchContext::RootVerification verification =
                                         root_context.selectively_research_root_move(

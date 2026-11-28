@@ -626,7 +626,8 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      `32..34` in endgames) and **50** for sudden death (`56` through
      `fullmove 8`, smoothly interpolating to `46..50` in middlegames and
      `42..48` in endgames), with up to `+12%` sudden-death stretching across
-     `3..15 s` remaining and bounded opponent-clock asymmetry scaling (`+20%`
+     `3..15 s` (`min(remaining, usable + 750 ms)`) and bounded opponent-clock
+     asymmetry scaling (`+20%`
      horizon speedup against a sudden-death `<= 5 s` opponent when Koi holds
      `>= 15 s` and `>= 3×` the opponent's clock, or asymmetry scaling when one
      side has more than double the other's clock).
@@ -752,11 +753,13 @@ the search but cannot push it past the cap.
   otherwise, used uniformly across both serial and parallel iterative-deepening
   drivers to avoid doomed partial iterations past `1.2×` soft target), and a
   doomed hard-ply guard once past
-  `optimum_budget` (`depth >= 6`, or `depth >= 5` in emergency pacing,
-  `score_drop < 60` cp, `5 ms` sample floor in
-  emergency pacing vs `20 ms` otherwise, predicted next ply exceeding
+  `optimum_budget` (`depth >= 6`, or `depth >= 5` in emergency pacing or
+  sudden-death scrambles, `score_drop < 60` cp, `5 ms` sample floor in
+  emergency pacing vs `10 ms` in sudden-death scrambles vs `20 ms` otherwise,
+  predicted next ply exceeding
   hard_budget`), and a hard-position pre-overrun guard once past `65%` of
-  `hard_budget` (`depth >= 7`, or `depth >= 5` under emergency pacing,
+  `hard_budget` (`depth >= 7`, `depth >= 6` in sudden-death scrambles, or
+  `depth >= 5` under emergency pacing,
   `best_move_stability >= 1`, `score_drop < 40` cp,
   `!last_aspiration_researched`, predicted next ply exceeding `1.4×`
   `hard_budget`), in addition to the hard deadline.

@@ -1386,10 +1386,15 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                 continue;
             }
 
-            const bool quiet_forcing = perform_deep_fallback && !root.in_check() &&
-                !metadata.is_capture() &&
-                !metadata.gives_check && metadata.move.promotion() == Promotion::none &&
-                quiet_move_is_forcing(root_features, after_move.position_features(), metadata);
+            bool quiet_forcing = false;
+            if (perform_deep_fallback && !root.in_check() &&
+                !metadata.is_capture() && !metadata.gives_check &&
+                metadata.move.promotion() == Promotion::none) {
+                QuietForcingAfterView after_view;
+                build_quiet_forcing_after_view(after_move, root.side_to_move(), after_view);
+                quiet_forcing = quiet_move_is_forcing(
+                    root_features, after_move, after_view, metadata);
+            }
             if (quiet_forcing &&
                 quiet_forcing_researches < kMaximumEmergencyQuietForcingResearches) {
                 ++quiet_forcing_researches;

@@ -304,6 +304,18 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
             effective_overhead_ms, static_cast<std::uint64_t>(
                 std::numeric_limits<std::chrono::milliseconds::rep>::max())))};
     timing_.overhead = overhead;
+    // Always protect at least two effective move overheads (unbounded by the
+    // 750 ms proportional reserve cap) so high-latency network links keep a real
+    // buffer before flagging.
+    const auto two_overheads = saturating_add(overhead, overhead);
+    const auto proportional_reserve = std::min(
+        std::chrono::milliseconds{750},
+        std::max(std::chrono::milliseconds{50}, scale_duration(remaining, 3)));
+    timing_.reserve = std::min(remaining, std::max(proportional_reserve, two_overheads));
+    timing_.usable = nonnegative_difference(remaining, timing_.reserve);
+    emergency_pacing_ = remaining <= std::chrono::milliseconds{3000} ||
+        timing_.usable <= std::chrono::milliseconds{2000};
+    timing_.emergency_pacing = emergency_pacing_;
     // Horizon: how many moves this allocation plans for.  A GUI may send
     // `movestogo`, but lichess-bot and most GUIs do not, so the fallback decides
     // the pacing.  A piecewise-linear ply/phase curve avoids sudden-cliff drops
@@ -312,14 +324,16 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     const bool has_increment = clock->increment > std::chrono::milliseconds::zero();
     std::uint32_t default_horizon = continuous_horizon(
         has_increment, root_context_.game_phase, root_context_.fullmove_number);
+    const auto ramp_clock = std::min(
+        remaining, saturating_add(timing_.usable, std::chrono::milliseconds{750}));
     if (!limits_.moves_to_go.has_value() && !has_increment &&
-        remaining > std::chrono::milliseconds{3'000} &&
-        remaining < std::chrono::milliseconds{15'000}) {
+        ramp_clock > std::chrono::milliseconds{3'000} &&
+        ramp_clock < std::chrono::milliseconds{15'000}) {
         // Sudden-death pre-emergency ramp (3..15 s): smoothly stretch the
-        // horizon up to +12% before emergency pacing engages so rapid clocks do
-        // not hit the 3 s threshold at full middlegame burn rate.
+        // horizon up to +12% before emergency pacing engages so rapid or
+        // high-latency clocks do not hit the emergency floor at full burn rate.
         const std::uint64_t deficit_ms =
-            static_cast<std::uint64_t>(15'000 - remaining.count());
+            static_cast<std::uint64_t>(15'000 - ramp_clock.count());
         const std::uint64_t stretch_permille =
             1000ULL + (deficit_ms * 120ULL) / 12'000ULL;
         default_horizon = static_cast<std::uint32_t>(
@@ -353,18 +367,6 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     }
     timing_.horizon = std::max<std::uint32_t>(
         1, limits_.moves_to_go.value_or(default_horizon));
-    // Always protect at least two effective move overheads (unbounded by the
-    // 750 ms proportional reserve cap) so high-latency network links keep a real
-    // buffer before flagging.
-    const auto two_overheads = saturating_add(overhead, overhead);
-    const auto proportional_reserve = std::min(
-        std::chrono::milliseconds{750},
-        std::max(std::chrono::milliseconds{50}, scale_duration(remaining, 3)));
-    timing_.reserve = std::min(remaining, std::max(proportional_reserve, two_overheads));
-    timing_.usable = nonnegative_difference(remaining, timing_.reserve);
-    emergency_pacing_ = remaining <= std::chrono::milliseconds{3000} ||
-        timing_.usable <= std::chrono::milliseconds{2000};
-    timing_.emergency_pacing = emergency_pacing_;
 
     const auto base_allocation = timing_.usable / timing_.horizon;
     // The increment credit only spends net post-overhead increment when low on
@@ -1011,10 +1013,11 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
             }
         }
     }
+    const bool scramble = is_sudden_death_scramble();
     const auto min_doomed_sample = emergency_pacing_
         ? std::chrono::milliseconds{5}
-        : std::chrono::milliseconds{20};
-    const int min_doomed_depth = emergency_pacing_ ? 5 : 6;
+        : (scramble ? std::chrono::milliseconds{10} : std::chrono::milliseconds{20});
+    const int min_doomed_depth = (emergency_pacing_ || scramble) ? 5 : 6;
     if (clock_mode_ && last_observed_depth_ >= min_doomed_depth &&
         score_drop_cp_ < 60 &&
         last_iteration_elapsed_ >= min_doomed_sample &&
@@ -1026,12 +1029,13 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         }
     }
     // Hard positions whose optimum_budget expanded up to hard_budget can still
-    // finish a deep ply (`depth >= 7`, or `depth >= 5` in emergency pacing)
-    // with >= 65% of hard_budget already spent and a next ply predicted to
-    // overrun hard_budget by > 40%. When the best move is stable and the score
-    // is not collapsing, skip that guaranteed-aborted ply to bank up to 35% of
-    // the move's clock instead of running into the hard deadline.
-    const int min_hard_overrun_depth = emergency_pacing_ ? 5 : 7;
+    // finish a deep ply (`depth >= 7`, `depth >= 6` in sudden-death scrambles,
+    // or `depth >= 5` in emergency pacing) with >= 65% of hard_budget already
+    // spent and a next ply predicted to overrun hard_budget by > 40%. When the
+    // best move is stable and the score is not collapsing, skip that
+    // guaranteed-aborted ply to bank up to 35% of the move's clock instead of
+    // running into the hard deadline.
+    const int min_hard_overrun_depth = emergency_pacing_ ? 5 : (scramble ? 6 : 7);
     if (clock_mode_ && last_observed_depth_ >= min_hard_overrun_depth &&
         best_move_stability_ >= 1 && score_drop_cp_ < 40 &&
         !last_aspiration_researched_ &&

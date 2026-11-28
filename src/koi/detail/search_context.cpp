@@ -1287,7 +1287,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 return alpha;
             }
         }
-        const bool short_timed_root = ply == 0 &&
+        const bool short_timed_root = ply == 0 && checked &&
             time_manager.time_budget().has_value() &&
             *time_manager.time_budget() < kShortTimedFallbackMinimum;
         int child_check_extensions_remaining = check_extensions_remaining;
