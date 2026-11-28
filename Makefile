@@ -21,6 +21,8 @@ SPEEDTEST_HASH ?= 128
 SPEEDTEST_SECONDS ?= 3
 PERFT_DEPTH ?= 5
 GENERATOR := $(if $(shell command -v ninja 2>/dev/null),-G Ninja,)
+EVAL_ARGS = $(if $(EVALFILE),--nnue "$(EVALFILE)",--hce)
+FEN_ARG = $(if $(FEN),"$(FEN)",)
 
 ifeq ($(UNAME_S),Darwin)
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF -DKOI_STATIC_RUNTIME=OFF
@@ -47,11 +49,7 @@ profile-build:
 	@PGO_DATA_ABS=$$(cd "$(PGO_DATA_DIR)" && pwd); \
 	cmake -S . -B "$(PGO_GEN_DIR)" $(GENERATOR) $(CMAKE_FLAGS) -DKOI_PGO=generate -DKOI_PGO_PROFILE_FILE="$$PGO_DATA_ABS" && \
 	cmake --build "$(PGO_GEN_DIR)" --config Release --target koi_engine -j "$(JOBS)" && \
-	if [ -n "$(EVALFILE)" ]; then \
-	  LLVM_PROFILE_FILE="$$PGO_DATA_ABS/koi-%p.profraw" "$(PGO_GEN_DIR)/koi-engine" --nnue "$(EVALFILE)" bench "$(PGO_BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
-	else \
-	  LLVM_PROFILE_FILE="$$PGO_DATA_ABS/koi-%p.profraw" "$(PGO_GEN_DIR)/koi-engine" --hce bench "$(PGO_BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
-	fi && \
+	LLVM_PROFILE_FILE="$$PGO_DATA_ABS/koi-%p.profraw" "$(PGO_GEN_DIR)/koi-engine" $(EVAL_ARGS) bench "$(PGO_BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)" && \
 	COMPILER_ID=$$(cat "$(PGO_GEN_DIR)"/CMakeFiles/*/CMakeCXXCompiler.cmake 2>/dev/null | sed -n 's/^set(CMAKE_CXX_COMPILER_ID "\([^"]*\)").*/\1/p' | head -n 1); \
 	if echo "$$COMPILER_ID" | grep -q "Clang"; then \
 	  if [ "$(UNAME_S)" = "Darwin" ]; then \
@@ -69,11 +67,7 @@ profile-build:
 	if [ -n "$(EXE)" ]; then cp "$(BUILD_DIR)/koi-engine" "$(EXE)" && chmod +x "$(EXE)"; fi
 
 bench: release
-	@if [ -n "$(EVALFILE)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
-	else \
-	  "$(BUILD_DIR)/koi-engine" --hce bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) bench "$(BENCH_DEPTH)" "$(BENCH_HASH)" "$(BENCH_THREADS)"
 
 nnue: release
 	@if [ -n "$(EVALFILE)" ]; then \
@@ -83,33 +77,13 @@ nnue: release
 	fi
 
 options: release
-	@if [ -n "$(EVALFILE)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" options; \
-	else \
-	  "$(BUILD_DIR)/koi-engine" --hce options; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) options
 
 speedtest: release
-	@if [ -n "$(EVALFILE)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" speedtest "$(SPEEDTEST_THREADS)" "$(SPEEDTEST_HASH)" "$(SPEEDTEST_SECONDS)"; \
-	else \
-	  "$(BUILD_DIR)/koi-engine" --hce speedtest "$(SPEEDTEST_THREADS)" "$(SPEEDTEST_HASH)" "$(SPEEDTEST_SECONDS)"; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) speedtest "$(SPEEDTEST_THREADS)" "$(SPEEDTEST_HASH)" "$(SPEEDTEST_SECONDS)"
 
 eval: release
-	@if [ -n "$(EVALFILE)" ]; then \
-	  if [ -n "$(FEN)" ]; then \
-	    "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" eval "$(FEN)"; \
-	  else \
-	    "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" eval; \
-	  fi; \
-	else \
-	  if [ -n "$(FEN)" ]; then \
-	    "$(BUILD_DIR)/koi-engine" --hce eval "$(FEN)"; \
-	  else \
-	    "$(BUILD_DIR)/koi-engine" --hce eval; \
-	  fi; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) eval $(FEN_ARG)
 
 version: release
 	"$(BUILD_DIR)/koi-engine" version
@@ -124,49 +98,25 @@ compiler: release
 	"$(BUILD_DIR)/koi-engine" compiler
 
 perft: release
-	@if [ -n "$(FEN)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)" "$(FEN)"; \
-	else \
-	  "$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)"; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" perft "$(PERFT_DEPTH)" $(FEN_ARG)
 
 perft-suite: release
 	"$(BUILD_DIR)/koi-engine" perft --suite
 
 d: release
-	@if [ -n "$(FEN)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" d "$(FEN)"; \
-	else \
-	  "$(BUILD_DIR)/koi-engine" d; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" d $(FEN_ARG)
 
 epd: release
-	@if [ -n "$(FEN)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" epd "$(FEN)"; \
-	else \
-	  "$(BUILD_DIR)/koi-engine" epd; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" epd $(FEN_ARG)
 
 history: release
-	@if [ -n "$(FEN)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" history "$(FEN)"; \
-	else \
-	  "$(BUILD_DIR)/koi-engine" history; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" history $(FEN_ARG)
 
 pgn: release
-	@if [ -n "$(FEN)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" pgn "$(FEN)"; \
-	else \
-	  "$(BUILD_DIR)/koi-engine" pgn; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" pgn $(FEN_ARG)
 
 smoke: release
-	@if [ -n "$(EVALFILE)" ]; then \
-	  "$(BUILD_DIR)/koi-engine" --nnue "$(EVALFILE)" -c "uci" -c "isready" -c "position startpos" -c "go depth 2"; \
-	else \
-	  "$(BUILD_DIR)/koi-engine" --hce -c "uci" -c "isready" -c "position startpos" -c "go depth 2"; \
-	fi
+	@"$(BUILD_DIR)/koi-engine" $(EVAL_ARGS) -c "uci" -c "isready" -c "position startpos" -c "go depth 2"
 
 test:
 	cmake -S . -B "$(BUILD_DIR)" $(GENERATOR) $(CMAKE_FLAGS)

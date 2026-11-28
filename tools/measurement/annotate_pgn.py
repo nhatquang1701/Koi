@@ -77,24 +77,14 @@ def parse_annotate_move_line(line: str) -> Optional[Dict[str, Any]]:
                 break
             score_type = tokens[index + 1]
             score_val = int(tokens[index + 2])
-            if key == "eval":
-                if score_type == "mate":
-                    record["eval_mate"] = score_val
-                    record["eval_cp"] = (
-                        elo_oracle.MATE_SCORE_CP if score_val > 0 else -elo_oracle.MATE_SCORE_CP
-                    )
-                else:
-                    record["eval_cp"] = score_val
-                    record["eval_mate"] = None
+            if score_type == "mate":
+                record[f"{key}_mate"] = score_val
+                record[f"{key}_cp"] = (
+                    elo_oracle.MATE_SCORE_CP if score_val > 0 else -elo_oracle.MATE_SCORE_CP
+                )
             else:
-                if score_type == "mate":
-                    record["best_eval_mate"] = score_val
-                    record["best_eval_cp"] = (
-                        elo_oracle.MATE_SCORE_CP if score_val > 0 else -elo_oracle.MATE_SCORE_CP
-                    )
-                else:
-                    record["best_eval_cp"] = score_val
-                    record["best_eval_mate"] = None
+                record[f"{key}_cp"] = score_val
+                record[f"{key}_mate"] = None
             index += 3
             continue
 
@@ -122,14 +112,7 @@ def parse_annotate_summary_line(line: str) -> Optional[Dict[str, Any]]:
     if not tokens:
         return None
 
-    summary: Dict[str, Any] = {
-        "side": tokens[0],
-        "moves": 0,
-        "accuracy": 100.0,
-        "avg_cpl": 0.0,
-    }
-    for cat in ANNOTATION_CATEGORIES:
-        summary[cat] = 0
+    summary = empty_summary(tokens[0])
 
     index = 1
     while index + 1 < len(tokens):

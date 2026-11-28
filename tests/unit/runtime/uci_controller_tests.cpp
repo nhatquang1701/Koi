@@ -3262,7 +3262,8 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
     require(mv_undo_exit == 0 && mv_undo_diag.str().empty(),
             "interactive makemove/undo sequence must shut down cleanly");
     require(mv_undo_raw.find("undo rejected: no moves to undo") != std::string::npos &&
-                mv_undo_raw.find("makemove requires at least one legal UCI move") != std::string::npos &&
+                mv_undo_raw.find("makemove requires at least one legal UCI or SAN move") !=
+                    std::string::npos &&
                 mv_undo_raw.find("info string played 2 moves") != std::string::npos &&
                 mv_undo_raw.find("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2\n") !=
                     std::string::npos &&
@@ -3273,15 +3274,19 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                 mv_undo_raw.find("undo rejected: only 0 ply available") == std::string::npos,
             "makemove/undo output mismatch; got:\n" + mv_undo_raw);
 
-    std::istringstream undo_bounds_in("position startpos moves e2e4\nundo 2\nfen\nquit\n");
+    std::istringstream undo_bounds_in(
+        "position startpos moves e2e4\nundo 2\nundo 18446744073709551615\nfen\nquit\n");
     std::ostringstream undo_bounds_out;
     std::ostringstream undo_bounds_diag;
     auto undo_bounds_ctrl =
         koi::test::make_uci_controller(undo_bounds_in, undo_bounds_out, undo_bounds_diag);
     const int undo_bounds_exit = undo_bounds_ctrl->run();
     const std::string undo_bounds_raw = undo_bounds_out.str();
+    const std::size_t first_reject = undo_bounds_raw.find("undo rejected: only 1 ply available");
     require(undo_bounds_exit == 0 &&
-                undo_bounds_raw.find("undo rejected: only 1 ply available") != std::string::npos &&
+                first_reject != std::string::npos &&
+                undo_bounds_raw.find("undo rejected: only 1 ply available", first_reject + 1) !=
+                    std::string::npos &&
                 undo_bounds_raw.find("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1\n") !=
                     std::string::npos,
             "undo > available plies must reject and preserve position; got:\n" + undo_bounds_raw);

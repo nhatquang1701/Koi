@@ -1530,7 +1530,7 @@ void UciController::handle_flip() {
 void UciController::handle_makemove(std::istream& command) {
     const std::vector<std::string> tokens = remaining_tokens(command);
     if (tokens.empty()) {
-        write_uci_info_string("makemove requires at least one legal UCI move");
+        write_uci_info_string("makemove requires at least one legal UCI or SAN move");
         return;
     }
     GameState candidate = position_;
@@ -1565,14 +1565,14 @@ void UciController::handle_undo(std::istream& command) {
         write_uci_info_string("undo ignored unexpected trailing arguments");
         return;
     }
-    std::size_t count = 1;
+    std::uint64_t count = 1;
     if (tokens.size() == 1) {
         std::uint64_t parsed = 0;
         if (!parse_uint64(tokens[0], parsed) || parsed < 1) {
             write_uci_info_string("undo ignored invalid count '" + tokens[0] + "'");
             return;
         }
-        count = static_cast<std::size_t>(parsed);
+        count = parsed;
     }
     if (position_moves_.empty()) {
         write_uci_info_string("undo rejected: no moves to undo");
@@ -1584,7 +1584,7 @@ void UciController::handle_undo(std::istream& command) {
         return;
     }
     stop_and_suppress_active_search();
-    rewind_position_history(count);
+    rewind_position_history(static_cast<std::size_t>(count));
     write_uci_info_string("undid " + std::to_string(count) +
                           (count == 1 ? " ply" : " plies"));
 }
@@ -1798,8 +1798,7 @@ int UciController::run_bench(int depth, std::size_t hash_mb, std::size_t threads
     const auto [total_nodes, elapsed_ms] =
         run_bench_positions(kBenchFens.size(), hash_mb, threads, limits);
 
-    std::lock_guard lock(output_mutex_);
-    output_ << detail::format_bench_summary(total_nodes, elapsed_ms) << std::flush;
+    write_plain_output(detail::format_bench_summary(total_nodes, elapsed_ms));
     return 0;
 }
 
@@ -1856,9 +1855,8 @@ int UciController::run_speedtest(std::size_t threads, std::size_t hash_mb, int r
     const auto [total_nodes, elapsed_ms] =
         run_bench_positions(position_count, hash_mb, threads, limits);
 
-    std::lock_guard lock(output_mutex_);
-    output_ << detail::format_speedtest_summary(threads, hash_mb, total_nodes, elapsed_ms)
-            << std::flush;
+    write_plain_output(
+        detail::format_speedtest_summary(threads, hash_mb, total_nodes, elapsed_ms));
     return 0;
 }
 

@@ -696,8 +696,32 @@ class MoveAnnotationTests(unittest.TestCase):
         assert parsed_move is not None
         self.assertEqual(parsed_move["classification"], "blunder")
         self.assertEqual(parsed_move["eval_mate"], -1)
+        self.assertEqual(parsed_move["eval_cp"], -elo_oracle.MATE_SCORE_CP)
+        self.assertEqual(parsed_move["best_eval_cp"], -20)
+        self.assertIsNone(parsed_move["best_eval_mate"])
         self.assertEqual(parsed_move["nag"], 4)
         self.assertEqual(parsed_move["pv"], ["d2d4", "d7d5"])
+
+        parsed_mate_best = annotate_pgn.parse_annotate_move_line(
+            "info string annotate move e2e4 ply 1 side white best d2d4 classification mistake "
+            "cpl 300 accuracy 50.0 wp_before 0.700 wp_after 0.400 eval cp 15 best_eval mate 2 depth 4"
+        )
+        self.assertIsNotNone(parsed_mate_best)
+        assert parsed_mate_best is not None
+        self.assertEqual(parsed_mate_best["eval_cp"], 15)
+        self.assertIsNone(parsed_mate_best["eval_mate"])
+        self.assertEqual(parsed_mate_best["best_eval_mate"], 2)
+        self.assertEqual(parsed_mate_best["best_eval_cp"], elo_oracle.MATE_SCORE_CP)
+
+        parsed_summary = annotate_pgn.parse_annotate_summary_line(
+            "info string annotate summary white moves 1 accuracy 95.0 avg_cpl 5.0 best 1"
+        )
+        self.assertIsNotNone(parsed_summary)
+        assert parsed_summary is not None
+        for cat in annotate_pgn.ANNOTATION_CATEGORIES:
+            self.assertIn(cat, parsed_summary)
+        self.assertEqual(parsed_summary["best"], 1)
+        self.assertEqual(parsed_summary["blunder"], 0)
         self.assertEqual(annotate_pgn.format_pgn_eval_tag(0, -1, "white"), "#-1")
         self.assertEqual(annotate_pgn.format_pgn_eval_tag(125, None, "black"), "-1.25")
 
