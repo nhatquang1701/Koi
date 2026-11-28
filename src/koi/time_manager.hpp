@@ -85,6 +85,7 @@ private:
     bool clock_mode_ = false;
     bool dynamic_move_overhead_ = false;
     bool emergency_pacing_ = false;
+    bool ponderhit_converted_ = false;
     mutable std::atomic_bool hard_deadline_reached_ = false;
 
     // The stop checks run per node (SearchContext::interrupted) and from Lazy

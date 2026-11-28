@@ -671,13 +671,17 @@ the search but cannot push it past the cap.
   `aspiration_researched && score_drop_cp_ >= 25`. Stable means no change and
   `|Δ| <= 25`.
 - Continuous pacing (`effective_soft_budget`) scales the soft budget within
-  `[max(1 ms, soft / 3), hard]` using `best_move_effort_permille_`,
-  `best_move_stability_`, decayed cumulative `instability_permille_`, inter-move
-  and intra-search `score_drop_cp_`, `score_gain_cp_`,
-  `last_aspiration_researched_`, single-legal-move cap (`min(150 ms, soft / 8)`),
-  confirmed forced-mate fast exit (`>= 2` stable deep mate iterations, capped
-  at `250 ms`), and asymmetric conversion speedup (`score >= +500` cp winning
-  or `<= -700` cp decisively lost with a stable deep line).
+  `[max(1 ms, soft / 3), hard]` (capping the scale multiplier at `1.35×`
+  during `<= 10 s + 0` sudden-death scrambles without `movestogo`, and `1.85×`
+  otherwise) using `best_move_effort_permille_`, `best_move_stability_`,
+  decayed cumulative `instability_permille_`, inter-move and intra-search
+  `score_drop_cp_`, `score_gain_cp_`, `last_aspiration_researched_`,
+  single-legal-move cap (`min(150 ms, soft / 8)`), confirmed forced-mate fast
+  exit (`>= 2` stable deep mate iterations, capped at `250 ms`), asymmetric
+  conversion speedup (`score >= +500` cp winning or `<= -700` cp decisively
+  lost with a stable deep line), and a 20% ponder-time-saved discount when a
+  `ponderhit` arrives with a calm deep line (`depth >= 6`, `stability >= 3`,
+  `!hard_position_`).
 - A hard position may exceed the soft budget only while fewer than five
   overheads remain is false (`remaining_clock > 5 × overhead`) and the remaining
   usable clock is at least `2 × soft budget + overhead`
@@ -691,9 +695,11 @@ the search but cannot push it past the cap.
   observations when the extension is unaffordable.
 - `should_start_next_iteration`: honors emergency pacing, forced-mate / single-move
   exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm
-  `75%` soft-target cutoffs, and adaptive EWMA branching-factor lookahead
+  `75%` soft-target cutoffs, adaptive EWMA branching-factor lookahead
   (`1.3×..3.2×`, starting at `1.5×`, avoiding doomed partial iterations past
-  `1.2×` soft target), in addition to the hard deadline.
+  `1.2×` soft target), and a doomed hard-ply guard once past `optimum_budget`
+  (`depth >= 6`, `score_drop < 60` cp, predicted next ply exceeding
+  `hard_budget`), in addition to the hard deadline.
 - `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)
   and calls `reconfigure`: limits/root context are replaced while preserving
   iteration observations gathered during pondering (recomputing `optimum_budget`

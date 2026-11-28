@@ -564,21 +564,6 @@ bool quiet_move_has_pawn_break_target(const MoveMetadata& metadata) noexcept {
     return (file == 3 || file == 4) && (rank == 3 || rank == 4);
 }
 
-bool null_move_is_safe(const GameState& state, const int phase) noexcept {
-    // No repetition re-check: the only caller reaches this function only when
-    // SearchPolicy::dynamic_null_move() reported eligible, which requires
-    // `null_move_allowed`; that flag already contains
-    // `!repetition_sensitive` (search_context.cpp), so the direct
-    // state.is_repetition_sensitive() scan could only return false here.
-    (void)phase;
-    if (!state.has_non_pawn_material(state.side_to_move()) ||
-        !state.has_non_pawn_material(opposite(state.side_to_move())) ||
-        state.halfmove_clock() >= kNullMoveRuleSafetyHalfmoves) {
-        return false;
-    }
-    return true;
-}
-
 bool narrow_deep_quiet_check_candidate(GameState& state, const MoveMetadata& metadata) {
     if (deep_quiet_check_candidate(metadata)) {
         return true;

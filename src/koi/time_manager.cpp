@@ -211,6 +211,7 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
 
     dynamic_move_overhead_ = dynamic_move_overhead;
     timing_ = TimeManagementStats{};
+    ponderhit_converted_ = preserve_observations && last_observed_depth_ > 0;
     if (!preserve_observations) {
         previous_score_.reset();
         average_score_.reset();
@@ -736,7 +737,20 @@ void TimeManager::update_optimum_budget() noexcept {
         }
     }
 
-    scale_permille = std::clamp<std::uint64_t>(scale_permille, 380, 1850);
+    // Pondering already banked opponent think time: when the move arrives and
+    // our deep ponder search is calm and stable, save 20% on optimum_budget.
+    if (ponderhit_converted_ && !hard_position_ && last_observed_depth_ >= 6 &&
+        best_move_stability_ >= 3 && score_drop_cp_ <= 15 &&
+        !last_aspiration_researched_) {
+        scale_permille = (scale_permille * 800ULL) / 1000ULL;
+    }
+
+    const bool sudden_death_scramble =
+        increment_clock_ <= std::chrono::milliseconds::zero() &&
+        remaining_clock_ <= std::chrono::milliseconds{10'000} &&
+        !limits_.moves_to_go.has_value();
+    const std::uint64_t max_scale_permille = sudden_death_scramble ? 1350ULL : 1850ULL;
+    scale_permille = std::clamp<std::uint64_t>(scale_permille, 380, max_scale_permille);
     const auto scaled = scale_fraction(timing_.soft_budget, scale_permille, 1000);
     const auto floor_budget = std::max(
         std::chrono::milliseconds{1}, timing_.soft_budget / 3);
@@ -862,6 +876,16 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         }
     }
     const auto budget = std::chrono::milliseconds{budget_ms};
+    if (clock_mode_ && last_observed_depth_ >= 6 &&
+        score_drop_cp_ < 60 &&
+        last_iteration_elapsed_ >= std::chrono::milliseconds{20} &&
+        elapsed >= soft_target) {
+        const auto predicted_next = scale_fraction(
+            last_iteration_elapsed_, branching_permille_, 1000);
+        if (saturating_add(elapsed, predicted_next) > budget) {
+            return false;
+        }
+    }
     const auto needed = std::max(estimated_next_iteration, std::chrono::milliseconds{1});
     return elapsed < budget && saturating_add(elapsed, needed) < budget;
 }

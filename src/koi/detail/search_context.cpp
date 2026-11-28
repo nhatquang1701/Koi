@@ -1169,8 +1169,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // it once and let the cluster prefetch overlap the static evaluation,
         // pruning gates, and move ordering before the probe below.
         const std::uint64_t position_key = state.position_key();
+        const int halfmove_clock = state.halfmove_clock();
         const std::uint64_t transposition_key = search_transposition_key(
-            position_key, state.halfmove_clock(), state.repetition_history_suppressed());
+            position_key, halfmove_clock, state.repetition_history_suppressed());
         table_access.prefetch(transposition_key);
 
         // Quiescence performs its own terminal-aware tactical/evasion move
@@ -1614,7 +1615,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         const DynamicNullMoveDecision null_move_decision = SearchPolicy::dynamic_null_move(
             depth, alpha, beta, static_eval, checked,
             null_move_allowed, pawn_endgame);
-        if (null_move_decision.eligible && null_move_is_safe(state, node_game_phase)) {
+        if (null_move_decision.eligible && halfmove_clock < kNullMoveRuleSafetyHalfmoves) {
             if (make_null_observed(state, ply)) {
                 PrincipalVariation& null_pv = lease.slot().child_pv;
                 null_pv.clear();

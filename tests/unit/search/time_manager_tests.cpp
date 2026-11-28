@@ -865,6 +865,69 @@ void test_high_latency_hard_extension_guard_and_symmetric_effort_stop() {
             "moderate-effort calm search must not trigger the 60% high-effort early stop");
 }
 
+void test_ponderhit_discount_scramble_cap_and_doomed_hard_ply_guard() {
+    SearchLimits ponder_limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    ponder_limits.ponder = true;
+    const SearchLimits clock = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+
+    TimeManager pondered(ponder_limits, koi::Color::white, 100, 30, 100, warm_context());
+    TimeManager unpondered(clock, koi::Color::white, 100, 30, 100, warm_context());
+    for (int depth = 5; depth <= 8; ++depth) {
+        const SearchIterationObservation obs{depth, 25, false, false, false, 10'000, 5'000, milliseconds{40}};
+        pondered.observe_iteration(obs);
+        unpondered.observe_iteration(obs);
+    }
+    pondered.reconfigure(clock, koi::Color::white, 100, 30, 100, warm_context(), false, {}, 0);
+    require(pondered.diagnostics().optimum_budget < unpondered.diagnostics().optimum_budget,
+            "calm deep ponderhit must apply the 20% ponder-time-saved optimum discount");
+
+    // Sudden-death scramble (<= 10s+0, no movestogo) caps optimum_budget scaling at 1.35x soft.
+    const SearchLimits scramble_limits = clock_limits(milliseconds{8'000}, milliseconds{0});
+    const SearchLimits normal_sd_limits = clock_limits(milliseconds{60'000}, milliseconds{0});
+    TimeManager scramble(scramble_limits, koi::Color::white, 100, 30, 100, warm_context());
+    TimeManager normal_sd(normal_sd_limits, koi::Color::white, 100, 30, 100, warm_context());
+    for (int depth = 4; depth <= 6; ++depth) {
+        const int score = depth == 4 ? 120 : -80;
+        const SearchIterationObservation obs{depth, score, depth == 5, true, true, 10'000, 2'500, milliseconds{20}};
+        scramble.observe_iteration(obs);
+        normal_sd.observe_iteration(obs);
+    }
+    const auto scramble_soft = scramble.diagnostics().soft_budget;
+    const auto scramble_opt = scramble.diagnostics().optimum_budget;
+    const auto scramble_cap = (scramble_soft * 135) / 100 + milliseconds{1};
+    require(scramble_opt <= scramble_cap &&
+                scramble_opt * 100 <= scramble_soft * 136 &&
+                normal_sd.diagnostics().optimum_budget * 100 >
+                    normal_sd.diagnostics().soft_budget * 145,
+            "sudden-death <=10s+0 scramble must clamp optimum_budget scale to 1.35x soft while 60s+0 keeps full headroom");
+
+    // Doomed hard-ply guard declines starting a ply projected to overrun hard_budget when not crashing (<60 cp drop).
+    auto hard_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto crash_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager hard_guard(clock, koi::Color::white, 100, 30, 100, warm_context(),
+                           [hard_now] { return *hard_now; });
+    TimeManager crash_guard(clock, koi::Color::white, 100, 30, 100, warm_context(),
+                            [crash_now] { return *crash_now; });
+    const auto hard_budget = hard_guard.diagnostics().hard_budget;
+    const auto opt_budget = hard_guard.diagnostics().optimum_budget;
+    const auto iter_time = std::max(milliseconds{20}, (hard_budget * 2) / 3);
+    for (int depth = 4; depth <= 6; ++depth) {
+        hard_guard.observe_iteration(
+            {depth, 50, depth == 6, true, false, 10'000, 5'000, iter_time});
+        crash_guard.observe_iteration(
+            {depth, depth < 6 ? 120 : 20, depth == 6, true, false, 10'000, 5'000, iter_time});
+    }
+    const auto check_at = std::max(opt_budget, hard_guard.diagnostics().optimum_budget);
+    const auto safe_point = std::min(hard_budget - milliseconds{5}, check_at + milliseconds{1});
+    *hard_now += safe_point;
+    *crash_now += safe_point;
+    require(safe_point >= hard_guard.diagnostics().optimum_budget &&
+                !hard_guard.should_start_next_iteration(milliseconds{1}),
+            "doomed hard-ply guard must skip starting a ply projected to overrun hard_budget");
+    require(crash_guard.should_start_next_iteration(milliseconds{1}),
+            "severe score drop (>=60 cp) must still allow attempting the emergency ply inside hard_budget");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -899,6 +962,8 @@ int main(int argc, char** argv) {
          test_adaptive_branching_factor_lookahead},
         {"high-latency guard and symmetric effort stop",
          test_high_latency_hard_extension_guard_and_symmetric_effort_stop},
+        {"ponderhit discount, scramble cap, and doomed hard-ply guard",
+         test_ponderhit_discount_scramble_cap_and_doomed_hard_ply_guard},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

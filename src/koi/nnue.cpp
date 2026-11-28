@@ -383,13 +383,15 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
             materialize_slot_perspective_v4_impl<std::int16_t>(state, opponent_index, slot);
         }
         mover_sums_16 = std::span<const std::int16_t>(
-            slot_values_16_[mover_index].data() + slot * hidden_units_, hidden_units_);
+            slot_values_16_data(mover_index) + slot * hidden_units_, hidden_units_);
         opponent_sums_16 = std::span<const std::int16_t>(
-            slot_values_16_[opponent_index].data() + slot * hidden_units_, hidden_units_);
+            slot_values_16_data(opponent_index) + slot * hidden_units_, hidden_units_);
         pieces = slot_pieces_[slot];
     } else if (scratch_valid_ && scratch_key_ == key) {
-        mover_sums_16 = std::span<const std::int16_t>(scratch_values_16_[mover_index]);
-        opponent_sums_16 = std::span<const std::int16_t>(scratch_values_16_[opponent_index]);
+        mover_sums_16 = std::span<const std::int16_t>(
+            scratch_values_16_data(mover_index), hidden_units_);
+        opponent_sums_16 = std::span<const std::int16_t>(
+            scratch_values_16_data(opponent_index), hidden_units_);
         pieces = scratch_pieces_;
     } else {
         for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
@@ -404,15 +406,17 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
                 EvaluationFeatureExtractor::halfka_hm_v2_finny_slot_for_square(king_sq, real) :
                 EvaluationFeatureExtractor::halfka_king_bucket_for_square(king_sq, real);
             refresh_finny_bucket_v4_impl<std::int16_t>(
-                state, real, bucket_idx, scratch_values_16_[index].data());
+                state, real, bucket_idx, scratch_values_16_data(index));
             scratch_buckets_[index] = static_cast<std::uint8_t>(bucket_idx);
         }
         scratch_pieces_ = static_cast<std::uint8_t>(state.piece_count());
         scratch_key_ = key;
         scratch_valid_ = true;
         ++incremental_fallback_count_;
-        mover_sums_16 = std::span<const std::int16_t>(scratch_values_16_[mover_index]);
-        opponent_sums_16 = std::span<const std::int16_t>(scratch_values_16_[opponent_index]);
+        mover_sums_16 = std::span<const std::int16_t>(
+            scratch_values_16_data(mover_index), hidden_units_);
+        opponent_sums_16 = std::span<const std::int16_t>(
+            scratch_values_16_data(opponent_index), hidden_units_);
         pieces = scratch_pieces_;
     }
     const std::size_t bucket = output_bucket_for_pieces(pieces);
@@ -489,11 +493,16 @@ void NnueWorker::ensure_incremental_storage() {
     const std::size_t finny_slots =
         halfka_hm_v9_ ? kNnueFinnyBucketCapacity : kNnueKingBucketCount;
     const std::size_t slot_entries = kIncrementalSlotCount * hidden_units_;
+    if (int16_safe_) {
+        int16_slot_stride_ = slot_entries;
+        int16_scratch_offset_ = kIncrementalPerspectives * int16_slot_stride_;
+        int16_finny_offset_ = int16_scratch_offset_ + kIncrementalPerspectives * hidden_units_;
+        int16_finny_stride_ = finny_slots * hidden_units_;
+        int16_arena_.assign(
+            int16_finny_offset_ + kIncrementalPerspectives * int16_finny_stride_, 0);
+    }
     for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
         if (int16_safe_) {
-            slot_values_16_[index].assign(slot_entries, 0);
-            scratch_values_16_[index].assign(hidden_units_, 0);
-            finny_values_16_[index].assign(finny_slots * hidden_units_, 0);
             finny_valid_[index].fill(0);
         } else {
             slot_values_[index].assign(slot_entries, 0);
@@ -605,7 +614,7 @@ void NnueWorker::refresh_finny_bucket_v4_impl(const GameState& state,
     const auto& current_bbs = state.piece_bitboards();
     SumT* cached_sums = nullptr;
     if constexpr (std::is_same_v<SumT, std::int16_t>) {
-        cached_sums = finny_values_16_[index].data() + bucket * hidden_units_;
+        cached_sums = finny_values_16_data(index) + bucket * hidden_units_;
     } else {
         cached_sums = finny_values_[index].data() + bucket * hidden_units_;
     }
@@ -1382,8 +1391,8 @@ bool NnueWorker::prepare_lazy_parent_slot_v4(const int ply, const std::size_t ch
             slot_computed_[0][from_slot] == 0 || slot_computed_[1][from_slot] == 0) {
             for (std::size_t index = 0; index < kIncrementalPerspectives; ++index) {
                 if (int16_safe_) {
-                    std::copy_n(scratch_values_16_[index].data(), hidden_units_,
-                                slot_values_16_[index].data() + from_slot * hidden_units_);
+                    std::copy_n(scratch_values_16_data(index), hidden_units_,
+                                slot_values_16_data(index) + from_slot * hidden_units_);
                 } else {
                     std::copy_n(scratch_values_[index].data(), hidden_units_,
                                 slot_values_[index].data() + from_slot * hidden_units_);
@@ -1417,7 +1426,7 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
     }
     auto* values_base = [&]() noexcept -> SumT* {
         if constexpr (std::is_same_v<SumT, std::int16_t>) {
-            return slot_values_16_[index].data();
+            return slot_values_16_data(index);
         } else {
             return slot_values_[index].data();
         }

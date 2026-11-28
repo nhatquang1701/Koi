@@ -294,9 +294,23 @@ private:
         bool is_null = false;
     };
 
+    [[nodiscard]] std::int16_t* slot_values_16_data(std::size_t index) noexcept {
+        return int16_arena_.data() + index * int16_slot_stride_;
+    }
+    [[nodiscard]] std::int16_t* scratch_values_16_data(std::size_t index) noexcept {
+        return int16_arena_.data() + int16_scratch_offset_ + index * hidden_units_;
+    }
+    [[nodiscard]] std::int16_t* finny_values_16_data(std::size_t index) noexcept {
+        return int16_arena_.data() + int16_finny_offset_ + index * int16_finny_stride_;
+    }
+
     std::size_t hidden_units_ = 0;
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> slot_values_;
-    std::array<std::vector<std::int16_t>, kIncrementalPerspectives> slot_values_16_;
+    std::vector<std::int16_t> int16_arena_;
+    std::size_t int16_slot_stride_ = 0;
+    std::size_t int16_scratch_offset_ = 0;
+    std::size_t int16_finny_offset_ = 0;
+    std::size_t int16_finny_stride_ = 0;
     std::array<std::array<std::uint8_t, kIncrementalSlotCount>, kIncrementalPerspectives> slot_buckets_{};
     std::array<std::array<std::uint8_t, kIncrementalSlotCount>, kIncrementalPerspectives> slot_computed_{};
     std::array<PendingMoveV4, kIncrementalSlotCount> slot_pending_move_{};
@@ -307,7 +321,6 @@ private:
     std::array<std::uint8_t, kIncrementalSlotCount> slot_pieces_{};
     int slot_cursor_ = -1;
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> scratch_values_;
-    std::array<std::vector<std::int16_t>, kIncrementalPerspectives> scratch_values_16_;
     std::array<std::uint8_t, kIncrementalPerspectives> scratch_buckets_{};
     std::uint8_t scratch_pieces_ = 0;
     std::uint64_t scratch_key_ = 0;
@@ -315,7 +328,6 @@ private:
     // Finny Table for HalfKA v4/v9 king-bucket refreshes: caches the accumulator
     // sums and 12 piece bitboards per (perspective, finny_slot).
     std::array<std::vector<std::int32_t>, kIncrementalPerspectives> finny_values_;
-    std::array<std::vector<std::int16_t>, kIncrementalPerspectives> finny_values_16_;
     std::array<std::array<std::array<std::array<std::uint64_t, 7>, 2>, kNnueFinnyBucketCapacity>,
                kIncrementalPerspectives>
         finny_bitboards_{};

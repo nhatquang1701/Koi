@@ -892,12 +892,12 @@ void SearchRunner::run_impl() {
         std::mutex* evaluator_mutex_ptr = evaluator->supports_concurrent_evaluation() ?
             nullptr : evaluator_mutex.get();
 
-        MoveMetadataList all_legal_moves;
+        MoveMetadataList legal_moves;
         root.legal_moves_with_metadata(
-            all_legal_moves, true, true, CheckFlagMode::quiet_moves_only);
-        timing_context.legal_move_count = static_cast<std::uint32_t>(all_legal_moves.size());
+            legal_moves, true, true, CheckFlagMode::quiet_moves_only);
+        timing_context.legal_move_count = static_cast<std::uint32_t>(legal_moves.size());
         timing_context.forcing_move_count = static_cast<std::uint32_t>(std::count_if(
-            all_legal_moves.begin(), all_legal_moves.end(), [](const MoveMetadata& metadata) {
+            legal_moves.begin(), legal_moves.end(), [](const MoveMetadata& metadata) {
                 return metadata.is_capture() || metadata.gives_check ||
                     metadata.move.promotion() != Promotion::none;
             }));
@@ -906,16 +906,25 @@ void SearchRunner::run_impl() {
         timing_context.fullmove_number = root.fullmove_number();
         timing_context.previous_search_score = options.previous_search_score;
 
-        MoveMetadataList legal_moves = all_legal_moves;
+        std::optional<MoveMetadataList> unfiltered_legal_moves;
         if (limits.search_moves_specified) {
-            MoveMetadataList filtered_moves;
-            for (const MoveMetadata& metadata : legal_moves) {
-                if (std::find(limits.search_moves.begin(), limits.search_moves.end(), metadata.move) !=
-                    limits.search_moves.end()) {
-                    (void)filtered_moves.push_back(metadata);
+            if (limits.movetime.has_value() &&
+                *limits.movetime < kShortTimedFallbackMinimum &&
+                !timing_context.in_check) {
+                unfiltered_legal_moves.emplace(legal_moves);
+            }
+            std::size_t write_index = 0;
+            const std::size_t total = legal_moves.size();
+            for (std::size_t read_index = 0; read_index < total; ++read_index) {
+                if (std::find(limits.search_moves.begin(), limits.search_moves.end(),
+                              legal_moves[read_index].move) != limits.search_moves.end()) {
+                    if (write_index != read_index) {
+                        legal_moves[write_index] = legal_moves[read_index];
+                    }
+                    ++write_index;
                 }
             }
-            legal_moves = filtered_moves;
+            legal_moves.resize(write_index);
             timing_context.legal_move_count = static_cast<std::uint32_t>(legal_moves.size());
         }
         table_access.new_generation();
@@ -1042,8 +1051,10 @@ void SearchRunner::run_impl() {
         if (limits.movetime.has_value() &&
             *limits.movetime < kShortTimedFallbackMinimum && !timing_context.in_check) {
             const PositionFeatures root_features = root.position_features();
+            const MoveMetadataList& forcing_root_moves =
+                unfiltered_legal_moves.has_value() ? *unfiltered_legal_moves : legal_moves;
             ultra_short_nonchecked_forcing_root = std::any_of(
-                all_legal_moves.begin(), all_legal_moves.end(),
+                forcing_root_moves.begin(), forcing_root_moves.end(),
                 [&root_features](const MoveMetadata& metadata) {
                     return quiet_move_has_direct_forcing_target(root_features, metadata);
                 });

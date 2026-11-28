@@ -58,10 +58,6 @@ void build_quiet_forcing_after_view(const GameState& after, Color mover,
 [[nodiscard]] bool quiet_move_has_pawn_break_target(
     const MoveMetadata& metadata) noexcept;
 
-// `phase` is GameState::game_phase(); passing the scalar keeps this gate from
-// forcing a full feature snapshot.
-[[nodiscard]] bool null_move_is_safe(const GameState& state, int phase) noexcept;
-
 [[nodiscard]] bool narrow_deep_quiet_check_candidate(
     GameState& state, const MoveMetadata& metadata);
 
