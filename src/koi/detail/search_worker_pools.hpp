@@ -136,17 +136,27 @@ public:
     }
 
 private:
-    // A helper's iteration counters are appended to the live totals once the
-    // iteration returns; the helper is the only writer of its own stats, so the
-    // relaxed read-modify-write cannot double-count.
-    void publish_iteration_stats(const SearchStats& iteration) noexcept {
-        live_nodes_.fetch_add(iteration.nodes, std::memory_order_relaxed);
-        live_qnodes_.fetch_add(iteration.qnodes, std::memory_order_relaxed);
-        live_tt_hits_.fetch_add(iteration.tt_hits, std::memory_order_relaxed);
-        live_tbhits_.fetch_add(iteration.tbhits, std::memory_order_relaxed);
+    // A helper's counters are appended to the live totals once the batch or
+    // iteration returns; the helper is the only writer of its own counters, so
+    // the relaxed read-modify-write cannot double-count.
+    void publish_live_deltas(const std::uint64_t nodes, const std::uint64_t qnodes,
+                             const std::uint64_t tt_hits, const std::uint64_t tbhits,
+                             const int seldepth) noexcept {
+        if (nodes != 0) {
+            live_nodes_.fetch_add(nodes, std::memory_order_relaxed);
+        }
+        if (qnodes != 0) {
+            live_qnodes_.fetch_add(qnodes, std::memory_order_relaxed);
+        }
+        if (tt_hits != 0) {
+            live_tt_hits_.fetch_add(tt_hits, std::memory_order_relaxed);
+        }
+        if (tbhits != 0) {
+            live_tbhits_.fetch_add(tbhits, std::memory_order_relaxed);
+        }
         int current = live_seldepth_.load(std::memory_order_relaxed);
-        while (iteration.seldepth > current &&
-               !live_seldepth_.compare_exchange_weak(current, iteration.seldepth,
+        while (seldepth > current &&
+               !live_seldepth_.compare_exchange_weak(current, seldepth,
                                                      std::memory_order_relaxed)) {
         }
     }
@@ -250,32 +260,26 @@ private:
                     if (delta_nodes + delta_qnodes < 4096ULL) {
                         return;
                     }
-                    SearchStats delta_stats{};
-                    delta_stats.nodes = delta_nodes;
-                    delta_stats.qnodes = delta_qnodes;
-                    delta_stats.tt_hits = context.stats.tt_hits - flushed_tt_hits;
-                    delta_stats.tbhits = context.stats.tbhits - flushed_tbhits;
-                    delta_stats.seldepth = context.stats.seldepth;
+                    const std::uint64_t delta_tt_hits = context.stats.tt_hits - flushed_tt_hits;
+                    const std::uint64_t delta_tbhits = context.stats.tbhits - flushed_tbhits;
                     flushed_nodes = context.stats.nodes;
                     flushed_qnodes = context.stats.qnodes;
                     flushed_tt_hits = context.stats.tt_hits;
                     flushed_tbhits = context.stats.tbhits;
-                    publish_iteration_stats(delta_stats);
+                    publish_live_deltas(delta_nodes, delta_qnodes, delta_tt_hits,
+                                        delta_tbhits, context.stats.seldepth);
                 };
                 const int attempt_depth = depth >= 8 ?
                     std::max(7, depth - std::min(2, aspiration.failed_high_count)) :
                     depth;
                 const int score = context.negamax(
                     state, attempt_depth, aspiration.alpha, aspiration.beta, 0, pv);
-                {
-                    SearchStats rem_stats{};
-                    rem_stats.nodes = context.stats.nodes - flushed_nodes;
-                    rem_stats.qnodes = context.stats.qnodes - flushed_qnodes;
-                    rem_stats.tt_hits = context.stats.tt_hits - flushed_tt_hits;
-                    rem_stats.tbhits = context.stats.tbhits - flushed_tbhits;
-                    rem_stats.seldepth = context.stats.seldepth;
-                    publish_iteration_stats(rem_stats);
-                }
+                publish_live_deltas(
+                    context.stats.nodes - flushed_nodes,
+                    context.stats.qnodes - flushed_qnodes,
+                    context.stats.tt_hits - flushed_tt_hits,
+                    context.stats.tbhits - flushed_tbhits,
+                    context.stats.seldepth);
                 context.progress_probe = {};
                 accumulate_stats(helper_stats_[helper_index], context.stats);
 

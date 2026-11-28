@@ -1316,10 +1316,12 @@ void SearchRunner::run_impl() {
                 pv.clear();
                 if (auto conversion = session->take_ponderhit(); conversion.has_value()) {
                     limits = std::move(conversion->limits);
-                    time_manager.reconfigure(limits, root.side_to_move(), options.speed_percent,
-                                             options.move_overhead_ms, options.slow_mover_percent,
-                                             timing_context, options.dynamic_move_overhead,
-                                             conversion->received_at, options.observed_overhead_ms);
+                    time_manager.reconfigure(
+                        limits, root.side_to_move(), options.speed_percent,
+                        options.move_overhead_ms, options.slow_mover_percent,
+                        timing_context, options.dynamic_move_overhead,
+                        conversion->received_at,
+                        conversion->observed_overhead_ms.value_or(options.observed_overhead_ms));
                     context.refresh_budget_tuning();
                     maximum_depth = std::min(
                         kMaximumSearchDepth,
@@ -1808,10 +1810,12 @@ void SearchRunner::run_impl() {
                 in_flight_depth = depth;
                 if (auto conversion = session->take_ponderhit(); conversion.has_value()) {
                     limits = std::move(conversion->limits);
-                    time_manager.reconfigure(limits, root.side_to_move(), options.speed_percent,
-                                             options.move_overhead_ms, options.slow_mover_percent,
-                                             timing_context, options.dynamic_move_overhead,
-                                             conversion->received_at, options.observed_overhead_ms);
+                    time_manager.reconfigure(
+                        limits, root.side_to_move(), options.speed_percent,
+                        options.move_overhead_ms, options.slow_mover_percent,
+                        timing_context, options.dynamic_move_overhead,
+                        conversion->received_at,
+                        conversion->observed_overhead_ms.value_or(options.observed_overhead_ms));
                     root_context.refresh_budget_tuning();
                     maximum_depth = std::min(
                         kMaximumSearchDepth,

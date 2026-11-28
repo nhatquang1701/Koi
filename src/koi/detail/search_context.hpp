@@ -506,6 +506,11 @@ struct SearchContext {
         return !poll_clock();
     }
 
+    [[nodiscard]] int terminal_score(const bool in_check, const Color side_to_move,
+                                     const int ply) const noexcept {
+        return in_check ? -kMateScore + ply : draw_value(side_to_move);
+    }
+
     [[nodiscard]] int terminal_score(const GameState& state, std::size_t move_count,
                                      int ply) const noexcept {
         if (move_count != 0) {
@@ -516,8 +521,12 @@ struct SearchContext {
 
     // Draw score from the side to move's perspective, biased against the root
     // side by `contempt_cp`.  Zero contempt keeps the historical neutral draw.
+    [[nodiscard]] int draw_value(const Color side_to_move) const noexcept {
+        return side_to_move == root_color ? -contempt_cp : contempt_cp;
+    }
+
     [[nodiscard]] int draw_value(const GameState& state) const noexcept {
-        return state.side_to_move() == root_color ? -contempt_cp : contempt_cp;
+        return draw_value(state.side_to_move());
     }
 
     [[nodiscard]] int evaluate_with_key(const GameState& state, Color perspective,
@@ -652,12 +661,7 @@ struct SearchContext {
     // position key before trusting any cached accumulator, so a missing call
     // here can only cost a refresh, never a wrong score.
     [[nodiscard]] bool make_observed(GameState& state, const MoveMetadata& metadata,
-                                     const int ply) {
-        // The parent key is observed only by the notification below, which is
-        // a no-op without a private worker; a serial NNUE search never
-        // has one, so skip the key computation there.
-        const std::uint64_t parent_key =
-            evaluation.has_private_worker() ? state.position_key() : 0;
+                                     const int ply, const std::uint64_t parent_key) {
         if (!state.make_search_move(metadata)) {
             return false;
         }
@@ -671,8 +675,18 @@ struct SearchContext {
                 child.material_signature_valid = false;
             }
         }
-        evaluation.notify_make_move(state, metadata, ply, parent_key);
+        evaluation.notify_make_move(
+            state, metadata, ply, evaluation.has_private_worker() ? parent_key : 0ULL);
         return true;
+    }
+
+    [[nodiscard]] bool make_observed(GameState& state, const MoveMetadata& metadata,
+                                     const int ply) {
+        // The parent key is observed only by the notification below, which is
+        // a no-op without a private worker; skip the key read when unused.
+        const std::uint64_t parent_key =
+            evaluation.has_private_worker() ? state.position_key() : 0;
+        return make_observed(state, metadata, ply, parent_key);
     }
 
     void unmake_observed(GameState& state, const int child_ply) {
@@ -680,9 +694,8 @@ struct SearchContext {
         state.unmake_move();
     }
 
-    [[nodiscard]] bool make_null_observed(GameState& state, const int ply) {
-        const std::uint64_t parent_key =
-            evaluation.has_private_worker() ? state.position_key() : 0;
+    [[nodiscard]] bool make_null_observed(GameState& state, const int ply,
+                                          const std::uint64_t parent_key) {
         if (!state.make_null_move()) {
             return false;
         }
@@ -692,8 +705,15 @@ struct SearchContext {
             child.material_signature = parent.material_signature;
             child.material_signature_valid = parent.material_signature_valid;
         }
-        evaluation.notify_make_null_move(state, ply, parent_key);
+        evaluation.notify_make_null_move(
+            state, ply, evaluation.has_private_worker() ? parent_key : 0ULL);
         return true;
+    }
+
+    [[nodiscard]] bool make_null_observed(GameState& state, const int ply) {
+        const std::uint64_t parent_key =
+            evaluation.has_private_worker() ? state.position_key() : 0;
+        return make_null_observed(state, ply, parent_key);
     }
 
     void unmake_null_observed(GameState& state, const int child_ply) {

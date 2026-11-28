@@ -100,9 +100,10 @@ void SearchHandle::stop_after(std::chrono::milliseconds delay) {
     }
 }
 
-void SearchHandle::request_ponderhit(SearchLimits limits) {
+void SearchHandle::request_ponderhit(
+    SearchLimits limits, const std::optional<std::uint32_t> observed_overhead_ms) {
     if (state_) {
-        state_->request_ponderhit(std::move(limits));
+        state_->request_ponderhit(std::move(limits), observed_overhead_ms);
     }
 }
 

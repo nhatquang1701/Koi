@@ -2,7 +2,9 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "koi/evaluator.hpp"
 #include "koi/hash_types.hpp"
@@ -27,7 +29,9 @@ public:
     void stop() noexcept;
     void wait();
     [[nodiscard]] bool running() const noexcept;
-    void request_ponderhit(SearchLimits limits);
+    void request_ponderhit(
+        SearchLimits limits,
+        std::optional<std::uint32_t> observed_overhead_ms = std::nullopt);
     // Stops the search after `delay` if it is still running. Used to enforce
     // explicit movetime deadlines and bound ponderhit conversions whose new
     // budget cannot be observed until the current iteration ends.

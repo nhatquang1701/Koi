@@ -2182,6 +2182,31 @@ void test_network_overhead_is_learned_from_clock_discrepancy() {
     const std::string spaced_contents((std::istreambuf_iterator<char>(spaced_log)), {});
     require(spaced_contents.find("network overhead estimate") != std::string::npos,
             "opponent wait time between moves must not suppress network overhead learning");
+
+    // An intervening `go ponder` + `stop` between two clock moves must keep the
+    // clock baseline intact so the next real clock search still learns overhead.
+    koi::test::TempDirectory ponder_files;
+    const ControllerResult ponder_result = run_controller_in_directory(
+        "setoption name DebugFile value network-ponder.log\n"
+        "debug on\n"
+        "position startpos\n"
+        "go wtime 1000 btime 1000 winc 0 binc 0\n"
+        "wait\n"
+        "position startpos moves e2e4 e7e5\n"
+        "go ponder wtime 1000 btime 1000 winc 0 binc 0\n"
+        "stop\n"
+        "wait\n"
+        "position startpos moves e2e4 e7e5\n"
+        "go wtime 200 btime 200 winc 0 binc 0\n"
+        "wait\n"
+        "quit\n",
+        ponder_files.path());
+    require(ponder_result.exit_code == 0 && ponder_result.diagnostics.empty(),
+            "interleaved ponder between clock searches must stay protocol-clean");
+    std::ifstream ponder_log(ponder_files.path() / "network-ponder.log", std::ios::binary);
+    const std::string ponder_contents((std::istreambuf_iterator<char>(ponder_log)), {});
+    require(ponder_contents.find("network overhead estimate") != std::string::npos,
+            "interleaved go ponder must preserve clock baseline for network overhead learning");
 }
 void test_evalfile_autodiscovery_marker_is_informational() {
     const ControllerResult marked = run_controller_with_autodiscovery("uci\nquit\n", true);

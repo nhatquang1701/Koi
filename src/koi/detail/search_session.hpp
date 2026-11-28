@@ -17,6 +17,7 @@ namespace koi::detail {
 struct PonderhitConversion {
     SearchLimits limits;
     std::chrono::steady_clock::time_point received_at{};
+    std::optional<std::uint32_t> observed_overhead_ms;
 };
 
 // Owns the lifecycle of exactly one search request. The request snapshots are
@@ -50,7 +51,8 @@ public:
     // Records a UCI ponderhit conversion for the running worker. The worker
     // consumes it at the top of the next iteration and re-arms timing from
     // `received_at`.
-    void request_ponderhit(SearchLimits limits);
+    void request_ponderhit(SearchLimits limits,
+                           std::optional<std::uint32_t> observed_overhead_ms = std::nullopt);
     // Arms a bounded fallback deadline: the search is stopped after `delay`
     // unless it completed or was stopped earlier.  A jthread timer owned by the
     // session; re-arming joins the previous timer.

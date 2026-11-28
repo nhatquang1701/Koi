@@ -545,6 +545,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         record_ply(ply);
 
         const bool checked = state.in_check();
+        const Color side_to_move = state.side_to_move();
         // One history scan feeds both the repetition-sensitivity flag here and
         // the draw status below; the position does not change in between.
         const std::size_t repetitions = state.repetition_count();
@@ -572,12 +573,12 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         if (ply >= static_cast<int>(SearchStack::kCapacity) - 1) {
             ++stats.qsearch_move_generations;
             if (!state.has_legal_move()) {
-                return terminal_score(state, 0, ply);
+                return terminal_score(checked, side_to_move, ply);
             }
             const DrawStatus draw_status = state.draw_status();
             if (is_forced_draw_status(draw_status) ||
                 (ply > 0 && is_claimable_draw_status(draw_status))) {
-                return draw_value(state);
+                return draw_value(side_to_move);
             }
             // There are legal moves, but the fixed stack boundary prevents
             // this qsearch node from examining its tactical frontier.
@@ -585,9 +586,9 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             if (checked) {
                 return terminal_score(state, 1, ply);
             }
-            const int static_score = evaluate(state, state.side_to_move());
+            const int static_score = evaluate(state, side_to_move);
             return is_claimable_draw_status(draw_status) ?
-                std::max(draw_value(state), static_score) : static_score;
+                std::max(draw_value(side_to_move), static_score) : static_score;
         }
         // Qsearch can be entered before regular negamax initializes the frame
         // at this ply, and its recursive children enter the same way.  Reset
@@ -642,12 +643,12 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         if (checked && qdepth >= kMaximumQuiescenceSafetyDepth) {
             ++stats.qsearch_move_generations;
             if (!state.has_legal_move()) {
-                return terminal_score(state, 0, ply);
+                return terminal_score(checked, side_to_move, ply);
             }
             const DrawStatus draw_status = state.draw_status();
             if (is_forced_draw_status(draw_status) ||
                 (ply > 0 && is_claimable_draw_status(draw_status))) {
-                return draw_value(state);
+                return draw_value(side_to_move);
             }
             // A checked qsearch node with legal evasions has no stand-pat
             // fallback. Returning a neutral value at this hard safety
@@ -673,7 +674,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         const bool claimable_draw = is_claimable_draw_status(draw_status);
         if (!checked &&
             (is_forced_draw_status(draw_status) || (ply > 0 && claimable_draw))) {
-            return draw_value(state);
+            return draw_value(side_to_move);
         }
 
         // A depth-valid TT entry can short-circuit the tactical frontier.
@@ -707,7 +708,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             }
         }
 
-        int best = claimable_draw ? draw_value(state) : -kInfinity;
+        int best = claimable_draw ? draw_value(side_to_move) : -kInfinity;
         const int original_alpha = alpha;
         bool best_lower_bound = false;
         bool unknown_selective_child = false;
@@ -725,9 +726,9 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             // one is available; the stored eval is perspective-raw exactly
             // like the evaluator's own return value.
             const int raw_eval = (tt_entry.has_value() && tt_entry->eval != kNoEvaluation) ?
-                tt_entry->eval : evaluate_with_key(state, state.side_to_move(), position_key);
+                tt_entry->eval : evaluate_with_key(state, side_to_move, position_key);
             qsearch_eval = raw_eval;
-            best = claimable_draw ? std::max(draw_value(state), raw_eval) : raw_eval;
+            best = claimable_draw ? std::max(draw_value(side_to_move), raw_eval) : raw_eval;
             // Stand-pat is a legal null continuation in qsearch terms, so it
             // provides a safe lower bound for the tactical frontier.  This
             // direction remains useful to a parent even when later pruning
@@ -739,7 +740,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
                     // Stand-pat is not a legal continuation without a legal
                     // move: this is the terminal position the generation-first
                     // order detected before the cutoff, cached the same way.
-                    const int score = terminal_score(state, 0, ply);
+                    const int score = terminal_score(checked, side_to_move, ply);
                     if (use_qsearch_cache) {
                         store_qsearch_cache(qsearch_key, score, false);
                     }
@@ -771,14 +772,14 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             state.legal_tactical_search_moves_with_metadata(
                 moves, qdepth < quiescence_check_depth_limit);
         if (!has_legal_move) {
-            const int score = terminal_score(state, 0, ply);
+            const int score = terminal_score(checked, side_to_move, ply);
             if (use_qsearch_cache) {
                 store_qsearch_cache(qsearch_key, score, false);
             }
             return score;
         }
         if (is_forced_draw_status(draw_status) || (ply > 0 && claimable_draw)) {
-            return draw_value(state);
+            return draw_value(side_to_move);
         }
 
         // At this boundary the tactical generator deliberately stops probing
@@ -960,7 +961,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
                 (checked || qdepth < quiescence_check_depth_limit)) {
                 ++stats.qchecks;
             }
-            if (!make_observed(state, metadata, ply)) {
+            if (!make_observed(state, metadata, ply, position_key)) {
                 // A current-position metadata record should always apply. If
                 // the defensive make path rejects it, the generated frontier
                 // was not searched completely and cannot be reported as an
@@ -1248,18 +1249,18 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         if (ply == 0 || excluded_search) {
             (void)ensure_moves();
             if (moves.empty() && !excluded_search) {
-                return terminal_score(state, 0, ply);
+                return terminal_score(checked, side_to_move, ply);
             }
             // Automatic/dead draws are properties of the current position, not
             // of the remaining move subset. A claimable draw is different: it is
             // a legal zero-valued option for the side to move, so the move loop
             // must still be allowed to discover a better continuation.
             if (is_forced_draw_status(draw_status)) {
-                return draw_value(state);
+                return draw_value(side_to_move);
             }
             if (moves.empty()) {
-                return claimable_draw ? draw_value(state) :
-                    (excluded_search ? alpha : terminal_score(state, 0, ply));
+                return claimable_draw ? draw_value(side_to_move) :
+                    (excluded_search ? alpha : terminal_score(checked, side_to_move, ply));
             }
         } else {
             bool has_legal_moves_verified = false;
@@ -1279,24 +1280,24 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 // Without check, even a zero-move stalemate returns draw_value,
                 // so a forced or claimable draw at ply > 0 needs neither
                 // has_legal_move() nor movegen.
-                return draw_value(state);
+                return draw_value(side_to_move);
             }
             if ((checked || is_forced_draw_status(draw_status) || claimable_draw) &&
                 !ensure_has_legal_move()) {
-                return terminal_score(state, 0, ply);
+                return terminal_score(checked, side_to_move, ply);
             }
             if (is_forced_draw_status(draw_status) || claimable_draw) {
-                return draw_value(state);
+                return draw_value(side_to_move);
             }
         }
         if (claimable_draw) {
             if (ply > 0) {
-                return draw_value(state);
+                return draw_value(side_to_move);
             }
             // At root (ply == 0), a claim is an available floor, not a forced terminal result.
             // Raise the lower edge before node-type selection so a null
             // window with beta <= 0 can use the claim as a valid cutoff.
-            alpha = std::max(alpha, draw_value(state));
+            alpha = std::max(alpha, draw_value(side_to_move));
             if (alpha >= beta) {
                 path_selective_bound = true;
                 path_lower_bound = true;
@@ -1322,7 +1323,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // meant to inspect.
         if (!excluded_search && ply > 0) {
             if (!checked && !claimable_draw && !moves_generated && !state.has_legal_move()) {
-                return terminal_score(state, 0, ply);
+                return terminal_score(checked, side_to_move, ply);
             }
             alpha = std::max(alpha, -kMateScore + ply);
             beta = std::min(beta, kMateScore - ply - 1);
@@ -1616,7 +1617,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             depth, alpha, beta, static_eval, checked,
             null_move_allowed, pawn_endgame);
         if (null_move_decision.eligible && halfmove_clock < kNullMoveRuleSafetyHalfmoves) {
-            if (make_null_observed(state, ply)) {
+            if (make_null_observed(state, ply, position_key)) {
                 PrincipalVariation& null_pv = lease.slot().child_pv;
                 null_pv.clear();
                 const int null_depth = std::max(
@@ -1867,7 +1868,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // A claimable draw is an implicit zero-valued option for the side to
         // move. Keep it as the initial floor while still searching every
         // legal move for a positive continuation.
-        int best_score = claimable_draw ? draw_value(state) : -kInfinity;
+        int best_score = claimable_draw ? draw_value(side_to_move) : -kInfinity;
         bool best_score_safe_lower_bound = claimable_draw;
         Move best_move = Move::no_move();
         int move_number = 0;
@@ -1984,15 +1985,10 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                 continuation_score = history_scores.continuation;
             }
             // The proven-counter-move probe has a single consumer,
-            // negative_continuation_history, whose own
-            // depth >= kNegativeContinuationHistoryMinimumDepth guard makes
-            // the flag unobservable below that horizon.  Table reads are pure,
-            // so skipping the probe there changes no decision.
-            const bool is_proven_counter_move =
-                depth >= kNegativeContinuationHistoryMinimumDepth &&
-                !previous_history_move.is_no_move() &&
-                ordering.is_proven_counter_move(
-                    moving_side, previous_history_move, move);
+            // negative_continuation_history, whose own preconditions only pass
+            // when all scalar gates hold; check it lazily only after those
+            // scalar checks succeed so ordinary non-pruned moves avoid the
+            // counter-move table lookup.
             const bool negative_continuation_allowed = !claimable_draw &&
                 !excluded_search && ply > 0 && !repetition_sensitive &&
                 !pawn_endgame && !parent_frame.in_check &&
@@ -2001,8 +1997,11 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     depth, next_move_number, continuation_score, pv_node, checked,
                     metadata.is_capture(), metadata.gives_check,
                     move.promotion() != Promotion::none, is_tt_move,
-                    is_killer_move, is_proven_counter_move,
-                    negative_continuation_allowed)) {
+                    is_killer_move, false,
+                    negative_continuation_allowed) &&
+                (previous_history_move.is_no_move() ||
+                 !ordering.is_proven_counter_move(
+                     moving_side, previous_history_move, move))) {
                 selective_pruning = true;
                 ++stats.continuation_history_prunes;
                 ++move_number;
@@ -2135,7 +2134,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             if (profile_enabled && ply == 0) {
                 begin_profile_root_move(move, next_move_number);
             }
-            if (!make_observed(state, metadata, ply)) {
+            if (!make_observed(state, metadata, ply, position_key)) {
                 if (profile_enabled && ply == 0) {
                     finish_profile_root_move(false);
                 }

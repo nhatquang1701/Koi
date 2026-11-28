@@ -97,14 +97,16 @@ void SearchSession::wait_until_stopped_or_ponderhit() {
     });
 }
 
-void SearchSession::request_ponderhit(SearchLimits limits) {
+void SearchSession::request_ponderhit(
+    SearchLimits limits, const std::optional<std::uint32_t> observed_overhead_ms) {
     // The stop mutex serializes with the wait predicates so a conversion
     // signalled between a predicate check and its wait is never lost.
     const auto received_at = std::chrono::steady_clock::now();
     std::lock_guard stop_lock(stop_mutex_);
     {
         std::lock_guard ponderhit_lock(ponderhit_mutex_);
-        ponderhit_conversion_ = PonderhitConversion{std::move(limits), received_at};
+        ponderhit_conversion_ = PonderhitConversion{
+            std::move(limits), received_at, observed_overhead_ms};
     }
     ponderhit_requested_.store(true, std::memory_order_release);
     stop_condition_.notify_all();

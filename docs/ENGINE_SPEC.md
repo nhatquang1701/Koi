@@ -607,7 +607,8 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    - `remaining` is the side-to-move clock, clamped to ≥ 0.
    - Observed GUI/network overhead (clock searches only): `UciController`
      compares the previous reported clock plus increment minus Koi's own
-     completed `go`-to-`bestmove` search duration (excluding opponent think time)
+     completed `go`-to-`bestmove` search duration (excluding opponent think time
+     and preserving the baseline across interleaved `go ponder` traffic)
      against the newly reported clock. Positive excess ≥ 25 ms raises a learned
      overhead (capped at 1500 ms); a negative or sub-threshold excess decays it
      by 1/8. `movetime` searches never learn or use it, and `ucinewgame` resets
@@ -703,9 +704,10 @@ the search but cannot push it past the cap.
 - `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)
   and calls `reconfigure`: limits/root context are replaced while preserving
   iteration observations gathered during pondering (recomputing `optimum_budget`
-  immediately for fast conversion on forced mates or clear moves), the clock
-  starts from `received_at`, `SearchContext::refresh_budget_tuning()` updates
-  clock-poll and qcheck limits, and the session watchdog is re-armed.
+  immediately for fast conversion on forced mates or clear moves and applying
+  the updated learned GUI overhead), the clock starts from `received_at`,
+  `SearchContext::refresh_budget_tuning()` updates clock-poll and qcheck limits,
+  and the session watchdog is re-armed.
 
 ### 6.3 Limit interactions
 

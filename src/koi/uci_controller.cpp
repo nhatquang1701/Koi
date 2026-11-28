@@ -1921,7 +1921,7 @@ void UciController::handle_ponderhit() {
             std::lock_guard lock(output_mutex_);
             observed_overhead = observed_gui_overhead_ms_;
         }
-        active_search_->request_ponderhit(std::move(converted));
+        active_search_->request_ponderhit(std::move(converted), observed_overhead);
         // The worker consumes the conversion only at the next iteration
         // boundary; until then the pondering search has no deadline even though
         // the GUI clock is running. Arm a hard-budget fallback timer so a long
@@ -1974,7 +1974,13 @@ void UciController::handle_ponderhit() {
 void UciController::note_clock_baseline(
     const SearchLimits& limits, const std::uint64_t generation,
     const std::chrono::steady_clock::time_point started) noexcept {
-    const bool clock_search = !limits.infinite && !limits.ponder && !limits.movetime.has_value();
+    if (limits.ponder) {
+        // Speculative pondering is unbounded and precedes our next real clock
+        // move or ponderhit; keep the previous clock baseline intact so ponder
+        // traffic never disables GUI/network overhead learning.
+        return;
+    }
+    const bool clock_search = !limits.infinite && !limits.movetime.has_value();
     const std::optional<ClockLimit>& clock =
         position_.side_to_move() == Color::white ? limits.white_clock : limits.black_clock;
     std::uint32_t logged_overhead = 0;
@@ -2776,7 +2782,8 @@ void UciController::write_search_completion(const std::uint64_t generation,
                    .count());
         previous_clock_search_completed_ = true;
     }
-    if (!is_ponder_search && result.completed_depth > 0 && !result.mate.has_value()) {
+    if ((!is_ponder_search || generation == active_clock_search_generation_) &&
+        result.completed_depth > 0 && !result.mate.has_value()) {
         previous_search_score_ = result.score_cp;
     }
 }
