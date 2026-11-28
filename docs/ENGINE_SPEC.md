@@ -623,8 +623,10 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      `32..34` in endgames) and **50** for sudden death (`56` through
      `fullmove 8`, smoothly interpolating to `46..50` in middlegames and
      `42..48` in endgames), with up to `+12%` sudden-death stretching across
-     `3..15 s` remaining and bounded opponent-clock asymmetry scaling when one
-     side has more than double the other's clock.
+     `3..15 s` remaining and bounded opponent-clock asymmetry scaling (`+20%`
+     horizon speedup against a sudden-death `<= 5 s` opponent when Koi holds
+     `>= 15 s` and `>= 3×` the opponent's clock, or asymmetry scaling when one
+     side has more than double the other's clock).
    - Reserve: `min(remaining, max(min(750 ms, max(50 ms, 3% of remaining)),
      2 × overhead))` so two effective overheads are always protected.
    - Usable: `remaining - reserve`.
@@ -702,16 +704,19 @@ the search but cannot push it past the cap.
   single-legal moves after reaching soft/optimum time, in emergency
   pacing at soft when the extension is unaffordable or the position is not hard,
   in calm high-effort positions (`>= 90%` best-move node share) past `60%` of the
-  soft/optimum target, in calm `depth >= 6` stable (`stability >= 3`) positions
-  past `75%` of the soft/optimum target, and in clock mode at soft after at
-  least 2 stable observations when the extension is unaffordable.
+  soft/optimum target, in calm `depth >= 6` stable (`stability >= 3`, no
+  aspiration re-research) positions past `75%` of the soft/optimum target, and
+  in clock mode at soft after at least 2 stable observations when the extension
+  is unaffordable.
 - `should_start_next_iteration`: honors instant post-`ponderhit` forced-mate /
   single-move exits, emergency pacing, forced-mate / single-move
   exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm
-  `75%` soft-target cutoffs, adaptive EWMA branching-factor lookahead
-  (`1.3×..3.2×`, starting at `1.5×`, `4 ms` sample floor in emergency pacing vs
-  `10 ms` otherwise, avoiding doomed partial iterations past
-  `1.2×` soft target), and a doomed hard-ply guard once past `optimum_budget`
+  `75%` soft-target cutoffs (symmetrically suppressed after an aspiration
+  re-search), adaptive EWMA branching-factor lookahead (`1.3×..3.2×`, starting at
+  `1.5×`, `4 ms` sample floor in emergency pacing vs `10 ms` otherwise, used
+  uniformly across both serial and parallel iterative-deepening drivers to
+  avoid doomed partial iterations past `1.2×` soft target), and a doomed
+  hard-ply guard once past `optimum_budget`
   (`depth >= 6`, `score_drop < 60` cp, `5 ms` sample floor in emergency pacing
   vs `20 ms` otherwise, predicted next ply exceeding
   `hard_budget`), in addition to the hard deadline.

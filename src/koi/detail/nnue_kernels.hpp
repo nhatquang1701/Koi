@@ -1158,37 +1158,51 @@ template <typename SumT, bool WriteAccumulator = true>
     const __m256i zero = _mm256_setzero_si256();
     const __m256i max_16 = _mm256_set1_epi16(qa_16);
     const __m256i max_32 = _mm256_set1_epi32(qa_i32);
-    __m256i acc = _mm256_setzero_si256();
+    __m256i acc0 = _mm256_setzero_si256();
+    __m256i acc1 = _mm256_setzero_si256();
     std::int64_t acc_tail = 0;
+
+    const auto accum_16 = [&](std::span<const SumT> sums,
+                              const std::int8_t* weights,
+                              std::span<std::int16_t> out_act,
+                              const std::size_t hidden,
+                              __m256i& acc) noexcept {
+        __m256i a;
+        if constexpr (std::is_same_v<SumT, std::int16_t>) {
+            const __m256i raw = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(sums.data() + hidden));
+            a = _mm256_min_epi16(_mm256_max_epi16(raw, zero), max_16);
+        } else {
+            __m256i lo = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(sums.data() + hidden));
+            __m256i hi = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(sums.data() + hidden + 8U));
+            lo = _mm256_min_epi32(_mm256_max_epi32(lo, zero), max_32);
+            hi = _mm256_min_epi32(_mm256_max_epi32(hi, zero), max_32);
+            a = _mm256_packs_epi32(lo, hi);
+            a = _mm256_permute4x64_epi64(a, _MM_SHUFFLE(3, 1, 2, 0));
+        }
+        if constexpr (WriteAccumulator) {
+            _mm256_storeu_si256(
+                reinterpret_cast<__m256i*>(out_act.data() + hidden), a);
+        }
+        const __m256i w = _mm256_cvtepi8_epi16(_mm_loadu_si128(
+            reinterpret_cast<const __m128i*>(weights + hidden)));
+        const __m256i aw = _mm256_mullo_epi16(a, w);
+        acc = _mm256_add_epi32(acc, _mm256_madd_epi16(aw, a));
+    };
 
     const auto accum_persp = [&](std::span<const SumT> sums,
                                  const std::int8_t* weights,
                                  std::span<std::int16_t> out_act) noexcept {
         std::size_t hidden = 0;
-        for (; hidden + 16U <= hidden_units; hidden += 16U) {
-            __m256i a;
-            if constexpr (std::is_same_v<SumT, std::int16_t>) {
-                const __m256i raw = _mm256_loadu_si256(
-                    reinterpret_cast<const __m256i*>(sums.data() + hidden));
-                a = _mm256_min_epi16(_mm256_max_epi16(raw, zero), max_16);
-            } else {
-                __m256i lo = _mm256_loadu_si256(
-                    reinterpret_cast<const __m256i*>(sums.data() + hidden));
-                __m256i hi = _mm256_loadu_si256(
-                    reinterpret_cast<const __m256i*>(sums.data() + hidden + 8U));
-                lo = _mm256_min_epi32(_mm256_max_epi32(lo, zero), max_32);
-                hi = _mm256_min_epi32(_mm256_max_epi32(hi, zero), max_32);
-                a = _mm256_packs_epi32(lo, hi);
-                a = _mm256_permute4x64_epi64(a, _MM_SHUFFLE(3, 1, 2, 0));
-            }
-            if constexpr (WriteAccumulator) {
-                _mm256_storeu_si256(
-                    reinterpret_cast<__m256i*>(out_act.data() + hidden), a);
-            }
-            const __m256i w = _mm256_cvtepi8_epi16(_mm_loadu_si128(
-                reinterpret_cast<const __m128i*>(weights + hidden)));
-            const __m256i aw = _mm256_mullo_epi16(a, w);
-            acc = _mm256_add_epi32(acc, _mm256_madd_epi16(aw, a));
+        for (; hidden + 32U <= hidden_units; hidden += 32U) {
+            accum_16(sums, weights, out_act, hidden, acc0);
+            accum_16(sums, weights, out_act, hidden + 16U, acc1);
+        }
+        if (hidden + 16U <= hidden_units) {
+            accum_16(sums, weights, out_act, hidden, acc0);
+            hidden += 16U;
         }
         for (; hidden < hidden_units; ++hidden) {
             const std::int32_t a = std::clamp<std::int32_t>(sums[hidden], 0, qa_i32);
@@ -1212,7 +1226,8 @@ template <typename SumT, bool WriteAccumulator = true>
     accum_persp(opp_sums, opp_weights, opp_act);
 
     alignas(32) std::array<std::int32_t, 8> lanes{};
-    _mm256_store_si256(reinterpret_cast<__m256i*>(lanes.data()), acc);
+    _mm256_store_si256(reinterpret_cast<__m256i*>(lanes.data()),
+                       _mm256_add_epi32(acc0, acc1));
     std::int64_t dot_sum = acc_tail;
     for (const std::int32_t lane : lanes) {
         dot_sum += lane;

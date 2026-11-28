@@ -1769,12 +1769,13 @@ public:
         const std::size_t scan = state.halfmove < 255
             ? std::min<std::size_t>(state.history_size, state.halfmove)
             : state.history_size;
-        for (std::size_t index = state.history_size; index > state.history_size - scan; --index) {
-            const UndoRecord& previous = state.history[index - 1];
-            if (previous.null_move) {
+        const std::size_t floor = state.history_size - scan;
+        for (std::size_t index = state.history_size; index >= floor + 2U; index -= 2U) {
+            if (state.history[index - 1U].null_move ||
+                state.history[index - 2U].null_move) {
                 break;
             }
-            if (previous.key == state.key) {
+            if (state.history[index - 2U].key == state.key) {
                 ++count;
             }
         }
@@ -1891,9 +1892,11 @@ public:
         out.position_key = state.key;
         out.halfmove_clock = state.halfmove;
         out.side_to_move = state.side;
+        out.piece_count = static_cast<std::uint8_t>(std::popcount(state.occupied));
         out.in_check = in_check();
         out.repetition_history_suppressed = state.repetition_history_suppressed;
         out.has_non_pawn_material = has_non_pawn_material(state.side);
+        out.opponent_has_non_pawn_material = has_non_pawn_material(opposite(state.side));
         out.repetition_count = repetition_count();
         out.draw_status = draw_status(out.repetition_count);
         return out;

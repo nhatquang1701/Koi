@@ -1112,6 +1112,42 @@ void test_high_latency_net_increment_credit_and_symmetric_calm_stop() {
             "calm search past 75% optimum_budget must stop symmetrically after iteration");
 }
 
+void test_opponent_flagging_pressure_and_aspiration_calm_symmetry() {
+    auto make_asymmetric_limits = [](milliseconds white_rem, milliseconds black_rem, milliseconds inc) {
+        SearchLimits limits;
+        limits.white_clock = ClockLimit{white_rem, inc};
+        limits.black_clock = ClockLimit{black_rem, inc};
+        return limits;
+    };
+    TimeManager sd_equal(make_asymmetric_limits(milliseconds{30'000}, milliseconds{30'000}, milliseconds{0}),
+                         koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    TimeManager sd_flagging(make_asymmetric_limits(milliseconds{30'000}, milliseconds{4'000}, milliseconds{0}),
+                            koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    require(sd_flagging.diagnostics().horizon > sd_equal.diagnostics().horizon &&
+                sd_flagging.diagnostics().soft_budget < sd_equal.diagnostics().soft_budget,
+            "sudden-death opponent <=5s clock must stretch horizon and tighten soft budget");
+
+    TimeManager inc_equal(make_asymmetric_limits(milliseconds{30'000}, milliseconds{30'000}, milliseconds{1'000}),
+                          koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    TimeManager inc_low_opp(make_asymmetric_limits(milliseconds{30'000}, milliseconds{4'000}, milliseconds{1'000}),
+                            koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    require(inc_low_opp.diagnostics().soft_budget >= inc_equal.diagnostics().soft_budget,
+            "incremental clock advantage must retain conversion time against low opponent clock");
+
+    auto asp_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager asp(clock_limits(milliseconds{120'000}, milliseconds{1'000}),
+                    koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                    [asp_now] { return *asp_now; });
+    asp.observe_iteration({4, 30, false, false, false, 10'000, 5'000, milliseconds{20}});
+    asp.observe_iteration({5, 30, false, false, false, 10'000, 5'000, milliseconds{20}});
+    asp.observe_iteration({6, 30, false, false, true, 10'000, 5'000, milliseconds{20}});
+    const auto opt = asp.diagnostics().optimum_budget;
+    *asp_now += (opt * 80) / 100;
+    require(!asp.should_stop_after_iteration() &&
+                asp.should_start_next_iteration(milliseconds{1}),
+            "aspiration re-search at last depth must keep 75% calm stop/start symmetric");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1158,6 +1194,8 @@ int main(int argc, char** argv) {
          test_overwhelming_win_noise_immunity_and_emergency_bullet_lookahead},
         {"high-latency net-increment credit and symmetric calm stop",
          test_high_latency_net_increment_credit_and_symmetric_calm_stop},
+        {"opponent flagging pressure and aspiration calm symmetry",
+         test_opponent_flagging_pressure_and_aspiration_calm_symmetry},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

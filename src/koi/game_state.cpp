@@ -2128,9 +2128,11 @@ SearchNodeInfo GameState::search_node_info() const noexcept {
         snap.halfmove_clock,
         snap.side_to_move,
         snap.draw_status,
+        snap.piece_count,
         snap.in_check,
         snap.repetition_history_suppressed,
         snap.has_non_pawn_material,
+        snap.opponent_has_non_pawn_material,
     };
 }
 

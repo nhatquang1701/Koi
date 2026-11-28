@@ -331,10 +331,16 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
         if (opponent_clock.has_value()) {
             const auto opp_remaining = std::max(
                 opponent_clock->remaining, std::chrono::milliseconds::zero());
-            if (remaining < opp_remaining / 2 &&
-                remaining < std::chrono::milliseconds{60'000} &&
-                opp_remaining >= std::chrono::milliseconds{10'000} &&
-                clock->increment <= std::chrono::milliseconds{2'000}) {
+            if (!has_increment &&
+                opp_remaining > std::chrono::milliseconds::zero() &&
+                opp_remaining <= std::chrono::milliseconds{5'000} &&
+                remaining >= std::chrono::milliseconds{15'000} &&
+                remaining >= scale_fraction(opp_remaining, 3, 1)) {
+                default_horizon = (default_horizon * 120U + 50U) / 100U;
+            } else if (remaining < opp_remaining / 2 &&
+                       remaining < std::chrono::milliseconds{60'000} &&
+                       opp_remaining >= std::chrono::milliseconds{10'000} &&
+                       clock->increment <= std::chrono::milliseconds{2'000}) {
                 default_horizon = (default_horizon * 115U + 50U) / 100U;
             } else if (opp_remaining > std::chrono::milliseconds::zero() &&
                        remaining > saturating_add(opp_remaining, opp_remaining) &&
@@ -915,6 +921,7 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         }
         if (last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
             best_move_stability_ >= 3 && score_drop_cp_ <= 15 &&
+            !last_aspiration_researched_ &&
             elapsed >= scale_fraction(soft_target, 75, 100)) {
             return false;
         }

@@ -1176,7 +1176,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         const bool checked = node_info.in_check;
         const bool repetition_sensitive = path_repetition_sensitive;
         const Color side_to_move = node_info.side_to_move;
+        const std::size_t node_piece_count = node_info.piece_count;
         const bool parent_has_non_pawn_material = node_info.has_non_pawn_material;
+        const bool opponent_has_non_pawn_material = node_info.opponent_has_non_pawn_material;
         SearchFrame& frame = stack.frame(static_cast<std::size_t>(std::max(ply, 0)));
         // Singular probes recurse at the same ply while temporarily excluding
         // the current TT move.  Stockfish 19 keeps the parent node's
@@ -1606,7 +1608,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             ++stats.null_repetition_skips;
         }
         const bool pawn_endgame = !parent_has_non_pawn_material ||
-            !state.has_non_pawn_material(opposite(side_to_move));
+            !opponent_has_non_pawn_material;
         const DynamicNullMoveDecision null_move_decision = SearchPolicy::dynamic_null_move(
             depth, alpha, beta, static_eval, checked,
             null_move_allowed, pawn_endgame);
@@ -1639,7 +1641,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     bool null_cutoff_proven = true;
                     const bool verify_null = null_move_decision.verify ||
                         node_game_phase < 8 ||
-                        state.piece_count() <= kNullMoveSparsePieceLimit;
+                        node_piece_count <= kNullMoveSparsePieceLimit;
                     // A verification search may not start another nested
                     // verification (Stockfish's nmpMinPly guard).
                     if (verify_null && null_verification_min_ply == 0) {
@@ -1723,10 +1725,10 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             !repetition_sensitive &&
             ((!tt_move.has_value() &&
               depth >= ((frame.tt_pv || pawn_endgame ||
-                         state.piece_count() <= kNullMoveSparsePieceLimit)
+                         node_piece_count <= kNullMoveSparsePieceLimit)
                         ? kInternalIterativeReductionMinimumDepth : 4)) ||
              (cut_node && !frame.tt_pv && !pawn_endgame &&
-              state.piece_count() > kNullMoveSparsePieceLimit && depth >= 4 &&
+              node_piece_count > kNullMoveSparsePieceLimit && depth >= 4 &&
               tt_entry.has_value() && tt_entry->depth <= depth - 4))) {
             path_selective_bound = true;
             --depth;
@@ -1939,7 +1941,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // exist.  Table reads are pure, so skipping the probe below depth
             // 3 changes no decision.
             const bool is_killer_move = depth >= 3 && ordering.is_killer(move, ply);
-            const int capture_history = metadata.is_capture() ?
+            const int next_move_number = move_number + 1;
+            const int capture_history = (next_move_number >= 2 && metadata.is_capture()) ?
                 ordering.capture_history_score(metadata) : 0;
             // Once a cut node has already examined enough candidates, keep
             // Stockfish's staged-picker behavior: tactical moves and the
@@ -1947,7 +1950,6 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // unpromising quiets is deferred out of this node. Root and PV
             // nodes retain every candidate so a partial ordering decision can
             // never replace an authoritative principal variation.
-            const int next_move_number = move_number + 1;
             if (!claimable_draw && !excluded_search && ply > 0 && !pv_node && !checked &&
                 !parent_frame.in_check &&
                 parent_has_non_pawn_material &&

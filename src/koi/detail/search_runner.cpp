@@ -1799,7 +1799,6 @@ void SearchRunner::run_impl() {
             }
             std::optional<int> previous_score;
             std::int64_t aspiration_mean_squared_score = 0;
-            std::chrono::milliseconds previous_iteration_elapsed{1};
             std::chrono::milliseconds previous_report_elapsed{0};
             std::uint64_t previous_report_visited = 0;
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
@@ -1823,7 +1822,8 @@ void SearchRunner::run_impl() {
                 if (!unbounded && depth > maximum_depth) {
                     break;
                 }
-                if (!unbounded && !time_manager.should_start_next_iteration(previous_iteration_elapsed * 2)) {
+                if (!unbounded && !time_manager.should_start_next_iteration(
+                        std::chrono::milliseconds{1})) {
                     break;
                 }
                 if (session->stop_requested().load(std::memory_order_relaxed) ||
@@ -2522,11 +2522,6 @@ void SearchRunner::run_impl() {
                 const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - started);
                 if (!publishable_root_iteration) {
-                    // The attempted pass still consumed real search time,
-                    // so use its duration to pace the next attempt while
-                    // withholding publication and aspiration state.
-                    previous_iteration_elapsed = std::max(
-                        std::chrono::milliseconds{1}, elapsed - previous_report_elapsed);
                     if (depth >= maximum_depth ||
                         time_manager.should_stop_after_iteration()) {
                         break;
@@ -2630,7 +2625,6 @@ void SearchRunner::run_impl() {
                     previous_score.reset();
                     aspiration_mean_squared_score = 0;
                 }
-                previous_iteration_elapsed = iteration_elapsed;
                 previous_report_elapsed = elapsed;
                 if (depth >= maximum_depth ||
                     time_manager.should_stop_after_iteration()) {
