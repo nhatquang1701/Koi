@@ -1250,9 +1250,13 @@ void SearchRunner::run_impl() {
                 // Exclusive TT access contract: one live search per
                 // TranspositionTable; the runner thread is the only TT
                 // toucher while an exclusive session is active (UCI
-                // stop+join, koi-bench sequential).  The LazySMP main thread
-                // shares the table with its helpers, so it stays locked.
+                // stop+join, koi-bench sequential).
                 context.table_access.set_exclusive(true);
+            } else {
+                // Shared LazySMP session: pin a hazard slot once and refresh on
+                // resize inside poll_clock_slow() so the main thread avoids
+                // per-node seq_cst hazard-slot fences while helpers share TT.
+                context.table_access.set_session_pin(true);
             }
             context.allow_root_forcing_extension = limits.depth.has_value() &&
                 *limits.depth == 1;

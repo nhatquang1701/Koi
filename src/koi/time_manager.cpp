@@ -362,7 +362,8 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
         std::max(std::chrono::milliseconds{50}, scale_duration(remaining, 3)));
     timing_.reserve = std::min(remaining, std::max(proportional_reserve, two_overheads));
     timing_.usable = nonnegative_difference(remaining, timing_.reserve);
-    emergency_pacing_ = remaining <= std::chrono::milliseconds{3000};
+    emergency_pacing_ = remaining <= std::chrono::milliseconds{3000} ||
+        timing_.usable <= std::chrono::milliseconds{2000};
     timing_.emergency_pacing = emergency_pacing_;
 
     const auto base_allocation = timing_.usable / timing_.horizon;
@@ -384,7 +385,7 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     // a row (two-thirds of the move's clock) before the GUI round trip was even
     // paid; the increment is refunded over subsequent moves, not inside this
     // one.  Emergency pacing still tightens the low-clock case separately.
-    const auto hard_units = remaining <= std::chrono::milliseconds{3000} ? 3 : 2;
+    const auto hard_units = emergency_pacing_ ? 3 : 2;
     const auto raw_hard = saturating_add(
         scale_fraction(base_allocation, hard_units, 1),
         scale_fraction(increment_credit, 3, 2));

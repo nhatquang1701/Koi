@@ -633,7 +633,8 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    - Reserve: `min(remaining, max(min(750 ms, max(50 ms, 3% of remaining)),
      2 × overhead))` so two effective overheads are always protected.
    - Usable: `remaining - reserve`.
-   - Emergency pacing starts when `remaining <= 3000 ms`.
+   - Emergency pacing starts when `remaining <= 3000 ms` or
+     `usable <= 2000 ms`.
    - Base allocation: `usable / horizon`.
    - Increment credit: `min(3/4 × credit_inc, 1/4 × usable)`, where
      `credit_inc` is `max(0, increment - overhead)` once `remaining <= 15 ×
@@ -642,7 +643,7 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      `increment` otherwise.
    - Raw soft: `base + increment_credit`.
    - Raw hard: `hard_units × base + 1.5 × increment_credit`, where
-     `hard_units = 3` at ≤ 3000 ms remaining and `2` otherwise (earlier builds
+     `hard_units = 3` under emergency pacing and `2` otherwise (earlier builds
      also used `3` whenever an increment existed; on a 10+2 clock that let an
      unstable move take ~74 s twice in a row and drained the game clock).
      Emergency pacing tightens the low-clock case further.

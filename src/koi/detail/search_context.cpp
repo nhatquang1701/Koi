@@ -142,6 +142,7 @@ private:
 } // namespace
 
 KOI_CTX_NOINLINE bool SearchContext::poll_clock_slow() noexcept {
+    table_access.refresh_pin_if_resized();
     if (time_manager.should_stop(visited_nodes())) {
         request_abort();
         return true;

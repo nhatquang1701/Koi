@@ -151,6 +151,20 @@ private:
                          int eval) noexcept;
     void prefetch_exclusive(Storage* storage, std::uint64_t key) const noexcept;
 
+    // Shared multi-thread session-pinned entry points for LazySMP/root workers.
+    // Callers pin a hazard slot via Lease and periodically refresh on resize
+    // using hot_storage_relaxed(), eliminating per-access seq_cst fences while
+    // keeping lockless AtomicSlot concurrency and hazard reclamation intact.
+    [[nodiscard]] Storage* hot_storage_relaxed() const noexcept {
+        return hot_storage_.load(std::memory_order_relaxed);
+    }
+    [[nodiscard]] std::optional<TranspositionEntry> probe_pinned(
+        Storage* storage, std::uint64_t key, int ply) const noexcept;
+    void store_pinned(Storage* storage, std::uint64_t key, int depth, int score,
+                      TranspositionBound bound, Move best_move, int ply, bool pv,
+                      int eval) noexcept;
+    void prefetch_pinned(Storage* storage, std::uint64_t key) const noexcept;
+
     // Reclaims retired storages whose hazard references have drained.  Called
     // with maintenance_mutex_ held.
     void reap_deferred_storage_locked() noexcept;

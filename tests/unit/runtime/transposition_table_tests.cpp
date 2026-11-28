@@ -383,6 +383,47 @@ void test_default_memory_snapshot_populates_host_ram() {
 #endif
 }
 
+void test_scoped_session_pin_refreshes_across_concurrent_resize() {
+    TranspositionTable table(1);
+    const Move move = parse_move("e2e4");
+    std::atomic<bool> invalid_entry{false};
+    std::vector<std::thread> workers;
+    constexpr std::uint64_t kWorkers = 3;
+    for (std::uint64_t worker = 0; worker < kWorkers; ++worker) {
+        workers.emplace_back([&table, &invalid_entry, move, worker] {
+            SearchTableAccess access(table);
+            SearchTableAccess::ScopedSessionPin pin(access);
+            for (std::uint64_t iter = 0; iter < 2'000; ++iter) {
+                if ((iter & 15ULL) == 0ULL) {
+                    access.refresh_pin_if_resized();
+                }
+                const std::uint64_t key = (worker + 11ULL) * 0x100000001b3ULL + iter;
+                access.store(key, static_cast<int>(iter % 7), static_cast<int>(worker),
+                             TranspositionBound::exact, move);
+                if (const auto entry = access.probe(key);
+                    entry.has_value() && entry->key != key) {
+                    invalid_entry.store(true, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+    for (int resize = 0; resize < 16; ++resize) {
+        const std::size_t megabytes = resize % 2 == 0 ? 1 : 2;
+        (void)table.set_size_mb(megabytes);
+        require(table.size_mb() == megabytes,
+                "concurrent ScopedSessionPin must refresh promptly during blocking resize");
+    }
+    for (std::thread& worker : workers) {
+        worker.join();
+    }
+    require(!invalid_entry.load(std::memory_order_relaxed),
+            "concurrent ScopedSessionPin probes must never observe mismatched keys");
+    table.store(0x9999ULL, 3, 42, TranspositionBound::exact, move);
+    const auto post = table.probe(0x9999ULL);
+    require(post.has_value() && post->score == 42,
+            "table must remain usable after pinned workers drain across resizes");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -402,6 +443,8 @@ int main(int argc, char** argv) {
         {"transposition exclusive pin blocks resize", test_exclusive_session_pin_blocks_resize_until_release},
         {"transposition nested locked lease preserves pin", test_nested_locked_access_preserves_session_pin},
         {"default memory snapshot populates host RAM", test_default_memory_snapshot_populates_host_ram},
+        {"transposition scoped session pin concurrent resize",
+         test_scoped_session_pin_refreshes_across_concurrent_resize},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

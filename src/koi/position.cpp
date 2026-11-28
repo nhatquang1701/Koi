@@ -624,10 +624,38 @@ public:
                 ((rook_rays_pre_ & friendly_rook_queen_) |
                  (bishop_rays_pre_ & friendly_bishop_queen_)) != 0;
             can_fast_direct_ = !already_checking_sliders;
+            if (can_fast_direct_) {
+                const std::uint64_t friendly = state.occupancy[side_idx];
+                const std::uint64_t rook_blockers = rook_rays_pre_ & friendly;
+                const std::uint64_t bishop_blockers = bishop_rays_pre_ & friendly;
+                if (rook_blockers != 0 && friendly_rook_queen_ != 0) {
+                    std::uint64_t pinners =
+                        detail::rook_attacks(king_square_, state.occupied ^ rook_blockers) &
+                        friendly_rook_queen_;
+                    while (pinners != 0) {
+                        const int sniper = static_cast<int>(std::countr_zero(pinners));
+                        pinners &= pinners - 1;
+                        dc_blockers_ |= detail::between_mask(king_square_, sniper) & rook_blockers;
+                    }
+                }
+                if (bishop_blockers != 0 && friendly_bishop_queen_ != 0) {
+                    std::uint64_t pinners =
+                        detail::bishop_attacks(king_square_, state.occupied ^ bishop_blockers) &
+                        friendly_bishop_queen_;
+                    while (pinners != 0) {
+                        const int sniper = static_cast<int>(std::countr_zero(pinners));
+                        pinners &= pinners - 1;
+                        dc_blockers_ |=
+                            detail::between_mask(king_square_, sniper) & bishop_blockers;
+                    }
+                }
+            }
         }
     }
 
     [[nodiscard]] static constexpr bool has_check_probe() noexcept { return IncludeCheckFlags; }
+    [[nodiscard]] bool can_fast_direct() const noexcept { return can_fast_direct_; }
+    [[nodiscard]] std::uint64_t dc_blockers() const noexcept { return dc_blockers_; }
     [[nodiscard]] int enemy_king_square() const noexcept { return king_square_; }
     [[nodiscard]] std::uint64_t direct_pawn_checks() const noexcept { return direct_pawn_checks_; }
     [[nodiscard]] std::uint64_t direct_knight_checks() const noexcept { return direct_knight_checks_; }
@@ -642,11 +670,19 @@ public:
         }
     }
 
+    [[nodiscard]] bool dc_hits(const int from) const noexcept {
+        if constexpr (!IncludeCheckFlags) {
+            return false;
+        } else {
+            return ((std::uint64_t{1} << from) & dc_blockers_) != 0;
+        }
+    }
+
     [[nodiscard]] bool capture_from_safe(const int from) const noexcept {
         if constexpr (!IncludeCheckFlags || QuietChecksOnly) {
             return true;
         } else {
-            return !pre_ray_hits(from);
+            return !dc_hits(from);
         }
     }
 
@@ -663,7 +699,7 @@ public:
         bool gives_check = false;
         if constexpr (IncludeCheckFlags) {
             if (!(QuietChecksOnly && kind == MoveKind::capture)) {
-                if (can_fast_direct_ && from_safe) {
+                if (can_fast_direct_) {
                     const std::uint64_t dest_bit = std::uint64_t{1} << to;
                     switch (moving) {
                         case PieceType::pawn:
@@ -686,6 +722,9 @@ public:
                             break;
                         default:
                             break;
+                    }
+                    if (!gives_check && !from_safe) {
+                        gives_check = (detail::line_mask(king_square_, from) & dest_bit) == 0;
                     }
                 } else {
                     gives_check = fallback_gives_check(from, to, moving, kind);
@@ -718,7 +757,7 @@ public:
         }
         constexpr bool check_eligible = IncludeCheckFlags && !QuietChecksOnly;
         const std::uint64_t dest_bit = std::uint64_t{1} << to;
-        const bool fast = check_eligible && can_fast_direct_ && from_safe;
+        const bool fast = check_eligible && can_fast_direct_ && !pre_ray_hits(from);
         const auto promo_check = [&](const Promotion promo, const std::uint64_t mask,
                                      const PieceType pt) noexcept -> bool {
             const bool gives_check = check_eligible &&
@@ -916,6 +955,7 @@ private:
     std::uint64_t rook_rays_pre_ = 0;
     std::uint64_t bishop_rays_pre_ = 0;
     std::uint64_t pre_rays_ = 0;
+    std::uint64_t dc_blockers_ = 0;
     std::uint64_t direct_pawn_checks_ = 0;
     std::uint64_t direct_knight_checks_ = 0;
     std::uint64_t direct_king_checks_ = 0;
@@ -2013,6 +2053,7 @@ private:
         std::uint64_t direct_bishop_checks = 0;
         std::uint64_t dc_blockers = 0;
         if constexpr (tactical_and_checks) {
+            bool reused_probe = false;
             if constexpr (is_metadata_sink_v<MoveSink>) {
                 if (moves.has_check_probe() && moves.enemy_king_square() >= 0) {
                     ek = moves.enemy_king_square();
@@ -2020,44 +2061,45 @@ private:
                     direct_knight_checks = moves.direct_knight_checks();
                     direct_rook_checks = moves.rook_rays_pre();
                     direct_bishop_checks = moves.bishop_rays_pre();
-                } else {
+                    if (moves.can_fast_direct()) {
+                        dc_blockers = moves.dc_blockers();
+                        reused_probe = true;
+                    }
+                }
+            }
+            if (!reused_probe) {
+                if (ek < 0) {
                     ek = static_cast<int>(std::countr_zero(enemy_king_bb));
                     direct_pawn_checks = detail::pawn_attackers_of(ek, side == Color::white);
                     direct_knight_checks = detail::knight_attacks(ek);
                     direct_rook_checks = detail::rook_attacks(ek, state.occupied);
                     direct_bishop_checks = detail::bishop_attacks(ek, state.occupied);
                 }
-            } else {
-                ek = static_cast<int>(std::countr_zero(enemy_king_bb));
-                direct_pawn_checks = detail::pawn_attackers_of(ek, side == Color::white);
-                direct_knight_checks = detail::knight_attacks(ek);
-                direct_rook_checks = detail::rook_attacks(ek, state.occupied);
-                direct_bishop_checks = detail::bishop_attacks(ek, state.occupied);
-            }
-            const std::uint64_t friendly_rq =
-                state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::rook)] |
-                state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)];
-            const std::uint64_t friendly_bq =
-                state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::bishop)] |
-                state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)];
-            const std::uint64_t rook_blockers = direct_rook_checks & friendly;
-            const std::uint64_t bishop_blockers = direct_bishop_checks & friendly;
-            if (rook_blockers != 0 && friendly_rq != 0) {
-                std::uint64_t pinners =
-                    detail::rook_attacks(ek, state.occupied ^ rook_blockers) & friendly_rq;
-                while (pinners != 0) {
-                    const int sniper = static_cast<int>(std::countr_zero(pinners));
-                    pinners &= pinners - 1;
-                    dc_blockers |= detail::between_mask(ek, sniper) & rook_blockers;
+                const std::uint64_t friendly_rq =
+                    state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::rook)] |
+                    state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)];
+                const std::uint64_t friendly_bq =
+                    state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::bishop)] |
+                    state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)];
+                const std::uint64_t rook_blockers = direct_rook_checks & friendly;
+                const std::uint64_t bishop_blockers = direct_bishop_checks & friendly;
+                if (rook_blockers != 0 && friendly_rq != 0) {
+                    std::uint64_t pinners =
+                        detail::rook_attacks(ek, state.occupied ^ rook_blockers) & friendly_rq;
+                    while (pinners != 0) {
+                        const int sniper = static_cast<int>(std::countr_zero(pinners));
+                        pinners &= pinners - 1;
+                        dc_blockers |= detail::between_mask(ek, sniper) & rook_blockers;
+                    }
                 }
-            }
-            if (bishop_blockers != 0 && friendly_bq != 0) {
-                std::uint64_t pinners =
-                    detail::bishop_attacks(ek, state.occupied ^ bishop_blockers) & friendly_bq;
-                while (pinners != 0) {
-                    const int sniper = static_cast<int>(std::countr_zero(pinners));
-                    pinners &= pinners - 1;
-                    dc_blockers |= detail::between_mask(ek, sniper) & bishop_blockers;
+                if (bishop_blockers != 0 && friendly_bq != 0) {
+                    std::uint64_t pinners =
+                        detail::bishop_attacks(ek, state.occupied ^ bishop_blockers) & friendly_bq;
+                    while (pinners != 0) {
+                        const int sniper = static_cast<int>(std::countr_zero(pinners));
+                        pinners &= pinners - 1;
+                        dc_blockers |= detail::between_mask(ek, sniper) & bishop_blockers;
+                    }
                 }
             }
         }
@@ -2066,7 +2108,7 @@ private:
             {
                 if (king >= 0) {
                     const Square king_sq = Square::from_index(static_cast<std::uint8_t>(king));
-                    const bool king_safe = !moves.pre_ray_hits(king);
+                    const bool king_safe = !moves.dc_hits(king);
                     const std::uint64_t king_targets_mask = tactical_and_checks
                         ? (enemy_non_king |
                            (~(friendly | enemy_king_bb) &
@@ -2256,7 +2298,7 @@ private:
                                     if (!moves.emit_piece_move(
                                             Square::from_index(static_cast<std::uint8_t>(from)),
                                             from, to, PieceType::pawn, PieceType::none,
-                                            MoveKind::quiet, !moves.pre_ray_hits(from))) {
+                                            MoveKind::quiet, !moves.dc_hits(from))) {
                                         return false;
                                     }
                                 }
@@ -2268,7 +2310,7 @@ private:
                                     if (!moves.emit_piece_move(
                                             Square::from_index(static_cast<std::uint8_t>(from)),
                                             from, to, PieceType::pawn, PieceType::none,
-                                            MoveKind::quiet, !moves.pre_ray_hits(from))) {
+                                            MoveKind::quiet, !moves.dc_hits(from))) {
                                         return false;
                                     }
                                 }
@@ -2284,7 +2326,7 @@ private:
                                 continue;
                             }
                             const Square source = Square::from_index(static_cast<std::uint8_t>(from));
-                            const bool from_safe = !moves.pre_ray_hits(from);
+                            const bool from_safe = !moves.dc_hits(from);
                             const std::uint64_t dc_off_ray =
                                 (tactical_and_checks && (dc_blockers & bit(from)) != 0)
                                     ? ~detail::line_mask(ek, from)
@@ -2449,7 +2491,7 @@ private:
                         const std::uint64_t targets = detail::knight_attacks(from) & mask;
                         if (targets == 0) continue;
                         const Square source = Square::from_index(static_cast<std::uint8_t>(from));
-                        const bool from_safe = !moves.pre_ray_hits(from);
+                        const bool from_safe = !moves.dc_hits(from);
                         if (!emit_split_targets.template operator()<PieceType::knight>(
                                 source, from, targets, from_safe)) {
                             return;
@@ -2491,7 +2533,7 @@ private:
                         slider_targets &= slider_mask;
                         if (slider_targets == 0) continue;
                         const Square source = Square::from_index(static_cast<std::uint8_t>(from));
-                        const bool from_safe = !moves.pre_ray_hits(from);
+                        const bool from_safe = !moves.dc_hits(from);
                         if (!emit_split_targets.template operator()<PT>(
                                 source, from, slider_targets, from_safe)) {
                             return false;
@@ -2531,7 +2573,7 @@ private:
             const Square source = Square::from_index(static_cast<std::uint8_t>(from));
             bool from_safe = true;
             if constexpr (is_metadata_sink_v<MoveSink>) {
-                from_safe = !moves.pre_ray_hits(from);
+                from_safe = !moves.dc_hits(from);
             }
             std::uint64_t dc_off_ray = 0;
             if constexpr (tactical_and_checks) {

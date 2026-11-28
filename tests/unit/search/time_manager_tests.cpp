@@ -1377,6 +1377,22 @@ void test_hard_position_doomed_overrun_ply_guard() {
             "hard position suffering a >=40 cp score drop must still attempt the next ply inside hard_budget");
 }
 
+void test_high_latency_usable_clock_engages_emergency_pacing() {
+    TimeManager laggy(clock_limits(milliseconds{3'500}, milliseconds{0}),
+                      koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                      {}, false, {}, 800);
+    TimeManager clean(clock_limits(milliseconds{3'500}, milliseconds{0}),
+                      koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                      {}, false, {}, 30);
+    require(laggy.diagnostics().usable <= milliseconds{2'000} &&
+                laggy.diagnostics().emergency_pacing,
+            "high network latency dropping usable clock to <=2000ms must engage emergency pacing");
+    require(!clean.diagnostics().emergency_pacing &&
+                laggy.diagnostics().soft_budget < clean.diagnostics().soft_budget &&
+                laggy.diagnostics().hard_budget < clean.diagnostics().hard_budget,
+            "low-latency 3500ms clock must stay out of emergency pacing and keep larger budgets");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1439,6 +1455,8 @@ int main(int argc, char** argv) {
          test_dead_drawn_endgame_speedup_banks_clock},
         {"hard position doomed overrun ply guard",
          test_hard_position_doomed_overrun_ply_guard},
+        {"high latency usable clock emergency pacing",
+         test_high_latency_usable_clock_engages_emergency_pacing},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

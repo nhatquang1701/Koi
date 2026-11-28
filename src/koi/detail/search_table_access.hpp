@@ -71,15 +71,41 @@ public:
     SearchTableAccess(SearchTableAccess&&) = delete;
     SearchTableAccess& operator=(SearchTableAccess&&) = delete;
 
-    // Releasing the exclusive pin and the debug-only claim must also happen
-    // when the caller never invokes set_exclusive(false); release builds carry
-    // no claim, and the pin is empty unless exclusive mode was enabled.
+    // Releasing the exclusive/shared pins and the debug-only claim must also
+    // happen when the caller never invokes set_exclusive(false) /
+    // set_session_pin(false); release builds carry no claim, and pins are
+    // empty unless their mode was enabled.
     ~SearchTableAccess() noexcept {
+        shared_pin_.reset();
         release_pin();
+        pinned_storage_ = nullptr;
 #ifndef NDEBUG
         release_exclusive_session();
 #endif
     }
+
+    class ScopedSessionPin final {
+    public:
+        explicit ScopedSessionPin(SearchTableAccess& access) noexcept
+            : access_(access), acquired_(!access.is_session_pinned()) {
+            if (acquired_) {
+                access_.set_session_pin(true);
+            }
+        }
+
+        ~ScopedSessionPin() noexcept {
+            if (acquired_) {
+                access_.set_session_pin(false);
+            }
+        }
+
+        ScopedSessionPin(const ScopedSessionPin&) = delete;
+        ScopedSessionPin& operator=(const ScopedSessionPin&) = delete;
+
+    private:
+        SearchTableAccess& access_;
+        bool acquired_ = false;
+    };
 
     void set_enabled(const bool enabled) noexcept {
         enabled_ = enabled;
@@ -87,6 +113,41 @@ public:
 
     [[nodiscard]] bool enabled() const noexcept {
         return enabled_;
+    }
+
+    [[nodiscard]] bool is_session_pinned() const noexcept {
+        return exclusive_ || shared_pin_.has_value();
+    }
+
+    // Enables or disables a multi-thread-safe hazard pin on this view so
+    // LazySMP and root-parallel workers avoid per-node seq_cst hazard-slot
+    // barriers while allowing concurrent AtomicSlot probes/stores and periodic
+    // resize refreshes via refresh_pin_if_resized().
+    void set_session_pin(const bool value) noexcept {
+        if (value) {
+            if (!exclusive_ && !shared_pin_.has_value()) {
+                shared_pin_.emplace(*table_);
+                pinned_storage_ = shared_pin_->storage();
+            }
+            return;
+        }
+        shared_pin_.reset();
+        if (!exclusive_) {
+            pinned_storage_ = nullptr;
+        }
+    }
+
+    // Re-acquires the multi-thread session pin when a concurrent resize
+    // publishes a new storage pointer so blocked resizes reclaim promptly.
+    // Intentionally independent of `enabled_` so temporarily disabled views
+    // never keep retired storage pinned across a concurrent resize.
+    void refresh_pin_if_resized() noexcept {
+        if (!exclusive_ && shared_pin_.has_value() &&
+            table_->hot_storage_relaxed() != pinned_storage_) [[unlikely]] {
+            shared_pin_.reset();
+            shared_pin_.emplace(*table_);
+            pinned_storage_ = shared_pin_->storage();
+        }
     }
 
     // Enables or disables exclusive access mode for this view.  Exclusive
@@ -109,15 +170,18 @@ public:
             table_->claim_exclusive_session();
             exclusive_session_claimed_ = true;
 #endif
+            shared_pin_.reset();
             // Eager pin: acquired once and held until release.  While it is
             // held a resize cannot complete (see SessionLease), so the pinned
             // pointer stays the live one for the whole session.
             pin_.emplace(*table_);
+            pinned_storage_ = pin_->storage();
         } else {
             release_pin();
 #ifndef NDEBUG
             release_exclusive_session();
 #endif
+            pinned_storage_ = shared_pin_.has_value() ? shared_pin_->storage() : nullptr;
         }
         exclusive_ = value;
     }
@@ -145,7 +209,10 @@ public:
             // Steady-state exclusive path: the session pin resolved the
             // storage once, so this probe performs no atomic instruction and
             // takes no stripe lock (probe_exclusive mirrors the locked scan).
-            return table_->probe_exclusive(pin_->storage(), key, ply);
+            return table_->probe_exclusive(pinned_storage_, key, ply);
+        }
+        if (pinned_storage_ != nullptr) {
+            return table_->probe_pinned(pinned_storage_, key, ply);
         }
         return table_->probe(key, ply, TranspositionAccessMode::locked);
     }
@@ -155,14 +222,18 @@ public:
     // dereferences the live storage, and a resize may run during an active
     // search (the soak suite's resize regression test drives that contract),
     // so each mode uses its own lifetime guard: exclusive mode reads the
-    // session-pinned storage, and the locked path takes the same hazard lease
-    // as the probe.
+    // session-pinned storage, shared workers read their refreshed pin, and the
+    // unpinned path takes a per-access hazard lease.
     void prefetch(const std::uint64_t key) const noexcept {
         if (!enabled_) {
             return;
         }
         if (exclusive_) {
-            table_->prefetch_exclusive(pin_->storage(), key);
+            table_->prefetch_exclusive(pinned_storage_, key);
+            return;
+        }
+        if (pinned_storage_ != nullptr) {
+            table_->prefetch_pinned(pinned_storage_, key);
             return;
         }
         table_->prefetch(key);
@@ -176,8 +247,13 @@ public:
             return;
         }
         if (exclusive_) {
-            table_->store_exclusive(pin_->storage(), key, depth, score, bound, best_move,
+            table_->store_exclusive(pinned_storage_, key, depth, score, bound, best_move,
                                     ply, pv, eval);
+            return;
+        }
+        if (pinned_storage_ != nullptr) {
+            table_->store_pinned(pinned_storage_, key, depth, score, bound, best_move,
+                                 ply, pv, eval);
             return;
         }
         table_->store(key, depth, score, bound, best_move, ply, pv, eval,
@@ -204,11 +280,13 @@ private:
     bool enabled_;
     // Exclusive access mode is off by default; see set_exclusive().
     bool exclusive_ = false;
+    TranspositionTable::Storage* pinned_storage_ = nullptr;
     // Session-scoped hazard pin for exclusive mode.  Engaged by
     // set_exclusive(true) before exclusive_ is set, so probe()/store() can
     // rely on it whenever exclusive_ is true; released by set_exclusive(false)
     // and by this view's destructor so a resize can proceed afterwards.
     std::optional<TranspositionTable::SessionLease> pin_;
+    std::optional<TranspositionTable::Lease> shared_pin_;
 #ifndef NDEBUG
     // Debug-only: this view currently holds the table's exclusive claim.
     bool exclusive_session_claimed_ = false;

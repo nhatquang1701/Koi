@@ -205,9 +205,11 @@ private:
         std::optional<Move> previous_best_move;
         int last_completed_depth = 0;
         int depth = 1;
+        SearchTableAccess::ScopedSessionPin tt_pin(context.table_access);
         while (!stopping_.load(std::memory_order_relaxed) &&
                !stop_requested_.load(std::memory_order_relaxed) &&
                !time_manager_.should_stop(0) && depth <= kMaximumSearchDepth) {
+            context.table_access.refresh_pin_if_resized();
             const int published = std::max(1, main_depth_.load(std::memory_order_relaxed));
             if (depth < published) {
                 depth = published;
@@ -573,6 +575,7 @@ private:
                 job = job_;
             }
 
+            SearchTableAccess::ScopedSessionPin tt_pin(context.table_access);
             seen_sequence = job->sequence;
             // Total visited nodes before this job. The per-job stats reset
             // below, so combining the base with the running job counters

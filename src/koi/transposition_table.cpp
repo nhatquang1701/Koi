@@ -809,6 +809,12 @@ void TranspositionTable::store_exclusive(Storage* storage, std::uint64_t key, in
     store_storage(storage, key, depth, score, bound, best_move, ply, pv, eval);
 }
 
+void TranspositionTable::store_pinned(Storage* storage, std::uint64_t key, int depth,
+                                      int score, TranspositionBound bound, Move best_move,
+                                      int ply, bool pv, int eval) noexcept {
+    store_storage(storage, key, depth, score, bound, best_move, ply, pv, eval);
+}
+
 void TranspositionTable::store(std::uint64_t key, int depth, int score, TranspositionBound bound,
                                Move best_move, int ply, bool pv, int eval,
                                TranspositionAccessMode mode) noexcept {
@@ -877,6 +883,11 @@ std::optional<TranspositionEntry> TranspositionTable::probe_exclusive(
     return probe_storage(storage, key, ply);
 }
 
+std::optional<TranspositionEntry> TranspositionTable::probe_pinned(
+    Storage* storage, std::uint64_t key, int ply) const noexcept {
+    return probe_storage(storage, key, ply);
+}
+
 std::optional<TranspositionEntry> TranspositionTable::probe(
     std::uint64_t key, int ply, TranspositionAccessMode mode) const noexcept {
 #ifndef NDEBUG
@@ -908,6 +919,10 @@ void TranspositionTable::prefetch(std::uint64_t key) const noexcept {
 }
 
 void TranspositionTable::prefetch_exclusive(Storage* storage, std::uint64_t key) const noexcept {
+    prefetch_storage(storage, key);
+}
+
+void TranspositionTable::prefetch_pinned(Storage* storage, std::uint64_t key) const noexcept {
     prefetch_storage(storage, key);
 }
 
