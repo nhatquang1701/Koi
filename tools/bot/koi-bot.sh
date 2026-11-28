@@ -50,7 +50,7 @@ MATCHMAKING="${KOI_BOT_MATCHMAKING:-true}"
 MATCHMAKING_TIMEOUT="${KOI_BOT_MATCHMAKING_TIMEOUT:-5}"
 PYTHON_PIN_FILE="$BOT_HOME/python-bin"
 WORK_TMP=""
-cleanup() { [ -n "$WORK_TMP" ] && rm -rf "$WORK_TMP"; }
+cleanup() { if [ -n "$WORK_TMP" ]; then rm -rf "$WORK_TMP"; fi; }
 trap cleanup EXIT
 
 # lichess-bot requires Python 3.11+.  Resolve the interpreter once, remember it
@@ -632,14 +632,19 @@ bot_processes() {
 # survive a hard-killed parent and then spam the log with tracebacks, so any
 # orphan belonging to this venv is cleaned up with the bot.
 kill_orphan_workers() {
-    local p
-    for p in $(pgrep -f 'multiprocessing' 2>/dev/null); do
+    local pids p signalled=0
+    pids="$(pgrep -f 'multiprocessing' 2>/dev/null || true)"
+    [ -n "$pids" ] || return 0
+    for p in $pids; do
         if ps -o command= -p "$p" 2>/dev/null | grep -q "$CLONE/.venv"; then
-            kill -TERM "$p" 2>/dev/null || true
+            if kill -TERM "$p" 2>/dev/null; then
+                signalled=1
+            fi
         fi
     done
+    [ "$signalled" = "1" ] || return 0
     sleep 1
-    for p in $(pgrep -f 'multiprocessing' 2>/dev/null); do
+    for p in $(pgrep -f 'multiprocessing' 2>/dev/null || true); do
         if ps -o command= -p "$p" 2>/dev/null | grep -q "$CLONE/.venv"; then
             kill -KILL "$p" 2>/dev/null || true
         fi

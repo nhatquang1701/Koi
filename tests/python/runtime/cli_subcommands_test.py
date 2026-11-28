@@ -1192,6 +1192,31 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(epd_lines[2].split(",")[1], "")
             self.assertIsInstance(int(epd_lines[2].split(",")[2]), int)
 
+            bom_epd_txt = pathlib.Path(tmpdir) / "bom_positions.epd"
+            bom_epd_txt.write_text(
+                "\ufeff" + '6k1/5ppp/8/8/8/8/8/3R2K1 w - - bm Rd8#; id "BomMate";\n',
+                encoding="utf-8",
+            )
+            eval_bom = subprocess.run(
+                [str(eval_features_exe), "--hce", f"--input={bom_epd_txt}"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(eval_bom.returncode, 0, eval_bom.stderr)
+            self.assertEqual(eval_bom.stderr, "")
+            self.assertEqual(len(eval_bom.stdout.splitlines()), 2, eval_bom.stdout)
+
+            bench_bom = subprocess.run(
+                [str(bench_exe), "--hce", f"--epd={bom_epd_txt}", "--depth", "2"],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            self.assertEqual(bench_bom.returncode, 0, bench_bom.stderr)
+            self.assertIn("BomMate", bench_bom.stdout)
+            self.assertIn("1/1", bench_bom.stdout)
+
             limit_corpus = (
                 "# comment\n"
                 "   \n"

@@ -1390,6 +1390,46 @@ std::optional<GameState> parse_cli_position_spec(const std::string_view spec, st
     return std::move(parsed->state);
 }
 
+std::optional<ParsedEpdPrefix> parse_epd_prefix(std::string_view line) {
+    constexpr std::string_view kUtf8Bom = "\xEF\xBB\xBF";
+    if (line.starts_with(kUtf8Bom)) {
+        line.remove_prefix(kUtf8Bom.size());
+    }
+    std::size_t cursor = 0;
+    std::array<std::string_view, 4> fields{};
+    for (std::size_t field_index = 0; field_index < fields.size(); ++field_index) {
+        while (cursor < line.size() &&
+               std::isspace(static_cast<unsigned char>(line[cursor])) != 0) {
+            ++cursor;
+        }
+        const std::size_t start = cursor;
+        while (cursor < line.size() &&
+               std::isspace(static_cast<unsigned char>(line[cursor])) == 0) {
+            ++cursor;
+        }
+        if (start == cursor) {
+            return std::nullopt;
+        }
+        fields[field_index] = line.substr(start, cursor - start);
+    }
+    const std::string_view operations = trim_ascii(line.substr(cursor));
+    if (!operations.empty() && operations.find(';') == std::string_view::npos) {
+        return std::nullopt;
+    }
+    std::string four_field_fen;
+    four_field_fen.reserve(fields[0].size() + fields[1].size() + fields[2].size() +
+                           fields[3].size() + 4);
+    four_field_fen.append(fields[0]).push_back(' ');
+    four_field_fen.append(fields[1]).push_back(' ');
+    four_field_fen.append(fields[2]).push_back(' ');
+    four_field_fen.append(fields[3]);
+    const auto state = GameState::from_fen(four_field_fen + " 0 1");
+    if (!state.has_value()) {
+        return std::nullopt;
+    }
+    return ParsedEpdPrefix{*state, std::move(four_field_fen), operations};
+}
+
 std::string format_position_debug_json(const std::uint64_t generation,
                                        const std::string_view command_text,
                                        const PositionConsistencySnapshot& snapshot,

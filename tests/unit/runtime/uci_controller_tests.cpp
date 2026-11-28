@@ -3417,6 +3417,25 @@ void test_uci_support_helpers_direct() {
                 fen5_err.find("invalid FEN") != std::string::npos,
             "parse_cli_position_spec must reject 5-field FENs");
 
+    const auto epd4_only = parse_epd_prefix("6k1/5ppp/8/8/8/8/8/3R2K1 w - -");
+    require(epd4_only.has_value() &&
+                epd4_only->four_field_fen == "6k1/5ppp/8/8/8/8/8/3R2K1 w - -" &&
+                epd4_only->operations.empty() &&
+                epd4_only->state.fen() == "6k1/5ppp/8/8/8/8/8/3R2K1 w - - 0 1",
+            "parse_epd_prefix must accept bare 4-field FENs");
+    const auto epd_ops = parse_epd_prefix(
+        "6k1/5ppp/8/8/8/8/8/3R2K1 w - - bm Rd8#; id \"BackRank\";");
+    require(epd_ops.has_value() && epd_ops->operations == "bm Rd8#; id \"BackRank\";",
+            "parse_epd_prefix must preserve trailing EPD operations");
+    const auto epd_bom = parse_epd_prefix(
+        "\xEF\xBB\xBF" "6k1/5ppp/8/8/8/8/8/3R2K1 w - - bm Rd8#;");
+    require(epd_bom.has_value() && epd_bom->operations == "bm Rd8#;",
+            "parse_epd_prefix must strip leading UTF-8 BOM");
+    require(!parse_epd_prefix("6k1/5ppp/8/8/8/8/8/3R2K1 w -").has_value() &&
+                !parse_epd_prefix("6k1/5ppp/8/8/8/8/8/3R2K1 w - - 0").has_value() &&
+                !parse_epd_prefix("invalid w - - bm e4;").has_value(),
+            "parse_epd_prefix must reject malformed 3/5-field FENs and invalid boards");
+
     const std::optional<koi::Move> e2e4 = koi::Move::parse_uci("e2e4");
     const std::optional<koi::Move> d2d4 = koi::Move::parse_uci("d2d4");
     require(e2e4.has_value() && d2d4.has_value(), "expected valid UCI moves");

@@ -196,6 +196,12 @@ struct ParsedCliPosition {
     std::string_view spec, std::string& error);
 [[nodiscard]] std::optional<GameState> parse_cli_position_spec(
     std::string_view spec, std::string& error);
+struct ParsedEpdPrefix {
+    GameState state;
+    std::string four_field_fen;
+    std::string_view operations;
+};
+[[nodiscard]] std::optional<ParsedEpdPrefix> parse_epd_prefix(std::string_view line);
 [[nodiscard]] std::string format_compiler_info(std::string_view version, std::string_view commit);
 [[nodiscard]] std::string format_nnue_info(
     std::string_view display_path, const NnueNetwork& network);

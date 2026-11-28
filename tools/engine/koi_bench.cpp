@@ -377,6 +377,9 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
     std::vector<BenchPosition> positions;
     std::string line;
     while (std::getline(input, line)) {
+        if (positions.empty() && line.starts_with("\xEF\xBB\xBF")) {
+            line.erase(0, 3);
+        }
         const std::string_view trimmed = trim(line);
         if (trimmed.empty() || trimmed.front() == '#') {
             continue;
@@ -404,43 +407,13 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
                 }
             }
             if (!parsed_state.has_value()) {
-                std::size_t cursor = 0;
-                std::array<std::string_view, 4> fields{};
-                for (std::size_t field_index = 0; field_index < fields.size(); ++field_index) {
-                    while (cursor < payload.size() &&
-                           std::isspace(static_cast<unsigned char>(payload[cursor])) != 0) {
-                        ++cursor;
-                    }
-                    const std::size_t start = cursor;
-                    while (cursor < payload.size() &&
-                           std::isspace(static_cast<unsigned char>(payload[cursor])) == 0) {
-                        ++cursor;
-                    }
-                    if (start == cursor) {
-                        throw std::runtime_error(
-                            "invalid benchmark position: " + std::string(payload));
-                    }
-                    fields[field_index] = payload.substr(start, cursor - start);
-                }
-                std::string_view ops = trim(payload.substr(cursor));
-                if (!ops.empty() && payload.find(';') == std::string_view::npos) {
+                const auto epd = koi::detail::parse_epd_prefix(payload);
+                if (!epd.has_value()) {
                     throw std::runtime_error(
                         "invalid benchmark position: " + std::string(payload));
                 }
-                std::string fen4;
-                fen4.reserve(fields[0].size() + fields[1].size() + fields[2].size() +
-                             fields[3].size() + 8);
-                fen4.append(fields[0]).push_back(' ');
-                fen4.append(fields[1]).push_back(' ');
-                fen4.append(fields[2]).push_back(' ');
-                fen4.append(fields[3]);
-                fen4 += " 0 1";
-                const auto epd_state = koi::GameState::from_fen(fen4);
-                if (!epd_state.has_value()) {
-                    throw std::runtime_error(
-                        "invalid benchmark position: " + std::string(payload));
-                }
-                parsed_state = *epd_state;
+                parsed_state = epd->state;
+                std::string_view ops = epd->operations;
                 if (!ops.empty()) {
                     is_epd = true;
                     std::uint64_t halfmove_clock = 0;
@@ -501,16 +474,9 @@ std::vector<BenchPosition> load_fen_positions(const std::string& path) {
                         }
                     }
                     if (has_epd_clocks) {
-                        std::string fen_clocked;
-                        fen_clocked.reserve(fields[0].size() + fields[1].size() + fields[2].size() +
-                                            fields[3].size() + 16);
-                        fen_clocked.append(fields[0]).push_back(' ');
-                        fen_clocked.append(fields[1]).push_back(' ');
-                        fen_clocked.append(fields[2]).push_back(' ');
-                        fen_clocked.append(fields[3]).push_back(' ');
-                        fen_clocked += std::to_string(halfmove_clock);
-                        fen_clocked.push_back(' ');
-                        fen_clocked += std::to_string(fullmove_number);
+                        const std::string fen_clocked =
+                            epd->four_field_fen + ' ' + std::to_string(halfmove_clock) + ' ' +
+                            std::to_string(fullmove_number);
                         const auto clocked_state = koi::GameState::from_fen(fen_clocked);
                         if (!clocked_state.has_value()) {
                             throw std::runtime_error(
