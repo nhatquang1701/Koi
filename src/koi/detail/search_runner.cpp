@@ -1309,6 +1309,7 @@ void SearchRunner::run_impl() {
                                              options.move_overhead_ms, options.slow_mover_percent,
                                              timing_context, options.dynamic_move_overhead,
                                              conversion->received_at, options.observed_overhead_ms);
+                    context.refresh_budget_tuning();
                     maximum_depth = std::min(
                         kMaximumSearchDepth,
                         std::max(1, limits.depth.value_or(kMaximumSearchDepth)));
@@ -1791,6 +1792,7 @@ void SearchRunner::run_impl() {
             std::int64_t aspiration_mean_squared_score = 0;
             std::chrono::milliseconds previous_iteration_elapsed{1};
             std::chrono::milliseconds previous_report_elapsed{0};
+            std::uint64_t previous_report_visited = 0;
             for (int depth = 1;; depth = depth < maximum_depth ? depth + 1 : maximum_depth) {
                 in_flight_depth = depth;
                 if (auto conversion = session->take_ponderhit(); conversion.has_value()) {
@@ -1799,6 +1801,7 @@ void SearchRunner::run_impl() {
                                              options.move_overhead_ms, options.slow_mover_percent,
                                              timing_context, options.dynamic_move_overhead,
                                              conversion->received_at, options.observed_overhead_ms);
+                    root_context.refresh_budget_tuning();
                     maximum_depth = std::min(
                         kMaximumSearchDepth,
                         std::max(1, limits.depth.value_or(kMaximumSearchDepth)));
@@ -2585,6 +2588,10 @@ void SearchRunner::run_impl() {
                 publish_iteration_lines(sink, interim_state, std::move(iteration_lines));
                 const auto iteration_elapsed = std::max(
                     std::chrono::milliseconds{1}, elapsed - previous_report_elapsed);
+                const std::uint64_t iteration_visited =
+                    visited >= previous_report_visited ?
+                        visited - previous_report_visited : visited;
+                previous_report_visited = visited;
                 const int iteration_observation_score = bounded_fallback_result ?
                     searched_iteration_score : result.score_cp;
                 time_manager.observe_iteration(SearchIterationObservation{
@@ -2599,7 +2606,7 @@ void SearchRunner::run_impl() {
                     bounded_fallback_result ? searched_pv_changed :
                         (had_completed_iteration && previous_pv != result.pv),
                     aspiration_researched,
-                    visited,
+                    iteration_visited,
                     0,
                     iteration_elapsed});
                 result.timing = time_manager.diagnostics();

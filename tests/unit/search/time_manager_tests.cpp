@@ -636,6 +636,101 @@ void test_forced_mate_lookahead_and_instability_signals() {
             "reconfigure must measure elapsed time from the ponderhit arrival timestamp");
 }
 
+void test_ponderhit_preserves_ponder_observations_and_mate_collapse() {
+    auto fake_now = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits ponder_limits = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    ponder_limits.ponder = true;
+
+    TimeManager mate_ponder(ponder_limits, koi::Color::white, 100, 30, 100,
+                            RootTimingContext{}, [fake_now] { return *fake_now; });
+    for (int depth = 4; depth <= 5; ++depth) {
+        SearchIterationObservation obs;
+        obs.depth = depth;
+        obs.score_cp = 99'500;
+        obs.best_move_changed = false;
+        mate_ponder.observe_iteration(obs);
+    }
+    SearchLimits converted = clock_limits(milliseconds{120'000}, milliseconds{1'000});
+    mate_ponder.reconfigure(converted, koi::Color::white, 100, 30, 100,
+                            RootTimingContext{}, false, {}, 0);
+    const TimeManagementStats mate_stats = mate_ponder.diagnostics();
+    require(mate_stats.optimum_budget <= mate_stats.soft_budget / 6 ||
+                mate_stats.optimum_budget == milliseconds{20},
+            "ponderhit must retain confirmed forced-mate observations for immediate collapse");
+    *fake_now += mate_stats.optimum_budget + milliseconds{1};
+    require(mate_ponder.should_stop_after_iteration(),
+            "ponderhit with confirmed forced mate must stop promptly at optimum_budget");
+
+    TimeManager calm_ponder(ponder_limits, koi::Color::white, 100, 30, 100,
+                            warm_context());
+    for (int depth = 5; depth <= 8; ++depth) {
+        SearchIterationObservation obs;
+        obs.depth = depth;
+        obs.score_cp = 30;
+        obs.nodes = 10'000;
+        obs.best_move_nodes = 9'000;
+        calm_ponder.observe_iteration(obs);
+    }
+    calm_ponder.reconfigure(converted, koi::Color::white, 100, 30, 100,
+                            warm_context(), false, {}, 0);
+    TimeManager fresh_clock(converted, koi::Color::white, 100, 30, 100, warm_context());
+    require(calm_ponder.diagnostics().optimum_budget < fresh_clock.diagnostics().optimum_budget,
+            "ponderhit must carry forward calm ponder effort/stability to trim optimum_budget");
+
+    // Non-ponder reconfigure resets prior search observations cleanly.
+    fresh_clock.reconfigure(converted, koi::Color::white, 100, 30, 100,
+                            warm_context(), false, {}, 0);
+    require(fresh_clock.diagnostics().optimum_budget == fresh_clock.diagnostics().soft_budget,
+            "non-ponder reconfigure must reset search observations cleanly");
+}
+
+void test_continuous_horizon_and_opponent_clock_asymmetry() {
+    const auto horizon_at = [](int phase, std::uint16_t fullmove, milliseconds inc) {
+        RootTimingContext ctx = warm_context();
+        ctx.game_phase = phase;
+        ctx.fullmove_number = fullmove;
+        return TimeManager(clock_limits(milliseconds{180'000}, inc),
+                           koi::Color::white, 100, 30, 100, ctx)
+            .diagnostics()
+            .horizon;
+    };
+
+    const std::uint32_t h8 = horizon_at(16, 8, milliseconds{1'000});
+    const std::uint32_t h11 = horizon_at(16, 11, milliseconds{1'000});
+    const std::uint32_t h14 = horizon_at(16, 14, milliseconds{1'000});
+    require(h8 == 36U && h8 > h11 && h11 > h14 && h14 == 28U,
+            "incremental horizon must interpolate smoothly from move 8 to middlegame");
+
+    const std::uint32_t queenless_mid = horizon_at(6, 18, milliseconds{1'000});
+    const std::uint32_t rich_mid = horizon_at(20, 18, milliseconds{1'000});
+    require(queenless_mid > rich_mid,
+            "low-phase middlegames must plan over a slightly calmer horizon than rich ones");
+
+    // Opponent clock much larger -> more conservative horizon and smaller soft budget.
+    RootTimingContext asym_ctx = warm_context();
+    asym_ctx.game_phase = 16;
+    asym_ctx.fullmove_number = 20;
+    SearchLimits behind_sym = clock_limits(milliseconds{15'000}, milliseconds{1'000});
+    SearchLimits behind_asym = behind_sym;
+    behind_asym.black_clock = ClockLimit{milliseconds{60'000}, milliseconds{1'000}};
+    TimeManager tm_behind_sym(behind_sym, koi::Color::white, 100, 30, 100, asym_ctx);
+    TimeManager tm_behind_asym(behind_asym, koi::Color::white, 100, 30, 100, asym_ctx);
+    require(tm_behind_asym.diagnostics().horizon > tm_behind_sym.diagnostics().horizon &&
+                tm_behind_asym.diagnostics().soft_budget < tm_behind_sym.diagnostics().soft_budget,
+            "trailing far behind on clock must expand horizon and conserve soft budget");
+
+    // Opponent clock much smaller -> slightly faster horizon and larger soft budget.
+    SearchLimits ahead_sym = clock_limits(milliseconds{90'000}, milliseconds{1'000});
+    SearchLimits ahead_asym = ahead_sym;
+    ahead_asym.black_clock = ClockLimit{milliseconds{20'000}, milliseconds{1'000}};
+    TimeManager tm_ahead_sym(ahead_sym, koi::Color::white, 100, 30, 100, asym_ctx);
+    TimeManager tm_ahead_asym(ahead_asym, koi::Color::white, 100, 30, 100, asym_ctx);
+    require(tm_ahead_asym.diagnostics().horizon < tm_ahead_sym.diagnostics().horizon &&
+                tm_ahead_asym.diagnostics().soft_budget > tm_ahead_sym.diagnostics().soft_budget &&
+                tm_ahead_asym.time_budget().value() <= expected_fraction_ceiling(tm_ahead_asym.diagnostics().usable),
+            "holding a large clock advantage may modestly compress horizon within safety bounds");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -660,6 +755,10 @@ int main(int argc, char** argv) {
          test_tmbpusok_opening_and_winning_conversion_pacing},
         {"forced mate, lookahead, and instability signals",
          test_forced_mate_lookahead_and_instability_signals},
+        {"ponderhit observation continuity",
+         test_ponderhit_preserves_ponder_observations_and_mate_collapse},
+        {"continuous horizon and opponent clock asymmetry",
+         test_continuous_horizon_and_opponent_clock_asymmetry},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

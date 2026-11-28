@@ -57,7 +57,8 @@ private:
     void update_optimum_budget() noexcept;
     void initialize(Color side_to_move, std::uint8_t speed_percent, std::uint32_t move_overhead_ms,
                     std::uint32_t slow_mover_percent, bool dynamic_move_overhead,
-                    std::uint32_t observed_overhead_ms, std::int64_t start_ns);
+                    std::uint32_t observed_overhead_ms, std::int64_t start_ns,
+                    bool preserve_observations = false);
 
     SearchLimits limits_;
     RootTimingContext root_context_;

@@ -55,32 +55,38 @@ struct SearchContext::FrameScratch {
         Slot() noexcept {}
         MoveMetadataList moves;
         NoInitArray<DeferredHistoryMove, kMaximumLegalMoves> failed_moves;
-        NoInitArray<PositionFeatures, 3> features_pool;
+        NoInitArray<PositionFeatures, 1> features_pool;
         PrincipalVariation child_pv;
         std::unique_ptr<MoveMetadataList> aux_moves;
         alignas(SearchMovePicker) std::array<std::byte, sizeof(SearchMovePicker)> picker_storage;
     };
 
+    static constexpr std::size_t kInlineSlotCount = 16;
     static constexpr std::size_t kSlotArrayCapacity = kSearchStackCapacity * 2U;
+    std::array<Slot, kInlineSlotCount> inline_slots;
     std::array<std::unique_ptr<Slot>, kSlotArrayCapacity> slots{};
     std::vector<std::unique_ptr<Slot>> overflow_slots;
     std::size_t depth = 0;
 
     [[nodiscard]] Slot& slot_at(const std::size_t index) {
-        if (index < slots.size() && slots[index] != nullptr) [[likely]] {
-            return *slots[index];
+        if (index < kInlineSlotCount) [[likely]] {
+            return inline_slots[index];
         }
-        return alloc_slot_at(index);
+        const std::size_t heap_index = index - kInlineSlotCount;
+        if (heap_index < slots.size() && slots[heap_index] != nullptr) [[likely]] {
+            return *slots[heap_index];
+        }
+        return alloc_slot_at(heap_index);
     }
 
-    KOI_CTX_NOINLINE Slot& alloc_slot_at(const std::size_t index) {
-        if (index < slots.size()) {
-            if (slots[index] == nullptr) {
-                slots[index] = std::make_unique<Slot>();
+    KOI_CTX_NOINLINE Slot& alloc_slot_at(const std::size_t heap_index) {
+        if (heap_index < slots.size()) {
+            if (slots[heap_index] == nullptr) {
+                slots[heap_index] = std::make_unique<Slot>();
             }
-            return *slots[index];
+            return *slots[heap_index];
         }
-        const std::size_t overflow_index = index - slots.size();
+        const std::size_t overflow_index = heap_index - slots.size();
         if (overflow_index >= overflow_slots.size()) {
             overflow_slots.resize(overflow_index + 1U);
         }
@@ -2113,9 +2119,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             if (lmr_candidate && !metadata.is_capture()) {
                 if (!lmr_parent_features_ready) {
                     lmr_parent_features_ready = true;
-                    if (state.position_features_into(lease.slot().features_pool[1])) {
-                        ++stats.position_feature_extractions;
-                    }
+                    (void)ensure_features();
                 } else {
                     ++stats.lmr_parent_feature_reuses;
                 }
@@ -2157,7 +2161,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     reducible_quiet = !child_in_check;
                 } else if (lmr_parent_features_ready) {
                     const PositionFeatures& lmr_parent_features =
-                        lease.slot().features_pool[1];
+                        lease.slot().features_pool[0];
                     // The diagnostic count is charged exactly as the
                     // full-snapshot path charged it, keeping the
                     // position_feature_extractions < nodes contract and the
@@ -2208,16 +2212,12 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     (quiet_move_has_king_ring_target(forcing_parent_features, metadata) ||
                      quiet_move_has_pawn_break_target(metadata));
                 if (direct_forcing_target || near_root_forcing_target) {
-                    // The in-place fetch keeps the same cache slot and
-                    // contents as position_features(); its return value
-                    // reports the miss without the before/after
-                    // cache_misses() reads.
-                    PositionFeatures& after_quiet_features = lease.slot().features_pool[2];
-                    if (state.position_features_into(after_quiet_features)) {
-                        ++stats.position_feature_extractions;
-                    }
+                    ++stats.position_feature_extractions;
+                    QuietForcingAfterView after_quiet_view;
+                    build_quiet_forcing_after_view(
+                        state, forcing_parent_features.side_to_move, after_quiet_view);
                     quiet_forcing_extension = quiet_move_is_forcing(
-                        forcing_parent_features, after_quiet_features, metadata);
+                        forcing_parent_features, state, after_quiet_view, metadata);
                     if (quiet_forcing_extension) {
                         ++stats.quiet_forcing_extensions;
                     }

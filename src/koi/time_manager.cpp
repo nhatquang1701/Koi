@@ -90,6 +90,54 @@ std::chrono::milliseconds nonnegative_difference(std::chrono::milliseconds left,
     return left > right ? left - right : std::chrono::milliseconds::zero();
 }
 
+std::uint32_t continuous_horizon(const bool has_increment, const int game_phase,
+                                   const std::uint16_t fullmove) noexcept {
+    if (game_phase < 0 || fullmove == 0) {
+        return has_increment ? 28U : 50U;
+    }
+    const int phase = std::clamp(game_phase, 0, 24);
+    if (has_increment) {
+        const std::uint32_t mid_horizon = static_cast<std::uint32_t>(
+            28 + ((12 - std::min(phase, 12)) * 5 + 6) / 12);
+        const std::uint32_t end_horizon = phase <= 6 ? 34U : 32U;
+        if (fullmove <= 8) {
+            return 36U;
+        }
+        if (fullmove < 14) {
+            return 36U - ((36U - mid_horizon) * (fullmove - 8U) + 3U) / 6U;
+        }
+        if (fullmove <= 30) {
+            return mid_horizon;
+        }
+        if (fullmove < 42) {
+            const std::uint32_t delta = end_horizon >= mid_horizon
+                ? end_horizon - mid_horizon : 0U;
+            return mid_horizon + (delta * (fullmove - 30U) + 6U) / 12U;
+        }
+        return end_horizon;
+    }
+
+    const std::uint32_t mid_horizon = static_cast<std::uint32_t>(
+        46 + ((12 - std::clamp(phase, 6, 12)) * 4 + 3) / 6);
+    const std::uint32_t end_horizon = phase <= 6 ? 42U : 48U;
+    if (fullmove <= 8) {
+        return 56U;
+    }
+    if (fullmove < 14) {
+        return 56U - ((56U - mid_horizon) * (fullmove - 8U) + 3U) / 6U;
+    }
+    if (fullmove <= 32) {
+        return mid_horizon;
+    }
+    if (fullmove < 44) {
+        if (end_horizon >= mid_horizon) {
+            return mid_horizon + ((end_horizon - mid_horizon) * (fullmove - 32U) + 6U) / 12U;
+        }
+        return mid_horizon - ((mid_horizon - end_horizon) * (fullmove - 32U) + 6U) / 12U;
+    }
+    return end_horizon;
+}
+
 } // namespace
 
 TimeManager::TimeManager(SearchLimits limits, Color side_to_move, std::uint8_t speed_percent,
@@ -116,10 +164,13 @@ void TimeManager::reconfigure(const SearchLimits& limits, Color side_to_move,
                               bool dynamic_move_overhead,
                               std::chrono::steady_clock::time_point search_started,
                               std::uint32_t observed_overhead_ms) {
+    const bool preserve_ponder_observations =
+        limits_.ponder && !limits.ponder && !limits.infinite;
     limits_ = limits;
     root_context_ = root_context;
     initialize(side_to_move, speed_percent, move_overhead_ms, slow_mover_percent,
-               dynamic_move_overhead, observed_overhead_ms, resolve_start_ns(search_started));
+               dynamic_move_overhead, observed_overhead_ms, resolve_start_ns(search_started),
+               preserve_ponder_observations);
 }
 
 std::int64_t TimeManager::resolve_start_ns(
@@ -138,7 +189,8 @@ std::int64_t TimeManager::resolve_start_ns(
 void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
                              std::uint32_t move_overhead_ms, std::uint32_t slow_mover_percent,
                              bool dynamic_move_overhead,
-                             std::uint32_t observed_overhead_ms, std::int64_t start_ns) {
+                             std::uint32_t observed_overhead_ms, std::int64_t start_ns,
+                             const bool preserve_observations) {
     const auto publish_controls = [this, start_ns](const std::int64_t next_budget_ms) noexcept {
         // Publish computed limits in release order before flipping unbounded_
         // off so concurrent SMP helper checks never see a transient -1 budget
@@ -156,29 +208,35 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
 
     dynamic_move_overhead_ = dynamic_move_overhead;
     timing_ = TimeManagementStats{};
-    previous_score_.reset();
-    average_score_.reset();
-    stable_observations_ = 0;
-    best_move_stability_ = 0;
-    instability_permille_ = 0;
-    mate_stable_observations_ = 0;
-    last_mate_sign_ = 0;
-    last_observed_depth_ = 0;
-    score_drop_cp_ = 0;
-    score_gain_cp_ = 0;
-    best_move_effort_permille_ = 0;
-    last_iteration_elapsed_ = std::chrono::milliseconds::zero();
+    if (!preserve_observations) {
+        previous_score_.reset();
+        average_score_.reset();
+        stable_observations_ = 0;
+        best_move_stability_ = 0;
+        instability_permille_ = 0;
+        mate_stable_observations_ = 0;
+        last_mate_sign_ = 0;
+        last_observed_depth_ = 0;
+        score_drop_cp_ = 0;
+        score_gain_cp_ = 0;
+        best_move_effort_permille_ = 0;
+        last_iteration_elapsed_ = std::chrono::milliseconds::zero();
+        has_effort_sample_ = false;
+        last_aspiration_researched_ = false;
+        hard_position_ = false;
+    }
     remaining_clock_ = std::chrono::milliseconds::zero();
     increment_clock_ = std::chrono::milliseconds::zero();
-    has_effort_sample_ = false;
-    last_aspiration_researched_ = false;
-    hard_position_ = false;
     clock_mode_ = false;
     emergency_pacing_ = false;
 
     timing_.initial_hardness = initial_hardness(root_context_);
     timing_.observed_hardness = timing_.initial_hardness;
-    hard_position_ = timing_.initial_hardness >= 35;
+    if (!preserve_observations || last_observed_depth_ == 0) {
+        hard_position_ = timing_.initial_hardness >= 35;
+    } else if (hard_position_) {
+        timing_.observed_hardness = std::max(timing_.observed_hardness, 100);
+    }
     timing_.extended_for_hard_position = hard_position_;
     timing_.horizon = std::max<std::uint32_t>(1, limits_.moves_to_go.value_or(20));
 
@@ -243,33 +301,29 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     timing_.overhead = overhead;
     // Horizon: how many moves this allocation plans for.  A GUI may send
     // `movestogo`, but lichess-bot and most GUIs do not, so the fallback decides
-    // the pacing.  Sudden death needs a long horizon; incremental controls still
-    // pace the opening conservatively before spending more in complex middlegames
-    // and speed up once winning endgames simplify.
+    // the pacing.  A piecewise-linear ply/phase curve avoids sudden-cliff drops
+    // while pacing the opening calmly, opening up in complex middlegames, and
+    // reacting smoothly to large opponent-clock asymmetries.
     const bool has_increment = clock->increment > std::chrono::milliseconds::zero();
-    std::uint32_t default_horizon = has_increment ? 28U : 50U;
-    if (!limits_.moves_to_go.has_value() && root_context_.game_phase >= 0) {
-        const int phase = std::clamp(root_context_.game_phase, 0, 24);
-        const std::uint16_t fullmove = root_context_.fullmove_number;
-        if (has_increment) {
-            if (fullmove > 0 && fullmove <= 10) {
-                default_horizon = 36U;
-            } else if (phase >= 10 && fullmove >= 11 && fullmove <= 32) {
-                default_horizon = 28U;
-            } else if (phase <= 6) {
-                default_horizon = 34U;
-            } else {
-                default_horizon = 32U;
-            }
-        } else {
-            if (fullmove > 0 && fullmove <= 10) {
-                default_horizon = 56U;
-            } else if (phase >= 10 && fullmove >= 11 && fullmove <= 32) {
-                default_horizon = 46U;
-            } else if (phase <= 6 && fullmove >= 35) {
-                default_horizon = 42U;
-            } else {
-                default_horizon = 50U;
+    std::uint32_t default_horizon = continuous_horizon(
+        has_increment, root_context_.game_phase, root_context_.fullmove_number);
+    if (!limits_.moves_to_go.has_value()) {
+        const std::optional<ClockLimit>& opponent_clock = side_to_move == Color::white ?
+            limits_.black_clock : limits_.white_clock;
+        if (opponent_clock.has_value()) {
+            const auto opp_remaining = std::max(
+                opponent_clock->remaining, std::chrono::milliseconds::zero());
+            if (remaining < opp_remaining / 2 &&
+                remaining < std::chrono::milliseconds{60'000} &&
+                opp_remaining >= std::chrono::milliseconds{10'000} &&
+                clock->increment <= std::chrono::milliseconds{2'000}) {
+                default_horizon = (default_horizon * 115U + 50U) / 100U;
+            } else if (opp_remaining > std::chrono::milliseconds::zero() &&
+                       remaining > saturating_add(opp_remaining, opp_remaining) &&
+                       remaining >= std::chrono::milliseconds{30'000}) {
+                const std::uint32_t floor_h = has_increment ? 22U : 38U;
+                default_horizon = std::max(
+                    floor_h, (default_horizon * 92U + 50U) / 100U);
             }
         }
     }
@@ -305,7 +359,7 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     // a row (two-thirds of the move's clock) before the GUI round trip was even
     // paid; the increment is refunded over subsequent moves, not inside this
     // one.  Emergency pacing still tightens the low-clock case separately.
-    const auto hard_units = remaining <= std::chrono::milliseconds{3000} ? 3 : 2;
+    constexpr std::uint64_t hard_units = 2;
     const auto raw_hard = saturating_add(
         scale_fraction(base_allocation, hard_units, 1),
         scale_fraction(increment_credit, 3, 2));
@@ -361,6 +415,9 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
         timing_.optimum_budget = std::min(
             timing_.soft_budget,
             std::max(std::chrono::milliseconds{2}, timing_.soft_budget / 8));
+    }
+    if (preserve_observations && last_observed_depth_ > 0) {
+        update_optimum_budget();
     }
     publish_controls(timing_.hard_budget.count());
 }

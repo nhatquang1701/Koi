@@ -284,6 +284,12 @@ struct SearchContext {
           tablebase(std::move(tablebase_binding)),
           frame_scratch(create_frame_scratch()),
           evaluation_cache(std::make_unique<EvaluationCacheEntry[]>(kEvaluationCacheSize)) {
+        refresh_budget_tuning();
+    }
+
+    void refresh_budget_tuning() noexcept {
+        clock_poll_interval = kClockPollInterval;
+        quiescence_check_depth_limit = kMaximumQuiescenceCheckDepth;
         if (const auto budget = time_manager.time_budget(); budget.has_value()) {
             if (*budget <= std::chrono::milliseconds{500}) {
                 clock_poll_interval = 32;
@@ -297,6 +303,7 @@ struct SearchContext {
                 quiescence_check_depth_limit = std::max(1, kMaximumQuiescenceCheckDepth - 1);
             }
         }
+        clock_poll_countdown = std::min(clock_poll_countdown, clock_poll_interval);
     }
 
     [[nodiscard]] static std::unique_ptr<FrameScratch, FrameScratchDeleter> create_frame_scratch();
@@ -669,7 +676,8 @@ struct SearchContext {
     }
 
     [[nodiscard]] bool make_null_observed(GameState& state, const int ply) {
-        const std::uint64_t parent_key = state.position_key();
+        const std::uint64_t parent_key =
+            evaluation.has_private_worker() ? state.position_key() : 0;
         if (!state.make_null_move()) {
             return false;
         }

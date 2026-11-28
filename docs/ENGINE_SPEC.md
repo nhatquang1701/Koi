@@ -615,12 +615,14 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
    - Effective overhead: `max(Move Overhead, learned overhead)`, or when
      `Dynamic Overhead` is enabled, `max(clamp(remaining / 50, 10, 100),
      learned overhead, Move Overhead > 30 ? Move Overhead : 0)`.
-   - Horizon: `movestogo` when supplied, otherwise phase/move-adjusted from
-     base defaults of **28** with a positive increment (`36` in early opening
-     `fullmove <= 10`; `28` in complex middlegame `phase >= 10` and `11..32`;
-     `34` in endgame `phase <= 6`; `32` otherwise) and **50** for sudden death
-     (`56` in early opening; `46` in complex middlegame; `42` in endgame
-     `fullmove >= 35`; `50` otherwise).
+   - Horizon: `movestogo` when supplied, otherwise piecewise-linear ply/phase
+     interpolation from **28** with a positive increment (`36` through
+     `fullmove 8`, smoothly interpolating across `8..14` to `28..33` by
+     `game_phase` in middlegames, and interpolating across `30..42` toward
+     `32..34` in endgames) and **50** for sudden death (`56` through
+     `fullmove 8`, smoothly interpolating to `46..50` in middlegames and
+     `42..48` in endgames), with bounded opponent-clock asymmetry scaling when
+     one side has more than double the other's clock.
    - Reserve: `min(remaining, max(min(750 ms, max(50 ms, 3% of remaining)),
      2 × overhead))` so two effective overheads are always protected.
    - Usable: `remaining - reserve`.
@@ -631,11 +633,10 @@ default 30); `Dynamic Overhead` switches the overhead to a clock-derived value.
      increment` without `movestogo` (keeping low-clock incremental endgames
      sustainable) and `increment` otherwise.
    - Raw soft: `base + increment_credit`.
-   - Raw hard: `hard_units × base + 1.5 × increment_credit`, where
-     `hard_units = 3` only at ≤ 3000 ms remaining, otherwise 2. Earlier builds
-     also used 3 whenever an increment existed; on a 10+2 clock that let an
-     unstable move take ~74 s twice in a row and drained the game clock.
-     Emergency pacing tightens the low-clock case further.
+   - Raw hard: `2 × base + 1.5 × increment_credit` (earlier builds used `3`
+     whenever an increment existed or in the ≤ 3000 ms bucket; on a 10+2 clock
+     that let an unstable move take ~74 s twice in a row and drained the game
+     clock). Emergency pacing tightens the low-clock case further.
    - Budgets are scaled by `Slow Mover` and capped at
      `usable`; soft is capped at hard.
    - Emergency taper: horizon `max(10, horizon / 2)`, emergency base
@@ -688,8 +689,11 @@ the search but cannot push it past the cap.
   lookahead (avoiding doomed partial iterations past `1.2×` soft target), in
   addition to the hard deadline.
 - `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)
-  and calls `reconfigure`: limits/root context are replaced, the clock starts
-  from `received_at`, and the session watchdog is re-armed.
+  and calls `reconfigure`: limits/root context are replaced while preserving
+  iteration observations gathered during pondering (recomputing `optimum_budget`
+  immediately for fast conversion on forced mates or clear moves), the clock
+  starts from `received_at`, `SearchContext::refresh_budget_tuning()` updates
+  clock-poll and qcheck limits, and the session watchdog is re-armed.
 
 ### 6.3 Limit interactions
 
