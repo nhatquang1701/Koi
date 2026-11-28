@@ -73,9 +73,13 @@ void test_network_overhead_estimator_tracks_gui_latency() {
     // Increment is refunded before the latency estimate.
     require(derive_network_overhead_ms(5'000, 1'000, 500, 5'500, 0) == 0,
             "the increment must be accounted for before comparing clocks");
-    // Pathological stalls stay bounded.
+    // Pathological stalls stay bounded, and sustained low RTT decays transient spikes.
     require(derive_network_overhead_ms(60'000, 0, 1'000, 10'000, 0) == 1'500,
             "the learned overhead must stay bounded");
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 58'850, 200) == 200,
+            "small latency jitter near the existing peak must keep the estimate steady");
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 58'960, 1'200) == 1'055,
+            "sustained low latency after a transient lag spike must decay gradually");
 }
 
 

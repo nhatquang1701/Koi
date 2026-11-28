@@ -169,11 +169,10 @@ KOI_CTX_NOINLINE void SearchContext::reinforce_tt_lower_quiet(
     const std::optional<Move> previous_move, const Color side_to_move,
     const bool moves_generated, const MoveMetadataList& moves,
     bool& history_ready, SearchHistoryContext& history_out,
-    std::uint64_t& node_pawn_key) noexcept {
+    const std::uint64_t node_pawn_key) noexcept {
     const auto get_history = [&]() noexcept -> const SearchHistoryContext& {
         if (!history_ready) {
             history_ready = true;
-            node_pawn_key = state.pawn_key();
             init_history_context(history_out, ply, previous_move, node_pawn_key);
         }
         return history_out;
@@ -850,7 +849,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         }
 
         if (quiet_history_needed) {
-            init_history_context(history_storage[0], ply, previous_move, state.pawn_key());
+            init_history_context(history_storage[0], ply, previous_move, node_info.pawn_key);
         }
 #ifndef NDEBUG
         else {
@@ -1387,20 +1386,12 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         const int original_alpha = alpha;
         const int original_beta = beta;
         NoInitArray<SearchHistoryContext, 1> history_storage;
-        std::uint64_t node_pawn_key = 0;
-        bool pawn_key_ready = false;
-        const auto ensure_pawn_key = [&]() noexcept -> std::uint64_t {
-            if (!pawn_key_ready) {
-                pawn_key_ready = true;
-                node_pawn_key = state.pawn_key();
-            }
-            return node_pawn_key;
-        };
+        const std::uint64_t node_pawn_key = node_info.pawn_key;
         bool history_ready = false;
         const auto ensure_history = [&]() -> const SearchHistoryContext& {
             if (!history_ready) {
                 history_ready = true;
-                init_history_context(history_storage[0], ply, previous_move, ensure_pawn_key());
+                init_history_context(history_storage[0], ply, previous_move, node_pawn_key);
             }
             return history_storage[0];
         };
@@ -1499,8 +1490,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             const Move two_ply_ago_move = ply >= 2 ?
                 stack.frame(static_cast<std::size_t>(ply - 1)).previous_move :
                 Move::no_move();
-            init_correction_keys(state, ensure_pawn_key(), correction_keys, &frame,
-                                 two_ply_ago_move);
+            init_correction_keys(*node_info.piece_bitboards, side_to_move, node_pawn_key,
+                                 correction_keys, &frame, two_ply_ago_move);
             correction_keys_valid = true;
             static_eval = raw_eval + ordering.correction_value(
                 correction_keys.pawn, correction_keys.material, correction_keys.king,
@@ -1538,7 +1529,20 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // restores it between candidates (make/unmake), with captures and
         // promotions never observed by the quiet-only gates below.  Compute
         // it once for all three consumers instead of once per use.
-        const int node_game_phase = state.game_phase();
+        const auto& node_bitboards = *node_info.piece_bitboards;
+        constexpr std::size_t kPhaseKnightIdx = static_cast<std::size_t>(PieceType::knight);
+        constexpr std::size_t kPhaseBishopIdx = static_cast<std::size_t>(PieceType::bishop);
+        constexpr std::size_t kPhaseRookIdx = static_cast<std::size_t>(PieceType::rook);
+        constexpr std::size_t kPhaseQueenIdx = static_cast<std::size_t>(PieceType::queen);
+        const int node_game_phase = std::min(
+            static_cast<int>(std::popcount(
+                node_bitboards[0][kPhaseKnightIdx] | node_bitboards[1][kPhaseKnightIdx] |
+                node_bitboards[0][kPhaseBishopIdx] | node_bitboards[1][kPhaseBishopIdx])) +
+                2 * static_cast<int>(std::popcount(
+                    node_bitboards[0][kPhaseRookIdx] | node_bitboards[1][kPhaseRookIdx])) +
+                4 * static_cast<int>(std::popcount(
+                    node_bitboards[0][kPhaseQueenIdx] | node_bitboards[1][kPhaseQueenIdx])),
+            24);
         const bool phase_rich_depth_one_candidate =
             !claimable_draw && !checked && depth == 1 && node_game_phase >= 8;
         std::optional<bool> phase_rich_quiet_position_value;

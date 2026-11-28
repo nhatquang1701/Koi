@@ -776,6 +776,17 @@ void TimeManager::update_optimum_budget() noexcept {
         }
     }
 
+    // Dead-drawn simplified endgames (phase <= 4, |score| <= 15 cp) that have
+    // already reached a deep, rock-stable line do not need full middlegame
+    // think time; save 22% to bank clock for sudden-death finishes.
+    if (!hard_position_ &&
+        root_context_.game_phase >= 0 && root_context_.game_phase <= 4 &&
+        previous_score_.has_value() && std::abs(*previous_score_) <= 15 &&
+        last_observed_depth_ >= 10 && best_move_stability_ >= 4 &&
+        score_drop_cp_ <= 10 && !last_aspiration_researched_) {
+        scale_permille = (scale_permille * 780ULL) / 1000ULL;
+    }
+
     // Pondering already banked opponent think time: when the move arrives and
     // our deep ponder search is calm and stable, save 20% on optimum_budget.
     if (ponderhit_converted_ && !hard_position_ && last_observed_depth_ >= 6 &&

@@ -1122,7 +1122,14 @@ std::uint32_t derive_network_overhead_ms(const std::int64_t previous_remaining_m
     if (excess >= kNoiseFloorMs) {
         const auto candidate = static_cast<std::uint32_t>(
             std::min<std::int64_t>(excess, kMaximumEstimateMs));
-        return std::max(previous_estimate_ms, candidate);
+        if (candidate > previous_estimate_ms) {
+            return candidate;
+        }
+        if (candidate <= previous_estimate_ms / 2U) {
+            const std::uint32_t step = (previous_estimate_ms - candidate) / 8U;
+            return previous_estimate_ms - std::max<std::uint32_t>(1U, step);
+        }
+        return previous_estimate_ms;
     }
     if (excess <= 0) {
         return previous_estimate_ms - previous_estimate_ms / 8U;

@@ -480,7 +480,7 @@ struct SearchContext {
                                   std::optional<Move> previous_move, Color side_to_move,
                                   bool moves_generated, const MoveMetadataList& moves,
                                   bool& history_ready, SearchHistoryContext& history_out,
-                                  std::uint64_t& node_pawn_key) noexcept;
+                                  std::uint64_t node_pawn_key) noexcept;
     void compute_root_authoritative(std::size_t legal_move_count, Move best_move, int best_score,
                                     bool best_metadata_valid, bool best_score_authoritative,
                                     bool best_score_safe_lower_bound, bool claimable_draw,
@@ -573,15 +573,15 @@ struct SearchContext {
 #endif
 
     KOI_CTX_ALWAYS_INLINE static void init_correction_keys(
-        const GameState& state, std::uint64_t pawn_key,
+        const std::array<std::array<std::uint64_t, 7>, 2>& bitboards,
+        const Color side_to_move, std::uint64_t pawn_key,
         CorrectionKeys& keys, SearchFrame* frame = nullptr,
         Move two_ply_ago_move = Move::no_move()) noexcept {
         // Static evaluations and residuals are side-to-move-relative, so every
         // correction key must isolate White-to-move and Black-to-move entries.
-        const std::uint64_t stm_salt = state.side_to_move() == Color::black ?
+        const std::uint64_t stm_salt = side_to_move == Color::black ?
             0x9E3779B97F4A7C15ULL : 0ULL;
         keys.pawn = pawn_key ^ stm_salt;
-        const auto& bitboards = state.piece_bitboards();
         // Material signature: FNV-1a over the ten piece counts.  Since quiet
         // non-promoting moves leave piece counts unchanged, cache it across
         // quiet subtrees via SearchFrame rather than running 10 popcounts +
@@ -640,6 +640,14 @@ struct SearchContext {
             keys.continuation = 0;
             keys.has_continuation = false;
         }
+    }
+
+    KOI_CTX_ALWAYS_INLINE static void init_correction_keys(
+        const GameState& state, std::uint64_t pawn_key,
+        CorrectionKeys& keys, SearchFrame* frame = nullptr,
+        Move two_ply_ago_move = Move::no_move()) noexcept {
+        init_correction_keys(state.piece_bitboards(), state.side_to_move(),
+                             pawn_key, keys, frame, two_ply_ago_move);
     }
 
     [[nodiscard]] static CorrectionKeys correction_keys_for(const GameState& state) noexcept {

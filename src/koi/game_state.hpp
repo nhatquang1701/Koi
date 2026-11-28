@@ -37,7 +37,9 @@ enum class DrawStatus : std::uint8_t {
 
 struct SearchNodeInfo {
     std::uint64_t position_key = 0;
+    std::uint64_t pawn_key = 0;
     std::size_t repetition_count = 0;
+    const std::array<std::array<std::uint64_t, 7>, 2>* piece_bitboards = nullptr;
     std::uint16_t halfmove_clock = 0;
     Color side_to_move = Color::white;
     DrawStatus draw_status = DrawStatus::none;

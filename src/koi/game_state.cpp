@@ -2129,7 +2129,9 @@ SearchNodeInfo GameState::search_node_info() const noexcept {
     const Position::NodeEntrySnapshot snap = impl_->native_position.node_entry_snapshot();
     return SearchNodeInfo{
         snap.position_key,
+        snap.pawn_key,
         snap.repetition_count,
+        snap.piece_bitboards,
         snap.halfmove_clock,
         snap.side_to_move,
         snap.draw_status,

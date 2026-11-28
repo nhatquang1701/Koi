@@ -1900,6 +1900,8 @@ public:
     [[nodiscard]] Position::NodeEntrySnapshot node_entry_snapshot() const noexcept {
         Position::NodeEntrySnapshot out;
         out.position_key = state.key;
+        out.pawn_key = state.pawn_key;
+        out.piece_bitboards = &state.piece_bitboards;
         out.halfmove_clock = state.halfmove;
         out.side_to_move = state.side;
         out.piece_count = static_cast<std::uint8_t>(std::popcount(state.occupied));
@@ -3196,18 +3198,15 @@ const std::array<std::array<std::uint64_t, 7>, 2>& Position::piece_bitboards() c
 
 int Position::game_phase() const noexcept {
     const auto& bitboards = impl_->position.state.piece_bitboards;
-    int phase = 0;
-    for (std::size_t color_index = 0; color_index < 2U; ++color_index) {
-        const auto& side_boards = bitboards[color_index];
-        phase += static_cast<int>(
-            std::popcount(side_boards[static_cast<std::size_t>(PieceType::knight)]));
-        phase += static_cast<int>(
-            std::popcount(side_boards[static_cast<std::size_t>(PieceType::bishop)]));
-        phase += 2 * static_cast<int>(
-            std::popcount(side_boards[static_cast<std::size_t>(PieceType::rook)]));
-        phase += 4 * static_cast<int>(
-            std::popcount(side_boards[static_cast<std::size_t>(PieceType::queen)]));
-    }
+    constexpr std::size_t kKnightIdx = static_cast<std::size_t>(PieceType::knight);
+    constexpr std::size_t kBishopIdx = static_cast<std::size_t>(PieceType::bishop);
+    constexpr std::size_t kRookIdx = static_cast<std::size_t>(PieceType::rook);
+    constexpr std::size_t kQueenIdx = static_cast<std::size_t>(PieceType::queen);
+    const int phase =
+        static_cast<int>(std::popcount(bitboards[0][kKnightIdx] | bitboards[1][kKnightIdx] |
+                                       bitboards[0][kBishopIdx] | bitboards[1][kBishopIdx])) +
+        2 * static_cast<int>(std::popcount(bitboards[0][kRookIdx] | bitboards[1][kRookIdx])) +
+        4 * static_cast<int>(std::popcount(bitboards[0][kQueenIdx] | bitboards[1][kQueenIdx]));
     return std::min(phase, 24);
 }
 

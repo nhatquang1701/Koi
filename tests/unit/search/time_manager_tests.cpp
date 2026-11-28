@@ -1317,6 +1317,32 @@ void test_defensive_mate_preserves_budget_and_unified_stop_start_symmetry() {
             "non-collapsing depth-5 fallback must stay symmetric between stop and start checks");
 }
 
+void test_dead_drawn_endgame_speedup_banks_clock() {
+    const SearchLimits clock = clock_limits(milliseconds{60'000}, milliseconds{1'000});
+    RootTimingContext endgame_ctx = warm_context();
+    endgame_ctx.game_phase = 4;
+    RootTimingContext mid_ctx = warm_context();
+    mid_ctx.game_phase = 16;
+
+    TimeManager drawn_endgame(clock, koi::Color::white, 100, kMoveOverheadMs, 100, endgame_ctx);
+    TimeManager drawn_middlegame(clock, koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx);
+    TimeManager imbalanced_endgame(clock, koi::Color::white, 100, kMoveOverheadMs, 100, endgame_ctx);
+    for (int depth = 6; depth <= 10; ++depth) {
+        const SearchIterationObservation drawn_obs{
+            depth, 0, false, false, false, 10'000, 5'000, milliseconds{25}};
+        drawn_endgame.observe_iteration(drawn_obs);
+        drawn_middlegame.observe_iteration(drawn_obs);
+        imbalanced_endgame.observe_iteration(
+            {depth, 80, false, false, false, 10'000, 5'000, milliseconds{25}});
+    }
+    require(drawn_endgame.diagnostics().optimum_budget <
+                drawn_middlegame.diagnostics().optimum_budget,
+            "dead-drawn low-phase endgame must bank clock relative to middlegame");
+    require(drawn_endgame.diagnostics().optimum_budget <
+                imbalanced_endgame.diagnostics().optimum_budget,
+            "dead-drawn endgame speedup must not slow imbalanced (+80 cp) endgames");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1375,6 +1401,8 @@ int main(int argc, char** argv) {
          test_deep_ponderhit_doomed_over_budget_ply_bank},
         {"defensive mate preserves budget and unified stop/start symmetry",
          test_defensive_mate_preserves_budget_and_unified_stop_start_symmetry},
+        {"dead drawn endgame speedup banks clock",
+         test_dead_drawn_endgame_speedup_banks_clock},
     };
     return koi::test::run_tests(tests, argc, argv);
 }
