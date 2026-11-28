@@ -182,42 +182,91 @@ inline void accumulate_hidden_sparse_16(const NnueNetwork& network,
                                  std::span<const std::uint16_t> active,
                                  std::span<std::int16_t> sums) noexcept {
     const std::size_t hidden_units = network.manifest.layer_sizes[1];
-    for (std::size_t hidden = 0; hidden < hidden_units; ++hidden) {
-        sums[hidden] = static_cast<std::int16_t>(network.hidden_bias[hidden]);
-    }
-    for (const std::uint16_t feature : active) {
-        const std::int16_t* const feature_weights = network.feature_weights.data() +
-            static_cast<std::size_t>(feature) * hidden_units;
-        std::size_t hidden = 0;
+    const std::int32_t* const bias = network.hidden_bias.data();
+    const std::int16_t* const w_base = network.feature_weights.data();
+    std::size_t hidden = 0;
 #if KOI_NNUE_COMPILED_NEON
-        for (; hidden + 16U <= hidden_units; hidden += 16U) {
-            vst1q_s16(sums.data() + hidden,
-                      vaddq_s16(vld1q_s16(sums.data() + hidden),
-                                vld1q_s16(feature_weights + hidden)));
-            vst1q_s16(sums.data() + hidden + 8U,
-                      vaddq_s16(vld1q_s16(sums.data() + hidden + 8U),
-                                vld1q_s16(feature_weights + hidden + 8U)));
+    for (; hidden + 32U <= hidden_units; hidden += 32U) {
+        int16x8_t s0 = vcombine_s16(
+            vmovn_s32(vld1q_s32(bias + hidden)),
+            vmovn_s32(vld1q_s32(bias + hidden + 4U)));
+        int16x8_t s1 = vcombine_s16(
+            vmovn_s32(vld1q_s32(bias + hidden + 8U)),
+            vmovn_s32(vld1q_s32(bias + hidden + 12U)));
+        int16x8_t s2 = vcombine_s16(
+            vmovn_s32(vld1q_s32(bias + hidden + 16U)),
+            vmovn_s32(vld1q_s32(bias + hidden + 20U)));
+        int16x8_t s3 = vcombine_s16(
+            vmovn_s32(vld1q_s32(bias + hidden + 24U)),
+            vmovn_s32(vld1q_s32(bias + hidden + 28U)));
+        for (const std::uint16_t feature : active) {
+            const std::int16_t* const fw =
+                w_base + static_cast<std::size_t>(feature) * hidden_units + hidden;
+            s0 = vaddq_s16(s0, vld1q_s16(fw));
+            s1 = vaddq_s16(s1, vld1q_s16(fw + 8U));
+            s2 = vaddq_s16(s2, vld1q_s16(fw + 16U));
+            s3 = vaddq_s16(s3, vld1q_s16(fw + 24U));
         }
-        for (; hidden + 8U <= hidden_units; hidden += 8U) {
-            vst1q_s16(sums.data() + hidden,
-                      vaddq_s16(vld1q_s16(sums.data() + hidden),
-                                vld1q_s16(feature_weights + hidden)));
+        vst1q_s16(sums.data() + hidden, s0);
+        vst1q_s16(sums.data() + hidden + 8U, s1);
+        vst1q_s16(sums.data() + hidden + 16U, s2);
+        vst1q_s16(sums.data() + hidden + 24U, s3);
+    }
+    for (; hidden + 8U <= hidden_units; hidden += 8U) {
+        int16x8_t s0 = vcombine_s16(
+            vmovn_s32(vld1q_s32(bias + hidden)),
+            vmovn_s32(vld1q_s32(bias + hidden + 4U)));
+        for (const std::uint16_t feature : active) {
+            s0 = vaddq_s16(s0, vld1q_s16(
+                w_base + static_cast<std::size_t>(feature) * hidden_units + hidden));
         }
+        vst1q_s16(sums.data() + hidden, s0);
+    }
 #elif KOI_NNUE_COMPILED_AVX2
-        if (avx2_available()) {
-            for (; hidden + 16U <= hidden_units; hidden += 16U) {
-                const __m256i acc = _mm256_loadu_si256(
-                    reinterpret_cast<const __m256i*>(sums.data() + hidden));
-                const __m256i w = _mm256_loadu_si256(
-                    reinterpret_cast<const __m256i*>(feature_weights + hidden));
-                _mm256_storeu_si256(reinterpret_cast<__m256i*>(sums.data() + hidden),
-                                    _mm256_add_epi16(acc, w));
+    if (avx2_available()) {
+        for (; hidden + 32U <= hidden_units; hidden += 32U) {
+            __m256i s0 = _mm256_permute4x64_epi64(
+                _mm256_packs_epi32(
+                    _mm256_loadu_si256(reinterpret_cast<const __m256i*>(bias + hidden)),
+                    _mm256_loadu_si256(reinterpret_cast<const __m256i*>(bias + hidden + 8U))),
+                _MM_SHUFFLE(3, 1, 2, 0));
+            __m256i s1 = _mm256_permute4x64_epi64(
+                _mm256_packs_epi32(
+                    _mm256_loadu_si256(reinterpret_cast<const __m256i*>(bias + hidden + 16U)),
+                    _mm256_loadu_si256(reinterpret_cast<const __m256i*>(bias + hidden + 24U))),
+                _MM_SHUFFLE(3, 1, 2, 0));
+            for (const std::uint16_t feature : active) {
+                const std::int16_t* const fw =
+                    w_base + static_cast<std::size_t>(feature) * hidden_units + hidden;
+                s0 = _mm256_add_epi16(s0, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(fw)));
+                s1 = _mm256_add_epi16(
+                    s1, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(fw + 16U)));
             }
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(sums.data() + hidden), s0);
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(sums.data() + hidden + 16U), s1);
         }
+        for (; hidden + 16U <= hidden_units; hidden += 16U) {
+            __m256i s0 = _mm256_permute4x64_epi64(
+                _mm256_packs_epi32(
+                    _mm256_loadu_si256(reinterpret_cast<const __m256i*>(bias + hidden)),
+                    _mm256_loadu_si256(reinterpret_cast<const __m256i*>(bias + hidden + 8U))),
+                _MM_SHUFFLE(3, 1, 2, 0));
+            for (const std::uint16_t feature : active) {
+                s0 = _mm256_add_epi16(
+                    s0, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(
+                            w_base + static_cast<std::size_t>(feature) * hidden_units + hidden)));
+            }
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(sums.data() + hidden), s0);
+        }
+    }
 #endif
-        for (; hidden < hidden_units; ++hidden) {
-            sums[hidden] = static_cast<std::int16_t>(sums[hidden] + feature_weights[hidden]);
+    for (; hidden < hidden_units; ++hidden) {
+        std::int16_t acc = static_cast<std::int16_t>(bias[hidden]);
+        for (const std::uint16_t feature : active) {
+            acc = static_cast<std::int16_t>(
+                acc + w_base[static_cast<std::size_t>(feature) * hidden_units + hidden]);
         }
+        sums[hidden] = acc;
     }
 }
 
@@ -802,70 +851,165 @@ template <typename SumT, bool WriteAccumulator = true>
 #endif
 
 #if KOI_NNUE_COMPILED_AVX2
-inline void compute_pair_products_avx2(std::span<const std::int16_t> activations,
-                                std::span<std::int16_t> pairs) noexcept {
-    const std::size_t pair_count = pairs.size();
+template <typename SumT, bool WriteAccumulator = true>
+inline void accumulate_v4_perspective_fused_avx2_t(
+    std::span<const SumT> sums,
+    const std::int8_t* weights,
+    const std::size_t pair_count,
+    std::span<std::int16_t> activations,
+    std::span<std::int16_t> pairs,
+    __m256i& acc0,
+    __m256i& acc1,
+    std::int64_t& acc_tail) noexcept {
     std::size_t pair = 0;
-    for (; pair + 16U <= pair_count; pair += 16U) {
-        const __m256i low = _mm256_loadu_si256(
-            reinterpret_cast<const __m256i*>(activations.data() + pair));
-        const __m256i high = _mm256_loadu_si256(
-            reinterpret_cast<const __m256i*>(activations.data() + pair + pair_count));
-        _mm256_storeu_si256(reinterpret_cast<__m256i*>(pairs.data() + pair),
-                            _mm256_mullo_epi16(low, high));
-    }
-    for (; pair < pair_count; ++pair) {
-        pairs[pair] = static_cast<std::int16_t>(
-            activations[pair] * activations[pair + pair_count]);
-    }
-}
-
-[[nodiscard]] inline std::int64_t bucket_dot_avx2(const NnueNetwork& network,
-                                           const std::size_t bucket,
-                                           std::span<const std::int16_t> pairs) noexcept {
-    const std::size_t pair_count = pairs.size();
-    const auto* weights = network.bottleneck_weights.data() + bucket * pair_count;
-    constexpr std::int64_t kMaximumPairProduct = 127 * 127;
-    if (static_cast<std::int64_t>(pair_count) * 127 * kMaximumPairProduct >
-        std::numeric_limits<std::int32_t>::max()) {
-        std::int64_t output = 0;
-        for (std::size_t pair = 0; pair < pair_count; ++pair) {
-            output += static_cast<std::int64_t>(weights[pair]) * pairs[pair];
+    const __m256i zero = _mm256_setzero_si256();
+    if constexpr (std::is_same_v<SumT, std::int16_t>) {
+        const __m256i maximum =
+            _mm256_set1_epi16(static_cast<std::int16_t>(kKoiNnueClippedReluMaximum));
+        for (; pair + 32U <= pair_count; pair += 32U) {
+            const __m256i act0_lo = _mm256_min_epi16(_mm256_max_epi16(
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(sums.data() + pair)),
+                zero), maximum);
+            const __m256i act0_hi = _mm256_min_epi16(_mm256_max_epi16(
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(sums.data() + pair + 16U)),
+                zero), maximum);
+            const __m256i act1_lo = _mm256_min_epi16(_mm256_max_epi16(
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(
+                    sums.data() + pair + pair_count)),
+                zero), maximum);
+            const __m256i act1_hi = _mm256_min_epi16(_mm256_max_epi16(
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(
+                    sums.data() + pair + pair_count + 16U)),
+                zero), maximum);
+            if constexpr (WriteAccumulator) {
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(activations.data() + pair), act0_lo);
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(activations.data() + pair + 16U), act0_hi);
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(activations.data() + pair + pair_count), act1_lo);
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(activations.data() + pair + pair_count + 16U),
+                    act1_hi);
+            }
+            const __m256i prod_lo = _mm256_mullo_epi16(act0_lo, act1_lo);
+            const __m256i prod_hi = _mm256_mullo_epi16(act0_hi, act1_hi);
+            if constexpr (WriteAccumulator) {
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(pairs.data() + pair), prod_lo);
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(pairs.data() + pair + 16U), prod_hi);
+            }
+            const __m256i w_lo = _mm256_cvtepi8_epi16(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(weights + pair)));
+            const __m256i w_hi = _mm256_cvtepi8_epi16(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(weights + pair + 16U)));
+            acc0 = _mm256_add_epi32(acc0, _mm256_madd_epi16(prod_lo, w_lo));
+            acc1 = _mm256_add_epi32(acc1, _mm256_madd_epi16(prod_hi, w_hi));
         }
-        return output;
-    }
-    __m256i accumulator = _mm256_setzero_si256();
-    std::size_t pair = 0;
-    for (; pair + 16U <= pair_count; pair += 16U) {
-        const __m256i pair_values = _mm256_loadu_si256(
-            reinterpret_cast<const __m256i*>(pairs.data() + pair));
-        const __m128i weight_bytes = _mm_loadu_si128(
-            reinterpret_cast<const __m128i*>(weights + pair));
-        const __m256i weight_values = _mm256_cvtepi8_epi16(weight_bytes);
-        accumulator = _mm256_add_epi32(
-            accumulator, _mm256_madd_epi16(pair_values, weight_values));
-    }
-    alignas(32) std::array<std::int32_t, 8> lanes{};
-    _mm256_store_si256(reinterpret_cast<__m256i*>(lanes.data()), accumulator);
-    std::int64_t output = 0;
-    for (const std::int32_t lane : lanes) {
-        output += lane;
+        for (; pair + 16U <= pair_count; pair += 16U) {
+            const __m256i act0 = _mm256_min_epi16(_mm256_max_epi16(
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(sums.data() + pair)),
+                zero), maximum);
+            const __m256i act1 = _mm256_min_epi16(_mm256_max_epi16(
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(
+                    sums.data() + pair + pair_count)),
+                zero), maximum);
+            if constexpr (WriteAccumulator) {
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(activations.data() + pair), act0);
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(activations.data() + pair + pair_count), act1);
+            }
+            const __m256i prod = _mm256_mullo_epi16(act0, act1);
+            if constexpr (WriteAccumulator) {
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(pairs.data() + pair), prod);
+            }
+            const __m256i w = _mm256_cvtepi8_epi16(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(weights + pair)));
+            acc0 = _mm256_add_epi32(acc0, _mm256_madd_epi16(prod, w));
+        }
+    } else {
+        const __m256i maximum = _mm256_set1_epi32(kKoiNnueClippedReluMaximum);
+        for (; pair + 16U <= pair_count; pair += 16U) {
+            __m256i lo0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(sums.data() + pair));
+            __m256i hi0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(sums.data() + pair + 8U));
+            lo0 = _mm256_min_epi32(_mm256_max_epi32(lo0, zero), maximum);
+            hi0 = _mm256_min_epi32(_mm256_max_epi32(hi0, zero), maximum);
+            __m256i act0 = _mm256_permute4x64_epi64(
+                _mm256_packs_epi32(lo0, hi0), _MM_SHUFFLE(3, 1, 2, 0));
+
+            __m256i lo1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(sums.data() + pair + pair_count));
+            __m256i hi1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(sums.data() + pair + pair_count + 8U));
+            lo1 = _mm256_min_epi32(_mm256_max_epi32(lo1, zero), maximum);
+            hi1 = _mm256_min_epi32(_mm256_max_epi32(hi1, zero), maximum);
+            __m256i act1 = _mm256_permute4x64_epi64(
+                _mm256_packs_epi32(lo1, hi1), _MM_SHUFFLE(3, 1, 2, 0));
+
+            if constexpr (WriteAccumulator) {
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(activations.data() + pair), act0);
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(activations.data() + pair + pair_count), act1);
+            }
+            const __m256i prod = _mm256_mullo_epi16(act0, act1);
+            if constexpr (WriteAccumulator) {
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(pairs.data() + pair), prod);
+            }
+            const __m256i w = _mm256_cvtepi8_epi16(_mm_loadu_si128(
+                reinterpret_cast<const __m128i*>(weights + pair)));
+            acc0 = _mm256_add_epi32(acc0, _mm256_madd_epi16(prod, w));
+        }
     }
     for (; pair < pair_count; ++pair) {
-        output += static_cast<std::int64_t>(weights[pair]) * pairs[pair];
+        const std::int16_t a0 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+            sums[pair], 0, kKoiNnueClippedReluMaximum));
+        const std::int16_t a1 = static_cast<std::int16_t>(std::clamp<std::int32_t>(
+            sums[pair + pair_count], 0, kKoiNnueClippedReluMaximum));
+        if constexpr (WriteAccumulator) {
+            activations[pair] = a0;
+            activations[pair + pair_count] = a1;
+        }
+        const std::int16_t product = static_cast<std::int16_t>(a0 * a1);
+        if constexpr (WriteAccumulator) {
+            pairs[pair] = product;
+        }
+        acc_tail += static_cast<std::int64_t>(weights[pair]) * product;
     }
-    return output;
 }
 
-template <typename SumT>
+template <typename SumT, bool WriteAccumulator = true>
 [[nodiscard]] int finish_inference_v4_avx2_t(const NnueNetwork& network,
                                              std::span<const SumT> hidden_sums,
                                              const std::size_t bucket,
                                              NnueAccumulator& accumulator) noexcept {
-    fill_v4_activations_t<SumT>(hidden_sums, accumulator);
-    compute_pair_products_avx2(accumulator.values, accumulator.bottleneck_values);
-    std::int64_t output = network.bottleneck_bias[bucket] +
-        bucket_dot_avx2(network, bucket, accumulator.bottleneck_values);
+    const std::size_t pair_count = network.manifest.layer_sizes[1] / 2U;
+    constexpr std::int64_t kMaximumPairProduct = 127 * 127;
+    if ((hidden_sums.size() & 1U) != 0 ||
+        static_cast<std::int64_t>(pair_count) * 127 * kMaximumPairProduct >
+            std::numeric_limits<std::int32_t>::max()) {
+        return finish_inference_v4_scalar_t<SumT>(network, hidden_sums, bucket, accumulator);
+    }
+    const auto* weights = network.bottleneck_weights.data() + bucket * pair_count;
+    __m256i acc0 = _mm256_setzero_si256();
+    __m256i acc1 = _mm256_setzero_si256();
+    std::int64_t acc_tail = 0;
+    accumulate_v4_perspective_fused_avx2_t<SumT, WriteAccumulator>(
+        hidden_sums, weights, pair_count, accumulator.values,
+        accumulator.bottleneck_values, acc0, acc1, acc_tail);
+    alignas(32) std::array<std::int32_t, 8> lanes{};
+    _mm256_store_si256(reinterpret_cast<__m256i*>(lanes.data()),
+                       _mm256_add_epi32(acc0, acc1));
+    std::int64_t output = network.bottleneck_bias[bucket] + acc_tail;
+    for (const std::int32_t lane : lanes) {
+        output += lane;
+    }
     if (network.output_shift > 0) {
         output >>= network.output_shift;
     }
@@ -880,7 +1024,7 @@ template <typename SumT>
         network, hidden_sums, bucket, accumulator);
 }
 
-template <typename SumT>
+template <typename SumT, bool WriteAccumulator = true>
 [[nodiscard]] int finish_inference_v4_dual_avx2_t(const NnueNetwork& network,
                                                   std::span<const SumT> own_sums,
                                                   std::span<const SumT> opp_sums,
@@ -888,17 +1032,40 @@ template <typename SumT>
                                                   NnueAccumulator& accumulator) noexcept {
     const std::size_t hidden_units = network.manifest.layer_sizes[1];
     const std::size_t pair_count = hidden_units / 2U;
-    std::span<std::int16_t> own_act(accumulator.values.data(), hidden_units);
-    std::span<std::int16_t> opp_act(accumulator.values.data() + hidden_units, hidden_units);
-    fill_v4_activations_avx2_t<SumT>(own_sums, own_act);
-    fill_v4_activations_avx2_t<SumT>(opp_sums, opp_act);
-    compute_pair_products_avx2(
-        own_act, std::span<std::int16_t>(accumulator.bottleneck_values.data(), pair_count));
-    compute_pair_products_avx2(
-        opp_act,
-        std::span<std::int16_t>(accumulator.bottleneck_values.data() + pair_count, pair_count));
-    std::int64_t output = network.bottleneck_bias[bucket] +
-        bucket_dot_avx2(network, bucket, accumulator.bottleneck_values);
+    const std::size_t total_pairs = hidden_units;
+    constexpr std::int64_t kMaximumPairProduct = 127 * 127;
+    if ((hidden_units & 1U) != 0 ||
+        static_cast<std::int64_t>(total_pairs) * 127 * kMaximumPairProduct >
+            std::numeric_limits<std::int32_t>::max()) {
+        return finish_inference_v4_dual_scalar_t<SumT>(
+            network, own_sums, opp_sums, bucket, accumulator);
+    }
+    const auto* weights = network.bottleneck_weights.data() + bucket * total_pairs;
+    std::span<std::int16_t> own_act;
+    std::span<std::int16_t> opp_act;
+    std::span<std::int16_t> own_pairs;
+    std::span<std::int16_t> opp_pairs;
+    if constexpr (WriteAccumulator) {
+        own_act = std::span<std::int16_t>(accumulator.values.data(), hidden_units);
+        opp_act = std::span<std::int16_t>(accumulator.values.data() + hidden_units, hidden_units);
+        own_pairs = std::span<std::int16_t>(accumulator.bottleneck_values.data(), pair_count);
+        opp_pairs = std::span<std::int16_t>(
+            accumulator.bottleneck_values.data() + pair_count, pair_count);
+    }
+    __m256i acc0 = _mm256_setzero_si256();
+    __m256i acc1 = _mm256_setzero_si256();
+    std::int64_t acc_tail = 0;
+    accumulate_v4_perspective_fused_avx2_t<SumT, WriteAccumulator>(
+        own_sums, weights, pair_count, own_act, own_pairs, acc0, acc1, acc_tail);
+    accumulate_v4_perspective_fused_avx2_t<SumT, WriteAccumulator>(
+        opp_sums, weights + pair_count, pair_count, opp_act, opp_pairs, acc0, acc1, acc_tail);
+    alignas(32) std::array<std::int32_t, 8> lanes{};
+    _mm256_store_si256(reinterpret_cast<__m256i*>(lanes.data()),
+                       _mm256_add_epi32(acc0, acc1));
+    std::int64_t output = network.bottleneck_bias[bucket] + acc_tail;
+    for (const std::int32_t lane : lanes) {
+        output += lane;
+    }
     if (network.output_shift > 0) {
         output >>= network.output_shift;
     }
@@ -1060,6 +1227,34 @@ template <typename SumT, bool WriteAccumulator = true>
                                  const std::int8_t* weights,
                                  std::span<std::int16_t> out_act) noexcept {
         std::size_t hidden = 0;
+#if defined(__aarch64__)
+        if constexpr (std::is_same_v<SumT, std::int16_t> && !WriteAccumulator) {
+            for (; hidden + 32U <= hidden_units; hidden += 32U) {
+                const int16x8_t a0 = vminq_s16(
+                    vmaxq_s16(vld1q_s16(sums.data() + hidden), zero_16), max_16);
+                const int16x8_t a1 = vminq_s16(
+                    vmaxq_s16(vld1q_s16(sums.data() + hidden + 8U), zero_16), max_16);
+                const int16x8_t a2 = vminq_s16(
+                    vmaxq_s16(vld1q_s16(sums.data() + hidden + 16U), zero_16), max_16);
+                const int16x8_t a3 = vminq_s16(
+                    vmaxq_s16(vld1q_s16(sums.data() + hidden + 24U), zero_16), max_16);
+                const int8x16_t wb0 = vld1q_s8(weights + hidden);
+                const int8x16_t wb1 = vld1q_s8(weights + hidden + 16U);
+                const int16x8_t aw0 = vmulq_s16(a0, vmovl_s8(vget_low_s8(wb0)));
+                const int16x8_t aw1 = vmulq_s16(a1, vmovl_high_s8(wb0));
+                const int16x8_t aw2 = vmulq_s16(a2, vmovl_s8(vget_low_s8(wb1)));
+                const int16x8_t aw3 = vmulq_s16(a3, vmovl_high_s8(wb1));
+                acc0 = vmlal_s16(acc0, vget_low_s16(aw0), vget_low_s16(a0));
+                acc1 = vmlal_high_s16(acc1, aw0, a0);
+                acc2 = vmlal_s16(acc2, vget_low_s16(aw1), vget_low_s16(a1));
+                acc3 = vmlal_high_s16(acc3, aw1, a1);
+                acc0 = vmlal_s16(acc0, vget_low_s16(aw2), vget_low_s16(a2));
+                acc1 = vmlal_high_s16(acc1, aw2, a2);
+                acc2 = vmlal_s16(acc2, vget_low_s16(aw3), vget_low_s16(a3));
+                acc3 = vmlal_high_s16(acc3, aw3, a3);
+            }
+        }
+#endif
         for (; hidden + 16U <= hidden_units; hidden += 16U) {
             int16x8_t a_lo;
             int16x8_t a_hi;

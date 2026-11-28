@@ -984,6 +984,23 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
             return false;
         }
     }
+    // Hard positions whose optimum_budget expanded up to hard_budget can still
+    // finish a deep ply with >= 65% of hard_budget already spent and a next ply
+    // predicted to overrun hard_budget by > 40%. When the best move is stable
+    // and the score is not collapsing, skip that guaranteed-aborted ply to bank
+    // up to 35% of the move's clock instead of running into the hard deadline.
+    if (clock_mode_ && last_observed_depth_ >= 7 &&
+        best_move_stability_ >= 1 && score_drop_cp_ < 40 &&
+        !last_aspiration_researched_ &&
+        last_iteration_elapsed_ >= min_doomed_sample &&
+        elapsed >= scale_fraction(budget, 65, 100)) {
+        const auto predicted_next = scale_fraction(
+            last_iteration_elapsed_, branching_permille_, 1000);
+        if (saturating_add(elapsed, predicted_next) >
+            scale_fraction(budget, 140, 100)) {
+            return false;
+        }
+    }
     const auto needed = std::max(estimated_next_iteration, std::chrono::milliseconds{1});
     return elapsed < budget && saturating_add(elapsed, needed) < budget;
 }

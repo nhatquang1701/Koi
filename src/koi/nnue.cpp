@@ -451,7 +451,7 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
     } else if (dual_v4_) {
 #if KOI_NNUE_COMPILED_AVX2
         if (use_avx2) {
-            score = finish_inference_v4_dual_avx2_t<std::int16_t>(
+            score = finish_inference_v4_dual_avx2_t<std::int16_t, WriteAccumulator>(
                 *weights_, mover_sums_16, opponent_sums_16, bucket, accumulator_);
         } else
 #endif
@@ -468,7 +468,7 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
     } else {
 #if KOI_NNUE_COMPILED_AVX2
         if (use_avx2) {
-            score = finish_inference_v4_avx2_t<std::int16_t>(
+            score = finish_inference_v4_avx2_t<std::int16_t, WriteAccumulator>(
                 *weights_, mover_sums_16, bucket, accumulator_);
         } else
 #endif
@@ -1672,26 +1672,32 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
     const Color real = index == 0U ? Color::white : Color::black;
     const std::int16_t* const weight_base = weights_->feature_weights.data();
     const std::size_t count = hidden_units_;
-    const auto feature_idx = [&](const std::size_t cache_slot, const Piece pc,
-                                 const Square sq) noexcept -> std::uint16_t {
-        return halfka_hm_v9_ ?
-            EvaluationFeatureExtractor::halfka_hm_v2_feature_index(cache_slot, real, pc, sq) :
-            EvaluationFeatureExtractor::halfka_king_bucket_feature_index(cache_slot, real, pc, sq);
+    const std::size_t bucket = slot_buckets_[index][slot];
+    const std::size_t feat_bucket = halfka_hm_v9_ ? (bucket >> 1U) : bucket;
+    const std::size_t base = feat_bucket * kNnuePieceSquareV1FeatureCount;
+    const std::size_t sq_xor = (real == Color::white ? 0U : 56U) ^
+        (halfka_hm_v9_ && (bucket & 1U) != 0U ? 7U : 0U);
+    const auto feature_idx = [&](const Piece pc, const Square sq) noexcept -> std::uint16_t {
+        const std::size_t type = static_cast<std::size_t>(pc.type);
+        const std::size_t plane = pc.color == real ? (type - 1U) : (type + 5U);
+        return static_cast<std::uint16_t>(base + plane * 64U + (sq.index() ^ sq_xor));
     };
+    const SumT* src_ptr = values_base + s * count;
     for (std::size_t cur = s + 1U; cur <= slot; ++cur) {
         const PendingMoveV4& pm = slot_pending_move_[cur];
-        const SumT* const parent_ptr = values_base + (cur - 1U) * count;
         SumT* const target_ptr = values_base + cur * count;
         if (pm.is_null) {
-            std::copy_n(parent_ptr, count, target_ptr);
+            if (cur < slot) {
+                continue;
+            }
+            std::copy_n(src_ptr, count, target_ptr);
         } else {
-            const std::size_t bucket = slot_buckets_[index][cur];
             const Square from = pm.move.from();
             const Square to = pm.move.to();
-            const std::uint16_t sub0 = feature_idx(bucket, Piece{pm.moving_piece, pm.mover}, from);
+            const std::uint16_t sub0 = feature_idx(Piece{pm.moving_piece, pm.mover}, from);
             const PieceType placed = pm.kind == MoveKind::promotion ?
                 promotion_piece_type(pm.move.promotion()) : pm.moving_piece;
-            const std::uint16_t add0 = feature_idx(bucket, Piece{placed, pm.mover}, to);
+            const std::uint16_t add0 = feature_idx(Piece{placed, pm.mover}, to);
             if constexpr (std::is_same_v<SumT, std::int16_t>) {
                 if (pm.captured_piece != PieceType::none) {
                     Square captured = to;
@@ -1701,9 +1707,9 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                             Square::from_index(static_cast<std::uint8_t>(to.index() + 8U));
                     }
                     const std::uint16_t sub1 = feature_idx(
-                        bucket, Piece{pm.captured_piece, opposite(pm.mover)}, captured);
+                        Piece{pm.captured_piece, opposite(pm.mover)}, captured);
                     apply_fused_s16_sub2_add1(
-                        weight_base, count, parent_ptr, target_ptr, sub0, sub1, add0);
+                        weight_base, count, src_ptr, target_ptr, sub0, sub1, add0);
                 } else if (pm.kind == MoveKind::castling) [[unlikely]] {
                     const bool king_side = pm.mover == Color::white ? to.index() == 6U :
                                                                       to.index() == 62U;
@@ -1712,14 +1718,14 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                     const std::uint8_t rook_to = pm.mover == Color::white ?
                         (king_side ? 5U : 3U) : (king_side ? 61U : 59U);
                     const std::uint16_t sub1 = feature_idx(
-                        bucket, Piece{PieceType::rook, pm.mover}, Square::from_index(rook_from));
+                        Piece{PieceType::rook, pm.mover}, Square::from_index(rook_from));
                     const std::uint16_t add1 = feature_idx(
-                        bucket, Piece{PieceType::rook, pm.mover}, Square::from_index(rook_to));
+                        Piece{PieceType::rook, pm.mover}, Square::from_index(rook_to));
                     apply_fused_s16_sub2_add2(
-                        weight_base, count, parent_ptr, target_ptr, sub0, sub1, add0, add1);
+                        weight_base, count, src_ptr, target_ptr, sub0, sub1, add0, add1);
                 } else {
                     apply_fused_s16_sub1_add1(
-                        weight_base, count, parent_ptr, target_ptr, sub0, add0);
+                        weight_base, count, src_ptr, target_ptr, sub0, add0);
                 }
             } else {
                 std::array<std::uint16_t, 2> removed{sub0, 0};
@@ -1734,7 +1740,7 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                             Square::from_index(static_cast<std::uint8_t>(to.index() + 8U));
                     }
                     removed[removed_count++] = feature_idx(
-                        bucket, Piece{pm.captured_piece, opposite(pm.mover)}, captured);
+                        Piece{pm.captured_piece, opposite(pm.mover)}, captured);
                 }
                 if (pm.kind == MoveKind::castling) {
                     const bool king_side = pm.mover == Color::white ? to.index() == 6U :
@@ -1744,15 +1750,16 @@ void NnueWorker::materialize_slot_perspective_v4_impl(const GameState& state,
                     const std::uint8_t rook_to = pm.mover == Color::white ?
                         (king_side ? 5U : 3U) : (king_side ? 61U : 59U);
                     removed[removed_count++] = feature_idx(
-                        bucket, Piece{PieceType::rook, pm.mover}, Square::from_index(rook_from));
+                        Piece{PieceType::rook, pm.mover}, Square::from_index(rook_from));
                     added[added_count++] = feature_idx(
-                        bucket, Piece{PieceType::rook, pm.mover}, Square::from_index(rook_to));
+                        Piece{PieceType::rook, pm.mover}, Square::from_index(rook_to));
                 }
                 apply_fused_perspective_deltas(
-                    parent_ptr, target_ptr,
+                    src_ptr, target_ptr,
                     std::span<const std::uint16_t>(removed.data(), removed_count),
                     std::span<const std::uint16_t>(added.data(), added_count));
             }
+            src_ptr = target_ptr;
         }
         slot_computed_[index][cur] = 1;
     }

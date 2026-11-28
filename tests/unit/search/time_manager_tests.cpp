@@ -1343,6 +1343,36 @@ void test_dead_drawn_endgame_speedup_banks_clock() {
             "dead-drawn endgame speedup must not slow imbalanced (+80 cp) endgames");
 }
 
+void test_hard_position_doomed_overrun_ply_guard() {
+    const SearchLimits clock = clock_limits(milliseconds{60'000}, milliseconds{1'000});
+    auto stable_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto dropping_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager stable_hard(clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                            warm_context(), [stable_now] { return *stable_now; });
+    TimeManager dropping_hard(clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                              warm_context(), [dropping_now] { return *dropping_now; });
+
+    const auto hard_budget = stable_hard.diagnostics().hard_budget;
+    const auto iter_time = std::max(milliseconds{20}, (hard_budget * 55) / 100);
+    // Latch hard_position_ at depth 5 via best_move_changed, then settle at depths 6..7.
+    stable_hard.observe_iteration({5, 40, true, true, false, 10'000, 5'000, iter_time / 2});
+    stable_hard.observe_iteration({6, 40, false, false, false, 10'000, 5'000, iter_time});
+    stable_hard.observe_iteration({7, 35, false, false, false, 10'000, 5'000, iter_time});
+
+    dropping_hard.observe_iteration({5, 80, true, true, false, 10'000, 5'000, iter_time / 2});
+    dropping_hard.observe_iteration({6, 80, false, false, false, 10'000, 5'000, iter_time});
+    dropping_hard.observe_iteration({7, 30, false, false, false, 10'000, 5'000, iter_time});
+
+    const auto elapsed_70 = (hard_budget * 70) / 100;
+    *stable_now += elapsed_70;
+    *dropping_now += elapsed_70;
+    require(elapsed_70 < stable_hard.diagnostics().optimum_budget &&
+                !stable_hard.should_start_next_iteration(milliseconds{1}),
+            "hard position at >=65% hard_budget with >140% overrun next ply must bank clock when stable");
+    require(dropping_hard.should_start_next_iteration(milliseconds{1}),
+            "hard position suffering a >=40 cp score drop must still attempt the next ply inside hard_budget");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1403,6 +1433,8 @@ int main(int argc, char** argv) {
          test_defensive_mate_preserves_budget_and_unified_stop_start_symmetry},
         {"dead drawn endgame speedup banks clock",
          test_dead_drawn_endgame_speedup_banks_clock},
+        {"hard position doomed overrun ply guard",
+         test_hard_position_doomed_overrun_ply_guard},
     };
     return koi::test::run_tests(tests, argc, argv);
 }
