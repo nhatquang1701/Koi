@@ -973,27 +973,21 @@ private:
                 break;
             case PieceType::bishop:
                 if (destination_on_ray &&
-                    (!rays_known ||
-                     (detail::bishop_pseudo_attacks(king_square) & destination_bit) != 0)) {
-                    direct_check = (bishop_rays() & destination_bit) != 0;
+                    (detail::bishop_pseudo_attacks(king_square) & destination_bit) != 0) {
+                    direct_check = (detail::between_mask(king_square, to) & occupied) == 0;
                 }
                 break;
             case PieceType::rook:
                 if (destination_on_ray &&
-                    (!rays_known ||
-                     (detail::rook_pseudo_attacks(king_square) & destination_bit) != 0)) {
-                    direct_check = (rook_rays() & destination_bit) != 0;
+                    (detail::rook_pseudo_attacks(king_square) & destination_bit) != 0) {
+                    direct_check = (detail::between_mask(king_square, to) & occupied) == 0;
                 }
                 break;
             case PieceType::queen:
-                if (destination_on_ray) {
-                    const bool on_rook = !rays_known ||
-                        (detail::rook_pseudo_attacks(king_square) & destination_bit) != 0;
-                    const bool on_bishop = !rays_known ||
-                        (detail::bishop_pseudo_attacks(king_square) & destination_bit) != 0;
-                    direct_check =
-                        (on_rook && (rook_rays() & destination_bit) != 0) ||
-                        (on_bishop && (bishop_rays() & destination_bit) != 0);
+                if (destination_on_ray &&
+                    ((detail::rook_pseudo_attacks(king_square) |
+                      detail::bishop_pseudo_attacks(king_square)) & destination_bit) != 0) {
+                    direct_check = (detail::between_mask(king_square, to) & occupied) == 0;
                 }
                 break;
             default:
@@ -1002,7 +996,7 @@ private:
         if (kind == MoveKind::castling && valid_square(rook_destination)) {
             const std::uint64_t rook_dest_bit = std::uint64_t{1} << rook_destination;
             if ((detail::rook_pseudo_attacks(king_square) & rook_dest_bit) != 0 &&
-                (rook_rays() & rook_dest_bit) != 0) {
+                (detail::between_mask(king_square, rook_destination) & occupied) == 0) {
                 direct_check = true;
             }
         }
@@ -1445,13 +1439,9 @@ public:
         sink.finish();
     }
 
-    [[nodiscard]] bool has_quick_unpinned_legal_move() const noexcept {
-        const Color side = state.side;
-        const std::size_t side_index = side == Color::white ? 0U : 1U;
+    [[nodiscard]] bool has_quick_unpinned_legal_move_unchecked(
+        const Color side, const std::size_t side_index) const noexcept {
         const std::size_t enemy_index = 1U - side_index;
-        if (state.checkers[side_index] != 0 || king_square(state, side) < 0) {
-            return false;
-        }
         constexpr std::uint64_t kFileAMask = 0x0101010101010101ULL;
         constexpr std::uint64_t kFileHMask = 0x8080808080808080ULL;
         const std::uint64_t pinned = state.pinned[side_index];
@@ -1514,6 +1504,15 @@ public:
             ((unpinned_knights & ~kFileABMask) >> 10) |
             ((unpinned_knights & ~kFileGHMask) >> 6);
         return (knight_targets & valid_targets) != 0;
+    }
+
+    [[nodiscard]] bool has_quick_unpinned_legal_move() const noexcept {
+        const Color side = state.side;
+        const std::size_t side_index = side == Color::white ? 0U : 1U;
+        if (state.checkers[side_index] != 0 || king_square(state, side) < 0) {
+            return false;
+        }
+        return has_quick_unpinned_legal_move_unchecked(side, side_index);
     }
 
     // Stops at the first legal candidate instead of materializing the whole
@@ -2064,6 +2063,9 @@ public:
     // to the scanning overload below; is_checkmate() stays lazily queried.
     [[nodiscard]] DrawStatus draw_status(std::size_t repetitions) const noexcept {
         if (is_dead_position()) return DrawStatus::dead_position;
+        if (repetitions < 3 && (state.repetition_history_suppressed || state.halfmove < 100)) {
+            return DrawStatus::none;
+        }
         if (is_automatic_seventy_five_move_draw()) {
             return DrawStatus::automatic_seventy_five_move;
         }
@@ -2085,9 +2087,11 @@ public:
         out.piece_bitboards = &state.piece_bitboards;
         out.halfmove_clock = state.halfmove;
         out.side_to_move = state.side;
+        const std::size_t side_index = state.side == Color::white ? 0U : 1U;
         out.piece_count = static_cast<std::uint8_t>(std::popcount(state.occupied));
         out.in_check = in_check();
-        out.has_quick_legal_move = !out.in_check && has_quick_unpinned_legal_move();
+        out.has_quick_legal_move = !out.in_check &&
+            has_quick_unpinned_legal_move_unchecked(state.side, side_index);
         out.repetition_history_suppressed = state.repetition_history_suppressed;
         out.has_non_pawn_material = has_non_pawn_material(state.side);
         out.opponent_has_non_pawn_material = has_non_pawn_material(opposite(state.side));

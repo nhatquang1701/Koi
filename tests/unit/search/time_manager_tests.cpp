@@ -1665,6 +1665,40 @@ void test_emergency_depth5_asymmetric_conversion_speedup() {
             "healthy clock at depth 5 must retain depth>=8 conversion speedup threshold");
 }
 
+void test_emergency_depth6_dead_drawn_endgame_speedup() {
+    auto endgame_ctx = warm_context();
+    endgame_ctx.game_phase = 4;
+    auto mid_ctx = warm_context();
+    mid_ctx.game_phase = 16;
+
+    auto observe_depth6 = [](TimeManager& tm, const int s5, const int s6) {
+        tm.observe_iteration({5, s5, false, false, false, 10'000, 5'000, milliseconds{10}});
+        tm.observe_iteration({6, s6, false, false, false, 10'000, 5'000, milliseconds{15}});
+    };
+
+    const SearchLimits emg_clock = clock_limits(milliseconds{2'000}, milliseconds{1'000});
+    TimeManager emg_endgame(emg_clock, koi::Color::white, 100, kMoveOverheadMs, 100, endgame_ctx);
+    TimeManager emg_mid(emg_clock, koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx);
+    TimeManager emg_nondrawn(emg_clock, koi::Color::white, 100, kMoveOverheadMs, 100, endgame_ctx);
+    observe_depth6(emg_endgame, 5, 8);
+    observe_depth6(emg_mid, 5, 8);
+    observe_depth6(emg_nondrawn, 60, 60);
+    require(emg_endgame.diagnostics().emergency_pacing &&
+                emg_endgame.diagnostics().optimum_budget < emg_mid.diagnostics().optimum_budget,
+            "emergency dead-drawn endgame at depth 6 and stability 2 must apply 22% speedup");
+    require(emg_nondrawn.diagnostics().optimum_budget == emg_mid.diagnostics().optimum_budget,
+            "emergency endgame outside |score|<=15 cp must not trigger dead-drawn speedup");
+
+    const SearchLimits healthy_clock = clock_limits(milliseconds{60'000}, milliseconds{1'000});
+    TimeManager healthy_endgame(healthy_clock, koi::Color::white, 100, kMoveOverheadMs, 100, endgame_ctx);
+    TimeManager healthy_mid(healthy_clock, koi::Color::white, 100, kMoveOverheadMs, 100, mid_ctx);
+    observe_depth6(healthy_endgame, 5, 8);
+    observe_depth6(healthy_mid, 5, 8);
+    require(!healthy_endgame.diagnostics().emergency_pacing &&
+                healthy_endgame.diagnostics().optimum_budget == healthy_mid.diagnostics().optimum_budget,
+            "healthy clock dead-drawn endgame at depth 6 must retain depth>=10/stability>=4 gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1743,6 +1777,8 @@ int main(int argc, char** argv) {
          test_emergency_depth4_branching_factor_updates_lookahead},
         {"emergency depth 5 conversion speedup",
          test_emergency_depth5_asymmetric_conversion_speedup},
+        {"emergency depth 6 dead drawn endgame speedup",
+         test_emergency_depth6_dead_drawn_endgame_speedup},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

@@ -781,12 +781,16 @@ void TimeManager::update_optimum_budget() noexcept {
     }
 
     // Dead-drawn simplified endgames (phase <= 4, |score| <= 15 cp) that have
-    // already reached a deep, rock-stable line do not need full middlegame
-    // think time; save 22% to bank clock for sudden-death finishes.
+    // already reached a calm, stable line (`depth >= 10, stability >= 4`, or
+    // `depth >= 6, stability >= 2` under emergency pacing) do not need full
+    // middlegame think time; save 22% to bank clock for sudden-death finishes.
+    const int min_drawn_depth = emergency_pacing_ ? 6 : 10;
+    const std::uint32_t min_drawn_stability = emergency_pacing_ ? 2U : 4U;
     if (!hard_position_ &&
         root_context_.game_phase >= 0 && root_context_.game_phase <= 4 &&
         previous_score_.has_value() && std::abs(*previous_score_) <= 15 &&
-        last_observed_depth_ >= 10 && best_move_stability_ >= 4 &&
+        last_observed_depth_ >= min_drawn_depth &&
+        best_move_stability_ >= min_drawn_stability &&
         score_drop_cp_ <= 10 && !last_aspiration_researched_) {
         scale_permille = (scale_permille * 780ULL) / 1000ULL;
     }

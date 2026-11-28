@@ -697,10 +697,10 @@ the search but cannot push it past the cap.
   mated `-M` retains defensive search time), asymmetric conversion speedup
   (`score >= +500` cp winning or `<= -700` cp decisively lost with a stable
   line at `depth >= 8`, or `depth >= 5` under emergency pacing), dead-drawn
-  low-phase endgame speedup (`0.78×`
-  when `!hard_position_`, `0 <= game_phase <= 4`, `|score| <= 15` cp,
-  `depth >= 10`, `stability >= 4`, `score_drop <= 10` cp, and no aspiration
-  re-research), and a 20% ponder-time-saved discount when a
+  low-phase endgame speedup (`0.78×` when `!hard_position_`,
+  `0 <= game_phase <= 4`, `|score| <= 15` cp, `depth >= 10` / `stability >= 4`
+  or `depth >= 6` / `stability >= 2` under emergency pacing, `score_drop <= 10`
+  cp, and no aspiration re-research), and a 20% ponder-time-saved discount when a
   `ponderhit` arrives with a calm deep line (`depth >= 6`, `stability >= 3`,
   `!hard_position_`).
 - A hard position may exceed the soft budget only when not in a `<= 1 s + 0`

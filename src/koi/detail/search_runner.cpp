@@ -1963,6 +1963,16 @@ void SearchRunner::run_impl() {
                 // stable root ranking is applied.
                 const bool use_root_pvs = !multi_pv && !root.in_check() &&
                     (!limits.depth.has_value() || worker_count < 4);
+                std::vector<int> move_previous_scores(parallel_moves.size(), 0);
+                std::vector<bool> move_has_previous(parallel_moves.size(), false);
+                for (std::size_t index = 0; index < parallel_moves.size(); ++index) {
+                    const RootScheduleRecord* record =
+                        schedule_record_for(parallel_moves[index].move);
+                    if (record != nullptr && record->has_previous_score) {
+                        move_previous_scores[index] = record->previous_score;
+                        move_has_previous[index] = true;
+                    }
+                }
                 for (;;) {
                     SearchStats attempt_stats;
                     bool attempt_aborted = false;
@@ -1974,16 +1984,6 @@ void SearchRunner::run_impl() {
                     // prior failed window would make stale bounds look
                     // like current root results.
                     std::fill(lines.begin(), lines.end(), RootLine{});
-                    std::vector<int> move_previous_scores(parallel_moves.size(), 0);
-                    std::vector<bool> move_has_previous(parallel_moves.size(), false);
-                    for (std::size_t index = 0; index < parallel_moves.size(); ++index) {
-                        const RootScheduleRecord* record =
-                            schedule_record_for(parallel_moves[index].move);
-                        if (record != nullptr && record->has_previous_score) {
-                            move_previous_scores[index] = record->previous_score;
-                            move_has_previous[index] = true;
-                        }
-                    }
                     pool.run(root, parallel_moves, depth, root_check_extension,
                              stable_root_indices, lines, use_root_pvs, root_static_eval,
                              aspiration.alpha, aspiration.beta, attempt_stats, attempt_aborted,

@@ -171,13 +171,8 @@ KOI_CTX_NOINLINE void SearchContext::reinforce_tt_lower_quiet(
     const bool moves_generated, const MoveMetadataList& moves,
     bool& history_ready, SearchHistoryContext& history_out,
     const std::uint64_t node_pawn_key) noexcept {
-    const auto get_history = [&]() noexcept -> const SearchHistoryContext& {
-        if (!history_ready) {
-            history_ready = true;
-            init_history_context(history_out, ply, previous_move, node_pawn_key);
-        }
-        return history_out;
-    };
+    MoveMetadata quiet_metadata{};
+    const MoveMetadata* target = nullptr;
     if (moves_generated) {
         const auto tt_metadata = std::find_if(
             moves.begin(), moves.end(), [tt_best_move](const MoveMetadata& metadata) {
@@ -185,32 +180,30 @@ KOI_CTX_NOINLINE void SearchContext::reinforce_tt_lower_quiet(
             });
         if (tt_metadata != moves.end() && !tt_metadata->is_capture() &&
             tt_metadata->move.promotion() == Promotion::none) {
-            const SearchHistoryContext& tt_history = get_history();
-            const Color moving_side = history_side(side_to_move, false);
-            ordering.record_quiet_cutoff(
-                history_side(moving_side, true), *tt_metadata,
-                std::max(1, depth / 2), tt_history);
-            ++stats.quiet_history_updates;
-            if (tt_history.count > 0) {
-                ++stats.continuation_history_updates;
-            }
+            target = &*tt_metadata;
         }
     } else if (PieceType moving_piece = PieceType::none;
                state.try_legal_quiet_move_piece(tt_best_move, moving_piece)) {
-        MoveMetadata tt_metadata{};
-        tt_metadata.move = tt_best_move;
-        tt_metadata.moving_piece = moving_piece;
-        tt_metadata.captured_piece = PieceType::none;
-        tt_metadata.kind = MoveKind::quiet;
-        const SearchHistoryContext& tt_history = get_history();
-        const Color moving_side = history_side(side_to_move, false);
-        ordering.record_quiet_cutoff(
-            history_side(moving_side, true), tt_metadata,
-            std::max(1, depth / 2), tt_history);
-        ++stats.quiet_history_updates;
-        if (tt_history.count > 0) {
-            ++stats.continuation_history_updates;
-        }
+        quiet_metadata.move = tt_best_move;
+        quiet_metadata.moving_piece = moving_piece;
+        quiet_metadata.captured_piece = PieceType::none;
+        quiet_metadata.kind = MoveKind::quiet;
+        target = &quiet_metadata;
+    }
+    if (target == nullptr) {
+        return;
+    }
+    if (!history_ready) {
+        history_ready = true;
+        init_history_context(history_out, ply, previous_move, node_pawn_key);
+    }
+    const Color moving_side = history_side(side_to_move, false);
+    ordering.record_quiet_cutoff(
+        history_side(moving_side, true), *target,
+        std::max(1, depth / 2), history_out);
+    ++stats.quiet_history_updates;
+    if (history_out.count > 0) {
+        ++stats.continuation_history_updates;
     }
 }
 
