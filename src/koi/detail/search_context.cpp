@@ -767,7 +767,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         const bool has_legal_move = checked ?
             (state.legal_search_moves_with_metadata(moves, true), !moves.empty()) :
             state.legal_tactical_search_moves_with_metadata(
-                moves, qdepth < quiescence_check_depth_limit);
+                moves, qdepth < quiescence_check_depth_limit, node_info.has_quick_legal_move);
         if (!has_legal_move) {
             const int score = terminal_score(checked, side_to_move, ply);
             if (use_qsearch_cache) {
@@ -2146,7 +2146,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             if (profile_enabled && ply == 0) {
                 begin_profile_root_move(move, next_move_number);
             }
-            if (!make_observed(state, metadata, ply, position_key)) {
+            bool child_in_check = false;
+            if (!make_observed(state, metadata, ply, position_key,
+                               lmr_candidate ? &child_in_check : nullptr)) {
                 if (profile_enabled && ply == 0) {
                     finish_profile_root_move(false);
                 }
@@ -2163,10 +2165,9 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             // Regular move generation intentionally omits capture check flags
             // to avoid probing the compatibility board for every tactical
             // candidate. Once the move is made, the native state is the
-            // authoritative and cheap source of this fact. Preserve checking
-            // captures from all post-make pruning gates even when their
-            // metadata arrived unannotated.
-            const bool child_in_check = state.in_check();
+            // authoritative source of check state, returned directly through
+            // `child_ks.in_check` inside `make_observed()` for LMR candidates
+            // without an extra cross-TU PIMPL call.
             bool king_zone_pressure = false;
             bool reducible_quiet = false;
             QuietForcingAfterView after_forced_view;

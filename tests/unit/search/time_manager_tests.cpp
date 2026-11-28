@@ -1508,6 +1508,47 @@ void test_emergency_hard_position_doomed_overrun_depth5_guard() {
             "healthy clock hard position at depth 5 must retain depth>=7 pre-overrun guard");
 }
 
+void test_emergency_calm_depth5_70pct_cutoff() {
+    auto emg_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg(clock_limits(milliseconds{2'000}, milliseconds{1'000}),
+                    koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                    [emg_now] { return *emg_now; });
+    emg.observe_iteration({4, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    emg.observe_iteration({5, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    const auto emg_opt = emg.diagnostics().optimum_budget;
+    *emg_now += (emg_opt * 60) / 100;
+    require(emg.diagnostics().emergency_pacing &&
+                !emg.should_stop_after_iteration() &&
+                emg.should_start_next_iteration(milliseconds{1}),
+            "emergency calm depth-5 search at 60% optimum_budget must continue");
+    *emg_now += (emg_opt * 12) / 100 + milliseconds{1};
+    require(emg.should_stop_after_iteration() &&
+                !emg.should_start_next_iteration(milliseconds{1}),
+            "emergency calm depth-5 search past 70% optimum_budget must stop cleanly and symmetrically");
+
+    auto normal_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager normal_inc(clock_limits(milliseconds{8'000}, milliseconds{1'000}),
+                           koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                           [normal_now] { return *normal_now; });
+    normal_inc.observe_iteration({4, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    normal_inc.observe_iteration({5, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    *normal_now += (normal_inc.diagnostics().optimum_budget * 72) / 100;
+    require(!normal_inc.diagnostics().emergency_pacing &&
+                !normal_inc.should_stop_after_iteration() &&
+                normal_inc.should_start_next_iteration(milliseconds{1}),
+            "non-emergency incremental clock at depth 5 and 72% optimum_budget must continue");
+
+    auto asp_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager asp_emg(clock_limits(milliseconds{2'000}, milliseconds{1'000}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [asp_now] { return *asp_now; });
+    asp_emg.observe_iteration({4, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    asp_emg.observe_iteration({5, 50, false, false, true, 10'000, 5'000, milliseconds{10}});
+    *asp_now += (asp_emg.diagnostics().optimum_budget * 72) / 100;
+    require(asp_emg.should_start_next_iteration(milliseconds{1}),
+            "emergency incremental search with aspiration re-search at depth 5 must not cut off at 72%");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1578,6 +1619,8 @@ int main(int argc, char** argv) {
          test_emergency_doomed_depth5_ply_guard},
         {"emergency hard position depth 5 overrun guard",
          test_emergency_hard_position_doomed_overrun_depth5_guard},
+        {"emergency calm depth 5 70pct cutoff",
+         test_emergency_calm_depth5_70pct_cutoff},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

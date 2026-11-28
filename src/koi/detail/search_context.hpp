@@ -676,12 +676,16 @@ struct SearchContext {
     // position key before trusting any cached accumulator, so a missing call
     // here can only cost a refresh, never a wrong score.
     [[nodiscard]] bool make_observed(GameState& state, const MoveMetadata& metadata,
-                                     const int ply, const std::uint64_t parent_key) {
+                                     const int ply, const std::uint64_t parent_key,
+                                     bool* child_in_check_out = nullptr) {
         const bool has_worker = evaluation.has_private_worker();
         PositionKeyAndSide child_ks{};
-        if (has_worker) {
+        if (has_worker || child_in_check_out != nullptr) {
             if (!state.make_search_move(metadata, child_ks)) {
                 return false;
+            }
+            if (child_in_check_out != nullptr) {
+                *child_in_check_out = child_ks.in_check;
             }
         } else if (!state.make_search_move(metadata)) {
             return false;

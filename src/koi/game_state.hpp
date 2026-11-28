@@ -54,6 +54,7 @@ struct SearchNodeInfo {
 struct PositionKeyAndSide {
     std::uint64_t position_key = 0;
     Color side_to_move = Color::white;
+    bool in_check = false;
 };
 
 struct ExchangeSnapshot {
@@ -333,7 +334,8 @@ public:
         MoveMetadataList& moves, bool include_check_flags = true,
         CheckFlagMode check_flag_mode = CheckFlagMode::all_moves) const noexcept;
     [[nodiscard]] bool legal_tactical_search_moves_with_metadata(
-        MoveMetadataList& moves, bool include_quiet_checks = true) const noexcept;
+        MoveMetadataList& moves, bool include_quiet_checks = true,
+        bool known_has_legal_move = false) const noexcept;
     // Generates only captures, en-passant, and promotions for staged move
     // ordering. Returns true if only tactical moves were generated (quiets
     // deferred), or false if compatibility mirror tracking forced full movegen.
@@ -475,7 +477,8 @@ private:
                                         bool include_validation_token) const noexcept;
     [[nodiscard]] bool legal_tactical_moves_with_metadata_impl(
         MoveMetadataList&, bool include_quiet_checks, bool include_see,
-        CheckFlagMode check_flag_mode, bool include_validation_token) const noexcept;
+        CheckFlagMode check_flag_mode, bool include_validation_token,
+        bool known_has_legal_move = false) const noexcept;
     void finalize_metadata(MoveMetadataList&, std::uint64_t position_key,
                            bool include_see, bool include_validation_token = true) const noexcept;
 

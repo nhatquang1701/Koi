@@ -70,9 +70,8 @@ struct ExchangeContext {
     Color side_to_move = Color::white;
 };
 
-// Builds the exchange baseline directly from the native position bitboards.
-inline ExchangeContext exchange_context_from(const Position& position) noexcept {
-    const Position::ExchangeSnapshot snap = position.exchange_snapshot();
+template <typename Snapshot>
+[[nodiscard]] inline ExchangeContext exchange_context_from_snapshot(const Snapshot& snap) noexcept {
     ExchangeContext context;
     context.piece_bitboards = snap.piece_bitboards;
     context.occupied = snap.occupied;
@@ -90,25 +89,15 @@ inline ExchangeContext exchange_context_from(const Position& position) noexcept 
     return context;
 }
 
+// Builds the exchange baseline directly from the native position bitboards.
+inline ExchangeContext exchange_context_from(const Position& position) noexcept {
+    return exchange_context_from_snapshot(position.exchange_snapshot());
+}
+
 // Same baseline through the public GameState surface, for search code that
 // only holds a GameState.
 inline ExchangeContext exchange_context_from(const GameState& state) noexcept {
-    const ExchangeSnapshot snap = state.exchange_snapshot();
-    ExchangeContext context;
-    context.piece_bitboards = snap.piece_bitboards;
-    context.occupied = snap.occupied;
-    context.side_to_move = snap.side_to_move;
-    if (context.piece_bitboards != nullptr) {
-        const auto& bitboards = *context.piece_bitboards;
-        for (std::size_t color_index = 0; color_index < 2; ++color_index) {
-            const std::uint64_t king =
-                bitboards[color_index][static_cast<std::size_t>(PieceType::king)];
-            if (king != 0) {
-                context.king_squares[color_index] = static_cast<int>(std::countr_zero(king));
-            }
-        }
-    }
-    return context;
+    return exchange_context_from_snapshot(state.exchange_snapshot());
 }
 
 // True when `attacker` attacks `target` in the trial state.

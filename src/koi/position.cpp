@@ -1410,7 +1410,8 @@ public:
     }
 
     [[nodiscard]] bool legal_tactical_search_metadata_into(
-        MoveMetadataList& output, const bool include_quiet_checks) noexcept {
+        MoveMetadataList& output, const bool include_quiet_checks,
+        const bool known_has_legal_move = false) noexcept {
         output.clear();
         const bool checked = state.checkers[state.side == Color::white ? 0U : 1U] != 0;
         if (checked) {
@@ -1428,7 +1429,7 @@ public:
             generate_pseudo<PseudoGenMode::tactical_only>(sink);
             sink.finish();
         }
-        return !output.empty() || has_legal_move();
+        return known_has_legal_move || !output.empty() || has_legal_move();
     }
 
     void legal_tactical_only_search_metadata_into(MoveMetadataList& output) noexcept {
@@ -1740,12 +1741,15 @@ public:
         if (!make_generated_move_if_key(move, expected_key)) {
             return false;
         }
-        child_out = Position::KeyAndSide{state.key, state.side};
+        child_out = position_key_and_side();
         return true;
     }
 
     [[nodiscard]] Position::KeyAndSide position_key_and_side() const noexcept {
-        return Position::KeyAndSide{state.key, state.side};
+        return Position::KeyAndSide{
+            state.key,
+            state.side,
+            state.checkers[state.side == Color::white ? 0U : 1U] != 0};
     }
 
     bool unapply() noexcept {
@@ -3296,9 +3300,11 @@ void Position::legal_search_metadata_into(
 }
 
 bool Position::legal_tactical_search_metadata_into(
-    MoveMetadataList& output, const bool include_quiet_checks) const noexcept {
+    MoveMetadataList& output, const bool include_quiet_checks,
+    const bool known_has_legal_move) const noexcept {
     return const_cast<NativePosition&>(impl_->position)
-        .legal_tactical_search_metadata_into(output, include_quiet_checks);
+        .legal_tactical_search_metadata_into(
+            output, include_quiet_checks, known_has_legal_move);
 }
 
 void Position::legal_tactical_only_search_metadata_into(

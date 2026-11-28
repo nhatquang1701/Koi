@@ -723,8 +723,9 @@ the search but cannot push it past the cap.
   in calm high-effort positions (`>= 90%` best-move node share at
   `depth >= 6`, or `depth >= 5` under emergency pacing) past `60%` of the
   soft/optimum target, in sudden-death `<= 10 s + 0` scrambles without
-  `movestogo` on calm `depth >= 5` (`stability >= 2`) lines past `70%` of the
-  soft/optimum target, in calm `depth >= 6` stable (`stability >= 3`, no
+  `movestogo` or during `emergency_pacing` on calm `depth >= 5`
+  (`stability >= 2`) lines past `70%` of the soft/optimum target, in calm
+  `depth >= 6` stable (`stability >= 3`, no
   aspiration re-research) positions past `75%` of the soft/optimum target, in
   clock mode at soft after at least 2 stable observations when the extension
   is unaffordable, and on the non-collapsing fallback past soft/optimum time

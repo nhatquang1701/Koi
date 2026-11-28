@@ -891,9 +891,11 @@ bool TimeManager::clock_early_stop_reached(
             elapsed >= scale_fraction(soft_target, 75, 100)) {
             return true;
         }
-        if (increment_clock_ <= std::chrono::milliseconds::zero() &&
+        const bool sudden_death_scramble =
+            increment_clock_ <= std::chrono::milliseconds::zero() &&
             !limits_.moves_to_go.has_value() &&
-            remaining_clock_ <= std::chrono::milliseconds{10'000} &&
+            remaining_clock_ <= std::chrono::milliseconds{10'000};
+        if ((emergency_pacing_ || sudden_death_scramble) &&
             last_observed_depth_ >= 5 && stable_observations_ >= 2 &&
             best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
             !last_aspiration_researched_ &&

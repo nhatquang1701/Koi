@@ -1502,13 +1502,15 @@ bool GameState::legal_tactical_moves_with_metadata(MoveMetadataList& moves,
 }
 
 bool GameState::legal_tactical_search_moves_with_metadata(
-    MoveMetadataList& moves, bool include_quiet_checks) const noexcept {
+    MoveMetadataList& moves, bool include_quiet_checks,
+    bool known_has_legal_move) const noexcept {
     if (!impl_->mirror_tracking) {
         return impl_->native_position.legal_tactical_search_metadata_into(
-            moves, include_quiet_checks);
+            moves, include_quiet_checks, known_has_legal_move);
     }
     return legal_tactical_moves_with_metadata_impl(
-        moves, include_quiet_checks, false, CheckFlagMode::all_moves, true);
+        moves, include_quiet_checks, false, CheckFlagMode::all_moves, true,
+        known_has_legal_move);
 }
 
 bool GameState::legal_tactical_only_search_moves_with_metadata(
@@ -1559,7 +1561,8 @@ void GameState::append_quiet_search_moves_with_metadata(
 
 bool GameState::legal_tactical_moves_with_metadata_impl(
     MoveMetadataList& moves, bool include_quiet_checks, bool include_see,
-    CheckFlagMode check_flag_mode, bool include_validation_token) const noexcept {
+    CheckFlagMode check_flag_mode, bool include_validation_token,
+    bool known_has_legal_move) const noexcept {
     moves.clear();
     const std::uint64_t key = position_key();
     // The tactical path selects its own check-probe mode per move, so the
@@ -1584,7 +1587,8 @@ bool GameState::legal_tactical_moves_with_metadata_impl(
                  impl_->native_position.legal_tactical_moves_into(
                      std::span<Move>(legal.data(), legal.size())));
         has_legal_moves = legal_count != 0 ||
-            (!checked && impl_->native_position.has_legal_move());
+            (!checked &&
+             (known_has_legal_move || impl_->native_position.has_legal_move()));
         const NativeMetadataContext context{
             &impl_->native_position,
             impl_->mirror_tracking ? &impl_->compatibility_mirror : nullptr};
@@ -1925,7 +1929,7 @@ bool GameState::make_search_move(const MoveMetadata& metadata,
                 metadata.move, metadata.position_key, ks)) {
             return false;
         }
-        child_out = PositionKeyAndSide{ks.position_key, ks.side_to_move};
+        child_out = PositionKeyAndSide{ks.position_key, ks.side_to_move, ks.in_check};
         return true;
     }
     if (!make_search_move(metadata)) {
@@ -2037,7 +2041,7 @@ std::uint64_t GameState::position_key() const noexcept {
 
 PositionKeyAndSide GameState::position_key_and_side() const noexcept {
     const Position::KeyAndSide ks = impl_->native_position.position_key_and_side();
-    return PositionKeyAndSide{ks.position_key, ks.side_to_move};
+    return PositionKeyAndSide{ks.position_key, ks.side_to_move, ks.in_check};
 }
 
 std::uint64_t GameState::repetition_history_fingerprint() const noexcept {

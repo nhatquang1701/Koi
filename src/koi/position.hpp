@@ -57,7 +57,8 @@ public:
         bool quiet_checks_only) const noexcept;
     [[nodiscard]] bool legal_tactical_search_metadata_into(
         MoveMetadataList& output,
-        bool include_quiet_checks) const noexcept;
+        bool include_quiet_checks,
+        bool known_has_legal_move = false) const noexcept;
     void legal_tactical_only_search_metadata_into(
         MoveMetadataList& output) const noexcept;
     void append_quiet_search_metadata_into(
@@ -98,6 +99,7 @@ public:
     struct KeyAndSide {
         std::uint64_t position_key = 0;
         Color side_to_move = Color::white;
+        bool in_check = false;
     };
     bool make_generated_move(const Move& move) noexcept;
     bool make_generated_move_if_key(const Move& move, std::uint64_t expected_key) noexcept;
