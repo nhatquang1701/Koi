@@ -1215,7 +1215,7 @@ class CliSubcommandsTest(unittest.TestCase):
             )
             self.assertEqual(bench_bom.returncode, 0, bench_bom.stderr)
             self.assertIn("BomMate", bench_bom.stdout)
-            self.assertIn("1/1", bench_bom.stdout)
+            self.assertIn("expected d1d8 move d1d8 match 1", bench_bom.stdout)
 
             limit_corpus = (
                 "# comment\n"
