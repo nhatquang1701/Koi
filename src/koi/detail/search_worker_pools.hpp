@@ -407,6 +407,7 @@ public:
         job->move_has_previous = &move_has_previous;
         job->multi_pv = multi_pv;
         job->root_alpha.store(window_alpha, std::memory_order_relaxed);
+        job->root_in_check = root.in_check();
         if (depth == 1) {
             job->root_features = root.position_features();
         }
@@ -532,6 +533,7 @@ private:
         const std::vector<int>* move_previous_scores = nullptr;
         const std::vector<bool>* move_has_previous = nullptr;
         bool multi_pv = false;
+        bool root_in_check = false;
     };
 
     void worker_loop(std::size_t worker_index) noexcept {
@@ -590,7 +592,7 @@ private:
             detail::SearchFrame& root_frame = context.stack.frame(0);
             root_frame.static_eval = job->root_static_eval;
             root_frame.static_eval_valid = true;
-            root_frame.in_check = job->root->in_check();
+            root_frame.in_check = job->root_in_check;
             root_frame.previous_move = Move::no_move();
             root_frame.current_move = Move::no_move();
             root_frame.move_count = 0;
@@ -624,7 +626,7 @@ private:
                         quiet_move_has_direct_forcing_target(*job->root_features, root_move)) {
                         QuietForcingAfterView after_view;
                         build_quiet_forcing_after_view(
-                            child, job->root->side_to_move(), after_view);
+                            child, root_color_, after_view);
                         if (quiet_move_is_forcing(
                                 *job->root_features, child, after_view, root_move)) {
                             ++context.stats.quiet_forcing_extensions;

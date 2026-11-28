@@ -37,6 +37,30 @@ constexpr std::size_t kMaximumEmergencyForcingCheckEvasions = 3;
 constexpr std::size_t kMaximumEmergencyQuietForcingResearches = 16;
 constexpr std::size_t kMaximumEmergencyRootEvasionReplies = 6;
 
+[[nodiscard]] const MoveMetadata* find_move_metadata(
+    const MoveMetadataList& legal_moves, const Move target) noexcept {
+    const auto it = std::find_if(
+        legal_moves.begin(), legal_moves.end(),
+        [target](const MoveMetadata& move) { return move.move == target; });
+    return it != legal_moves.end() ? &*it : nullptr;
+}
+
+[[nodiscard]] const MoveMetadata* find_move_metadata(
+    const MoveMetadataList& legal_moves,
+    const std::optional<Move>& candidate) noexcept {
+    return candidate.has_value() ? find_move_metadata(legal_moves, *candidate) : nullptr;
+}
+
+[[nodiscard]] bool is_forcing_move(const MoveMetadata& metadata) noexcept {
+    return metadata.is_capture() || metadata.gives_check ||
+        metadata.move.promotion() != Promotion::none;
+}
+
+[[nodiscard]] bool is_quiet_non_checking_move(const MoveMetadata& metadata) noexcept {
+    return !metadata.is_capture() && !metadata.gives_check &&
+        metadata.move.promotion() == Promotion::none;
+}
+
 } // namespace
 
 bool FallbackControl::interrupted() const noexcept {
@@ -92,13 +116,13 @@ static std::optional<int> fallback_terminal_or_draw_score(
 }
 
 static std::optional<int> emergency_king_escape_risk(
-    const GameState& root, const MoveMetadata& metadata,
-    const GameState& after_move) noexcept {
-    if (!root.in_check() || metadata.moving_piece != PieceType::king) {
+    const bool root_in_check, const Color root_color,
+    const MoveMetadata& metadata, const GameState& after_move) noexcept {
+    if (!root_in_check || metadata.moving_piece != PieceType::king) {
         return std::nullopt;
     }
 
-    const std::size_t side = root.side_to_move() == Color::white ? 0U : 1U;
+    const std::size_t side = root_color == Color::white ? 0U : 1U;
     const auto features = after_move.position_features();
     return static_cast<int>(features.king_zone_attacks[side]) *
             kEmergencyKingZoneAttackWeight +
@@ -860,6 +884,7 @@ std::optional<ShortFallbackChoice> scored_safe_checking_capture(
     const Evaluator& evaluator, std::mutex* evaluator_mutex,
     const bool allow_deep_fallback, const FallbackControl* control) noexcept {
     try {
+        const Color root_color = root.side_to_move();
         for (const MoveMetadata& metadata : legal_moves) {
             if (control != nullptr && control->interrupted()) {
                 return std::nullopt;
@@ -877,7 +902,7 @@ std::optional<ShortFallbackChoice> scored_safe_checking_capture(
             // but do not nominate a stalemate or rule-draw move as a tactical
             // replacement for a completed root line.
             if (const auto terminal = fallback_terminal_or_draw_score(
-                    after_check, root.side_to_move(), 1); terminal.has_value()) {
+                    after_check, root_color, 1); terminal.has_value()) {
                 if (*terminal >= kMateThreshold) {
                     return ShortFallbackChoice{metadata.move, *terminal};
                 }
@@ -894,9 +919,9 @@ std::optional<ShortFallbackChoice> scored_safe_checking_capture(
             const FallbackControl* score_control = use_deep_fallback ? control : nullptr;
             const int score = use_deep_fallback ?
                 checked_root_fallback_score(
-                    after_check, root.side_to_move(), evaluator, evaluator_mutex, score_control) :
+                    after_check, root_color, evaluator, evaluator_mutex, score_control) :
                 shallow_checked_root_fallback_score(
-                    after_check, metadata, root.side_to_move(), evaluator, evaluator_mutex,
+                    after_check, metadata, root_color, evaluator, evaluator_mutex,
                     score_control);
             if (score <= -kInfinity && control != nullptr && control->interrupted()) {
                 return std::nullopt;
@@ -925,9 +950,11 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
         if (stats != nullptr) {
             ++stats->short_fallback_invocations;
         }
+        const Color root_color = root.side_to_move();
+        const bool root_in_check = root.in_check();
         const PositionFeatures root_features = root.position_features();
     MoveMetadataList fallback_moves = legal_moves;
-    if (root.in_check()) {
+    if (root_in_check) {
         // Checked roots must compare all king evasions before spending the
         // bounded fallback budget on unrelated interpositions. Otherwise a
         // slow first candidate can leave a later, safer king escape unseen.
@@ -978,9 +1005,10 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                 continue;
             }
 
+            const bool after_move_in_check = after_move.in_check();
             int score = 0;
             const auto move_terminal = fallback_terminal_or_draw_score(
-                after_move, root.side_to_move(), 1);
+                after_move, root_color, 1);
             const bool move_is_terminal = move_terminal.has_value();
             bool hanging_major_check = false;
             if (move_is_terminal) {
@@ -991,12 +1019,12 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                 // helper checks mate before draw so an immediate checkmate
                 // remains decisive.
                 score = *move_terminal;
-            } else if (after_move.in_check()) {
+            } else if (after_move_in_check) {
                 if (!after_move.has_legal_move()) {
                     score = kMateScore - 1;
                 } else if (perform_deep_fallback) {
                     score = checked_root_fallback_score(
-                        after_move, root.side_to_move(), evaluator, evaluator_mutex, control);
+                        after_move, root_color, evaluator, evaluator_mutex, control);
                 } else {
                     // A post-deadline shallow pass is intentionally bounded to
                     // the legal evasions of this checking move.  It is still
@@ -1007,7 +1035,7 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                         permit_overdue_shallow &&
                             (deadline_seen || bounded_shallow_fallback) ? nullptr : control;
                     score = shallow_checked_root_fallback_score(
-                        after_move, metadata, root.side_to_move(), evaluator, evaluator_mutex,
+                        after_move, metadata, root_color, evaluator, evaluator_mutex,
                         shallow_control);
                 }
                 hanging_major_check = hanging_major_piece_check(after_move, metadata);
@@ -1018,7 +1046,7 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                     // otherwise leave the original shallow move in place.
                     continue;
                 }
-            } else if (root.in_check()) {
+            } else if (root_in_check) {
                 // A non-checking evasion must be judged against the opponent's
                 // immediate forcing replies. Static material alone can prefer
                 // a legal-looking king/rook move that leaves a decisive check.
@@ -1031,21 +1059,21 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                     // remain independent of the expired time token.
                     score = metadata.moving_piece == PieceType::king ?
                         king_evasion_fallback_score(
-                            after_move, root.side_to_move(), evaluator, evaluator_mutex,
+                            after_move, root_color, evaluator, evaluator_mutex,
                             metadata.is_capture(), nullptr) :
                         root_evasion_fallback_score(
-                            after_move, root.side_to_move(), evaluator, evaluator_mutex, nullptr);
+                            after_move, root_color, evaluator, evaluator_mutex, nullptr);
                 } else if (metadata.moving_piece == PieceType::king) {
                     score = king_evasion_fallback_score(
-                        after_move, root.side_to_move(), evaluator, evaluator_mutex,
+                        after_move, root_color, evaluator, evaluator_mutex,
                         metadata.is_capture(), control);
                 } else {
                     score = root_evasion_fallback_score(
-                        after_move, root.side_to_move(), evaluator, evaluator_mutex, control);
+                        after_move, root_color, evaluator, evaluator_mutex, control);
                 }
             } else {
                 score = short_fallback_evaluate(
-                    evaluator, after_move, root.side_to_move(), evaluator_mutex);
+                    evaluator, after_move, root_color, evaluator_mutex);
             }
 
             // A bounded reply scanner can observe the deadline after this
@@ -1068,8 +1096,8 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
             std::size_t forcing_reply_count = 0;
             std::size_t check_evasion_count = 0;
             bool consequence_scan_incomplete = false;
-            if (!move_is_terminal && !after_move.in_check() && perform_deep_fallback &&
-                !(root.in_check() && metadata.moving_piece == PieceType::king)) {
+            if (!move_is_terminal && !after_move_in_check && perform_deep_fallback &&
+                !(root_in_check && metadata.moving_piece == PieceType::king)) {
                 MoveMetadataList opponent_moves;
                 after_move.legal_moves_with_metadata(
                     opponent_moves, true, true, CheckFlagMode::all_moves);
@@ -1083,10 +1111,7 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                         consequence_scan_incomplete = true;
                         break;
                     }
-                    const bool forcing_reply = opponent_move.gives_check ||
-                        opponent_move.is_capture() ||
-                        opponent_move.move.promotion() != Promotion::none;
-                    if (!forcing_reply) {
+                    if (!is_forcing_move(opponent_move)) {
                         continue;
                     }
                     ++forcing_reply_count;
@@ -1099,9 +1124,9 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                     }
                     const int forcing_score = opponent_move.gives_check ?
                         checked_reply_fallback_score(
-                            after_reply, root.side_to_move(), evaluator, evaluator_mutex, control) :
+                            after_reply, root_color, evaluator, evaluator_mutex, control) :
                         forcing_reply_fallback_score(
-                            after_reply, root.side_to_move(), evaluator, evaluator_mutex,
+                            after_reply, root_color, evaluator, evaluator_mutex,
                             opponent_move.captured_piece, control);
                     if (forcing_score <= -kInfinity) {
                         consequence_scan_incomplete = true;
@@ -1115,9 +1140,9 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                     // reliable comparison between root moves; keep only the
                     // static score when the consequence scan did not finish.
                     score = short_fallback_evaluate(
-                        evaluator, after_move, root.side_to_move(), evaluator_mutex);
+                        evaluator, after_move, root_color, evaluator_mutex);
                 }
-            } else if (!move_is_terminal && !after_move.in_check() && permit_overdue_shallow &&
+            } else if (!move_is_terminal && !after_move_in_check && permit_overdue_shallow &&
                        (deadline_seen || !allow_deep_checked_fallback)) {
                 // Once the deadline has fired, inspect one opponent forcing
                 // reply and only our forcing continuations. This catches a
@@ -1130,17 +1155,13 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                 MoveMetadataList opponent_moves;
                 after_move.legal_moves_with_metadata(
                     opponent_moves, true, true, CheckFlagMode::all_moves);
-                if (!(root.in_check() && metadata.moving_piece == PieceType::king) &&
+                if (!(root_in_check && metadata.moving_piece == PieceType::king) &&
                     quiet_move_leaves_safe_capture(metadata, opponent_moves)) {
                     // The overdue path is allowed to be conservative: a
                     // quiet move that immediately leaves a safe forcing
                     // capture cannot be its authoritative choice.
                     continue;
                 }
-                const auto is_forcing_reply = [](const MoveMetadata& move) {
-                    return move.gives_check || move.is_capture() ||
-                        move.move.promotion() != Promotion::none;
-                };
                 // Keep the overdue probe bounded, but do not let an early
                 // material capture consume the only non-check slot.  A
                 // poisoned move can leave both a valuable recapture and a
@@ -1215,7 +1236,7 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                         move.move.promotion() != Promotion::none;
                 });
                 if (selected_reply_count == 0) {
-                    append_reply(is_forcing_reply);
+                    append_reply(is_forcing_move);
                 }
                 for (std::size_t reply_index = 0;
                      reply_index < selected_reply_count; ++reply_index) {
@@ -1229,9 +1250,9 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                     }
                     const int forcing_score = opponent_move.gives_check ?
                         overdue_check_reply_fallback_score(
-                            after_reply, root.side_to_move(), evaluator, evaluator_mutex) :
+                            after_reply, root_color, evaluator, evaluator_mutex) :
                         forcing_reply_fallback_score(
-                            after_reply, root.side_to_move(), evaluator, evaluator_mutex,
+                            after_reply, root_color, evaluator, evaluator_mutex,
                             opponent_move.captured_piece);
                     score = std::min(score, forcing_score);
                 }
@@ -1273,19 +1294,19 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                 continue;
             }
 
-            if (after_move.in_check()) {
+            if (after_move_in_check) {
                 check_evasion_count = after_move.legal_moves_into({});
             }
             const std::optional<int> king_escape_risk =
-                emergency_king_escape_risk(root, metadata, after_move);
-            const bool preserve_king_evasion_tie = root.in_check() &&
+                emergency_king_escape_risk(root_in_check, root_color, metadata, after_move);
+            const bool preserve_king_evasion_tie = root_in_check &&
                 best_is_king_evasion && !king_escape_risk.has_value() &&
                 score <= best_score + kEmergencyKingEscapeSafetyMargin;
-            const bool prefer_quiet_king_evasion = root.in_check() &&
+            const bool prefer_quiet_king_evasion = root_in_check &&
                 best_is_king_evasion && best_king_evasion_is_capture &&
                 king_escape_risk.has_value() && !metadata.is_capture() &&
                 score >= best_score - kEmergencyQuietForcingMargin;
-            const bool preserve_quiet_king_evasion = root.in_check() &&
+            const bool preserve_quiet_king_evasion = root_in_check &&
                 best_is_king_evasion && !best_king_evasion_is_capture &&
                 !best_is_safe_capture && metadata.is_capture() &&
                 score <= best_score + kEmergencyQuietForcingMargin;
@@ -1301,14 +1322,14 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
             // evaluate every capture normally.
             const bool safe_material_capture = safe_capture &&
                 (metadata.captured_piece != PieceType::pawn || forcing_reply_count <= 1);
-            const bool safe_forcing_capture = safe_capture && after_move.in_check();
+            const bool safe_forcing_capture = safe_capture && after_move_in_check;
             // A broad check can still be a horizon trap when the checked side
             // has several useful evasions.  Only narrow checks retain the
             // emergency near-tie priority; ordinary search ordering remains
             // unchanged.
-            const bool forcing_check = after_move.in_check() &&
+            const bool forcing_check = after_move_in_check &&
                 check_evasion_count <= kMaximumEmergencyForcingCheckEvasions;
-            const bool broad_quiet_check = after_move.in_check() &&
+            const bool broad_quiet_check = after_move_in_check &&
                 !forcing_check && !metadata.is_capture();
             const bool safer_king_evasion = king_escape_risk.has_value() &&
                 best_is_king_evasion && score >= best_score - kEmergencyKingEscapeSafetyMargin &&
@@ -1367,7 +1388,7 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                 }
                 continue;
             }
-            if (exposes_immediate_check && !root.in_check() &&
+            if (exposes_immediate_check && !root_in_check &&
                 !safe_equal_non_pawn_exchange && !safe_non_pawn_capture) {
                 const int unsafe_score = score -
                     (metadata.moving_piece == PieceType::pawn && !metadata.is_capture() ?
@@ -1387,11 +1408,10 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
             }
 
             bool quiet_forcing = false;
-            if (perform_deep_fallback && !root.in_check() &&
-                !metadata.is_capture() && !metadata.gives_check &&
-                metadata.move.promotion() == Promotion::none) {
+            if (perform_deep_fallback && !root_in_check &&
+                is_quiet_non_checking_move(metadata)) {
                 QuietForcingAfterView after_view;
-                build_quiet_forcing_after_view(after_move, root.side_to_move(), after_view);
+                build_quiet_forcing_after_view(after_move, root_color, after_view);
                 quiet_forcing = quiet_move_is_forcing(
                     root_features, after_move, after_view, metadata);
             }
@@ -1405,7 +1425,7 @@ std::optional<ShortFallbackChoice> short_search_fallback_move(
                     ++stats->quiet_forcing_extensions;
                 }
                 const int consequence_score = quiet_forcing_fallback_score(
-                    after_move, root.side_to_move(), evaluator, evaluator_mutex, control);
+                    after_move, root_color, evaluator, evaluator_mutex, control);
                 if (consequence_score > -kInfinity) {
                     score = consequence_score;
                 }
@@ -1495,13 +1515,9 @@ bool short_fallback_should_replace_completed_root(
     const GameState& root, const MoveMetadataList& legal_moves,
     const std::optional<Move>& current_move, const Move fallback_move) noexcept {
     try {
-        const auto metadata_for = [&legal_moves](const Move move) {
-            return std::find_if(
-                legal_moves.begin(), legal_moves.end(),
-                [move](const MoveMetadata& metadata) { return metadata.move == move; });
-        };
-        const auto fallback_metadata = metadata_for(fallback_move);
-        if (fallback_metadata == legal_moves.end()) {
+        const MoveMetadata* fallback_metadata =
+            find_move_metadata(legal_moves, fallback_move);
+        if (fallback_metadata == nullptr) {
             return false;
         }
         if (fallback_metadata->gives_check && !fallback_metadata->is_capture() &&
@@ -1517,15 +1533,14 @@ bool short_fallback_should_replace_completed_root(
                 return false;
             }
         }
-        const bool fallback_forcing = fallback_metadata->is_capture() ||
-            fallback_metadata->gives_check ||
-            fallback_metadata->move.promotion() != Promotion::none;
+        const bool fallback_forcing = is_forcing_move(*fallback_metadata);
         if (!current_move.has_value()) {
             return true;
         }
 
-        const auto current_metadata = metadata_for(*current_move);
-        if (current_metadata == legal_moves.end()) {
+        const MoveMetadata* current_metadata =
+            find_move_metadata(legal_moves, *current_move);
+        if (current_metadata == nullptr) {
             return false;
         }
         if (fallback_forcing) {
@@ -1556,7 +1571,8 @@ bool short_fallback_should_replace_completed_root(
             }
             return true;
         }
-        if (root.in_check() &&
+        const bool root_in_check = root.in_check();
+        if (root_in_check &&
             current_metadata->moving_piece == PieceType::king &&
             fallback_metadata->moving_piece == PieceType::king) {
             // A depth-one checked-root result can choose one legal king
@@ -1579,13 +1595,11 @@ bool short_fallback_should_replace_completed_root(
                 // a quiet, non-promoting alternative.  Several moves in a
                 // tactical root can expose the same checking resource; a
                 // binary exposure test must not reject every alternative.
-                return !fallback_metadata->is_capture() &&
-                    !fallback_metadata->gives_check &&
-                    fallback_metadata->move.promotion() == Promotion::none;
+                return is_quiet_non_checking_move(*fallback_metadata);
             }
             return true;
         }
-        const bool fallback_is_king_escape = root.in_check() &&
+        const bool fallback_is_king_escape = root_in_check &&
             fallback_metadata->moving_piece == PieceType::king;
         return fallback_is_king_escape &&
             root_move_exposes_immediate_check(root, *current_metadata);
@@ -1596,25 +1610,14 @@ bool short_fallback_should_replace_completed_root(
 
 bool short_capture_needs_fallback(const MoveMetadataList& legal_moves,
                                   const std::optional<Move>& candidate) noexcept {
-    if (!candidate.has_value()) {
-        return false;
-    }
-    const auto metadata = std::find_if(
-        legal_moves.begin(), legal_moves.end(),
-        [&candidate](const MoveMetadata& move) { return move.move == *candidate; });
-    return metadata != legal_moves.end() && metadata->is_capture() &&
-        !metadata->gives_check;
+    const MoveMetadata* metadata = find_move_metadata(legal_moves, candidate);
+    return metadata != nullptr && metadata->is_capture() && !metadata->gives_check;
 }
 
 bool short_check_needs_fallback(const MoveMetadataList& legal_moves,
                                 const std::optional<Move>& candidate) noexcept {
-    if (!candidate.has_value()) {
-        return false;
-    }
-    const auto metadata = std::find_if(
-        legal_moves.begin(), legal_moves.end(),
-        [&candidate](const MoveMetadata& move) { return move.move == *candidate; });
-    if (metadata == legal_moves.end() || metadata->is_capture() ||
+    const MoveMetadata* metadata = find_move_metadata(legal_moves, candidate);
+    if (metadata == nullptr || metadata->is_capture() ||
         !metadata->gives_check || metadata->move.promotion() != Promotion::none) {
         return false;
     }
@@ -1645,16 +1648,9 @@ static bool is_safe_equal_non_pawn_exchange(const MoveMetadata& metadata) noexce
 bool short_quiet_needs_fallback(
     const GameState& root, const MoveMetadataList& legal_moves,
     const std::optional<Move>& candidate) noexcept {
-    if (!candidate.has_value()) {
-        return false;
-    }
-
-    const auto candidate_metadata = std::find_if(
-        legal_moves.begin(), legal_moves.end(),
-        [&candidate](const MoveMetadata& move) { return move.move == *candidate; });
-    if (candidate_metadata == legal_moves.end() || candidate_metadata->is_capture() ||
-        candidate_metadata->gives_check ||
-        candidate_metadata->move.promotion() != Promotion::none) {
+    const MoveMetadata* candidate_metadata = find_move_metadata(legal_moves, candidate);
+    if (candidate_metadata == nullptr ||
+        !is_quiet_non_checking_move(*candidate_metadata)) {
         return false;
     }
 
@@ -1670,14 +1666,8 @@ bool short_quiet_needs_fallback(
 bool short_quiet_exposes_immediate_check(
     const GameState& root, const MoveMetadataList& legal_moves,
     const std::optional<Move>& candidate) noexcept {
-    if (!candidate.has_value()) {
-        return false;
-    }
-    const auto metadata = std::find_if(
-        legal_moves.begin(), legal_moves.end(),
-        [&candidate](const MoveMetadata& move) { return move.move == *candidate; });
-    if (metadata == legal_moves.end() || metadata->is_capture() ||
-        metadata->gives_check || metadata->move.promotion() != Promotion::none) {
+    const MoveMetadata* metadata = find_move_metadata(legal_moves, candidate);
+    if (metadata == nullptr || !is_quiet_non_checking_move(*metadata)) {
         return false;
     }
     return root_move_exposes_immediate_check(root, *metadata);
@@ -1686,19 +1676,16 @@ bool short_quiet_exposes_immediate_check(
 bool short_checked_root_king_evasion_needs_fallback(
     const GameState& root, const MoveMetadataList& legal_moves,
     const std::optional<Move>& candidate) noexcept {
-    if (!root.in_check() || !candidate.has_value()) {
+    if (!root.in_check()) {
         return false;
     }
-    const auto metadata = std::find_if(
-        legal_moves.begin(), legal_moves.end(),
-        [&candidate](const MoveMetadata& move) { return move.move == *candidate; });
-    return metadata != legal_moves.end() && metadata->moving_piece == PieceType::king;
+    const MoveMetadata* metadata = find_move_metadata(legal_moves, candidate);
+    return metadata != nullptr && metadata->moving_piece == PieceType::king;
 }
 
 static bool quiet_move_leaves_safe_capture(
     const MoveMetadata& candidate, const MoveMetadataList& opponent_moves) noexcept {
-    if (candidate.is_capture() || candidate.gives_check ||
-        candidate.move.promotion() != Promotion::none) {
+    if (!is_quiet_non_checking_move(candidate)) {
         return false;
     }
     return std::any_of(opponent_moves.begin(), opponent_moves.end(),

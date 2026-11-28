@@ -84,7 +84,7 @@ private:
     std::uint32_t branching_permille_ = 1500;
     std::chrono::milliseconds last_iteration_elapsed_{0};
     std::chrono::milliseconds remaining_clock_{0};
-    std::chrono::milliseconds increment_clock_{0};
+    std::chrono::milliseconds net_increment_clock_{0};
     bool has_effort_sample_ = false;
     bool last_aspiration_researched_ = false;
     bool hard_position_ = false;

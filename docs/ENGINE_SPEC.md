@@ -687,10 +687,13 @@ the search but cannot push it past the cap.
 - Continuous pacing (`effective_soft_budget`) scales the soft budget within
   `[max(1 ms, soft / 3), hard]` (capping the scale multiplier at `1.00×`
   during sub-second sudden-death scrambles without `movestogo`
-  (`remaining <= 1 s` or `usable <= 1 s`),
+  (`remaining <= 1 s` or `usable <= 1 s` when `net_increment <= 0`, where
+  `net_increment = max(0, increment - overhead)`),
   `1.35×` during sudden-death scrambles without `movestogo`
-  (`remaining <= 10 s` or `usable <= 9 s`), and
-  `1.85×` otherwise) using `best_move_effort_permille_`, `best_move_stability_`,
+  (`remaining <= 10 s` or `usable <= 9 s` when `net_increment <= 0`), and
+  `1.85×` otherwise) using `best_move_effort_permille_` (sampled and applied at
+  `depth >= 4` under emergency pacing or sudden-death scrambles, and at
+  `depth >= 5` otherwise), `best_move_stability_`,
   decayed cumulative `instability_permille_`, inter-move (gated on the same
   side-to-move game continuity check) and intra-search
   `score_drop_cp_` (ignored when holding a stable `>= +600` cp win without
@@ -713,7 +716,7 @@ the search but cannot push it past the cap.
   re-research, `score_drop <= 15` cp, `!hard_position_`).
 - A hard position may exceed the soft budget only when not in a
   sub-second sudden-death scramble without `movestogo`
-  (`remaining <= 1 s` or `usable <= 1 s`), when more than five
+  (`remaining <= 1 s` or `usable <= 1 s` when `net_increment <= 0`), when more than five
   overheads remain (`remaining_clock > 5 × overhead`), and when the remaining
   usable clock is at least `2 × soft budget + overhead`
   (`hard_extension_affordable`). Near the end or on high-latency links the soft
@@ -740,7 +743,7 @@ the search but cannot push it past the cap.
   `depth >= 6`, or `depth >= 5` under emergency pacing or sudden-death
   scrambles) past `60%` of the
   soft/optimum target, in sudden-death scrambles without
-  `movestogo` (`remaining <= 10 s` or `usable <= 9 s`) or during
+  `movestogo` (`remaining <= 10 s` or `usable <= 9 s` when `net_increment <= 0`) or during
   `emergency_pacing` on calm `depth >= 5`
   (`stability >= 2`) lines past `70%` of the soft/optimum target, in calm
   `depth >= 6` stable (`stability >= 3`, no

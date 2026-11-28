@@ -231,7 +231,7 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
         hard_position_ = false;
     }
     remaining_clock_ = std::chrono::milliseconds::zero();
-    increment_clock_ = std::chrono::milliseconds::zero();
+    net_increment_clock_ = std::chrono::milliseconds::zero();
     clock_mode_ = false;
     emergency_pacing_ = false;
 
@@ -287,7 +287,6 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     clock_mode_ = true;
     const auto remaining = std::max(clock->remaining, std::chrono::milliseconds::zero());
     remaining_clock_ = remaining;
-    increment_clock_ = clock->increment;
     std::uint32_t effective_overhead_ms = std::max(move_overhead_ms, observed_overhead_ms);
     if (dynamic_move_overhead_) {
         // Scale proportionally on bullet clocks (2% of the remaining clock,
@@ -373,6 +372,7 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     // time (<= 15 increments remaining) and is capped at a quarter of usable
     // time, preventing fast incremental endgames from bleeding past zero.
     const auto net_increment = nonnegative_difference(clock->increment, overhead);
+    net_increment_clock_ = net_increment;
     const auto low_inc_threshold = scale_fraction(clock->increment, 15, 1);
     const auto raw_inc_credit =
         (!limits_.moves_to_go.has_value() && has_increment &&
@@ -553,8 +553,8 @@ bool TimeManager::should_stop(std::uint64_t nodes) const noexcept {
 void TimeManager::observe_iteration(const SearchIterationObservation& observation) noexcept {
     last_observed_depth_ = std::max(last_observed_depth_, observation.depth);
     last_aspiration_researched_ = observation.aspiration_researched;
+    const bool scramble = is_sudden_death_scramble();
     if (observation.iteration_elapsed > std::chrono::milliseconds::zero()) {
-        const bool scramble = is_sudden_death_scramble();
         const auto min_branch_ms = emergency_pacing_
             ? std::chrono::milliseconds{4}
             : (scramble ? std::chrono::milliseconds{6} : std::chrono::milliseconds{10});
@@ -634,7 +634,8 @@ void TimeManager::observe_iteration(const SearchIterationObservation& observatio
              static_cast<long long>(observation.score_cp)) / 3);
     }
 
-    if (observation.depth >= 5 && observation.nodes > 0 &&
+    const int min_effort_depth = (emergency_pacing_ || scramble) ? 4 : 5;
+    if (observation.depth >= min_effort_depth && observation.nodes > 0 &&
         observation.best_move_nodes > 0 &&
         observation.best_move_nodes <= observation.nodes) {
         const std::uint32_t permille = static_cast<std::uint32_t>(
@@ -718,6 +719,9 @@ void TimeManager::update_optimum_budget() noexcept {
     // stability, decayed cumulative instability, node-effort concentration,
     // winning-endgame conversion speedup, and falling-vs-rising evaluation
     // asymmetry.
+    const bool subsecond_sudden_death = is_subsecond_sudden_death();
+    const bool sudden_death_scramble = is_sudden_death_scramble();
+
     std::uint64_t scale_permille = 1000;
     if (last_observed_depth_ >= 4) {
         static constexpr std::uint32_t kStabilityPermille[6] = {
@@ -732,7 +736,9 @@ void TimeManager::update_optimum_budget() noexcept {
         }
     }
 
-    if (has_effort_sample_ && last_observed_depth_ >= 5) {
+    const int min_effort_depth =
+        (emergency_pacing_ || sudden_death_scramble) ? 4 : 5;
+    if (has_effort_sample_ && last_observed_depth_ >= min_effort_depth) {
         // High effort on the best move (e.g., 900 permille) means all sibling
         // root moves failed low quickly -> scale down strongly. Low effort on
         // the best move (e.g., 250 permille) means heavy competition among
@@ -763,9 +769,6 @@ void TimeManager::update_optimum_budget() noexcept {
     if (last_aspiration_researched_) {
         scale_permille = (scale_permille * 1120) / 1000;
     }
-
-    const bool subsecond_sudden_death = is_subsecond_sudden_death();
-    const bool sudden_death_scramble = is_sudden_death_scramble();
 
     // Asymmetric conversion speedup: clearly winning positions (>= +500 cp) and
     // decisively hopeless positions (<= -700 cp) with a stable deep best move
@@ -834,7 +837,7 @@ void TimeManager::update_optimum_budget() noexcept {
 
 bool TimeManager::is_subsecond_sudden_death() const noexcept {
     return clock_mode_ &&
-        increment_clock_ <= std::chrono::milliseconds::zero() &&
+        net_increment_clock_ <= std::chrono::milliseconds::zero() &&
         !limits_.moves_to_go.has_value() &&
         (remaining_clock_ <= std::chrono::milliseconds{1'000} ||
          timing_.usable <= std::chrono::milliseconds{1'000});
@@ -842,7 +845,7 @@ bool TimeManager::is_subsecond_sudden_death() const noexcept {
 
 bool TimeManager::is_sudden_death_scramble() const noexcept {
     return clock_mode_ &&
-        increment_clock_ <= std::chrono::milliseconds::zero() &&
+        net_increment_clock_ <= std::chrono::milliseconds::zero() &&
         !limits_.moves_to_go.has_value() &&
         (remaining_clock_ <= std::chrono::milliseconds{10'000} ||
          timing_.usable <= std::chrono::milliseconds{9'000});
@@ -1002,6 +1005,7 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         return false;
     }
     const auto budget = std::chrono::milliseconds{budget_ms};
+    const bool scramble = is_sudden_death_scramble();
     if (clock_mode_) {
         if (clock_early_stop_reached(elapsed, budget, soft_target)) {
             return false;
@@ -1011,7 +1015,7 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         // 55% elapsed, skip starting it (`depth >= 4` in emergency pacing or
         // sudden-death scrambles, `depth >= 5` on healthy clocks).
         const int min_lookahead_depth =
-            (emergency_pacing_ || is_sudden_death_scramble()) ? 4 : 5;
+            (emergency_pacing_ || scramble) ? 4 : 5;
         if (!hard_position_ && last_observed_depth_ >= min_lookahead_depth &&
             best_move_stability_ >= 2 &&
             score_drop_cp_ <= 20 && !last_aspiration_researched_ &&
@@ -1025,7 +1029,6 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
             }
         }
     }
-    const bool scramble = is_sudden_death_scramble();
     const auto min_doomed_sample = emergency_pacing_
         ? std::chrono::milliseconds{5}
         : (scramble ? std::chrono::milliseconds{10} : std::chrono::milliseconds{20});

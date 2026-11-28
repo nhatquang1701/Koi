@@ -2328,6 +2328,86 @@ void test_sudden_death_scramble_depth4_fallback_stop() {
             "incremental 6s+1s depth-4 non-collapsing search must retain depth>=5 fallback gate");
 }
 
+void test_high_latency_zero_net_increment_scramble_and_subsecond() {
+    auto scr_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_lag(clock_limits(milliseconds{6'000}, milliseconds{500}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [scr_now] { return *scr_now; }, false, *scr_now, 500);
+    scr_lag.observe_iteration({4, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    scr_lag.observe_iteration({5, 20, false, false, false, 10'000, 5'000, milliseconds{15}});
+    *scr_now += (scr_lag.diagnostics().optimum_budget * 72) / 100;
+    require(!scr_lag.diagnostics().emergency_pacing &&
+                scr_lag.should_stop_after_iteration() &&
+                !scr_lag.should_start_next_iteration(milliseconds{1}),
+            "zero-net-increment clock (overhead >= increment) must engage sudden-death scramble cutoff");
+
+    auto scr_net_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_net(clock_limits(milliseconds{6'000}, milliseconds{500}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [scr_net_now] { return *scr_net_now; }, false, *scr_net_now, 30);
+    scr_net.observe_iteration({4, 20, false, false, false, 10'000, 5'000, milliseconds{10}});
+    scr_net.observe_iteration({5, 20, false, false, false, 10'000, 5'000, milliseconds{15}});
+    *scr_net_now += (scr_net.diagnostics().optimum_budget * 72) / 100;
+    require(!scr_net.diagnostics().emergency_pacing &&
+                !scr_net.should_stop_after_iteration() &&
+                scr_net.should_start_next_iteration(milliseconds{1}),
+            "positive-net-increment 6s+500ms low-latency clock must not engage scramble cutoff");
+
+    auto sub_lag_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager sub_lag(clock_limits(milliseconds{1'400}, milliseconds{150}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [sub_lag_now] { return *sub_lag_now; }, false, *sub_lag_now, 250);
+    sub_lag.observe_iteration({4, 50, true, false, true, 10'000, 2'000, milliseconds{5}});
+    sub_lag.observe_iteration({5, 50, true, false, true, 10'000, 2'000, milliseconds{8}});
+    require(sub_lag.diagnostics().usable <= milliseconds{1'000} &&
+                sub_lag.diagnostics().optimum_budget <= sub_lag.diagnostics().soft_budget,
+            "zero-net-increment usable <= 1 s must clamp optimum_budget at 1.00x soft_budget");
+    *sub_lag_now += sub_lag.diagnostics().optimum_budget;
+    require(sub_lag.should_stop_after_iteration() &&
+                !sub_lag.should_start_next_iteration(milliseconds{1}),
+            "zero-net-increment usable <= 1 s must decline hard extensions past optimum_budget");
+
+    auto sub_net_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager sub_net(clock_limits(milliseconds{1'400}, milliseconds{300}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [sub_net_now] { return *sub_net_now; }, false, *sub_net_now, 250);
+    sub_net.observe_iteration({4, 50, true, false, true, 10'000, 2'000, milliseconds{5}});
+    sub_net.observe_iteration({5, 50, true, false, true, 10'000, 2'000, milliseconds{8}});
+    require(sub_net.diagnostics().usable <= milliseconds{1'000} &&
+                sub_net.diagnostics().optimum_budget > sub_net.diagnostics().soft_budget,
+            "positive-net-increment 1400ms+300ms with 250ms overhead must keep hard extension headroom");
+}
+
+void test_scramble_and_emergency_depth4_effort_speedup() {
+    auto eval_d4_opt = [](const SearchLimits& limits, const RootTimingContext& ctx,
+                          const std::uint64_t best_nodes) {
+        TimeManager tm(limits, koi::Color::white, 100, kMoveOverheadMs, 100, ctx);
+        tm.observe_iteration({3, 25, false, false, false, 10'000, best_nodes, milliseconds{4}});
+        tm.observe_iteration({4, 25, false, false, false, 10'000, best_nodes, milliseconds{6}});
+        return tm.diagnostics();
+    };
+
+    const SearchLimits scr_limits = clock_limits(milliseconds{8'000}, milliseconds{0});
+    const auto scr_high = eval_d4_opt(scr_limits, warm_context(), 9'500);
+    const auto scr_low = eval_d4_opt(scr_limits, warm_context(), 2'000);
+    require(!scr_high.emergency_pacing &&
+                scr_high.optimum_budget < scr_low.optimum_budget,
+            "sudden-death scramble depth-4 high-effort search must shrink optimum_budget");
+
+    const SearchLimits emg_limits = clock_limits(milliseconds{2'500}, milliseconds{0});
+    const auto emg_high = eval_d4_opt(emg_limits, RootTimingContext{}, 9'500);
+    const auto emg_low = eval_d4_opt(emg_limits, RootTimingContext{}, 2'000);
+    require(emg_high.emergency_pacing &&
+                emg_high.optimum_budget < emg_low.optimum_budget,
+            "emergency pacing depth-4 high-effort search must shrink optimum_budget");
+
+    const SearchLimits healthy_limits = clock_limits(milliseconds{60'000}, milliseconds{1'000});
+    const auto healthy_high = eval_d4_opt(healthy_limits, warm_context(), 9'500);
+    const auto healthy_low = eval_d4_opt(healthy_limits, warm_context(), 2'000);
+    require(healthy_high.optimum_budget == healthy_low.optimum_budget,
+            "healthy clock must wait until depth 5 before applying node-effort optimum scaling");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2426,6 +2506,10 @@ int main(int argc, char** argv) {
          test_sudden_death_scramble_lookahead_and_ponderhit_discount_exit},
         {"sudden death scramble depth 4 fallback stop",
          test_sudden_death_scramble_depth4_fallback_stop},
+        {"high latency zero net increment scramble and subsecond",
+         test_high_latency_zero_net_increment_scramble_and_subsecond},
+        {"scramble and emergency depth 4 effort speedup",
+         test_scramble_and_emergency_depth4_effort_speedup},
     };
     return koi::test::run_tests(tests, argc, argv);
 }
