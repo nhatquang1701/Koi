@@ -214,7 +214,7 @@ def _load_seed_openings(dag: CandidateDAG, seed_paths: list[str], max_ply: int) 
                     if not line or line.startswith("#"):
                         continue
                     board = chess.Board()
-                    seq: list[tuple[chess.Board, chess.Move]] = []
+                    seq: list[chess.Move] = []
                     parts = line.split("\t")
                     text = parts[-1] if len(parts) >= 3 else line
                     lowered = text.lower()
@@ -238,14 +238,13 @@ def _load_seed_openings(dag: CandidateDAG, seed_paths: list[str], max_ply: int) 
                         except ValueError:
                             seq = []
                             break
-                        seq.append((board, mv))
-                        board = board.copy(stack=False)
+                        seq.append(mv)
                         board.push(mv)
                     if seq:
-                        # Reset and replay cleanly onto fresh boards so _record_line pushes in order.
+                        # Reset and replay cleanly onto a fresh board so _record_line pushes in order.
                         fresh = chess.Board()
                         def _replay(moves_list=seq, b=fresh):
-                            for _, mv in moves_list:
+                            for mv in moves_list:
                                 yield b, mv
                         _record_line(dag, _replay(), white_points_x2=1, sf_seeded=True)
                         loaded += 1

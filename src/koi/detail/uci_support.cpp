@@ -415,23 +415,34 @@ std::string debug_quoted(const std::string_view value) {
 }
 
 std::uint64_t legal_move_digest(const std::span<const Move> legal_moves) {
-    std::vector<std::string> coordinates;
-    coordinates.reserve(legal_moves.size());
-    for (const Move& move : legal_moves) {
-        coordinates.push_back(move.uci());
-    }
-    std::sort(coordinates.begin(), coordinates.end());
+    const auto sort_and_hash = [](std::span<Move> sorted) noexcept -> std::uint64_t {
+        std::sort(sorted.begin(), sorted.end(), [](const Move& left, const Move& right) noexcept {
+            std::array<char, 5> left_buf{};
+            std::array<char, 5> right_buf{};
+            return left.format_uci(left_buf) < right.format_uci(right_buf);
+        });
 
-    std::uint64_t digest = 1469598103934665603ULL;
-    for (const std::string& coordinate : coordinates) {
-        for (const unsigned char character : coordinate) {
-            digest ^= character;
+        std::uint64_t digest = 1469598103934665603ULL;
+        std::array<char, 5> buffer{};
+        for (const Move& move : sorted) {
+            for (const char character : move.format_uci(buffer)) {
+                digest ^= static_cast<unsigned char>(character);
+                digest *= 1099511628211ULL;
+            }
+            digest ^= static_cast<unsigned char>('\n');
             digest *= 1099511628211ULL;
         }
-        digest ^= static_cast<unsigned char>('\n');
-        digest *= 1099511628211ULL;
+        return digest;
+    };
+
+    if (legal_moves.size() <= kMaximumLegalMoves) {
+        std::array<Move, kMaximumLegalMoves> stack_moves{};
+        std::copy(legal_moves.begin(), legal_moves.end(), stack_moves.begin());
+        return sort_and_hash(std::span<Move>(stack_moves.data(), legal_moves.size()));
     }
-    return digest;
+
+    std::vector<Move> heap_moves(legal_moves.begin(), legal_moves.end());
+    return sort_and_hash(heap_moves);
 }
 
 std::vector<Move> legal_pv_prefix(const GameState& root, const std::vector<Move>& pv) {
@@ -1831,17 +1842,19 @@ std::string format_move_history(const GameState& origin, const std::vector<Move>
     if (moves.empty()) {
         out << " (none)\nSAN     : (none)";
     } else {
+        std::array<char, 5> move_buffer{};
         for (const Move& move : moves) {
-            out << ' ' << move.uci();
+            out << ' ' << move.format_uci(move_buffer);
         }
         GameState final_state = origin;
         out << "\nSAN     : " << format_san_movetext(final_state, moves);
     }
     out << "\nCommand : position " << (is_startpos ? "startpos" : ("fen " + origin_fen));
     if (!moves.empty()) {
+        std::array<char, 5> move_buffer{};
         out << " moves";
         for (const Move& move : moves) {
-            out << ' ' << move.uci();
+            out << ' ' << move.format_uci(move_buffer);
         }
     }
     out << '\n';

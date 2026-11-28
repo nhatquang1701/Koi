@@ -2548,6 +2548,7 @@ void UciController::write_search_info(const std::uint64_t generation, const Sear
         state_ == ControllerState::ShuttingDown) {
         return;
     }
+    std::array<char, 5> move_buffer{};
     if (protocol == ProtocolMode::xboard) {
         if (!xboard_thinking || info.multipv != 1) {
             return;
@@ -2556,7 +2557,7 @@ void UciController::write_search_info(const std::uint64_t generation, const Sear
         const auto centiseconds = info.elapsed.count() / 10;
         output_ << info.depth << ' ' << score << ' ' << centiseconds << ' ' << info.nodes;
         for (const Move& move : info.pv) {
-            output_ << ' ' << move.uci();
+            output_ << ' ' << move.format_uci(move_buffer);
         }
         output_ << '\n' << std::flush;
         return;
@@ -2565,7 +2566,7 @@ void UciController::write_search_info(const std::uint64_t generation, const Sear
     output_ << "info depth " << info.depth << " seldepth " << info.seldepth
             << " multipv " << info.multipv;
     if (!info.currmove.is_no_move()) {
-        output_ << " currmove " << info.currmove.uci();
+        output_ << " currmove " << info.currmove.format_uci(move_buffer);
         if (info.currmovenumber > 0) {
             // Standard UCI pairs the in-flight root move with its one-based
             // index; SearchInfo carries both (populated by the runner).
@@ -2596,7 +2597,7 @@ void UciController::write_search_info(const std::uint64_t generation, const Sear
             << " hashfull " << search_service_.hashfull_permill()
             << " time " << info.elapsed.count() << " pv";
     for (const Move& move : info.pv) {
-        output_ << ' ' << move.uci();
+        output_ << ' ' << move.format_uci(move_buffer);
     }
     if (info.tbhits != 0) {
         output_ << " tbhits " << info.tbhits;

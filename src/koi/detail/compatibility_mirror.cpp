@@ -4,7 +4,9 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace koi::detail {
@@ -97,6 +99,32 @@ constexpr std::uint8_t kBlackQueenSideCastling = 0x8;
 // (illegal) capturer would otherwise make the shadow count a different
 // repetition than the native rule state. The rare divergent case is
 // normalized by dropping the en-passant field before hashing.
+struct FenFieldSpan {
+    std::size_t start = 0;
+    std::size_t end = 0;
+};
+
+[[nodiscard]] std::optional<FenFieldSpan> find_fen_en_passant_span(
+    const std::string_view fen) noexcept {
+    const std::size_t board_end = fen.find(' ');
+    if (board_end == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const std::size_t side_end = fen.find(' ', board_end + 1);
+    if (side_end == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const std::size_t castling_end = fen.find(' ', side_end + 1);
+    if (castling_end == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const std::size_t en_passant_end = fen.find(' ', castling_end + 1);
+    if (en_passant_end == std::string_view::npos) {
+        return std::nullopt;
+    }
+    return FenFieldSpan{castling_end + 1, en_passant_end};
+}
+
 [[nodiscard]] std::uint64_t shadow_repetition_key(const chess::Board& board) {
     if (board.enpassantSq() == chess::Square::NO_SQ ||
         shadow_has_legal_en_passant_capture(board)) {
@@ -104,15 +132,11 @@ constexpr std::uint8_t kBlackQueenSideCastling = 0x8;
     }
     try {
         std::string fen = board.getFen();
-        const std::size_t board_end = fen.find(' ');
-        const std::size_t side_end = fen.find(' ', board_end + 1);
-        const std::size_t castling_end = fen.find(' ', side_end + 1);
-        const std::size_t en_passant_end = fen.find(' ', castling_end + 1);
-        if (board_end == std::string::npos || side_end == std::string::npos ||
-            castling_end == std::string::npos || en_passant_end == std::string::npos) {
+        const std::optional<FenFieldSpan> ep_span = find_fen_en_passant_span(fen);
+        if (!ep_span.has_value()) {
             return board.hash();
         }
-        fen.replace(castling_end + 1, en_passant_end - castling_end - 1, "-");
+        fen.replace(ep_span->start, ep_span->end - ep_span->start, "-");
         chess::Board probe;
         probe.setFen(fen);
         return probe.hash();
@@ -124,19 +148,16 @@ constexpr std::uint8_t kBlackQueenSideCastling = 0x8;
 [[nodiscard]] std::string shadow_fen_for_native_comparison(const Position& native_position,
                                                            const chess::Board& shadow_board) {
     std::string fen = shadow_board.getFen();
-    const std::size_t board_end = fen.find(' ');
-    if (board_end == std::string::npos) return fen;
-    const std::size_t side_end = fen.find(' ', board_end + 1);
-    if (side_end == std::string::npos) return fen;
-    const std::size_t castling_end = fen.find(' ', side_end + 1);
-    if (castling_end == std::string::npos) return fen;
-    const std::size_t en_passant_end = fen.find(' ', castling_end + 1);
-    if (en_passant_end == std::string::npos) return fen;
+    const std::optional<FenFieldSpan> ep_span = find_fen_en_passant_span(fen);
+    if (!ep_span.has_value()) {
+        return fen;
+    }
+    const std::size_t castling_end = ep_span->start - 1;
 
     if (native_position.en_passant_square().index() >= Square::kInvalid &&
         shadow_board.enpassantSq() != chess::Square::NO_SQ &&
         !shadow_has_legal_en_passant_capture(shadow_board)) {
-        fen.replace(castling_end + 1, en_passant_end - castling_end - 1, "-");
+        fen.replace(ep_span->start, ep_span->end - ep_span->start, "-");
     }
 
     // The vendored shadow board keeps the halfmove clock in a byte, so a

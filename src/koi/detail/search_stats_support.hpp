@@ -3,6 +3,8 @@
 // Shared merge for per-worker search statistics.  Worker pools and the serial
 // driver both accumulate partial counters into one SearchStats value.
 
+#include <algorithm>
+
 #include "koi/search_types.hpp"
 
 namespace koi::detail {

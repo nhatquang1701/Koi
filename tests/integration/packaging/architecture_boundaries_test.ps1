@@ -252,6 +252,9 @@ foreach ($helper in @('safely_report_info', 'publish_iteration_lines', 'maybe_pu
     }
 }
 $statsHeader = Read-RepositoryFile 'src/koi/detail/search_stats_support.hpp'
+if (-not $statsHeader.Contains('#include <algorithm>')) {
+    Fail 'search_stats_support.hpp must include <algorithm> directly'
+}
 if (-not $statsHeader.Contains('inline void accumulate_stats(')) {
     Fail 'search_stats_support.hpp accumulate_stats must be inline'
 }
