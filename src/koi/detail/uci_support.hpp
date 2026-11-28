@@ -138,6 +138,7 @@ struct PerftSuiteReport {
 [[nodiscard]] std::string join_tokens(
     const std::vector<std::string>& tokens, std::size_t first, std::size_t last);
 [[nodiscard]] bool equals_ignore_case(std::string_view left, std::string_view right) noexcept;
+[[nodiscard]] std::string_view trim_ascii(std::string_view value) noexcept;
 
 // UCCI allows `setoption <option> <value>` without `name`/`value` keywords in
 // addition to standard `setoption name <option> value <value>`.

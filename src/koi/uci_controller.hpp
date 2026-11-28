@@ -111,6 +111,7 @@ private:
 
     void handle_position(std::istream& command, std::string_view command_text);
     void handle_setoption(std::istream& command);
+    void apply_setoption(const std::string& name, const std::string& value);
     void handle_go(std::istream& command);
     void handle_ponderhit();
     void handle_annotate(std::istream& command);

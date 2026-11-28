@@ -22,7 +22,7 @@ import re
 import subprocess
 import sys
 from collections import deque
-from typing import Iterable
+from collections.abc import Iterable
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 for extra_path in (REPO_ROOT / "tools" / "book", REPO_ROOT / "tools" / "measurement"):

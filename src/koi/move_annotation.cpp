@@ -113,9 +113,10 @@ struct MoveExposure {
 };
 
 [[nodiscard]] std::optional<MoveExposure> compute_move_exposure(
-    const GameState& root, const MoveMetadata& meta,
+    const GameState& detached_root, const MoveMetadata& meta,
     const Square tracked_origin = Square{}) noexcept {
-    GameState after = root;
+    GameState after = detached_root;
+    after.detach_mirror();
     if (!after.make_move(meta.move)) {
         return std::nullopt;
     }
@@ -141,16 +142,16 @@ struct MoveExposure {
     return MoveExposure{max_reply_see - captured_val, origin_see};
 }
 
-[[nodiscard]] bool is_sound_sacrifice_candidate(const GameState& root, Move played_move) noexcept {
+[[nodiscard]] bool is_sound_sacrifice_candidate(
+    const GameState& root, const MoveMetadata& played_meta) noexcept {
+    const Move played_move = played_meta.move;
     if (root.in_check() || played_move.promotion() != Promotion::none) {
         return false;
     }
-    const auto metadata = root.describe_move(played_move);
-    if (!metadata.has_value()) {
-        return false;
-    }
 
-    GameState after = root;
+    GameState detached_root = root;
+    detached_root.detach_mirror();
+    GameState after = detached_root;
     if (!after.make_move(played_move)) {
         return false;
     }
@@ -159,8 +160,8 @@ struct MoveExposure {
     (void)after.legal_tactical_moves_with_metadata(replies, false, true);
 
     const int captured_val =
-        metadata->is_capture() ? piece_material_value(metadata->captured_piece) : 0;
-    const int moving_val = piece_material_value(metadata->moving_piece);
+        played_meta.is_capture() ? piece_material_value(played_meta.captured_piece) : 0;
+    const int moving_val = piece_material_value(played_meta.moving_piece);
 
     bool sacrifices_material = false;
     for (const MoveMetadata& reply : replies) {
@@ -200,14 +201,14 @@ struct MoveExposure {
         if (alt.move == played_move) {
             continue;
         }
-        const auto exposure = compute_move_exposure(root, alt, origin);
+        const auto exposure = compute_move_exposure(detached_root, alt, origin);
         if (!exposure.has_value()) {
             continue;
         }
         if (exposure->net_exposure <= 50) {
             has_safe_alternative = true;
         }
-        if (metadata->is_capture()) {
+        if (played_meta.is_capture()) {
             if (alt.move.from() == origin) {
                 if (exposure->net_exposure <= 80) {
                     moving_piece_can_escape = true;
@@ -219,7 +220,7 @@ struct MoveExposure {
             }
         }
         if (has_safe_alternative &&
-            (!metadata->is_capture() || another_piece_keeps_from_safe || moving_piece_can_escape)) {
+            (!played_meta.is_capture() || another_piece_keeps_from_safe || moving_piece_can_escape)) {
             break;
         }
     }
@@ -227,7 +228,7 @@ struct MoveExposure {
     if (!has_safe_alternative) {
         return false;
     }
-    if (metadata->is_capture() && !another_piece_keeps_from_safe && !moving_piece_can_escape) {
+    if (played_meta.is_capture() && !another_piece_keeps_from_safe && !moving_piece_can_escape) {
         return false;
     }
     return true;
@@ -638,8 +639,8 @@ std::expected<MoveAnnotationResult, std::string> analyze_and_annotate_move(
              root, played_move, root_ply, true, options.book_depth, options.book_safety,
              options.book_safety_depth));
     const bool is_sacrifice =
-        legal_count > 1 && !is_book_move && !in_check &&
-        is_sound_sacrifice_candidate(root, played_move);
+        legal_count > 1 && !is_book_move && !in_check && metadata.has_value() &&
+        is_sound_sacrifice_candidate(root, *metadata);
 
     MoveClassificationInput input;
     input.played_move = played_move;

@@ -9,8 +9,9 @@ import io
 import json
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 try:
     from tools.measurement import elo_oracle

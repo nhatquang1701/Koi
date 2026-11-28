@@ -400,9 +400,8 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
                 if (const auto parsed_opt =
                         parse_xboard_option_assignment(join_tokens(tokens, 0, tokens.size()));
                     parsed_opt.has_value()) {
-                    std::istringstream synth("name " + parsed_opt->first + " value " +
-                                             parsed_opt->second);
-                    handle_setoption(synth);
+                    apply_setoption(parsed_opt->first,
+                                    std::string(detail::trim_ascii(parsed_opt->second)));
                 }
             }
         }
@@ -511,16 +510,14 @@ bool UciController::handle_xboard_command(const std::string_view name, std::istr
     if (name == "memory") {
         std::string token;
         if (command >> token) {
-            std::istringstream synth("name Hash value " + token);
-            handle_setoption(synth);
+            apply_setoption("Hash", token);
         }
         return true;
     }
     if (name == "cores") {
         std::string token;
         if (command >> token) {
-            std::istringstream synth("name Threads value " + token);
-            handle_setoption(synth);
+            apply_setoption("Threads", token);
         }
         return true;
     }
@@ -942,8 +939,10 @@ void UciController::handle_setoption(std::istream& command) {
     if (!parsed.has_value()) {
         return;
     }
-    const std::string& name = parsed->name;
-    const std::string& value = parsed->value;
+    apply_setoption(parsed->name, parsed->value);
+}
+
+void UciController::apply_setoption(const std::string& name, const std::string& value) {
     const UciOptionDescriptor* option = find_uci_option(name);
     if (option == nullptr) {
         return;

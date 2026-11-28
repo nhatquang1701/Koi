@@ -120,8 +120,10 @@ const char* disposition_name(const CompletionDisposition disposition) noexcept {
     return "unknown";
 }
 
+constexpr std::array<char, 16> kHexDigits{
+    {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'}};
+
 std::string debug_hex(const std::uint64_t value) {
-    constexpr char kHexDigits[] = "0123456789abcdef";
     std::string hex(16, '0');
     for (int shift = 60, idx = 0; shift >= 0; shift -= 4, ++idx) {
         hex[static_cast<std::size_t>(idx)] = kHexDigits[(value >> shift) & 0xfU];
@@ -130,7 +132,6 @@ std::string debug_hex(const std::uint64_t value) {
 }
 
 std::string hex_bytes(const std::uint8_t* const data, const std::size_t count) {
-    constexpr char kHexDigits[] = "0123456789abcdef";
     std::string hex;
     hex.reserve(count * 2U);
     for (std::size_t index = 0; index < count; ++index) {
@@ -149,6 +150,8 @@ std::string hex_bytes(const std::uint8_t* const data, const std::size_t count) {
     return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f';
 }
 
+} // namespace
+
 std::string_view trim_ascii(std::string_view value) noexcept {
     while (!value.empty() && is_ascii_space(value.front())) {
         value.remove_prefix(1);
@@ -158,8 +161,6 @@ std::string_view trim_ascii(std::string_view value) noexcept {
     }
     return value;
 }
-
-} // namespace
 
 BoundedLineRead read_bounded_protocol_line(std::istream& input, std::string& line,
                                            const std::size_t limit, bool& truncated) {
@@ -442,16 +443,17 @@ std::string debug_quoted(const std::string_view value) {
         case '\t':
             result += "\\t";
             break;
-        default:
-            if (static_cast<unsigned char>(character) < 0x20U) {
-                std::ostringstream escaped;
-                escaped << "\\u" << std::hex << std::setw(4) << std::setfill('0')
-                        << static_cast<unsigned int>(static_cast<unsigned char>(character));
-                result += escaped.str();
+        default: {
+            const auto byte = static_cast<unsigned char>(character);
+            if (byte < 0x20U) {
+                result += "\\u00";
+                result.push_back(kHexDigits[(byte >> 4U) & 0x0FU]);
+                result.push_back(kHexDigits[byte & 0x0FU]);
             } else {
                 result.push_back(character);
             }
             break;
+        }
         }
     }
     result.push_back('"');
@@ -1240,17 +1242,40 @@ std::string format_annotate_summary_line(const char* side_name,
 }
 
 std::optional<std::string> flip_position_fen(const std::string_view fen) {
-    std::istringstream fen_stream{std::string(fen)};
-    std::vector<std::string> fields;
-    for (std::string token; fen_stream >> token;) {
-        fields.push_back(std::move(token));
+    std::array<std::string_view, 6> fields{};
+    std::size_t count = 0;
+    std::size_t pos = 0;
+    while (pos < fen.size()) {
+        while (pos < fen.size() && is_ascii_space(fen[pos])) {
+            ++pos;
+        }
+        if (pos >= fen.size()) {
+            break;
+        }
+        const std::size_t start = pos;
+        while (pos < fen.size() && !is_ascii_space(fen[pos])) {
+            ++pos;
+        }
+        if (count == fields.size()) {
+            return std::nullopt;
+        }
+        fields[count++] = fen.substr(start, pos - start);
     }
-    if (fields.size() != 6 || (fields[1] != "w" && fields[1] != "b")) {
+    if (count != fields.size() || (fields[1] != "w" && fields[1] != "b")) {
         return std::nullopt;
     }
     fields[1] = (fields[1] == "w") ? "b" : "w";
     fields[3] = "-";
-    return join_tokens(fields, 0, fields.size());
+
+    std::string result;
+    result.reserve(fen.size());
+    for (std::size_t i = 0; i < fields.size(); ++i) {
+        if (i > 0) {
+            result.push_back(' ');
+        }
+        result += fields[i];
+    }
+    return result;
 }
 
 std::string translate_ucci_go_arguments(const std::string_view arguments,

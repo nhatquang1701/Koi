@@ -8,8 +8,8 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 try:
     from .elo_oracle import default_results_directory

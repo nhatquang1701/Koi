@@ -10,7 +10,8 @@ import json
 import pathlib
 import struct
 import sys
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 
 MEASUREMENT_DIR = pathlib.Path(__file__).resolve().parent
