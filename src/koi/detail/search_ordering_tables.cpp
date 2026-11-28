@@ -55,16 +55,7 @@ void update_gravity_entry(Entry& score, const int delta, const int maximum) noex
 } // namespace
 
 SearchOrderingTables::SearchOrderingTables()
-    : multi_ply_continuation_history_(std::make_unique<std::int16_t[]>(
-          kSearchContinuationPlies * kContinuationHistorySize)),
-      pawn_history_(std::make_unique<std::int16_t[]>(kPawnHistorySize)),
-      pawn_correction_(std::make_unique<std::int16_t[]>(kPawnCorrectionHistorySize)),
-      material_correction_(std::make_unique<std::int16_t[]>(kMaterialCorrectionHistorySize)),
-      king_correction_(std::make_unique<std::int16_t[]>(kKingCorrectionHistorySize)),
-      minor_correction_(std::make_unique<std::int16_t[]>(kMinorCorrectionHistorySize)),
-      major_correction_(std::make_unique<std::int16_t[]>(kMajorCorrectionHistorySize)),
-      continuation_correction_(
-          std::make_unique<std::int16_t[]>(kContinuationCorrectionHistorySize)) {
+    : large_(std::make_unique<LargeTables>()) {
     // `clear()` intentionally retains its historical zeroed-reset contract
     // for diagnostics.  A newly created worker, however, should begin with
     // the calibrated Stockfish-style priors rather than indeterminate heap
@@ -73,18 +64,16 @@ SearchOrderingTables::SearchOrderingTables()
     piece_to_history_.fill(kInitialPieceToHistory);
     low_ply_history_.fill(kInitialLowPlyHistory);
     continuation_history_.fill(kInitialContinuationHistory);
-    std::fill_n(multi_ply_continuation_history_.get(),
-                kSearchContinuationPlies * kContinuationHistorySize,
-                kInitialContinuationHistory);
-    std::fill_n(pawn_history_.get(), kPawnHistorySize, kInitialPawnHistory);
+    large_->multi_ply_continuation_history.fill(kInitialContinuationHistory);
+    large_->pawn_history.fill(kInitialPawnHistory);
     // Correction tables start neutral: the first visit to a key sees the raw
     // evaluator score until the search itself supplies evidence.
-    std::fill_n(pawn_correction_.get(), kPawnCorrectionHistorySize, 0);
-    std::fill_n(material_correction_.get(), kMaterialCorrectionHistorySize, 0);
-    std::fill_n(king_correction_.get(), kKingCorrectionHistorySize, 0);
-    std::fill_n(minor_correction_.get(), kMinorCorrectionHistorySize, 0);
-    std::fill_n(major_correction_.get(), kMajorCorrectionHistorySize, 0);
-    std::fill_n(continuation_correction_.get(), kContinuationCorrectionHistorySize, 0);
+    large_->pawn_correction.fill(0);
+    large_->material_correction.fill(0);
+    large_->king_correction.fill(0);
+    large_->minor_correction.fill(0);
+    large_->major_correction.fill(0);
+    large_->continuation_correction.fill(0);
 }
 
 SearchOrderingTables::~SearchOrderingTables() = default;
@@ -154,30 +143,15 @@ void SearchOrderingTables::clear() noexcept {
     piece_to_history_ = {};
     low_ply_history_ = {};
     continuation_history_ = {};
-    if (multi_ply_continuation_history_ != nullptr) {
-        std::fill_n(multi_ply_continuation_history_.get(),
-                    kSearchContinuationPlies * kContinuationHistorySize, 0);
-    }
-    if (pawn_history_ != nullptr) {
-        std::fill_n(pawn_history_.get(), kPawnHistorySize, 0);
-    }
-    if (pawn_correction_ != nullptr) {
-        std::fill_n(pawn_correction_.get(), kPawnCorrectionHistorySize, 0);
-    }
-    if (material_correction_ != nullptr) {
-        std::fill_n(material_correction_.get(), kMaterialCorrectionHistorySize, 0);
-    }
-    if (king_correction_ != nullptr) {
-        std::fill_n(king_correction_.get(), kKingCorrectionHistorySize, 0);
-    }
-    if (minor_correction_ != nullptr) {
-        std::fill_n(minor_correction_.get(), kMinorCorrectionHistorySize, 0);
-    }
-    if (major_correction_ != nullptr) {
-        std::fill_n(major_correction_.get(), kMajorCorrectionHistorySize, 0);
-    }
-    if (continuation_correction_ != nullptr) {
-        std::fill_n(continuation_correction_.get(), kContinuationCorrectionHistorySize, 0);
+    if (large_ != nullptr) {
+        large_->multi_ply_continuation_history.fill(0);
+        large_->pawn_history.fill(0);
+        large_->pawn_correction.fill(0);
+        large_->material_correction.fill(0);
+        large_->king_correction.fill(0);
+        large_->minor_correction.fill(0);
+        large_->major_correction.fill(0);
+        large_->continuation_correction.fill(0);
     }
 }
 
@@ -231,7 +205,7 @@ std::int64_t SearchOrderingTables::continuation_history_raw(
     }
     auto add_ply = [&](const std::size_t distance, const int divisor) noexcept {
         if (const std::size_t pair = slot_index(distance); pair < kContinuationHistorySize) {
-            cont_score += multi_ply_continuation_history_[
+            cont_score += large_->multi_ply_continuation_history[
                 distance * kContinuationHistorySize + pair] / divisor;
         }
     };
@@ -281,7 +255,7 @@ QuietAndContinuationScores SearchOrderingTables::quiet_and_continuation_scores(
                                         move_idx];
     }
     quiet_score += cont_score;
-    quiet_score += pawn_history_[pawn_index(context, metadata.moving_piece, metadata.move.to())] / 2;
+    quiet_score += large_->pawn_history[pawn_index(context, metadata.moving_piece, metadata.move.to())] / 2;
     return QuietAndContinuationScores{
         clamp_history(quiet_score, kMaximumHistoryScore), continuation};
 }
@@ -301,7 +275,7 @@ int SearchOrderingTables::quiet_history_score(
                                   move_idx];
     }
     score += continuation_history_raw(move_idx, context);
-    score += pawn_history_[pawn_index(context, metadata.moving_piece, metadata.move.to())] / 2;
+    score += large_->pawn_history[pawn_index(context, metadata.moving_piece, metadata.move.to())] / 2;
     return clamp_history(score, kMaximumHistoryScore);
 }
 
@@ -332,9 +306,9 @@ SearchOrderingTables::QuietHistoryBatch SearchOrderingTables::prepare_quiet_hist
     batch.low_ply_row = (context.ply >= 0 && context.ply < static_cast<int>(kLowPlyHistoryPlies)) ?
         low_ply_history_.data() + static_cast<std::size_t>(context.ply) * kMoveTableSize :
         nullptr;
-    batch.pawn_row = pawn_history_.get();
+    batch.pawn_row = large_->pawn_history.data();
     batch.cont0 = continuation_history_.data();
-    batch.multi_cont = multi_ply_continuation_history_.get();
+    batch.multi_cont = large_->multi_ply_continuation_history.data();
     batch.pawn_key = context.pawn_key;
     batch.cont_prev.fill(QuietHistoryBatch::kInvalidOffset);
     const std::size_t move_count = std::min(context.count, kSearchContinuationPlies);
@@ -387,11 +361,11 @@ void SearchOrderingTables::update_correction(const std::uint64_t pawn_key,
     if (bonus == 0) {
         return;
     }
-    update_history(pawn_correction_[correction_slot(pawn_key, kPawnCorrectionHistorySize)],
+    update_history(large_->pawn_correction[correction_slot(pawn_key, kPawnCorrectionHistorySize)],
                    bonus, kCorrectionEntryLimit);
-    update_history(material_correction_[correction_slot(material_key, kMaterialCorrectionHistorySize)],
+    update_history(large_->material_correction[correction_slot(material_key, kMaterialCorrectionHistorySize)],
                    bonus, kCorrectionEntryLimit);
-    update_history(king_correction_[correction_slot(king_key, kKingCorrectionHistorySize)],
+    update_history(large_->king_correction[correction_slot(king_key, kKingCorrectionHistorySize)],
                    bonus, kCorrectionEntryLimit);
 }
 
@@ -407,13 +381,13 @@ void SearchOrderingTables::update_correction(const std::uint64_t pawn_key,
         return;
     }
     update_correction(pawn_key, material_key, king_key, bonus);
-    update_history(minor_correction_[correction_slot(minor_key, kMinorCorrectionHistorySize)],
+    update_history(large_->minor_correction[correction_slot(minor_key, kMinorCorrectionHistorySize)],
                    bonus, kCorrectionEntryLimit);
-    update_history(major_correction_[correction_slot(major_key, kMajorCorrectionHistorySize)],
+    update_history(large_->major_correction[correction_slot(major_key, kMajorCorrectionHistorySize)],
                    bonus, kCorrectionEntryLimit);
     if (has_continuation) {
         update_history(
-            continuation_correction_[correction_slot(
+            large_->continuation_correction[correction_slot(
                 continuation_key, kContinuationCorrectionHistorySize)],
             bonus, kCorrectionEntryLimit);
     }
@@ -478,12 +452,12 @@ void SearchOrderingTables::record_quiet_cutoff(
         if (previous.is_no_move()) {
             continue;
         }
-        update_history(multi_ply_continuation_history_[
+        update_history(large_->multi_ply_continuation_history[
                            distance * kContinuationHistorySize +
                            continuation_index(previous, metadata.move)],
                        bonus, kHistoryTableMaximum);
     }
-    update_history(pawn_history_[pawn_index(context, metadata.moving_piece, metadata.move.to())],
+    update_history(large_->pawn_history[pawn_index(context, metadata.moving_piece, metadata.move.to())],
                    bonus, kHistoryTableMaximum);
 }
 
@@ -494,7 +468,7 @@ void SearchOrderingTables::record_scaled_multi_ply_continuation(
     auto update_at = [&](const std::size_t distance, const int divisor) noexcept {
         const Move previous = context.continuation_moves[distance];
         if (!previous.is_no_move()) {
-            update_history(multi_ply_continuation_history_[
+            update_history(large_->multi_ply_continuation_history[
                                distance * kContinuationHistorySize +
                                continuation_index(previous, move)],
                            std::max(1, base_bonus / divisor), kHistoryTableMaximum);
@@ -548,7 +522,7 @@ void SearchOrderingTables::record_quiet_best(
                        std::max(1, bonus * 3 / 4), kHistoryTableMaximum);
     }
     record_scaled_multi_ply_continuation(metadata.move, context, bonus);
-    update_history(pawn_history_[pawn_index(context, metadata.moving_piece, metadata.move.to())],
+    update_history(large_->pawn_history[pawn_index(context, metadata.moving_piece, metadata.move.to())],
                    bonus, kHistoryTableMaximum);
 }
 
@@ -599,12 +573,12 @@ void SearchOrderingTables::record_quiet_fail(
         if (previous.is_no_move()) {
             continue;
         }
-        update_history(multi_ply_continuation_history_[
+        update_history(large_->multi_ply_continuation_history[
                            distance * kContinuationHistorySize +
                            continuation_index(previous, metadata.move)],
                        malus, kHistoryTableMaximum);
     }
-    update_history(pawn_history_[pawn_index(context, metadata.moving_piece, metadata.move.to())],
+    update_history(large_->pawn_history[pawn_index(context, metadata.moving_piece, metadata.move.to())],
                    malus, kHistoryTableMaximum);
 }
 
@@ -684,7 +658,7 @@ void SearchOrderingTables::update_parent_histories(
         if (previous.is_no_move()) {
             continue;
         }
-        update_history(multi_ply_continuation_history_[
+        update_history(large_->multi_ply_continuation_history[
                            distance * kContinuationHistorySize +
                            continuation_index(previous, move)],
                        bonus, kHistoryTableMaximum);

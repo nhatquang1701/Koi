@@ -674,8 +674,9 @@ the search but cannot push it past the cap.
   `[max(1 ms, soft / 3), hard]` using `best_move_effort_permille_`,
   `best_move_stability_`, decayed cumulative `instability_permille_`, inter-move
   and intra-search `score_drop_cp_`, `score_gain_cp_`,
-  `last_aspiration_researched_`, forced-mate fast exit (`>= 2` stable deep mate
-  iterations), and asymmetric conversion speedup (`score >= +500` cp winning
+  `last_aspiration_researched_`, single-legal-move cap (`min(150 ms, soft / 8)`),
+  confirmed forced-mate fast exit (`>= 2` stable deep mate iterations, capped
+  at `250 ms`), and asymmetric conversion speedup (`score >= +500` cp winning
   or `<= -700` cp decisively lost with a stable deep line).
 - A hard position may exceed the soft budget only while the remaining usable
   clock is at least `2 × soft budget + overhead` (`hard_extension_affordable`).

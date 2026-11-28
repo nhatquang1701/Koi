@@ -90,6 +90,9 @@ std::chrono::milliseconds nonnegative_difference(std::chrono::milliseconds left,
     return left > right ? left - right : std::chrono::milliseconds::zero();
 }
 
+constexpr std::chrono::milliseconds kSingleMoveOptimumCap{150};
+constexpr std::chrono::milliseconds kConfirmedMateOptimumCap{250};
+
 std::uint32_t continuous_horizon(const bool has_increment, const int game_phase,
                                    const std::uint16_t fullmove) noexcept {
     if (game_phase < 0 || fullmove == 0) {
@@ -414,7 +417,8 @@ void TimeManager::initialize(Color side_to_move, std::uint8_t speed_percent,
     if (root_context_.legal_move_count == 1) {
         timing_.optimum_budget = std::min(
             timing_.soft_budget,
-            std::max(std::chrono::milliseconds{2}, timing_.soft_budget / 8));
+            std::min(kSingleMoveOptimumCap,
+                     std::max(std::chrono::milliseconds{2}, timing_.soft_budget / 8)));
     }
     if (preserve_observations && last_observed_depth_ > 0) {
         update_optimum_budget();
@@ -639,13 +643,15 @@ void TimeManager::update_optimum_budget() noexcept {
     if (root_context_.legal_move_count == 1) {
         timing_.optimum_budget = std::min(
             timing_.soft_budget,
-            std::max(std::chrono::milliseconds{2}, timing_.soft_budget / 8));
+            std::min(kSingleMoveOptimumCap,
+                     std::max(std::chrono::milliseconds{2}, timing_.soft_budget / 8)));
         return;
     }
     if (mate_stable_observations_ >= 2 && last_observed_depth_ >= 4) {
         timing_.optimum_budget = std::min(
             timing_.soft_budget,
-            std::max(std::chrono::milliseconds{20}, timing_.soft_budget / 6));
+            std::min(kConfirmedMateOptimumCap,
+                     std::max(std::chrono::milliseconds{20}, timing_.soft_budget / 6)));
         return;
     }
 

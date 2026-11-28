@@ -121,7 +121,6 @@ private:
     };
 
     SearchOrderingTables tables_;
-    mutable std::array<ScoredMove, kMaximumLegalMoves> scored_moves_{};
 };
 
 // SearchMovePicker mirrors Stockfish's staged MovePicker while retaining

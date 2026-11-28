@@ -4,6 +4,7 @@
 #include <limits>
 #include <utility>
 
+#include "koi/detail/no_init_array.hpp"
 #include "koi/detail/static_exchange.hpp"
 #include "koi/piece_values.hpp"
 
@@ -291,6 +292,7 @@ void SearchMoveOrdering::order_with_priority(const GameState& state,
     // capture still needs SEE.  Ordering never mutates the position, so the
     // baseline stays valid for the whole loop.
     std::optional<ExchangeContext> exchange_context;
+    NoInitArray<ScoredMove, kMaximumLegalMoves> scored_moves;
     for (std::size_t index = 0; index < moves.size(); ++index) {
         MoveMetadata& metadata = moves[index];
         if (!metadata.see_computed && metadata.is_capture()) {
@@ -306,18 +308,18 @@ void SearchMoveOrdering::order_with_priority(const GameState& state,
         const int score = priority_fn(metadata);
         MoveMetadata scored_metadata = metadata;
         scored_metadata.ordering_score = score;
-        scored_moves_[index] = ScoredMove{
+        scored_moves[index] = ScoredMove{
             scored_metadata, score, move_tie_break_key(metadata.move)};
     }
 
-    std::sort(scored_moves_.begin(), scored_moves_.begin() + moves.size(),
+    std::sort(scored_moves.data(), scored_moves.data() + moves.size(),
               [](const ScoredMove& lhs, const ScoredMove& rhs) {
                   return lhs.priority != rhs.priority ? lhs.priority > rhs.priority :
                       lhs.tie_break < rhs.tie_break;
               });
 
     for (std::size_t index = 0; index < moves.size(); ++index) {
-        moves[index] = scored_moves_[index].metadata;
+        moves[index] = scored_moves[index].metadata;
     }
 }
 

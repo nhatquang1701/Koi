@@ -219,11 +219,12 @@ public:
     [[nodiscard]] KOI_TABLES_CORR_INLINE int correction_value(
         std::uint64_t pawn_key, std::uint64_t material_key,
         std::uint64_t king_key) const noexcept {
+        const LargeTables& tables = *large_;
         const std::int32_t total =
             static_cast<std::int32_t>(
-                pawn_correction_[correction_slot(pawn_key, kPawnCorrectionHistorySize)]) +
-            material_correction_[correction_slot(material_key, kMaterialCorrectionHistorySize)] +
-            king_correction_[correction_slot(king_key, kKingCorrectionHistorySize)];
+                tables.pawn_correction[correction_slot(pawn_key, kPawnCorrectionHistorySize)]) +
+            tables.material_correction[correction_slot(material_key, kMaterialCorrectionHistorySize)] +
+            tables.king_correction[correction_slot(king_key, kKingCorrectionHistorySize)];
         return static_cast<int>(std::clamp<std::int32_t>(
             total, -kCorrectionTotalLimit, kCorrectionTotalLimit));
     }
@@ -236,18 +237,19 @@ public:
         // Keep the proven 8-unit structural average exact whenever the
         // continuation pair is neutral or unavailable, and layer a gentle 1/8
         // continuation residual on top within [-192, +192].
+        const LargeTables& tables = *large_;
         const std::int32_t pawn =
-            pawn_correction_[correction_slot(pawn_key, kPawnCorrectionHistorySize)];
+            tables.pawn_correction[correction_slot(pawn_key, kPawnCorrectionHistorySize)];
         const std::int32_t material =
-            material_correction_[correction_slot(material_key, kMaterialCorrectionHistorySize)];
+            tables.material_correction[correction_slot(material_key, kMaterialCorrectionHistorySize)];
         const std::int32_t king =
-            king_correction_[correction_slot(king_key, kKingCorrectionHistorySize)];
+            tables.king_correction[correction_slot(king_key, kKingCorrectionHistorySize)];
         const std::int32_t minor =
-            minor_correction_[correction_slot(minor_key, kMinorCorrectionHistorySize)];
+            tables.minor_correction[correction_slot(minor_key, kMinorCorrectionHistorySize)];
         const std::int32_t major =
-            major_correction_[correction_slot(major_key, kMajorCorrectionHistorySize)];
+            tables.major_correction[correction_slot(major_key, kMajorCorrectionHistorySize)];
         const std::int32_t continuation = has_continuation ?
-            static_cast<std::int32_t>(continuation_correction_[correction_slot(
+            static_cast<std::int32_t>(tables.continuation_correction[correction_slot(
                 continuation_key, kContinuationCorrectionHistorySize)]) :
             0;
         const std::int32_t total =
@@ -342,6 +344,22 @@ private:
     void record_scaled_multi_ply_continuation(
         Move move, const SearchHistoryContext& context, int base_bonus) noexcept;
 
+    struct LargeTables {
+        // Leave the arrays uninitialized on allocation; SearchOrderingTables()
+        // immediately fills history priors and zeroes the contiguous
+        // correction-history tail without double-zeroing.
+        LargeTables() noexcept {}
+        std::array<std::int16_t, kSearchContinuationPlies * kContinuationHistorySize>
+            multi_ply_continuation_history;
+        std::array<std::int16_t, kPawnHistorySize> pawn_history;
+        std::array<std::int16_t, kPawnCorrectionHistorySize> pawn_correction;
+        std::array<std::int16_t, kMaterialCorrectionHistorySize> material_correction;
+        std::array<std::int16_t, kKingCorrectionHistorySize> king_correction;
+        std::array<std::int16_t, kMinorCorrectionHistorySize> minor_correction;
+        std::array<std::int16_t, kMajorCorrectionHistorySize> major_correction;
+        std::array<std::int16_t, kContinuationCorrectionHistorySize> continuation_correction;
+    };
+
     std::array<std::array<Move, 2>, kMaximumKillerPly> killers_{};
     std::array<std::array<std::int16_t, kMoveTableSize>, 2> history_{};
     std::array<std::array<Move, kMoveTableSize>, 2> counter_moves_{};
@@ -350,14 +368,7 @@ private:
     std::array<std::int16_t, kPieceToHistorySize> piece_to_history_{};
     std::array<std::int16_t, kLowPlyHistoryPlies * kMoveTableSize> low_ply_history_{};
     std::array<std::int16_t, kContinuationHistorySize> continuation_history_{};
-    std::unique_ptr<std::int16_t[]> multi_ply_continuation_history_;
-    std::unique_ptr<std::int16_t[]> pawn_history_;
-    std::unique_ptr<std::int16_t[]> pawn_correction_;
-    std::unique_ptr<std::int16_t[]> material_correction_;
-    std::unique_ptr<std::int16_t[]> king_correction_;
-    std::unique_ptr<std::int16_t[]> minor_correction_;
-    std::unique_ptr<std::int16_t[]> major_correction_;
-    std::unique_ptr<std::int16_t[]> continuation_correction_;
+    std::unique_ptr<LargeTables> large_;
 };
 
 } // namespace koi::detail

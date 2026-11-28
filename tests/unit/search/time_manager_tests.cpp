@@ -421,6 +421,22 @@ void test_single_legal_move_paces_fast_in_clock_mode() {
     *fake_now += stats.optimum_budget + milliseconds{1};
     require(manager.should_stop_after_iteration(),
             "a forced single-reply position must stop once the reduced optimum budget is reached");
+
+    TimeManager long_single(clock_limits(milliseconds{600'000}, milliseconds{2'000}),
+                            koi::Color::white, 100, kMoveOverheadMs, 100, single_reply);
+    require(long_single.diagnostics().optimum_budget <= milliseconds{150},
+            "single-legal-move optimum budget must cap at 150 ms even on long clocks");
+
+    TimeManager long_mate(clock_limits(milliseconds{600'000}, milliseconds{2'000}),
+                          koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+    for (int depth = 4; depth <= 5; ++depth) {
+        SearchIterationObservation mate_obs;
+        mate_obs.depth = depth;
+        mate_obs.score_cp = 99'500;
+        long_mate.observe_iteration(mate_obs);
+    }
+    require(long_mate.diagnostics().optimum_budget <= milliseconds{250},
+            "twice-confirmed forced mate must cap at 250 ms even on long clocks");
 }
 
 void test_should_start_next_iteration_avoids_overflow_and_reconfigure_races() {
