@@ -1900,7 +1900,7 @@ public:
     [[nodiscard]] Position::NodeEntrySnapshot node_entry_snapshot() const noexcept {
         Position::NodeEntrySnapshot out;
         out.position_key = state.key;
-        out.pawn_key = state.pawn_key;
+        out.pawn_key = pawn_key();
         out.piece_bitboards = &state.piece_bitboards;
         out.halfmove_clock = state.halfmove;
         out.side_to_move = state.side;
