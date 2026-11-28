@@ -14,7 +14,6 @@ namespace {
 
 using detail::accumulate_hidden_sparse_16;
 using detail::accumulate_hidden_sparse_scalar;
-using detail::apply_delta_16;
 using detail::avx2_available;
 using detail::compute_int16_accumulator_safe;
 using detail::dispatch_finish_inference_v9_t;
@@ -762,54 +761,46 @@ void NnueWorker::refresh_finny_bucket_v4_impl(
     for (std::size_t r = pair_idx; r < removed_count; ++r) {
         const std::int16_t* const w =
             w_base + static_cast<std::size_t>(removed[r]) * count;
-        if constexpr (std::is_same_v<SumT, std::int16_t>) {
-            apply_delta_16(cached_sums, w, count, -1);
-        } else {
 #if KOI_NNUE_COMPILED_AVX2
-            if (avx2_available() && count % 16U == 0U) {
-                apply_delta_avx2(cached_sums, w, count, -1);
-                continue;
-            }
+        if (avx2_available() && count % 16U == 0U) {
+            apply_delta_avx2(cached_sums, w, count, -1);
+            continue;
+        }
 #endif
-            if (overflow_safe_) {
-                for (std::size_t hidden = 0; hidden < count; ++hidden) {
-                    cached_sums[hidden] -= w[hidden];
-                }
-            } else {
-                for (std::size_t hidden = 0; hidden < count; ++hidden) {
-                    const std::int64_t updated =
-                        static_cast<std::int64_t>(cached_sums[hidden]) - w[hidden];
-                    cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
-                        updated, std::numeric_limits<std::int32_t>::min(),
-                        std::numeric_limits<std::int32_t>::max()));
-                }
+        if (overflow_safe_) {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                cached_sums[hidden] -= w[hidden];
+            }
+        } else {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                const std::int64_t updated =
+                    static_cast<std::int64_t>(cached_sums[hidden]) - w[hidden];
+                cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    updated, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
             }
         }
     }
     for (std::size_t a = pair_idx; a < added_count; ++a) {
         const std::int16_t* const w =
             w_base + static_cast<std::size_t>(added[a]) * count;
-        if constexpr (std::is_same_v<SumT, std::int16_t>) {
-            apply_delta_16(cached_sums, w, count, 1);
-        } else {
 #if KOI_NNUE_COMPILED_AVX2
-            if (avx2_available() && count % 16U == 0U) {
-                apply_delta_avx2(cached_sums, w, count, 1);
-                continue;
-            }
+        if (avx2_available() && count % 16U == 0U) {
+            apply_delta_avx2(cached_sums, w, count, 1);
+            continue;
+        }
 #endif
-            if (overflow_safe_) {
-                for (std::size_t hidden = 0; hidden < count; ++hidden) {
-                    cached_sums[hidden] += w[hidden];
-                }
-            } else {
-                for (std::size_t hidden = 0; hidden < count; ++hidden) {
-                    const std::int64_t updated =
-                        static_cast<std::int64_t>(cached_sums[hidden]) + w[hidden];
-                    cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
-                        updated, std::numeric_limits<std::int32_t>::min(),
-                        std::numeric_limits<std::int32_t>::max()));
-                }
+        if (overflow_safe_) {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                cached_sums[hidden] += w[hidden];
+            }
+        } else {
+            for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                const std::int64_t updated =
+                    static_cast<std::int64_t>(cached_sums[hidden]) + w[hidden];
+                cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                    updated, std::numeric_limits<std::int32_t>::min(),
+                    std::numeric_limits<std::int32_t>::max()));
             }
         }
     }

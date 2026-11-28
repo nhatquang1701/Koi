@@ -1588,6 +1588,49 @@ void test_emergency_calm_depth4_pre_iteration_lookahead() {
             "healthy clock at depth 4 and 60% optimum_budget must retain depth>=5 lookahead gate");
 }
 
+void test_emergency_depth4_branching_factor_updates_lookahead() {
+    auto steep_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto flat_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits emg_clock = clock_limits(milliseconds{2'000}, milliseconds{1'000});
+    TimeManager steep(emg_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                      warm_context(), [steep_now] { return *steep_now; });
+    TimeManager flat(emg_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                     warm_context(), [flat_now] { return *flat_now; });
+
+    const auto d4 = std::max(milliseconds{12}, (steep.diagnostics().soft_budget * 30) / 100);
+    const auto d3_steep = std::max(milliseconds{4}, d4 / 3);
+    const auto d3_flat = d4;
+    steep.observe_iteration({3, 20, false, false, false, 10'000, 5'000, d3_steep});
+    steep.observe_iteration({4, 20, false, false, false, 10'000, 5'000, d4});
+    flat.observe_iteration({3, 20, false, false, false, 10'000, 5'000, d3_flat});
+    flat.observe_iteration({4, 20, false, false, false, 10'000, 5'000, d4});
+
+    const auto steep_opt = steep.diagnostics().optimum_budget;
+    const auto flat_opt = flat.diagnostics().optimum_budget;
+    *steep_now += (steep_opt * 62) / 100;
+    *flat_now += (flat_opt * 62) / 100;
+    require(steep.diagnostics().emergency_pacing &&
+                !steep.should_stop_after_iteration() &&
+                !steep.should_start_next_iteration(milliseconds{1}),
+            "emergency depth-4 branching EWMA must feed lookahead when d3->d4 grows steeply");
+    require(flat.diagnostics().emergency_pacing &&
+                flat.should_start_next_iteration(milliseconds{1}),
+            "emergency depth-4 flat d3->d4 timing must keep branching low enough to continue");
+
+    auto healthy_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager healthy(clock_limits(milliseconds{60'000}, milliseconds{1'000}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [healthy_now] { return *healthy_now; });
+    const auto healthy_d4 =
+        std::max(milliseconds{30}, (healthy.diagnostics().soft_budget * 30) / 100);
+    healthy.observe_iteration({3, 20, false, false, false, 10'000, 5'000, healthy_d4 / 3});
+    healthy.observe_iteration({4, 20, false, false, false, 10'000, 5'000, healthy_d4});
+    *healthy_now += (healthy.diagnostics().optimum_budget * 62) / 100;
+    require(!healthy.diagnostics().emergency_pacing &&
+                healthy.should_start_next_iteration(milliseconds{1}),
+            "healthy clock at depth 4 must retain depth>=5 branching-factor update gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1662,6 +1705,8 @@ int main(int argc, char** argv) {
          test_emergency_calm_depth5_70pct_cutoff},
         {"emergency calm depth 4 lookahead",
          test_emergency_calm_depth4_pre_iteration_lookahead},
+        {"emergency depth 4 branching lookahead",
+         test_emergency_depth4_branching_factor_updates_lookahead},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

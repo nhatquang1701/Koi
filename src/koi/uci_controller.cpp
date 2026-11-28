@@ -2121,17 +2121,30 @@ void UciController::start_search(GameState root, SearchLimits limits, bool skip_
             debug_event("invalid PV prefix suppressed generation " + std::to_string(generation));
         }
         if (safe_info.multipv == 1 && safe_info.pv.size() >= 2) {
-            GameState after_best = search_root;
-            if (after_best.make_move(safe_info.pv[0]) && after_best.is_legal(safe_info.pv[1])) {
-                std::lock_guard lock(output_mutex_);
-                if (generation == generation_) {
-                    principal_variation_best_move_ = safe_info.pv[0];
-                    principal_variation_ponder_move_ = safe_info.pv[1];
-                    if (is_ponder_search && !ponder_expected_move_.has_value()) {
-                        ponder_root_ = std::move(after_best);
-                        ponder_predicted_move_ = safe_info.pv[0];
-                        ponder_expected_move_ = safe_info.pv[1];
+            std::optional<GameState> ponder_after_best;
+            if (is_ponder_search) {
+                bool need_ponder_root = false;
+                {
+                    std::lock_guard lock(output_mutex_);
+                    need_ponder_root =
+                        generation == generation_ && !ponder_expected_move_.has_value();
+                }
+                if (need_ponder_root) {
+                    GameState after_best = search_root;
+                    if (after_best.make_move(safe_info.pv[0])) {
+                        ponder_after_best = std::move(after_best);
                     }
+                }
+            }
+            std::lock_guard lock(output_mutex_);
+            if (generation == generation_) {
+                principal_variation_best_move_ = safe_info.pv[0];
+                principal_variation_ponder_move_ = safe_info.pv[1];
+                if (is_ponder_search && !ponder_expected_move_.has_value() &&
+                    ponder_after_best.has_value()) {
+                    ponder_root_ = std::move(*ponder_after_best);
+                    ponder_predicted_move_ = safe_info.pv[0];
+                    ponder_expected_move_ = safe_info.pv[1];
                 }
             }
         }

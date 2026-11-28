@@ -641,6 +641,58 @@ void test_detached_state_make_move_uses_native_rules() {
     require(state.unmake_move(), "the detached move must unmake");
     require(state.fen() == before, "unmaking on a detached state must restore the FEN");
 }
+
+void test_unpinned_knight_quick_legality_and_slider_between_mask_legality() {
+    {
+        // Ka1 has no king/pawn moves (c2 queen covers a2/b1/b2; a2 pawn blocks a2),
+        // and the only legal moves belong to the unpinned knight on c1.
+        const GameState knight_only = require_state("k7/8/8/8/8/8/p1q5/K1N5 w - - 0 1");
+        const koi::Position knight_pos(knight_only.fen());
+        require(knight_pos.node_entry_snapshot().has_quick_legal_move &&
+                    knight_pos.has_legal_move() && knight_only.has_legal_move(),
+                "unpinned knight must trigger loop-free has_quick_legal_move");
+    }
+    {
+        // Pinned knight on e2 cannot step sideways; Ke1 has legal escapes so
+        // has_legal_move() is true, while has_quick_legal_move remains false.
+        const GameState pinned_knight = require_state("4k3/8/8/8/8/4r3/4N3/4K3 w - - 0 1");
+        const koi::Position pinned_pos(pinned_knight.fen());
+        require(!pinned_pos.node_entry_snapshot().has_quick_legal_move &&
+                    pinned_pos.has_legal_move() && pinned_knight.has_legal_move(),
+                "pinned knight must not satisfy has_quick_unpinned_legal_move");
+    }
+
+    const std::array<std::string_view, 3> slider_fens{{
+        "4k3/8/8/3p1P2/8/1B3P2/8/4K3 w - - 0 1",
+        "4k3/8/3r4/8/1p1R2N1/8/3P4/4K3 w - - 0 1",
+        "4k3/8/3p4/4n3/1P1Q1p2/2B5/3P4/4K3 w - - 0 1",
+    }};
+    const std::array<std::string_view, 12> candidate_ucis{{
+        "b3a2", "b3c4", "b3d5", "b3e6", "b3f3", "b3f7",
+        "d4b4", "d4d6", "d4d7", "d4g4",
+        "d4b2", "d4f4",
+    }};
+    for (const std::string_view fen : slider_fens) {
+        const GameState state = require_state(fen);
+        const koi::Position pos(state.fen());
+        std::array<Move, koi::kMaximumLegalMoves> legal_buf{};
+        const std::size_t legal_count = state.legal_moves_into(legal_buf);
+        const auto in_legal_list = [&](const Move& m) {
+            return std::any_of(legal_buf.begin(), legal_buf.begin() + legal_count,
+                               [&](const Move& item) { return item == m; });
+        };
+        for (std::size_t i = 0; i < legal_count; ++i) {
+            require(state.is_legal(legal_buf[i]) && pos.is_legal(legal_buf[i]),
+                    "every generated slider legal move must pass is_legal");
+        }
+        for (const std::string_view uci : candidate_ucis) {
+            const Move m = require_move(uci);
+            const bool expected = in_legal_list(m);
+            require(state.is_legal(m) == expected && pos.is_legal(m) == expected,
+                    "between_mask slider is_legal must match exhaustive legal generation");
+        }
+    }
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -668,6 +720,8 @@ int main(int argc, char** argv) {
         {"detached state make move", test_detached_state_make_move_uses_native_rules},
         {"slider attacks match the ray reference", test_slider_attack_tables_match_the_ray_reference},
         {"bounded legal count and check probe", test_bounded_legal_move_count_and_checking_move_probe},
+        {"unpinned knight quick legality and slider between mask",
+         test_unpinned_knight_quick_legality_and_slider_between_mask_legality},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

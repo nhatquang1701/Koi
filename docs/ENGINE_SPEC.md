@@ -735,10 +735,11 @@ the search but cannot push it past the cap.
 - `should_start_next_iteration`: honors the shared `clock_early_stop_reached`
   rules (including `!last_aspiration_researched`), plus adaptive EWMA
   branching-factor lookahead (`depth >= 5`, or `depth >= 4` under emergency
-  pacing, `1.3×..3.2×`, starting at `1.5×`, `4 ms` sample
-  floor in emergency pacing vs `10 ms` otherwise, used uniformly across both
-  serial and parallel iterative-deepening drivers to avoid doomed partial
-  iterations past `1.2×` soft target), and a doomed hard-ply guard once past
+  pacing for both branching-factor updates and lookahead gating, `1.3×..3.2×`,
+  starting at `1.5×`, `4 ms` sample floor in emergency pacing vs `10 ms`
+  otherwise, used uniformly across both serial and parallel iterative-deepening
+  drivers to avoid doomed partial iterations past `1.2×` soft target), and a
+  doomed hard-ply guard once past
   `optimum_budget` (`depth >= 6`, or `depth >= 5` in emergency pacing,
   `score_drop < 60` cp, `5 ms` sample floor in
   emergency pacing vs `20 ms` otherwise, predicted next ply exceeding

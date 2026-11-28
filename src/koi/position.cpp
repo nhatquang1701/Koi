@@ -1491,38 +1491,33 @@ public:
         const std::uint64_t unpinned_diag =
             (state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::bishop)] |
              state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)]) & ~pinned;
-        return ((((unpinned_diag & ~kFileHMask) << 9) |
-                 ((unpinned_diag & ~kFileAMask) << 7) |
-                 ((unpinned_diag & ~kFileHMask) >> 7) |
-                 ((unpinned_diag & ~kFileAMask) >> 9)) & valid_targets) != 0;
+        if ((((unpinned_diag & ~kFileHMask) << 9) |
+             ((unpinned_diag & ~kFileAMask) << 7) |
+             ((unpinned_diag & ~kFileHMask) >> 7) |
+             ((unpinned_diag & ~kFileAMask) >> 9)) & valid_targets) != 0) {
+            return true;
+        }
+
+        constexpr std::uint64_t kFileABMask = 0x0303030303030303ULL;
+        constexpr std::uint64_t kFileGHMask = 0xC0C0C0C0C0C0C0C0ULL;
+        const std::uint64_t unpinned_knights =
+            state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::knight)] & ~pinned;
+        return ((((unpinned_knights & ~kFileHMask) << 17) |
+                 ((unpinned_knights & ~kFileAMask) << 15) |
+                 ((unpinned_knights & ~kFileGHMask) << 10) |
+                 ((unpinned_knights & ~kFileABMask) << 6) |
+                 ((unpinned_knights & ~kFileAMask) >> 17) |
+                 ((unpinned_knights & ~kFileHMask) >> 15) |
+                 ((unpinned_knights & ~kFileABMask) >> 10) |
+                 ((unpinned_knights & ~kFileGHMask) >> 6)) & valid_targets) != 0;
     }
 
     // Stops at the first legal candidate instead of materializing the whole
     // list.  Quiescence only needs to know whether a legal reply exists before
     // deciding that a position is terminal.
     [[nodiscard]] bool has_legal_move() {
-        const Color side = state.side;
-        const std::size_t side_index = side == Color::white ? 0U : 1U;
-        const std::size_t enemy_index = 1U - side_index;
-        if (state.checkers[side_index] == 0 && king_square(state, side) >= 0) {
-            if (has_quick_unpinned_legal_move()) {
-                return true;
-            }
-            const std::uint64_t pinned = state.pinned[side_index];
-            const std::uint64_t friendly = state.occupancy[side_index];
-            const std::uint64_t enemy_king_bb =
-                state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::king)];
-            const std::uint64_t valid_targets = ~(friendly | enemy_king_bb);
-
-            std::uint64_t unpinned_knights =
-                state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::knight)] & ~pinned;
-            while (unpinned_knights != 0) {
-                const int from = static_cast<int>(std::countr_zero(unpinned_knights));
-                if ((detail::knight_attacks(from) & valid_targets) != 0) {
-                    return true;
-                }
-                unpinned_knights &= unpinned_knights - 1;
-            }
+        if (has_quick_unpinned_legal_move()) {
+            return true;
         }
         FirstLegalMoveSink sink;
         generate_pseudo(sink);
@@ -1615,21 +1610,17 @@ public:
                     mut->resolve_move_legality(move, state.side);
             case PieceType::bishop:
                 return (detail::bishop_pseudo_attacks(from) & bit(to)) != 0 &&
-                    (detail::bishop_attacks(from, state.occupied) & bit(to)) != 0 &&
+                    (detail::between_mask(from, to) & state.occupied) == 0 &&
                     mut->resolve_move_legality(move, state.side);
             case PieceType::rook:
                 return (detail::rook_pseudo_attacks(from) & bit(to)) != 0 &&
-                    (detail::rook_attacks(from, state.occupied) & bit(to)) != 0 &&
+                    (detail::between_mask(from, to) & state.occupied) == 0 &&
                     mut->resolve_move_legality(move, state.side);
-            case PieceType::queen: {
-                const std::uint64_t to_bit = bit(to);
-                const bool reaches =
-                    ((detail::bishop_pseudo_attacks(from) & to_bit) != 0 &&
-                     (detail::bishop_attacks(from, state.occupied) & to_bit) != 0) ||
-                    ((detail::rook_pseudo_attacks(from) & to_bit) != 0 &&
-                     (detail::rook_attacks(from, state.occupied) & to_bit) != 0);
-                return reaches && mut->resolve_move_legality(move, state.side);
-            }
+            case PieceType::queen:
+                return ((detail::bishop_pseudo_attacks(from) |
+                         detail::rook_pseudo_attacks(from)) & bit(to)) != 0 &&
+                    (detail::between_mask(from, to) & state.occupied) == 0 &&
+                    mut->resolve_move_legality(move, state.side);
             case PieceType::king: {
                 if ((detail::king_attacks(from) & bit(to)) != 0) {
                     return mut->king_move_is_legal(move);

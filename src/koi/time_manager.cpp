@@ -555,7 +555,8 @@ void TimeManager::observe_iteration(const SearchIterationObservation& observatio
         const auto min_branch_ms = emergency_pacing_
             ? std::chrono::milliseconds{4}
             : std::chrono::milliseconds{10};
-        if (observation.depth >= 5 &&
+        const int min_branch_depth = emergency_pacing_ ? 4 : 5;
+        if (observation.depth >= min_branch_depth &&
             last_iteration_elapsed_ >= min_branch_ms &&
             observation.iteration_elapsed >= min_branch_ms) {
             const std::uint64_t prev_ms =
