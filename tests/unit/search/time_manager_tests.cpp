@@ -1699,6 +1699,49 @@ void test_emergency_depth6_dead_drawn_endgame_speedup() {
             "healthy clock dead-drawn endgame at depth 6 must retain depth>=10/stability>=4 gate");
 }
 
+void test_emergency_depth6_ponderhit_doomed_ply_bank() {
+    auto now_over = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits emg_ponder = clock_limits(milliseconds{2'000}, milliseconds{0});
+    emg_ponder.ponder = true;
+    const SearchLimits emg_live = clock_limits(milliseconds{2'000}, milliseconds{0});
+    TimeManager emg_over(emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                         warm_context(), [now_over] { return *now_over; });
+    emg_over.observe_iteration({5, 25, false, false, false, 10'000, 5'000, milliseconds{120}});
+    emg_over.observe_iteration({6, 25, false, false, false, 10'000, 5'000, milliseconds{240}});
+    emg_over.reconfigure(emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                         warm_context(), false, *now_over, 0);
+    require(emg_over.diagnostics().emergency_pacing &&
+                emg_over.should_stop_after_iteration() &&
+                !emg_over.should_start_next_iteration(milliseconds{1}),
+            "emergency depth-6 ponderhit whose next ply exceeds 2x hard_budget must bank immediately");
+
+    auto now_drop = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg_drop(emg_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                         warm_context(), [now_drop] { return *now_drop; });
+    emg_drop.observe_iteration({5, 60, false, false, false, 10'000, 5'000, milliseconds{120}});
+    emg_drop.observe_iteration({6, 25, false, false, false, 10'000, 5'000, milliseconds{240}});
+    emg_drop.reconfigure(emg_live, koi::Color::white, 100, kMoveOverheadMs, 100,
+                         warm_context(), false, *now_drop, 0);
+    require(!emg_drop.should_stop_after_iteration() &&
+                emg_drop.should_start_next_iteration(milliseconds{1}),
+            "emergency ponderhit with >15 cp score drop must not exit early at depth 6");
+
+    auto now_healthy = std::make_shared<Clock::time_point>(Clock::now());
+    SearchLimits healthy_ponder = clock_limits(milliseconds{20'000}, milliseconds{0});
+    healthy_ponder.ponder = true;
+    TimeManager healthy(healthy_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), [now_healthy] { return *now_healthy; });
+    healthy.observe_iteration({5, 25, false, false, false, 10'000, 5'000, milliseconds{800}});
+    healthy.observe_iteration({6, 25, false, false, false, 10'000, 5'000, milliseconds{3'200}});
+    healthy.reconfigure(clock_limits(milliseconds{20'000}, milliseconds{0}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), false, *now_healthy, 0);
+    require(!healthy.diagnostics().emergency_pacing &&
+                !healthy.should_stop_after_iteration() &&
+                healthy.should_start_next_iteration(milliseconds{1}),
+            "healthy clock ponderhit at depth 6 must retain depth>=8/stability>=3 doomed bank threshold");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1779,6 +1822,8 @@ int main(int argc, char** argv) {
          test_emergency_depth5_asymmetric_conversion_speedup},
         {"emergency depth 6 dead drawn endgame speedup",
          test_emergency_depth6_dead_drawn_endgame_speedup},
+        {"emergency depth 6 ponderhit doomed ply bank",
+         test_emergency_depth6_ponderhit_doomed_ply_bank},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

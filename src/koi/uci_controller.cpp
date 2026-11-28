@@ -1936,6 +1936,7 @@ void UciController::handle_ponderhit() {
             koi::RootTimingContext ponder_ctx;
             ponder_ctx.game_phase = position_.game_phase();
             ponder_ctx.fullmove_number = position_.fullmove_number();
+            ponder_ctx.in_check = position_.in_check();
             koi::TimeManager converted_timing(
                 converted_for_timing, position_.side_to_move(), kFixedSpeedPercent,
                 move_overhead_ms_, slow_mover_percent_,

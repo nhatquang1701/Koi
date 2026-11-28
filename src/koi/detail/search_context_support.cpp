@@ -101,6 +101,28 @@ namespace {
          metadata.moving_piece == PieceType::bishop);
 }
 
+[[nodiscard]] std::uint64_t compact_feature_attacks(
+    const int square, const PieceType type, const Color color,
+    const std::uint64_t occupied) noexcept {
+    switch (type) {
+    case PieceType::pawn:
+        return pawn_attacks(square, color == Color::white);
+    case PieceType::knight:
+        return knight_attacks(square);
+    case PieceType::king:
+        return king_attacks(square);
+    case PieceType::bishop:
+        return bishop_attacks(square, occupied);
+    case PieceType::rook:
+        return rook_attacks(square, occupied);
+    case PieceType::queen:
+        return queen_attacks(square, occupied);
+    case PieceType::none:
+        return 0;
+    }
+    return 0;
+}
+
 } // namespace
 
 int piece_value(const PieceType type) noexcept {
@@ -134,31 +156,10 @@ bool quiet_move_is_forcing(const PositionFeatures& before,
         // clearance the board walk applies.  Intersecting with `colors[enemy]`
         // keeps only enemy-occupied squares, and ascending set-bit iteration
         // (countr_zero) visits them in the same order as the 64-square scan.
-        std::uint64_t attacks = 0;
         const Piece moved = features.board[destination];
-        switch (moved.type) {
-        case PieceType::pawn:
-            attacks = pawn_attacks(destination, moved.color == Color::white);
-            break;
-        case PieceType::knight:
-            attacks = knight_attacks(destination);
-            break;
-        case PieceType::king:
-            attacks = king_attacks(destination);
-            break;
-        case PieceType::bishop:
-            attacks = bishop_attacks(destination, features.occupied);
-            break;
-        case PieceType::rook:
-            attacks = rook_attacks(destination, features.occupied);
-            break;
-        case PieceType::queen:
-            attacks = queen_attacks(destination, features.occupied);
-            break;
-        case PieceType::none:
-            break;
-        }
-        attacks &= features.colors[enemy];
+        std::uint64_t attacks =
+            compact_feature_attacks(destination, moved.type, moved.color, features.occupied) &
+            features.colors[enemy];
         while (attacks != 0) {
             const std::uint8_t square =
                 static_cast<std::uint8_t>(std::countr_zero(attacks));
@@ -263,31 +264,6 @@ constexpr std::array<std::array<std::uint64_t, 64>, 2> kPassedPawnMask =
     return king_attacks(square) | (std::uint64_t{1} << square);
 }
 
-// Mirror of a single native_feature_attacks() lookup (game_state.cpp): the
-// same precomputed attack tables with the same first-blocker occupancy
-// semantics for sliders.
-[[nodiscard]] std::uint64_t compact_feature_attacks(
-    const int square, const PieceType type, const Color color,
-    const std::uint64_t occupied) noexcept {
-    switch (type) {
-    case PieceType::pawn:
-        return pawn_attacks(square, color == Color::white);
-    case PieceType::knight:
-        return knight_attacks(square);
-    case PieceType::king:
-        return king_attacks(square);
-    case PieceType::bishop:
-        return bishop_attacks(square, occupied);
-    case PieceType::rook:
-        return rook_attacks(square, occupied);
-    case PieceType::queen:
-        return queen_attacks(square, occupied);
-    case PieceType::none:
-        return 0;
-    }
-    return 0;
-}
-
 } // namespace
 
 void build_quiet_forcing_after_view(const GameState& after, const Color mover,
@@ -329,16 +305,23 @@ void build_quiet_forcing_after_view(const GameState& after, const Color mover,
 
     constexpr std::uint64_t kFileA = 0x0101010101010101ULL;
     constexpr std::uint64_t kFileH = 0x8080808080808080ULL;
+    constexpr std::uint64_t kFileAB = 0x0303030303030303ULL;
+    constexpr std::uint64_t kFileGH = 0xC0C0C0C0C0C0C0C0ULL;
     const std::uint64_t pawns = mover_bitboards[static_cast<std::size_t>(PieceType::pawn)];
     std::uint64_t own_attacks = mover == Color::white
         ? (((pawns & ~kFileA) << 7U) | ((pawns & ~kFileH) << 9U))
         : (((pawns & ~kFileH) >> 7U) | ((pawns & ~kFileA) >> 9U));
-    std::uint64_t knights = mover_bitboards[static_cast<std::size_t>(PieceType::knight)];
-    while (knights != 0) {
-        const int square = static_cast<int>(std::countr_zero(knights));
-        knights &= knights - 1;
-        own_attacks |= knight_attacks(square);
-    }
+    const std::uint64_t knights =
+        mover_bitboards[static_cast<std::size_t>(PieceType::knight)];
+    own_attacks |=
+        ((knights & ~kFileH) << 17U) |
+        ((knights & ~kFileA) << 15U) |
+        ((knights & ~kFileGH) << 10U) |
+        ((knights & ~kFileAB) << 6U) |
+        ((knights & ~kFileA) >> 17U) |
+        ((knights & ~kFileH) >> 15U) |
+        ((knights & ~kFileAB) >> 10U) |
+        ((knights & ~kFileGH) >> 6U);
     const std::uint64_t queens = mover_bitboards[static_cast<std::size_t>(PieceType::queen)];
     std::uint64_t diag_sliders =
         mover_bitboards[static_cast<std::size_t>(PieceType::bishop)] | queens;
@@ -412,29 +395,8 @@ bool quiet_move_is_forcing(const PositionFeatures& before, const GameState& afte
     const Piece moved = metadata.moving_piece != PieceType::none
         ? Piece{metadata.moving_piece, before.side_to_move}
         : after_state.piece_at(Square::from_index(destination));
-    std::uint64_t attacks = 0;
-    switch (moved.type) {
-    case PieceType::pawn:
-        attacks = pawn_attacks(destination, moved.color == Color::white);
-        break;
-    case PieceType::knight:
-        attacks = knight_attacks(destination);
-        break;
-    case PieceType::king:
-        attacks = king_attacks(destination);
-        break;
-    case PieceType::bishop:
-        attacks = bishop_attacks(destination, after_view.occupied);
-        break;
-    case PieceType::rook:
-        attacks = rook_attacks(destination, after_view.occupied);
-        break;
-    case PieceType::queen:
-        attacks = queen_attacks(destination, after_view.occupied);
-        break;
-    case PieceType::none:
-        break;
-    }
+    const std::uint64_t attacks =
+        compact_feature_attacks(destination, moved.type, moved.color, after_view.occupied);
     constexpr std::uint64_t kCentralForkPawnMask = 0x0000003C3C000000ULL;
     const std::uint64_t attacked_non_king = attacks & after_view.enemy_non_king;
     if ((attacked_non_king &

@@ -64,12 +64,11 @@ struct AtomicSlot {
 static_assert(sizeof(AtomicSlot) == sizeof(TranspositionEntry),
               "AtomicSlot must preserve TranspositionEntry cache footprint");
 
-[[nodiscard]] bool slot_occupied(const std::uint64_t word2) noexcept {
-    return ((word2 >> 48U) & 0xFFU) != 0U;
-}
+constexpr std::uint64_t kSlotOccupiedEpochMask = 0x00FF00FF00000000ULL;
 
-[[nodiscard]] std::uint8_t slot_epoch(const std::uint64_t word2) noexcept {
-    return static_cast<std::uint8_t>((word2 >> 32U) & 0xFFU);
+[[nodiscard]] constexpr std::uint64_t expected_slot_occupied_epoch(
+    const std::uint8_t epoch) noexcept {
+    return (std::uint64_t{1} << 48U) | (static_cast<std::uint64_t>(epoch) << 32U);
 }
 
 [[nodiscard]] std::uint64_t pack_word1(const int stored_score, const Move best_move) noexcept {
@@ -597,20 +596,6 @@ HashResizeResult TranspositionTable::resize_locked(std::size_t megabytes,
             return result;
         }
         return result;
-    } catch (const std::bad_alloc&) {
-        result.effective_mb = current == nullptr ? 0 : current->size_mb;
-        result.allocated_bytes = current == nullptr ? 0 : current->allocated_bytes;
-        result.segment_count = current == nullptr ? 0 : current->segments.size();
-        result.status = current == nullptr ? HashResizeStatus::disabled : HashResizeStatus::unchanged;
-        result.reason = HashResizeReason::allocation_failed;
-        return result;
-    } catch (const std::length_error&) {
-        result.effective_mb = current == nullptr ? 0 : current->size_mb;
-        result.allocated_bytes = current == nullptr ? 0 : current->allocated_bytes;
-        result.segment_count = current == nullptr ? 0 : current->segments.size();
-        result.status = current == nullptr ? HashResizeStatus::disabled : HashResizeStatus::unchanged;
-        result.reason = HashResizeReason::allocation_failed;
-        return result;
     } catch (...) {
         result.effective_mb = current == nullptr ? 0 : current->size_mb;
         result.allocated_bytes = current == nullptr ? 0 : current->allocated_bytes;
@@ -637,6 +622,7 @@ std::size_t TranspositionTable::hashfull_permill() const noexcept {
     }
 
     const std::uint8_t epoch = storage->clear_epoch.load(std::memory_order_relaxed);
+    const std::uint64_t expected_occupied_epoch = expected_slot_occupied_epoch(epoch);
     const std::size_t sample_slots = std::min(kHashfullSampleSlots, storage->total_slot_count);
     std::size_t used = 0;
     for (std::size_t sampled = 0; sampled < sample_slots; ++sampled) {
@@ -644,7 +630,7 @@ std::size_t TranspositionTable::hashfull_permill() const noexcept {
         // stride-and-stop loop never reached the tail of small tables.
         const std::size_t slot = sampled * storage->total_slot_count / sample_slots;
         const std::uint64_t w2 = storage->at(slot).word2.load(std::memory_order_relaxed);
-        if (slot_occupied(w2) && slot_epoch(w2) == epoch) {
+        if ((w2 & kSlotOccupiedEpochMask) == expected_occupied_epoch) {
             ++used;
         }
     }
@@ -707,6 +693,7 @@ void TranspositionTable::store_storage(Storage* storage, std::uint64_t key, int 
 
     const std::uint8_t gen = storage->generation.load(std::memory_order_relaxed);
     const std::uint8_t epoch = storage->clear_epoch.load(std::memory_order_relaxed);
+    const std::uint64_t expected_occupied_epoch = expected_slot_occupied_epoch(epoch);
     const std::size_t cluster = cluster_index(key, storage->cluster_count);
     AtomicSlot* const cluster_entries = storage->cluster_base(cluster);
 
@@ -721,7 +708,7 @@ void TranspositionTable::store_storage(Storage* storage, std::uint64_t key, int 
         const std::size_t offset = (offset_start + step) & (kClusterSize - 1U);
         const AtomicSlot& slot = cluster_entries[offset];
         const std::uint64_t w2 = slot.word2.load(std::memory_order_relaxed);
-        const bool valid = slot_occupied(w2) && slot_epoch(w2) == epoch;
+        const bool valid = (w2 & kSlotOccupiedEpochMask) == expected_occupied_epoch;
         if (!valid) {
             if (empty_offset == kClusterSize) {
                 empty_offset = offset;
@@ -836,7 +823,7 @@ std::optional<TranspositionEntry> TranspositionTable::probe_storage(
     }
 
     const std::uint8_t epoch = storage->clear_epoch.load(std::memory_order_relaxed);
-    const std::uint8_t gen = storage->generation.load(std::memory_order_relaxed);
+    const std::uint64_t expected_occupied_epoch = expected_slot_occupied_epoch(epoch);
     const std::size_t cluster = cluster_index(key, storage->cluster_count);
     const AtomicSlot* const cluster_entries = storage->cluster_base(cluster);
 
@@ -845,7 +832,7 @@ std::optional<TranspositionEntry> TranspositionTable::probe_storage(
         const std::size_t offset = (offset_start + step) & (kClusterSize - 1U);
         const AtomicSlot& slot = cluster_entries[offset];
         const std::uint64_t w2 = slot.word2.load(std::memory_order_relaxed);
-        if (!slot_occupied(w2) || slot_epoch(w2) != epoch) {
+        if ((w2 & kSlotOccupiedEpochMask) != expected_occupied_epoch) {
             continue;
         }
         const std::uint64_t tag = slot.key_tag.load(std::memory_order_relaxed);
@@ -853,6 +840,7 @@ std::optional<TranspositionEntry> TranspositionTable::probe_storage(
         if ((tag ^ w1 ^ w2) != key) {
             continue;
         }
+        const std::uint8_t gen = storage->generation.load(std::memory_order_relaxed);
         TranspositionEntry result;
         result.key = key;
         const int raw_score = static_cast<int>(

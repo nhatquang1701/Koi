@@ -867,10 +867,16 @@ bool TimeManager::clock_early_stop_reached(
         return true;
     }
     if (!hard_position_) {
+        const int min_ponderhit_doomed_depth = emergency_pacing_ ? 6 : 8;
+        const std::uint32_t min_ponderhit_doomed_stability = emergency_pacing_ ? 2U : 3U;
+        const auto min_ponderhit_doomed_sample = emergency_pacing_
+            ? std::chrono::milliseconds{5}
+            : std::chrono::milliseconds{20};
         if (ponderhit_converted_ &&
-            last_observed_depth_ >= 8 && best_move_stability_ >= 3 &&
+            last_observed_depth_ >= min_ponderhit_doomed_depth &&
+            best_move_stability_ >= min_ponderhit_doomed_stability &&
             score_drop_cp_ <= 15 && !last_aspiration_researched_ &&
-            last_iteration_elapsed_ >= std::chrono::milliseconds{20}) {
+            last_iteration_elapsed_ >= min_ponderhit_doomed_sample) {
             const auto predicted_next = scale_fraction(
                 last_iteration_elapsed_, branching_permille_, 1000);
             if (saturating_add(elapsed, predicted_next) > saturating_add(budget, budget)) {
