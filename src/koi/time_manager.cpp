@@ -765,11 +765,15 @@ void TimeManager::update_optimum_budget() noexcept {
         scale_permille = (scale_permille * 800ULL) / 1000ULL;
     }
 
-    const bool sudden_death_scramble =
+    const bool sudden_death_no_mtg =
         increment_clock_ <= std::chrono::milliseconds::zero() &&
-        remaining_clock_ <= std::chrono::milliseconds{10'000} &&
         !limits_.moves_to_go.has_value();
-    const std::uint64_t max_scale_permille = sudden_death_scramble ? 1350ULL : 1850ULL;
+    const bool subsecond_sudden_death =
+        sudden_death_no_mtg && remaining_clock_ <= std::chrono::milliseconds{1'000};
+    const bool sudden_death_scramble =
+        sudden_death_no_mtg && remaining_clock_ <= std::chrono::milliseconds{10'000};
+    const std::uint64_t max_scale_permille =
+        subsecond_sudden_death ? 1000ULL : (sudden_death_scramble ? 1350ULL : 1850ULL);
     scale_permille = std::clamp<std::uint64_t>(scale_permille, 380, max_scale_permille);
     const auto scaled = scale_fraction(timing_.soft_budget, scale_permille, 1000);
     const auto floor_budget = std::max(
@@ -783,6 +787,11 @@ std::chrono::milliseconds TimeManager::effective_soft_budget() const noexcept {
 }
 
 bool TimeManager::hard_extension_affordable() const noexcept {
+    if (clock_mode_ && increment_clock_ <= std::chrono::milliseconds::zero() &&
+        !limits_.moves_to_go.has_value() &&
+        remaining_clock_ <= std::chrono::milliseconds{1'000}) {
+        return false;
+    }
     if (timing_.overhead > std::chrono::milliseconds::zero() &&
         remaining_clock_ <= scale_fraction(timing_.overhead, 5, 1)) {
         return false;

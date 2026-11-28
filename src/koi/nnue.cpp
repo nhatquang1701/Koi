@@ -205,6 +205,11 @@ KOI_NNUE_NOINLINE int NnueWorker::evaluate_state_fallback_impl(
     }
     if constexpr (WriteAccumulator) {
         ensure_accumulator_storage();
+    } else if (!halfka_hm_v9_) {
+        // Only v9 (`dispatch_finish_inference_v9_t`) skips accumulator_ scratch
+        // writes across every ISA/scalar backend; v4/v5/v6 AVX2 and scalar
+        // kernels still use accumulator_.values and bottleneck_values as scratch.
+        ensure_accumulator_storage();
     }
     if (!storage_ready_) {
         ensure_incremental_storage();
@@ -358,6 +363,11 @@ int NnueWorker::evaluate_state_impl(const GameState& state, const Color perspect
         return evaluate_state_fallback_impl<WriteAccumulator>(state, perspective, path);
     }
     if constexpr (WriteAccumulator) {
+        ensure_accumulator_storage();
+    } else if (!halfka_hm_v9_) {
+        // Only v9 (`dispatch_finish_inference_v9_t`) skips accumulator_ scratch
+        // writes across every ISA/scalar backend; v4/v5/v6 AVX2 and scalar
+        // kernels still use accumulator_.values and bottleneck_values as scratch.
         ensure_accumulator_storage();
     }
     const Color mover = state.side_to_move();

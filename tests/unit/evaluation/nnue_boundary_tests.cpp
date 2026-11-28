@@ -2576,6 +2576,64 @@ void test_v9_incremental_and_hm_finny_parity() {
     }
 }
 
+void test_evaluate_score_only_all_versions_and_v9_lazy_accumulator() {
+    struct Variant {
+        const char* label;
+        koi::NnueNetwork net;
+        bool is_v9;
+    };
+
+    koi::NnueNetwork v9_int32 = koi::test::synthetic_network_v9(64U);
+    for (std::int32_t& bias : v9_int32.hidden_bias) {
+        bias += 50'000;
+    }
+
+    std::vector<Variant> variants;
+    variants.push_back({"v4 single", koi::test::synthetic_network_v4(), false});
+    variants.push_back({"v4 dual h34", make_v4_network_with_hidden(34U, 2U, 120, 400), false});
+    variants.push_back({"v5 threat", koi::test::synthetic_network_v5(), false});
+    variants.push_back({"v6 diff", koi::test::synthetic_network_v6(), false});
+    variants.push_back({"v9 int16", koi::test::synthetic_network_v9(64U), true});
+    variants.push_back({"v9 int32", std::move(v9_int32), true});
+
+    const std::array<koi::GameState, 2> states{{
+        koi::GameState::startpos(),
+        require_state("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1"),
+    }};
+
+    for (Variant& variant : variants) {
+        const auto weights = std::make_shared<const koi::NnueNetwork>(std::move(variant.net));
+        // Fresh workers without prior evaluate(): v4/v5/v6 scalar/AVX2 paths
+        // must still allocate accumulator scratch safely while v9 skips it.
+        koi::NnueWorker score_scalar(weights);
+        koi::NnueWorker score_auto(weights);
+        koi::NnueWorker score_avx2(weights);
+        koi::NnueWorker ref_worker(weights);
+
+        for (const koi::GameState& state : states) {
+            const koi::Color mover = state.side_to_move();
+            const int expected = ref_worker.evaluate(state, mover, koi::NnueInferencePath::scalar);
+            const int s_only = score_scalar.evaluate_score_only(
+                state, mover, koi::NnueInferencePath::scalar);
+            const int a_only = score_auto.evaluate_score_only(
+                state, mover, koi::NnueInferencePath::automatic);
+            const int x_only = score_avx2.evaluate_score_only(
+                state, mover, koi::NnueInferencePath::avx2_compatible);
+            require(s_only == expected && a_only == expected && x_only == expected,
+                    "evaluate_score_only must match evaluate() across v4/v5/v6/v9 scalar and SIMD paths");
+            if (variant.is_v9) {
+                require(score_scalar.accumulator().values.empty() &&
+                            score_scalar.accumulator().bottleneck_values.empty() &&
+                            score_auto.accumulator().values.empty() &&
+                            score_auto.accumulator().bottleneck_values.empty() &&
+                            score_avx2.accumulator().values.empty() &&
+                            score_avx2.accumulator().bottleneck_values.empty(),
+                        "v9 evaluate_score_only must keep worker accumulator buffers unallocated");
+            }
+        }
+    }
+}
+
 } // namespace
 
 // Test-only seam: serialize a deterministic v4 fixture network and print the
@@ -2932,6 +2990,8 @@ int main(int argc, char** argv) {
         {"NNUE v9 inference paths agree", test_v9_inference_paths_agree},
         {"NNUE v9 incremental and HM Finny parity",
          test_v9_incremental_and_hm_finny_parity},
+        {"NNUE score-only parity and v9 lazy accumulator",
+         test_evaluate_score_only_all_versions_and_v9_lazy_accumulator},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

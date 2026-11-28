@@ -967,6 +967,39 @@ void test_repeating_movestogo_end_of_control_and_sudden_death_ramp() {
             "incremental controls must not apply the sudden-death pre-emergency horizon ramp");
 }
 
+void test_subsecond_sudden_death_bullet_scramble_protection() {
+    auto subsec_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto emerg_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager subsec(clock_limits(milliseconds{800}, milliseconds{0}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                       [subsec_now] { return *subsec_now; });
+    TimeManager emerg(clock_limits(milliseconds{2'500}, milliseconds{0}),
+                      koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                      [emerg_now] { return *emerg_now; });
+
+    for (int depth = 4; depth <= 6; ++depth) {
+        const int score = depth == 4 ? 120 : -80;
+        const SearchIterationObservation obs{
+            depth, score, depth == 5, true, true, 10'000, 2'500, milliseconds{5}};
+        subsec.observe_iteration(obs);
+        emerg.observe_iteration(obs);
+    }
+
+    require(subsec.diagnostics().optimum_budget <= subsec.diagnostics().soft_budget,
+            "sub-second <=1s+0 sudden-death scramble must clamp optimum_budget at 1.00x soft_budget");
+    require(emerg.diagnostics().optimum_budget > emerg.diagnostics().soft_budget,
+            "2.5s+0 sudden-death must retain scramble headroom above soft_budget");
+
+    *subsec_now += subsec.diagnostics().optimum_budget + milliseconds{1};
+    *emerg_now += emerg.diagnostics().optimum_budget + milliseconds{1};
+    require(subsec.should_stop_after_iteration() &&
+                !subsec.should_start_next_iteration(milliseconds{1}),
+            "sub-second <=1s+0 scramble must decline hard extensions once optimum_budget is reached");
+    require(!emerg.should_stop_after_iteration() &&
+                emerg.should_start_next_iteration(milliseconds{1}),
+            "2.5s+0 sudden-death may continue inside hard_budget on unstable iterations");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1005,6 +1038,8 @@ int main(int argc, char** argv) {
          test_ponderhit_discount_scramble_cap_and_doomed_hard_ply_guard},
         {"repeating movestogo and sudden-death ramp",
          test_repeating_movestogo_end_of_control_and_sudden_death_ramp},
+        {"sub-second sudden-death bullet scramble protection",
+         test_subsecond_sudden_death_bullet_scramble_protection},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

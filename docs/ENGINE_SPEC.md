@@ -674,9 +674,10 @@ the search but cannot push it past the cap.
   `aspiration_researched && score_drop_cp_ >= 25`. Stable means no change and
   `|Δ| <= 25`.
 - Continuous pacing (`effective_soft_budget`) scales the soft budget within
-  `[max(1 ms, soft / 3), hard]` (capping the scale multiplier at `1.35×`
-  during `<= 10 s + 0` sudden-death scrambles without `movestogo`, and `1.85×`
-  otherwise) using `best_move_effort_permille_`, `best_move_stability_`,
+  `[max(1 ms, soft / 3), hard]` (capping the scale multiplier at `1.00×`
+  during `<= 1 s + 0` sub-second sudden-death scrambles without `movestogo`,
+  `1.35×` during `<= 10 s + 0` sudden-death scrambles without `movestogo`, and
+  `1.85×` otherwise) using `best_move_effort_permille_`, `best_move_stability_`,
   decayed cumulative `instability_permille_`, inter-move and intra-search
   `score_drop_cp_`, `score_gain_cp_`, `last_aspiration_researched_`,
   single-legal-move cap (`min(150 ms, soft / 8)`), confirmed forced-mate fast
@@ -685,8 +686,9 @@ the search but cannot push it past the cap.
   lost with a stable deep line), and a 20% ponder-time-saved discount when a
   `ponderhit` arrives with a calm deep line (`depth >= 6`, `stability >= 3`,
   `!hard_position_`).
-- A hard position may exceed the soft budget only while fewer than five
-  overheads remain is false (`remaining_clock > 5 × overhead`) and the remaining
+- A hard position may exceed the soft budget only when not in a `<= 1 s + 0`
+  sub-second sudden-death scramble without `movestogo`, when more than five
+  overheads remain (`remaining_clock > 5 × overhead`), and when the remaining
   usable clock is at least `2 × soft budget + overhead`
   (`hard_extension_affordable`). Near the end or on high-latency links the soft
   budget wins.

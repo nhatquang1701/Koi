@@ -401,8 +401,8 @@ public:
         job->root_static_eval = root_static_eval;
         job->window_alpha = window_alpha;
         job->window_beta = window_beta;
-        job->move_previous_scores = move_previous_scores;
-        job->move_has_previous = move_has_previous;
+        job->move_previous_scores = &move_previous_scores;
+        job->move_has_previous = &move_has_previous;
         job->multi_pv = multi_pv;
         job->root_alpha.store(window_alpha, std::memory_order_relaxed);
         if (depth == 1) {
@@ -526,9 +526,9 @@ private:
         std::uint64_t sequence = 0;
         // Per-move aspiration hints for the MultiPV path: the previous
         // completed score of each parallel root move, used to narrow the
-        // search window around it.  Empty when no per-move hints exist.
-        std::vector<int> move_previous_scores;
-        std::vector<bool> move_has_previous;
+        // search window around it.  Non-owning pointers remain valid while run() waits.
+        const std::vector<int>* move_previous_scores = nullptr;
+        const std::vector<bool>* move_has_previous = nullptr;
         bool multi_pv = false;
     };
 
@@ -632,14 +632,17 @@ private:
                     int move_alpha = job->window_alpha;
                     int move_beta = job->window_beta;
                     if (job->multi_pv &&
-                        move_index < job->move_has_previous.size() &&
-                        job->move_has_previous[move_index]) {
+                        job->move_has_previous != nullptr &&
+                        job->move_previous_scores != nullptr &&
+                        move_index < job->move_has_previous->size() &&
+                        move_index < job->move_previous_scores->size() &&
+                        (*job->move_has_previous)[move_index]) {
                         const int aspiration_span =
                             kAspirationWindow + std::min(32, job->depth * 2);
                         move_alpha = std::max(job->window_alpha,
-                                              job->move_previous_scores[move_index] - aspiration_span);
+                                              (*job->move_previous_scores)[move_index] - aspiration_span);
                         move_beta = std::min(job->window_beta,
-                                             job->move_previous_scores[move_index] + aspiration_span);
+                                             (*job->move_previous_scores)[move_index] + aspiration_span);
                     }
                     const bool scout = job->use_root_pvs && move_index != 0 &&
                         shared_alpha > job->window_alpha;
