@@ -733,78 +733,77 @@ void NnueWorker::refresh_finny_bucket_v4_impl(
             cached_sums, target_sums,
             std::span<const std::uint16_t>(removed.data(), removed_count),
             std::span<const std::uint16_t>(added.data(), added_count));
-        return;
-    }
+    } else {
+        if ((removed_count == 1U && added_count == 1U) ||
+            (removed_count == 2U && added_count == 1U) ||
+            (removed_count == 2U && added_count == 2U)) {
+            apply_fused_perspective_deltas(
+                cached_sums, cached_sums,
+                std::span<const std::uint16_t>(removed.data(), removed_count),
+                std::span<const std::uint16_t>(added.data(), added_count));
+            std::copy_n(cached_sums, hidden_units_, target_sums);
+            return;
+        }
 
-    if ((removed_count == 1U && added_count == 1U) ||
-        (removed_count == 2U && added_count == 1U) ||
-        (removed_count == 2U && added_count == 2U)) {
-        apply_fused_perspective_deltas(
-            cached_sums, cached_sums,
-            std::span<const std::uint16_t>(removed.data(), removed_count),
-            std::span<const std::uint16_t>(added.data(), added_count));
+        const std::int16_t* const w_base = weights_->feature_weights.data();
+        const std::size_t count = hidden_units_;
+        std::size_t pair_idx = 0;
+        for (; pair_idx < std::min(removed_count, added_count); ++pair_idx) {
+            const std::uint16_t r_feat = removed[pair_idx];
+            const std::uint16_t a_feat = added[pair_idx];
+            apply_fused_perspective_deltas(
+                cached_sums, cached_sums,
+                std::span<const std::uint16_t>(&r_feat, 1U),
+                std::span<const std::uint16_t>(&a_feat, 1U));
+        }
+        for (std::size_t r = pair_idx; r < removed_count; ++r) {
+            const std::int16_t* const w =
+                w_base + static_cast<std::size_t>(removed[r]) * count;
+#if KOI_NNUE_COMPILED_AVX2
+            if (avx2_available() && count % 16U == 0U) {
+                apply_delta_avx2(cached_sums, w, count, -1);
+                continue;
+            }
+#endif
+            if (overflow_safe_) {
+                for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                    cached_sums[hidden] -= w[hidden];
+                }
+            } else {
+                for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                    const std::int64_t updated =
+                        static_cast<std::int64_t>(cached_sums[hidden]) - w[hidden];
+                    cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                        updated, std::numeric_limits<std::int32_t>::min(),
+                        std::numeric_limits<std::int32_t>::max()));
+                }
+            }
+        }
+        for (std::size_t a = pair_idx; a < added_count; ++a) {
+            const std::int16_t* const w =
+                w_base + static_cast<std::size_t>(added[a]) * count;
+#if KOI_NNUE_COMPILED_AVX2
+            if (avx2_available() && count % 16U == 0U) {
+                apply_delta_avx2(cached_sums, w, count, 1);
+                continue;
+            }
+#endif
+            if (overflow_safe_) {
+                for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                    cached_sums[hidden] += w[hidden];
+                }
+            } else {
+                for (std::size_t hidden = 0; hidden < count; ++hidden) {
+                    const std::int64_t updated =
+                        static_cast<std::int64_t>(cached_sums[hidden]) + w[hidden];
+                    cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
+                        updated, std::numeric_limits<std::int32_t>::min(),
+                        std::numeric_limits<std::int32_t>::max()));
+                }
+            }
+        }
         std::copy_n(cached_sums, hidden_units_, target_sums);
-        return;
     }
-
-    const std::int16_t* const w_base = weights_->feature_weights.data();
-    const std::size_t count = hidden_units_;
-    std::size_t pair_idx = 0;
-    for (; pair_idx < std::min(removed_count, added_count); ++pair_idx) {
-        const std::uint16_t r_feat = removed[pair_idx];
-        const std::uint16_t a_feat = added[pair_idx];
-        apply_fused_perspective_deltas(
-            cached_sums, cached_sums,
-            std::span<const std::uint16_t>(&r_feat, 1U),
-            std::span<const std::uint16_t>(&a_feat, 1U));
-    }
-    for (std::size_t r = pair_idx; r < removed_count; ++r) {
-        const std::int16_t* const w =
-            w_base + static_cast<std::size_t>(removed[r]) * count;
-#if KOI_NNUE_COMPILED_AVX2
-        if (avx2_available() && count % 16U == 0U) {
-            apply_delta_avx2(cached_sums, w, count, -1);
-            continue;
-        }
-#endif
-        if (overflow_safe_) {
-            for (std::size_t hidden = 0; hidden < count; ++hidden) {
-                cached_sums[hidden] -= w[hidden];
-            }
-        } else {
-            for (std::size_t hidden = 0; hidden < count; ++hidden) {
-                const std::int64_t updated =
-                    static_cast<std::int64_t>(cached_sums[hidden]) - w[hidden];
-                cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
-                    updated, std::numeric_limits<std::int32_t>::min(),
-                    std::numeric_limits<std::int32_t>::max()));
-            }
-        }
-    }
-    for (std::size_t a = pair_idx; a < added_count; ++a) {
-        const std::int16_t* const w =
-            w_base + static_cast<std::size_t>(added[a]) * count;
-#if KOI_NNUE_COMPILED_AVX2
-        if (avx2_available() && count % 16U == 0U) {
-            apply_delta_avx2(cached_sums, w, count, 1);
-            continue;
-        }
-#endif
-        if (overflow_safe_) {
-            for (std::size_t hidden = 0; hidden < count; ++hidden) {
-                cached_sums[hidden] += w[hidden];
-            }
-        } else {
-            for (std::size_t hidden = 0; hidden < count; ++hidden) {
-                const std::int64_t updated =
-                    static_cast<std::int64_t>(cached_sums[hidden]) + w[hidden];
-                cached_sums[hidden] = static_cast<std::int32_t>(std::clamp<std::int64_t>(
-                    updated, std::numeric_limits<std::int32_t>::min(),
-                    std::numeric_limits<std::int32_t>::max()));
-            }
-        }
-    }
-    std::copy_n(cached_sums, hidden_units_, target_sums);
 }
 
 void NnueWorker::refresh_finny_bucket_v4(
