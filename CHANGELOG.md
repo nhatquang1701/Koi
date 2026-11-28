@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Breaking Changes
 - **Executable, CMake target, and package rename (`koi-engine` → `koi`):** Renamed the shipping engine binaries from `koi-engine` / `koi-engine-avx2` / `koi-engine-avx512` (`.exe` on Windows) to `koi` / `koi-avx2` / `koi-avx512`, renamed CMake project and executable targets from `koi_engine` / `koi_engine_avx2` / `koi_engine_avx512` to `koi` / `koi_avx2` / `koi_avx512`, and renamed release archives/manifests from `koi-engine-v*` (`koi-engine-package-v1`) to `koi-v*` (`koi-package-v1`).
+- **Default branch rename (`koi-engine` → `main`):** Renamed the default repository and documentation deployment branch from `koi-engine` to `main`.
 
 ### Added
 - **Official NNUE v9 (`halfka-hm-v2`, 10-bucket horizontal-mirror 256×2 SCReLU)** with 20-slot Finny king-bucket cache, AVX-512 / AVX2 / NEON fused kernels, and multi-stage Bullet training (`+180+ Elo` over v7 `h128`).

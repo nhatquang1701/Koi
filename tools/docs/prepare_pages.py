@@ -19,7 +19,7 @@ from urllib.parse import quote
 
 
 REPOSITORY_URL = "https://github.com/nhatquang1701/Koi"
-BRANCH = "koi-engine"
+BRANCH = "main"
 SCRIPT_PATH = Path(__file__).resolve()
 REPOSITORY_ROOT = SCRIPT_PATH.parents[2]
 SOURCE_DIRECTORY = REPOSITORY_ROOT / "build" / "pages-src"

@@ -1,7 +1,7 @@
 # Koi engine specification
 
 !!! info "Specification Scope"
-    This page documents observed behaviour on branch `koi-engine` from the v1.2.0 baseline forward, naming the implementation files and constants that define each contract. Koi targets standard 8×8 chess in C++26 (`Threads=1` deterministic, `Threads>1` Lazy SMP), boots with the gated Koi-native NNUE (`koi.nnue` beside the executable, advertised via `EvalFile` default `<autodiscovery>`, exiting `4` with a diagnostic when absent), and provides a clean classical evaluator (`src/koi/classical_evaluator.{hpp,cpp}`) via `--hce`, `EvalMode=hce`, or `KOI_EVALUATOR=hce`.
+    This page documents observed behaviour on branch `main` from the v1.2.0 baseline forward, naming the implementation files and constants that define each contract. Koi targets standard 8×8 chess in C++26 (`Threads=1` deterministic, `Threads>1` Lazy SMP), boots with the gated Koi-native NNUE (`koi.nnue` beside the executable, advertised via `EvalFile` default `<autodiscovery>`, exiting `4` with a diagnostic when absent), and provides a clean classical evaluator (`src/koi/classical_evaluator.{hpp,cpp}`) via `--hce`, `EvalMode=hce`, or `KOI_EVALUATOR=hce`.
 
 ## 1. Identity and platforms
 

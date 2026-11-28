@@ -12,10 +12,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nhatquang1701/Koi/actions/workflows/windows.yml"><img src="https://github.com/nhatquang1701/Koi/actions/workflows/windows.yml/badge.svg?branch=koi-engine" alt="Windows CI"></a>
-  <a href="https://github.com/nhatquang1701/Koi/actions/workflows/linux.yml"><img src="https://github.com/nhatquang1701/Koi/actions/workflows/linux.yml/badge.svg?branch=koi-engine" alt="Linux CI"></a>
-  <a href="https://github.com/nhatquang1701/Koi/actions/workflows/macos.yml"><img src="https://github.com/nhatquang1701/Koi/actions/workflows/macos.yml/badge.svg?branch=koi-engine" alt="macOS CI"></a>
-  <a href="https://github.com/nhatquang1701/Koi/actions/workflows/docs.yml"><img src="https://github.com/nhatquang1701/Koi/actions/workflows/docs.yml/badge.svg?branch=koi-engine" alt="Docs"></a>
+  <a href="https://github.com/nhatquang1701/Koi/actions/workflows/windows.yml"><img src="https://github.com/nhatquang1701/Koi/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows CI"></a>
+  <a href="https://github.com/nhatquang1701/Koi/actions/workflows/linux.yml"><img src="https://github.com/nhatquang1701/Koi/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux CI"></a>
+  <a href="https://github.com/nhatquang1701/Koi/actions/workflows/macos.yml"><img src="https://github.com/nhatquang1701/Koi/actions/workflows/macos.yml/badge.svg?branch=main" alt="macOS CI"></a>
+  <a href="https://github.com/nhatquang1701/Koi/actions/workflows/docs.yml"><img src="https://github.com/nhatquang1701/Koi/actions/workflows/docs.yml/badge.svg?branch=main" alt="Docs"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-0f766e" alt="License: GPLv3"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-26-0f766e" alt="C++26">
 </p>
@@ -29,7 +29,7 @@
 ### Playing Strength
 
 - **Koi v1.2.0** measured **2727 Elo** (`95% CI 2674–2778`, `+998 Elo` over v1.1.5) against Stockfish 19 `UCI_Elo` anchors (`mac-mini` arm64, `200 ms`/move, `Threads=4`, `Hash=512`, `no-book`, bundled `v7` h128 net; see [v1.2.0 release notes](docs/releases/v1.2.0.md)).
-- **Active development (`koi-engine`)** has since promoted **Official NNUE v9** (`halfka-hm-v2`, 10 horizontally-mirrored king buckets, 256×2 SCReLU, 20-slot Finny tables — `+180+ Elo` over `v7`), added PGO+LTO build support, and improved search pruning (`+11 Elo` in `1+0` clock self-play).
+- **Active development (`main`)** has since promoted **Official NNUE v9** (`halfka-hm-v2`, 10 horizontally-mirrored king buckets, 256×2 SCReLU, 20-slot Finny tables — `+180+ Elo` over `v7`), added PGO+LTO build support, and improved search pruning (`+11 Elo` in `1+0` clock self-play).
 
 ---
 

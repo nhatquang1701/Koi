@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are applied to the latest minor release line and the active development branch (`koi-engine`).
+Security fixes are applied to the latest minor release line and the active development branch (`main`).
 
 | Version | Supported |
 | :--- | :--- |

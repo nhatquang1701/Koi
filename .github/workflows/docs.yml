@@ -2,7 +2,7 @@ name: Deploy documentation site
 
 on:
   push:
-    branches: [koi-engine]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

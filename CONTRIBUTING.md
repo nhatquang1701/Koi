@@ -87,7 +87,7 @@ python tools/docs/prepare_pages.py && mkdocs build --strict
 
 ## Submitting Pull Requests
 
-1. **Branch** from `koi-engine`.
+1. **Branch** from `main`.
 2. **Format** C++ changes consistently with `.clang-format` and `.editorconfig`.
 3. **Commit** with a clear, imperative summary (e.g., `Fix mate score normalization at root`).
 4. **Verify** the CI matrix checks:
