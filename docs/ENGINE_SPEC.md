@@ -705,9 +705,12 @@ the search but cannot push it past the cap.
   pacing at soft when the extension is unaffordable or the position is not hard,
   in calm high-effort positions (`>= 90%` best-move node share) past `60%` of the
   soft/optimum target, in calm `depth >= 6` stable (`stability >= 3`, no
-  aspiration re-research) positions past `75%` of the soft/optimum target, and
-  in clock mode at soft after at least 2 stable observations when the extension
-  is unaffordable.
+  aspiration re-research) positions past `75%` of the soft/optimum target, in
+  clock mode at soft after at least 2 stable observations when the extension
+  is unaffordable, and on the non-collapsing fallback past soft/optimum time
+  once `depth >= 5` (or `depth >= 4` during emergency pacing) with
+  `best_move_stability >= 1`, `score_drop < 40` cp, and no aspiration
+  re-research on the last iteration.
 - `should_start_next_iteration`: honors instant post-`ponderhit` forced-mate /
   single-move exits, emergency pacing, forced-mate / single-move
   exits, `60%` high-effort dominance (`>= 90%` best-move node share) and calm

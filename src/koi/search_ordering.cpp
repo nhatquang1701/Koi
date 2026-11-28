@@ -493,17 +493,18 @@ SearchMovePicker::SearchMovePicker(
       history_context_(history_context), tt_move_(tt_move),
       excluded_move_(excluded_move), mode_(mode), stage_(first_stage()),
       mutable_moves_(mutable_moves), defer_quiets_(mutable_moves != nullptr) {
-    // Only a main-mode picker reads the capture-check guard (materialize's
-    // capture-check probe); quiescence and evasion pickers never reach that
-    // probe, so only main mode pays for its zeroed start.
+    // Only a main-mode picker reaches materialize()'s lazy SEE and capture-check
+    // probes; quiescence and evasion pickers never read them, so only main
+    // mode pays for zeroing those bitsets.
     if (mode_ == Mode::main) {
+        see_computed_.reset();
         capture_check_computed_.reset();
         capture_checks_.reset();
     }
 }
 
 bool SearchMovePicker::is_excluded(const std::size_t index) const noexcept {
-    return index >= moves_.size() || emitted_[index] ||
+    return index >= moves_.size() || index == tt_emitted_index_ ||
         moves_[index].move == excluded_move_;
 }
 
@@ -544,7 +545,7 @@ SearchMovePicker::Stage SearchMovePicker::first_stage() const noexcept {
 MoveMetadata SearchMovePicker::materialize(const std::size_t index) {
     MoveMetadata metadata = moves_[index];
     if (metadata.is_capture()) {
-        if (!see_computed_[index]) {
+        if (!see_computed_.test(index)) {
             if (metadata.see_computed) {
                 see_scores_[index] = metadata.see_score;
             } else {
@@ -580,7 +581,7 @@ void SearchMovePicker::prepare_quiescence_candidates() {
     std::size_t capture_count = 0;
     std::size_t check_count = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
-        if (emitted_[index]) {
+        if (index == tt_emitted_index_) {
             continue;
         }
         const MoveMetadata& source = moves_[index];
@@ -602,19 +603,16 @@ void SearchMovePicker::prepare_quiescence_candidates() {
         }
         int priority = 0;
         if (source.is_capture()) {
-            if (!see_computed_[index]) {
-                if (source.see_computed) {
-                    see_scores_[index] = source.see_score;
-                } else {
-                    if (!see_context_.has_value()) {
-                        see_context_ = exchange_context_from(state_);
-                    }
-                    see_scores_[index] = static_cast<std::int16_t>(std::clamp(
-                        static_exchange_gain(*see_context_, source),
-                        static_cast<int>(std::numeric_limits<std::int16_t>::min()),
-                        static_cast<int>(std::numeric_limits<std::int16_t>::max())));
+            if (source.see_computed) {
+                see_scores_[index] = source.see_score;
+            } else {
+                if (!see_context_.has_value()) {
+                    see_context_ = exchange_context_from(state_);
                 }
-                see_computed_.set(index);
+                see_scores_[index] = static_cast<std::int16_t>(std::clamp(
+                    static_exchange_gain(*see_context_, source),
+                    static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+                    static_cast<int>(std::numeric_limits<std::int16_t>::max())));
             }
             priority = capture_priority_with_see(
                 ordering_.tables_, source, true, see_scores_[index]);
@@ -645,7 +643,7 @@ void SearchMovePicker::prepare_evasion_candidates() {
     const auto quiet_batch = ordering_.tables_.prepare_quiet_history_batch(side, *history_context_);
     std::size_t evasion_count = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
-        if (emitted_[index]) {
+        if (index == tt_emitted_index_) {
             continue;
         }
         const MoveMetadata& metadata = moves_[index];
@@ -673,7 +671,7 @@ void SearchMovePicker::prepare_main_captures() {
     deferred_bad_capture_count_ = 0;
     deferred_bad_capture_index_ = 0;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
-        if (emitted_[index]) {
+        if (index == tt_emitted_index_) {
             continue;
         }
         const MoveMetadata& metadata = moves_[index];
@@ -706,7 +704,7 @@ void SearchMovePicker::prepare_main_quiets_impl(
     std::size_t good_cursor = main_captures_end_;
     std::size_t bad_cursor = kMaximumLegalMoves;
     for (std::size_t index = main_quiet_start_; index < moves_.size(); ++index) {
-        if (emitted_[index]) {
+        if (index == tt_emitted_index_) {
             continue;
         }
         const MoveMetadata& metadata = moves_[index];
@@ -841,9 +839,23 @@ const MoveMetadata* SearchMovePicker::emit_tt() {
     tt_emitted_ = true;
     for (std::size_t index = 0; index < moves_.size(); ++index) {
         if (moves_[index].move == *tt_move_ && !is_excluded(index)) {
-            emitted_.set(index);
-            emitted_metadata_ = mode_ == Mode::evasion ? moves_[index] :
-                materialize(index);
+            tt_emitted_index_ = static_cast<std::uint16_t>(index);
+            if (mode_ == Mode::main) {
+                emitted_metadata_ = materialize(index);
+            } else {
+                emitted_metadata_ = moves_[index];
+                if (mode_ == Mode::quiescence && emitted_metadata_.is_capture() &&
+                    !emitted_metadata_.see_computed) {
+                    if (!see_context_.has_value()) {
+                        see_context_ = exchange_context_from(state_);
+                    }
+                    emitted_metadata_.see_score = static_cast<std::int16_t>(std::clamp(
+                        static_exchange_gain(*see_context_, emitted_metadata_),
+                        static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+                        static_cast<int>(std::numeric_limits<std::int16_t>::max())));
+                    emitted_metadata_.see_computed = true;
+                }
+            }
             // The emitted move equals tt_move_, which priority() answers with
             // the TT constant before any other branch; materialize never
             // changes the move.

@@ -1148,6 +1148,28 @@ void test_opponent_flagging_pressure_and_aspiration_calm_symmetry() {
             "aspiration re-search at last depth must keep 75% calm stop/start symmetric");
 }
 
+void test_aspiration_research_fallback_guard_and_emergency_depth4_stop() {
+    auto now_pt = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager asp_hard(clock_limits(milliseconds{120'000}, milliseconds{1'000}),
+                         koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                         [now_pt] { return *now_pt; });
+    asp_hard.observe_iteration({5, 100, false, false, false, 10'000, 5'000, milliseconds{20}});
+    asp_hard.observe_iteration({6, 70, false, false, true, 10'000, 5'000, milliseconds{20}});
+    *now_pt += asp_hard.diagnostics().optimum_budget + milliseconds{5};
+    require(!asp_hard.should_stop_after_iteration(),
+            "aspiration re-search with moderate score drop must keep hard extension");
+
+    auto emg_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg(clock_limits(milliseconds{2'000}, milliseconds{0}),
+                    koi::Color::white, 100, kMoveOverheadMs, 100, RootTimingContext{},
+                    [emg_now] { return *emg_now; });
+    emg.observe_iteration({3, 0, false, false, false, 10'000, 5'000, milliseconds{5}});
+    emg.observe_iteration({4, 0, false, false, false, 10'000, 5'000, milliseconds{5}});
+    *emg_now += emg.diagnostics().optimum_budget;
+    require(emg.diagnostics().emergency_pacing && emg.should_stop_after_iteration(),
+            "emergency pacing must allow depth-4 stable fallback stop past optimum_budget");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1196,6 +1218,8 @@ int main(int argc, char** argv) {
          test_high_latency_net_increment_credit_and_symmetric_calm_stop},
         {"opponent flagging pressure and aspiration calm symmetry",
          test_opponent_flagging_pressure_and_aspiration_calm_symmetry},
+        {"aspiration re-search fallback guard and emergency depth-4 stop",
+         test_aspiration_research_fallback_guard_and_emergency_depth4_stop},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

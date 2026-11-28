@@ -244,16 +244,11 @@ private:
     Move excluded_move_;
     Mode mode_ = Mode::main;
     Stage stage_ = Stage::done;
-    // The bitsets below must start zeroed: they are the guards that decide
-    // whether a lazy SEE/check score has been computed yet.  The score arrays
-    // are always written under those guards before being read, so they stay
-    // uninitialized to avoid clearing several kilobytes at every node.
-    std::bitset<kMaximumLegalMoves> emitted_{};
-    std::bitset<kMaximumLegalMoves> see_computed_{};
-    // The capture-check guard is read only by main-mode pickers (materialize's
-    // capture-check probe), so only a main-mode picker zeroes it: quiescence
-    // and evasion constructions leave these words unconstructed instead of
-    // clearing two bitsets they can never observe.
+    // The bitsets below must start zeroed only for main-mode searches: they
+    // track lazy SEE/check materialization for `Mode::main`.  Quiescence and
+    // evasion pickers never reach materialize(), so `see_computed_`,
+    // `capture_check_computed_`, and `capture_checks_` stay uninitialized there.
+    LazyBitset see_computed_;
     LazyBitset capture_check_computed_;
     LazyBitset capture_checks_;
     std::array<std::int16_t, kMaximumLegalMoves> see_scores_;
@@ -283,6 +278,7 @@ private:
     // here and the record is always assigned before it can be read.
     MoveMetadata emitted_metadata_;
     MoveMetadataList* mutable_moves_ = nullptr;
+    std::uint16_t tt_emitted_index_ = static_cast<std::uint16_t>(kMaximumLegalMoves);
     std::size_t main_quiet_start_ = 0;
     std::size_t main_captures_end_ = 0;
     std::size_t deferred_bad_capture_count_ = 0;

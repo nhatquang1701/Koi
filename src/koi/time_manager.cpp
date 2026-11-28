@@ -877,9 +877,12 @@ bool TimeManager::should_stop_after_iteration() const noexcept {
     }
     // Even if shallow iterations had a best-move change or score jump, do not
     // let a non-collapsing position burn all the way to the hard deadline once
-    // it has completed a reasonable depth and passed its scaled optimum target.
-    if (last_observed_depth_ >= 5 && best_move_stability_ >= 1 &&
-        score_drop_cp_ < 40 && elapsed >= soft_target) {
+    // it has completed a reasonable depth and passed its scaled optimum target,
+    // unless the final iteration just required an aspiration re-search.
+    const int min_fallback_depth = emergency_pacing_ ? 4 : 5;
+    if (last_observed_depth_ >= min_fallback_depth && best_move_stability_ >= 1 &&
+        score_drop_cp_ < 40 && !last_aspiration_researched_ &&
+        elapsed >= soft_target) {
         return true;
     }
     return false;

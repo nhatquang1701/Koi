@@ -796,12 +796,21 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // the worker-local cache below includes them.
 
         // Pawn history is read only when a quiet move is ranked.  The tactical
-        // generator stops adding quiet checks at the check-depth horizon, so
-        // an ordinary deeper node has no quiet candidate whose ranking could
-        // observe the pawn key.  Checked nodes generate the full list and
-        // shallow quiet-check windows keep real keys, so an unreachable context
-        // is skipped there without changing a priority.
-        const bool quiet_history_reachable = checked || qdepth < quiescence_check_depth_limit;
+        // generator stops adding quiet checks at the check-depth horizon, and
+        // even shallow tactical nodes only rank a quiet move if `moves` contains
+        // at least one non-capture, non-promotion checking move.  Avoid paying
+        // for pawn_key() + history-context initialization when no quiet move can
+        // reach ranking.
+        bool quiet_history_needed = checked;
+        if (!checked && qdepth < quiescence_check_depth_limit) {
+            for (const MoveMetadata& candidate : moves) {
+                if (!candidate.is_capture() && candidate.gives_check &&
+                    candidate.move.promotion() == Promotion::none) {
+                    quiet_history_needed = true;
+                    break;
+                }
+            }
+        }
         // With no quiet candidate every entry in `moves` is a capture or
         // promotion whose priority() branches return before any history read,
         // and the lazy re-priority path that could re-read it is main-mode only.
@@ -840,7 +849,7 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
             }
         }
 
-        if (quiet_history_reachable) {
+        if (quiet_history_needed) {
             init_history_context(history_storage[0], ply, previous_move, state.pawn_key());
         }
 #ifndef NDEBUG

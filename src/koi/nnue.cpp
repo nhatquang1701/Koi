@@ -1023,6 +1023,24 @@ KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub1_add1(
     const std::int16_t* const w_add0 = base + static_cast<std::size_t>(add0) * count;
     std::size_t hidden = 0;
 #if KOI_NNUE_COMPILED_NEON
+    for (; hidden + 32U <= count; hidden += 32U) {
+        const int16x8_t p0 = vld1q_s16(parent_values + hidden);
+        const int16x8_t p1 = vld1q_s16(parent_values + hidden + 8U);
+        const int16x8_t p2 = vld1q_s16(parent_values + hidden + 16U);
+        const int16x8_t p3 = vld1q_s16(parent_values + hidden + 24U);
+        const int16x8_t s0_0 = vld1q_s16(w_sub0 + hidden);
+        const int16x8_t s0_1 = vld1q_s16(w_sub0 + hidden + 8U);
+        const int16x8_t s0_2 = vld1q_s16(w_sub0 + hidden + 16U);
+        const int16x8_t s0_3 = vld1q_s16(w_sub0 + hidden + 24U);
+        const int16x8_t a0_0 = vld1q_s16(w_add0 + hidden);
+        const int16x8_t a0_1 = vld1q_s16(w_add0 + hidden + 8U);
+        const int16x8_t a0_2 = vld1q_s16(w_add0 + hidden + 16U);
+        const int16x8_t a0_3 = vld1q_s16(w_add0 + hidden + 24U);
+        vst1q_s16(target_values + hidden, vaddq_s16(vsubq_s16(p0, s0_0), a0_0));
+        vst1q_s16(target_values + hidden + 8U, vaddq_s16(vsubq_s16(p1, s0_1), a0_1));
+        vst1q_s16(target_values + hidden + 16U, vaddq_s16(vsubq_s16(p2, s0_2), a0_2));
+        vst1q_s16(target_values + hidden + 24U, vaddq_s16(vsubq_s16(p3, s0_3), a0_3));
+    }
     for (; hidden + 16U <= count; hidden += 16U) {
         const int16x8_t p0 = vld1q_s16(parent_values + hidden);
         const int16x8_t p1 = vld1q_s16(parent_values + hidden + 8U);
@@ -1041,6 +1059,24 @@ KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub1_add1(
     }
 #elif KOI_NNUE_COMPILED_AVX2
     if (avx2_available()) {
+        for (; hidden + 32U <= count; hidden += 32U) {
+            const __m256i p0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(parent_values + hidden));
+            const __m256i p1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(parent_values + hidden + 16U));
+            const __m256i s0_0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_sub0 + hidden));
+            const __m256i s0_1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_sub0 + hidden + 16U));
+            const __m256i a0_0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_add0 + hidden));
+            const __m256i a0_1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_add0 + hidden + 16U));
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_values + hidden),
+                                _mm256_add_epi16(_mm256_sub_epi16(p0, s0_0), a0_0));
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(target_values + hidden + 16U),
+                                _mm256_add_epi16(_mm256_sub_epi16(p1, s0_1), a0_1));
+        }
         for (; hidden + 16U <= count; hidden += 16U) {
             const __m256i p = _mm256_loadu_si256(
                 reinterpret_cast<const __m256i*>(parent_values + hidden));
@@ -1072,6 +1108,32 @@ KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub2_add1(
     const std::int16_t* const w_add0 = base + static_cast<std::size_t>(add0) * count;
     std::size_t hidden = 0;
 #if KOI_NNUE_COMPILED_NEON
+    for (; hidden + 32U <= count; hidden += 32U) {
+        const int16x8_t p0 = vld1q_s16(parent_values + hidden);
+        const int16x8_t p1 = vld1q_s16(parent_values + hidden + 8U);
+        const int16x8_t p2 = vld1q_s16(parent_values + hidden + 16U);
+        const int16x8_t p3 = vld1q_s16(parent_values + hidden + 24U);
+        const int16x8_t s0_0 = vld1q_s16(w_sub0 + hidden);
+        const int16x8_t s0_1 = vld1q_s16(w_sub0 + hidden + 8U);
+        const int16x8_t s0_2 = vld1q_s16(w_sub0 + hidden + 16U);
+        const int16x8_t s0_3 = vld1q_s16(w_sub0 + hidden + 24U);
+        const int16x8_t s1_0 = vld1q_s16(w_sub1 + hidden);
+        const int16x8_t s1_1 = vld1q_s16(w_sub1 + hidden + 8U);
+        const int16x8_t s1_2 = vld1q_s16(w_sub1 + hidden + 16U);
+        const int16x8_t s1_3 = vld1q_s16(w_sub1 + hidden + 24U);
+        const int16x8_t a0_0 = vld1q_s16(w_add0 + hidden);
+        const int16x8_t a0_1 = vld1q_s16(w_add0 + hidden + 8U);
+        const int16x8_t a0_2 = vld1q_s16(w_add0 + hidden + 16U);
+        const int16x8_t a0_3 = vld1q_s16(w_add0 + hidden + 24U);
+        vst1q_s16(target_values + hidden,
+                  vaddq_s16(vsubq_s16(vsubq_s16(p0, s0_0), s1_0), a0_0));
+        vst1q_s16(target_values + hidden + 8U,
+                  vaddq_s16(vsubq_s16(vsubq_s16(p1, s0_1), s1_1), a0_1));
+        vst1q_s16(target_values + hidden + 16U,
+                  vaddq_s16(vsubq_s16(vsubq_s16(p2, s0_2), s1_2), a0_2));
+        vst1q_s16(target_values + hidden + 24U,
+                  vaddq_s16(vsubq_s16(vsubq_s16(p3, s0_3), s1_3), a0_3));
+    }
     for (; hidden + 16U <= count; hidden += 16U) {
         const int16x8_t p0 = vld1q_s16(parent_values + hidden);
         const int16x8_t p1 = vld1q_s16(parent_values + hidden + 8U);
@@ -1095,6 +1157,30 @@ KOI_DELTA_ALWAYS_INLINE void apply_fused_s16_sub2_add1(
     }
 #elif KOI_NNUE_COMPILED_AVX2
     if (avx2_available()) {
+        for (; hidden + 32U <= count; hidden += 32U) {
+            const __m256i p0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(parent_values + hidden));
+            const __m256i p1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(parent_values + hidden + 16U));
+            const __m256i s0_0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_sub0 + hidden));
+            const __m256i s0_1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_sub0 + hidden + 16U));
+            const __m256i s1_0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_sub1 + hidden));
+            const __m256i s1_1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_sub1 + hidden + 16U));
+            const __m256i a0_0 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_add0 + hidden));
+            const __m256i a0_1 = _mm256_loadu_si256(
+                reinterpret_cast<const __m256i*>(w_add0 + hidden + 16U));
+            _mm256_storeu_si256(
+                reinterpret_cast<__m256i*>(target_values + hidden),
+                _mm256_add_epi16(_mm256_sub_epi16(_mm256_sub_epi16(p0, s0_0), s1_0), a0_0));
+            _mm256_storeu_si256(
+                reinterpret_cast<__m256i*>(target_values + hidden + 16U),
+                _mm256_add_epi16(_mm256_sub_epi16(_mm256_sub_epi16(p1, s0_1), s1_1), a0_1));
+        }
         for (; hidden + 16U <= count; hidden += 16U) {
             const __m256i p = _mm256_loadu_si256(
                 reinterpret_cast<const __m256i*>(parent_values + hidden));
