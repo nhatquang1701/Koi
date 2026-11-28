@@ -590,10 +590,12 @@ void test_bounded_legal_move_count_and_checking_move_probe() {
         std::string_view fen;
         bool expected;
     };
-    const std::array<CheckCase, 9> check_cases{{
+    const std::array<CheckCase, 11> check_cases{{
         {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", false},
-        {"4k3/8/8/8/8/8/4Q3/4K3 w - - 0 1", true},
-        {"4k3/8/8/8/3N4/8/8/4K3 w - - 0 1", true},
+        {"4k3/8/8/8/8/8/3Q4/4K3 w - - 0 1", true},
+        {"4k3/8/8/3N4/8/8/8/4K3 w - - 0 1", true},
+        {"4k3/8/8/8/3N4/8/8/4K3 w - - 0 1", false},
+        {"4k3/8/5P2/8/8/8/8/4K3 w - - 0 1", true},
         {"4k3/3P4/8/8/8/8/8/4K3 w - - 0 1", true},
         {"4k3/8/8/8/4N3/8/4R3/4K3 w - - 0 1", true},
         {"5k2/8/8/8/8/8/8/4K2R w K - 0 1", true},
