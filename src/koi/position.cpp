@@ -385,11 +385,13 @@ bool square_attacked(const NativeState& state, int target, Color attacker) noexc
     const std::uint64_t bishops =
         state.piece_bitboards[color_index][static_cast<std::size_t>(PieceType::bishop)] |
         state.piece_bitboards[color_index][static_cast<std::size_t>(PieceType::queen)];
-    if ((detail::bishop_attacks(target, occupied) & bishops) != 0) return true;
+    if (bishops != 0 && (detail::bishop_pseudo_attacks(target) & bishops) != 0 &&
+        (detail::bishop_attacks(target, occupied) & bishops) != 0) return true;
     const std::uint64_t rooks =
         state.piece_bitboards[color_index][static_cast<std::size_t>(PieceType::rook)] |
         state.piece_bitboards[color_index][static_cast<std::size_t>(PieceType::queen)];
-    if ((detail::rook_attacks(target, occupied) & rooks) != 0) return true;
+    if (rooks != 0 && (detail::rook_pseudo_attacks(target) & rooks) != 0 &&
+        (detail::rook_attacks(target, occupied) & rooks) != 0) return true;
     return false;
 }
 
@@ -416,8 +418,12 @@ int attacker_count(const NativeState& state, int target, Color attacker) noexcep
         std::popcount(detail::pawn_attackers_of(target, white) & pawns));
     count += static_cast<int>(std::popcount(detail::knight_attacks(target) & knights));
     count += static_cast<int>(std::popcount(detail::king_attacks(target) & kings));
-    count += static_cast<int>(std::popcount(detail::bishop_attacks(target, occupied) & bishops));
-    count += static_cast<int>(std::popcount(detail::rook_attacks(target, occupied) & rooks));
+    if (bishops != 0 && (detail::bishop_pseudo_attacks(target) & bishops) != 0) {
+        count += static_cast<int>(std::popcount(detail::bishop_attacks(target, occupied) & bishops));
+    }
+    if (rooks != 0 && (detail::rook_pseudo_attacks(target) & rooks) != 0) {
+        count += static_cast<int>(std::popcount(detail::rook_attacks(target, occupied) & rooks));
+    }
     return count;
 }
 
@@ -559,14 +565,20 @@ bool has_legal_en_passant_capture(const NativeState& state) noexcept {
     const std::uint64_t enemy_rooks =
         state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::rook)] |
         state.piece_bitboards[enemy_index][static_cast<std::size_t>(PieceType::queen)];
+    const std::uint64_t ep_diag_candidates =
+        detail::bishop_pseudo_attacks(king) & enemy_bishops;
+    const std::uint64_t ep_orth_candidates =
+        detail::rook_pseudo_attacks(king) & enemy_rooks;
     while (candidate_sources != 0) {
         const int source = static_cast<int>(std::countr_zero(candidate_sources));
         candidate_sources &= candidate_sources - 1;
         const std::uint64_t source_bit = std::uint64_t{1} << source;
         const std::uint64_t next_occupied =
             (state.occupied & ~source_bit & ~captured_bit) | target_bit;
-        if ((detail::bishop_attacks(king, next_occupied) & enemy_bishops) == 0 &&
-            (detail::rook_attacks(king, next_occupied) & enemy_rooks) == 0) {
+        if ((ep_diag_candidates == 0 ||
+             (detail::bishop_attacks(king, next_occupied) & ep_diag_candidates) == 0) &&
+            (ep_orth_candidates == 0 ||
+             (detail::rook_attacks(king, next_occupied) & ep_orth_candidates) == 0)) {
             return true;
         }
     }
@@ -833,8 +845,8 @@ private:
         if (king_slider_rays_ == 0) {
             const int ksq = king_square_ >= 0 ? king_square_ :
                 static_cast<int>(std::countr_zero(enemy_king_));
-            king_slider_rays_ = detail::rook_attacks(ksq, 0) |
-                detail::bishop_attacks(ksq, 0);
+            king_slider_rays_ = detail::rook_pseudo_attacks(ksq) |
+                detail::bishop_pseudo_attacks(ksq);
         }
         const std::uint64_t source_bit = std::uint64_t{1} << from;
         const std::uint64_t destination_bit = std::uint64_t{1} << to;
@@ -1495,15 +1507,22 @@ public:
                 return (detail::knight_attacks(from) & bit(to)) != 0 &&
                     mut->resolve_move_legality(move, state.side);
             case PieceType::bishop:
-                return (detail::bishop_attacks(from, state.occupied) & bit(to)) != 0 &&
+                return (detail::bishop_pseudo_attacks(from) & bit(to)) != 0 &&
+                    (detail::bishop_attacks(from, state.occupied) & bit(to)) != 0 &&
                     mut->resolve_move_legality(move, state.side);
             case PieceType::rook:
-                return (detail::rook_attacks(from, state.occupied) & bit(to)) != 0 &&
+                return (detail::rook_pseudo_attacks(from) & bit(to)) != 0 &&
+                    (detail::rook_attacks(from, state.occupied) & bit(to)) != 0 &&
                     mut->resolve_move_legality(move, state.side);
-            case PieceType::queen:
-                return ((detail::bishop_attacks(from, state.occupied) |
-                         detail::rook_attacks(from, state.occupied)) & bit(to)) != 0 &&
-                    mut->resolve_move_legality(move, state.side);
+            case PieceType::queen: {
+                const std::uint64_t to_bit = bit(to);
+                const bool reaches =
+                    ((detail::bishop_pseudo_attacks(from) & to_bit) != 0 &&
+                     (detail::bishop_attacks(from, state.occupied) & to_bit) != 0) ||
+                    ((detail::rook_pseudo_attacks(from) & to_bit) != 0 &&
+                     (detail::rook_attacks(from, state.occupied) & to_bit) != 0);
+                return reaches && mut->resolve_move_legality(move, state.side);
+            }
             case PieceType::king: {
                 if ((detail::king_attacks(from) & bit(to)) != 0) {
                     return mut->king_move_is_legal(move);
@@ -2758,7 +2777,7 @@ private:
                         const int rank_base = side == Color::white ? 0 : 7;
                         if (from == rank_base * 8 + 4) {
                             const std::uint64_t rook_lines_empty =
-                                tactical_and_checks ? detail::rook_attacks(ek, 0) : 0ULL;
+                                tactical_and_checks ? detail::rook_pseudo_attacks(ek) : 0ULL;
                             const std::uint8_t king_right = side == Color::white ? kWhiteKingSide : kBlackKingSide;
                             const std::uint8_t queen_right = side == Color::white ? kWhiteQueenSide : kBlackQueenSide;
                             const bool allow_kingside = !tactical_and_checks ||

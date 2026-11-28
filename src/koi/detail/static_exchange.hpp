@@ -138,12 +138,14 @@ inline bool exchange_square_attacked_by_masked(
         enemy_pieces[static_cast<std::size_t>(PieceType::queen)] & alive_mask;
     const std::uint64_t bishops =
         (enemy_pieces[static_cast<std::size_t>(PieceType::bishop)] & alive_mask) | queens;
-    if (bishops != 0 && (bishop_attacks(target, occupied) & bishops) != 0) {
+    if (bishops != 0 && (bishop_pseudo_attacks(target) & bishops) != 0 &&
+        (bishop_attacks(target, occupied) & bishops) != 0) {
         return true;
     }
     const std::uint64_t rooks =
         (enemy_pieces[static_cast<std::size_t>(PieceType::rook)] & alive_mask) | queens;
-    if (rooks != 0 && (rook_attacks(target, occupied) & rooks) != 0) {
+    if (rooks != 0 && (rook_pseudo_attacks(target) & rooks) != 0 &&
+        (rook_attacks(target, occupied) & rooks) != 0) {
         return true;
     }
     return false;
@@ -335,8 +337,11 @@ template <PieceType Type, bool Promotes>
             own_pieces[static_cast<std::size_t>(PieceType::rook)] & alive_mask;
         const std::uint64_t own_queens =
             own_pieces[static_cast<std::size_t>(PieceType::queen)] & alive_mask;
+        const std::uint64_t own_bq = own_bishops | own_queens;
+        const std::uint64_t own_rq = own_rooks | own_queens;
         std::uint64_t diag_attacks = 0;
-        if ((own_bishops | own_queens) != 0 && !legality.always_in_check) {
+        if (own_bq != 0 && !legality.always_in_check &&
+            (bishop_pseudo_attacks(target) & own_bq) != 0) {
             diag_attacks = bishop_attacks(target, occupied);
             if (const std::uint64_t bishops = diag_attacks & own_bishops; bishops != 0) {
                 if (const int sq = try_exchange_bucket<PieceType::bishop, false>(
@@ -347,7 +352,8 @@ template <PieceType Type, bool Promotes>
             }
         }
         std::uint64_t orth_attacks = 0;
-        if ((own_rooks | own_queens) != 0 && !legality.always_in_check) {
+        if (own_rq != 0 && !legality.always_in_check &&
+            (rook_pseudo_attacks(target) & own_rq) != 0) {
             orth_attacks = rook_attacks(target, occupied);
             if (const std::uint64_t rooks = orth_attacks & own_rooks; rooks != 0) {
                 if (const int sq = try_exchange_bucket<PieceType::rook, false>(

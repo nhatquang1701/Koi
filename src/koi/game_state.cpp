@@ -895,8 +895,8 @@ std::uint64_t native_feature_attacks(const NativeFeatureBitboards& pieces,
     if (probe.enemy_king != 0 && (probe.enemy_king & (probe.enemy_king - 1)) == 0) {
         const int king_square = static_cast<int>(std::countr_zero(probe.enemy_king));
         probe.king_square = king_square;
-        probe.king_slider_rays = detail::rook_attacks(king_square, 0) |
-            detail::bishop_attacks(king_square, 0);
+        probe.king_slider_rays = detail::rook_pseudo_attacks(king_square) |
+            detail::bishop_pseudo_attacks(king_square);
         probe.rook_rays_pre = detail::rook_attacks(king_square, probe.occupied);
         probe.bishop_rays_pre = detail::bishop_attacks(king_square, probe.occupied);
         probe.pawn_check_squares =
@@ -908,8 +908,8 @@ std::uint64_t native_feature_attacks(const NativeFeatureBitboards& pieces,
              (probe.bishop_rays_pre & probe.friendly_bishop_queen)) != 0;
     } else if (probe.enemy_king != 0) {
         const int king_square = static_cast<int>(std::countr_zero(probe.enemy_king));
-        probe.king_slider_rays = detail::rook_attacks(king_square, 0) |
-            detail::bishop_attacks(king_square, 0);
+        probe.king_slider_rays = detail::rook_pseudo_attacks(king_square) |
+            detail::bishop_pseudo_attacks(king_square);
     }
     return probe;
 }

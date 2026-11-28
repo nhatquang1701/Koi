@@ -877,8 +877,9 @@ bool TimeManager::clock_early_stop_reached(
             elapsed >= scale_fraction(soft_target, 25, 100)) {
             return true;
         }
+        const int min_effort_depth = emergency_pacing_ ? 5 : 6;
         if (has_effort_sample_ && best_move_effort_permille_ >= 900U &&
-            last_observed_depth_ >= 6 && stable_observations_ >= 2 &&
+            last_observed_depth_ >= min_effort_depth && stable_observations_ >= 2 &&
             best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
             !last_aspiration_researched_ &&
             elapsed >= scale_fraction(soft_target, 60, 100)) {

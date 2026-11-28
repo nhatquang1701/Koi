@@ -789,6 +789,31 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         if (quiet_check_horizon_reached) {
             path_selective_bound = true;
         }
+        if (!checked) {
+            alpha = std::max(alpha, best);
+            if (qdepth >= kMaximumQuiescenceDepth) {
+                if (!moves.empty()) {
+                    path_selective_bound = true;
+                }
+                path_lower_bound = best_lower_bound;
+                if (use_qsearch_cache) {
+                    // The stand-pat score is a valid lower bound, but it is
+                    // not exact when the tactical frontier still contains
+                    // captures or checks that the safety horizon prevents us
+                    // from searching.  Reusing it is safe only as a proven
+                    // fail-high for a later window.
+                    store_qsearch_cache(qsearch_key, best, true);
+                }
+                return best;
+            }
+            if (moves.empty()) {
+                path_lower_bound = best_lower_bound;
+                if (use_qsearch_cache) {
+                    store_qsearch_cache(qsearch_key, best, quiet_check_horizon_reached);
+                }
+                return best;
+            }
+        }
 
         // Qsearch move generation and pruning depend on qdepth and on the
         // move that led into the node. The shared TT key contains the board
@@ -821,32 +846,6 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         std::optional<Move> tt_move;
         if (tt_entry.has_value() && !tt_entry->best_move.is_no_move()) {
             tt_move = tt_entry->best_move;
-        }
-
-        if (!checked) {
-            alpha = std::max(alpha, best);
-            if (qdepth >= kMaximumQuiescenceDepth) {
-                if (!moves.empty()) {
-                    path_selective_bound = true;
-                }
-                path_lower_bound = best_lower_bound;
-                if (use_qsearch_cache) {
-                    // The stand-pat score is a valid lower bound, but it is
-                    // not exact when the tactical frontier still contains
-                    // captures or checks that the safety horizon prevents us
-                    // from searching.  Reusing it is safe only as a proven
-                    // fail-high for a later window.
-                    store_qsearch_cache(qsearch_key, best, true);
-                }
-                return best;
-            }
-            if (moves.empty()) {
-                path_lower_bound = best_lower_bound;
-                if (use_qsearch_cache) {
-                    store_qsearch_cache(qsearch_key, best, quiet_check_horizon_reached);
-                }
-                return best;
-            }
         }
 
         if (quiet_history_needed) {

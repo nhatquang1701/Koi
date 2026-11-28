@@ -27,120 +27,108 @@ constexpr std::array<int, kAttackDirections> kRankDeltas = {1, 1, 0, -1, -1, -1,
     return square >> 3;
 }
 
-struct Tables {
-    std::array<U64, 64> knight{};
-    std::array<U64, 64> king{};
-    std::array<std::array<U64, 64>, 2> pawn{};
-    std::array<std::array<U64, 64>, 2> pawn_attackers{};
-    std::array<std::array<U64, 64>, kAttackDirections> rays{};
-    std::array<U64, 64> bishop_pseudo{};
-    std::array<U64, 64> rook_pseudo{};
-    std::array<std::array<U64, 64>, 64> line{};
-    std::array<std::array<U64, 64>, 64> between{};
+[[nodiscard]] constexpr FixedAttackTables build_fixed_attack_tables() noexcept {
+    FixedAttackTables result{};
+    for (int square = 0; square < 64; ++square) {
+        const int file = file_of(square);
+        const int rank = rank_of(square);
 
-    constexpr Tables() noexcept {
-        for (int square = 0; square < 64; ++square) {
-            const int file = file_of(square);
-            const int rank = rank_of(square);
-
-            // Knights: eight fixed offsets with a two-file / one-rank or
-            // one-file / two-rank shape.
-            constexpr std::array<std::array<int, 2>, 8> knight_deltas = {{
-                {1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}}};
-            for (const auto& delta : knight_deltas) {
-                const int target_file = file + delta[0];
-                const int target_rank = rank + delta[1];
-                if (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
-                    knight[square] |= U64{1} << (target_rank * 8 + target_file);
-                }
+        // Knights: eight fixed offsets with a two-file / one-rank or
+        // one-file / two-rank shape.
+        constexpr std::array<std::array<int, 2>, 8> knight_deltas = {{
+            {1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}}};
+        for (const auto& delta : knight_deltas) {
+            const int target_file = file + delta[0];
+            const int target_rank = rank + delta[1];
+            if (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
+                result.knight[square] |= U64{1} << (target_rank * 8 + target_file);
             }
-
-            // Kings: all eight neighbours.
-            for (int df = -1; df <= 1; ++df) {
-                for (int dr = -1; dr <= 1; ++dr) {
-                    if (df == 0 && dr == 0) continue;
-                    const int target_file = file + df;
-                    const int target_rank = rank + dr;
-                    if (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
-                        king[square] |= U64{1} << (target_rank * 8 + target_file);
-                    }
-                }
-            }
-
-            // Pawn pushes: white attacks towards larger ranks, black towards
-            // smaller ones.  Both colours capture at file deltas +/-1.
-            for (const int df : {-1, 1}) {
-                const int white_file = file + df;
-                const int white_rank = rank + 1;
-                if (white_file >= 0 && white_file < 8 && white_rank < 8) {
-                    pawn[0][square] |= U64{1} << (white_rank * 8 + white_file);
-                }
-                const int black_file = file + df;
-                const int black_rank = rank - 1;
-                if (black_file >= 0 && black_file < 8 && black_rank >= 0) {
-                    pawn[1][square] |= U64{1} << (black_rank * 8 + black_file);
-                }
-            }
-
-            // Reverse tables: which squares can a pawn of a colour attack
-            // `square` from?  A white pawn attacks upwards, so its sources are
-            // one rank below with mirrored file deltas.
-            for (const int df : {-1, 1}) {
-                const int white_file = file + df;
-                const int white_rank = rank - 1;
-                if (white_file >= 0 && white_file < 8 && white_rank >= 0) {
-                    pawn_attackers[0][square] |= U64{1} << (white_rank * 8 + white_file);
-                }
-                const int black_file = file + df;
-                const int black_rank = rank + 1;
-                if (black_file >= 0 && black_file < 8 && black_rank < 8) {
-                    pawn_attackers[1][square] |= U64{1} << (black_rank * 8 + black_file);
-                }
-            }
-
-            // Rays: walk each direction until the edge of the board.
-            for (int direction = 0; direction < kAttackDirections; ++direction) {
-                const std::size_t index = static_cast<std::size_t>(direction);
-                const int file_delta = kFileDeltas[index];
-                const int rank_delta = kRankDeltas[index];
-                int target_file = file + file_delta;
-                int target_rank = rank + rank_delta;
-                U64 mask = 0;
-                while (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
-                    mask |= U64{1} << (target_rank * 8 + target_file);
-                    target_file += file_delta;
-                    target_rank += rank_delta;
-                }
-                rays[index][static_cast<std::size_t>(square)] = mask;
-            }
-            const std::size_t sq_idx = static_cast<std::size_t>(square);
-            rook_pseudo[sq_idx] =
-                rays[0][sq_idx] | rays[2][sq_idx] | rays[4][sq_idx] | rays[6][sq_idx];
-            bishop_pseudo[sq_idx] =
-                rays[1][sq_idx] | rays[3][sq_idx] | rays[5][sq_idx] | rays[7][sq_idx];
         }
 
-        for (int s1 = 0; s1 < 64; ++s1) {
-            const std::size_t i1 = static_cast<std::size_t>(s1);
-            for (int direction = 0; direction < kAttackDirections; ++direction) {
-                const std::size_t dir_idx = static_cast<std::size_t>(direction);
-                const std::size_t opp_idx = static_cast<std::size_t>((direction + 4) & 7);
-                const U64 dir_ray = rays[dir_idx][i1];
-                const U64 full_line = (U64{1} << s1) | dir_ray | rays[opp_idx][i1];
-                U64 targets = dir_ray;
-                while (targets != 0) {
-                    const int s2 = std::countr_zero(targets);
-                    targets &= targets - 1;
-                    const std::size_t i2 = static_cast<std::size_t>(s2);
-                    line[i1][i2] = full_line;
-                    between[i1][i2] = dir_ray & rays[opp_idx][i2];
+        // Kings: all eight neighbours.
+        for (int df = -1; df <= 1; ++df) {
+            for (int dr = -1; dr <= 1; ++dr) {
+                if (df == 0 && dr == 0) continue;
+                const int target_file = file + df;
+                const int target_rank = rank + dr;
+                if (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
+                    result.king[square] |= U64{1} << (target_rank * 8 + target_file);
                 }
+            }
+        }
+
+        // Pawn pushes: white attacks towards larger ranks, black towards
+        // smaller ones.  Both colours capture at file deltas +/-1.
+        for (const int df : {-1, 1}) {
+            const int white_file = file + df;
+            const int white_rank = rank + 1;
+            if (white_file >= 0 && white_file < 8 && white_rank < 8) {
+                result.pawn[0][square] |= U64{1} << (white_rank * 8 + white_file);
+            }
+            const int black_file = file + df;
+            const int black_rank = rank - 1;
+            if (black_file >= 0 && black_file < 8 && black_rank >= 0) {
+                result.pawn[1][square] |= U64{1} << (black_rank * 8 + black_file);
+            }
+        }
+
+        // Reverse tables: which squares can a pawn of a colour attack
+        // `square` from?  A white pawn attacks upwards, so its sources are
+        // one rank below with mirrored file deltas.
+        for (const int df : {-1, 1}) {
+            const int white_file = file + df;
+            const int white_rank = rank - 1;
+            if (white_file >= 0 && white_file < 8 && white_rank >= 0) {
+                result.pawn_attackers[0][square] |= U64{1} << (white_rank * 8 + white_file);
+            }
+            const int black_file = file + df;
+            const int black_rank = rank + 1;
+            if (black_file >= 0 && black_file < 8 && black_rank < 8) {
+                result.pawn_attackers[1][square] |= U64{1} << (black_rank * 8 + black_file);
+            }
+        }
+
+        // Rays: walk each direction until the edge of the board.
+        for (int direction = 0; direction < kAttackDirections; ++direction) {
+            const std::size_t index = static_cast<std::size_t>(direction);
+            const int file_delta = kFileDeltas[index];
+            const int rank_delta = kRankDeltas[index];
+            int target_file = file + file_delta;
+            int target_rank = rank + rank_delta;
+            U64 mask = 0;
+            while (target_file >= 0 && target_file < 8 && target_rank >= 0 && target_rank < 8) {
+                mask |= U64{1} << (target_rank * 8 + target_file);
+                target_file += file_delta;
+                target_rank += rank_delta;
+            }
+            result.rays[index][static_cast<std::size_t>(square)] = mask;
+        }
+        const std::size_t sq_idx = static_cast<std::size_t>(square);
+        result.rook_pseudo[sq_idx] = result.rays[0][sq_idx] | result.rays[2][sq_idx] |
+            result.rays[4][sq_idx] | result.rays[6][sq_idx];
+        result.bishop_pseudo[sq_idx] = result.rays[1][sq_idx] | result.rays[3][sq_idx] |
+            result.rays[5][sq_idx] | result.rays[7][sq_idx];
+    }
+
+    for (int s1 = 0; s1 < 64; ++s1) {
+        const std::size_t i1 = static_cast<std::size_t>(s1);
+        for (int direction = 0; direction < kAttackDirections; ++direction) {
+            const std::size_t dir_idx = static_cast<std::size_t>(direction);
+            const std::size_t opp_idx = static_cast<std::size_t>((direction + 4) & 7);
+            const U64 dir_ray = result.rays[dir_idx][i1];
+            const U64 full_line = (U64{1} << s1) | dir_ray | result.rays[opp_idx][i1];
+            U64 targets = dir_ray;
+            while (targets != 0) {
+                const int s2 = std::countr_zero(targets);
+                targets &= targets - 1;
+                const std::size_t i2 = static_cast<std::size_t>(s2);
+                result.line[i1][i2] = full_line;
+                result.between[i1][i2] = dir_ray & result.rays[opp_idx][i2];
             }
         }
     }
-};
-
-constexpr Tables kTables{};
+    return result;
+}
 
 [[nodiscard]] std::uint64_t sliding_attacks(int square, std::uint64_t occupied,
                                             std::initializer_list<int> directions) noexcept {
@@ -148,7 +136,7 @@ constexpr Tables kTables{};
     U64 attacks = 0;
     for (const int direction : directions) {
         const std::size_t index = static_cast<std::size_t>(direction);
-        const U64 ray = kTables.rays[index][static_cast<std::size_t>(square)];
+        const U64 ray = kFixedAttackTables.rays[index][static_cast<std::size_t>(square)];
         const U64 blockers = ray & occupied;
         if (blockers == 0) {
             attacks |= ray;
@@ -159,7 +147,7 @@ constexpr Tables kTables{};
         const int step = kSteps[index];
         const int first = step > 0 ? std::countr_zero(blockers)
                                    : 63 - std::countl_zero(blockers);
-        attacks |= ray ^ kTables.rays[index][static_cast<std::size_t>(first)];
+        attacks |= ray ^ kFixedAttackTables.rays[index][static_cast<std::size_t>(first)];
     }
     return attacks;
 }
@@ -171,7 +159,7 @@ constexpr Tables kTables{};
     U64 mask = 0;
     for (const int direction : directions) {
         const std::size_t index = static_cast<std::size_t>(direction);
-        const U64 ray = kTables.rays[index][static_cast<std::size_t>(square)];
+        const U64 ray = kFixedAttackTables.rays[index][static_cast<std::size_t>(square)];
         if (ray == 0) continue;
         // The final square of the ray is the board edge; a blocker there does
         // not hide anything, so it stays out of the mask.
@@ -319,25 +307,7 @@ const SliderTables kSliderTables{};
 
 } // namespace
 
-std::uint64_t knight_attacks(int square) noexcept {
-    if (square < 0 || square >= 64) return 0;
-    return kTables.knight[static_cast<std::size_t>(square)];
-}
-
-std::uint64_t king_attacks(int square) noexcept {
-    if (square < 0 || square >= 64) return 0;
-    return kTables.king[static_cast<std::size_t>(square)];
-}
-
-std::uint64_t pawn_attacks(int square, bool white) noexcept {
-    if (square < 0 || square >= 64) return 0;
-    return kTables.pawn[white ? 0 : 1][static_cast<std::size_t>(square)];
-}
-
-std::uint64_t pawn_attackers_of(int target, bool white_pawns) noexcept {
-    if (target < 0 || target >= 64) return 0;
-    return kTables.pawn_attackers[white_pawns ? 0 : 1][static_cast<std::size_t>(target)];
-}
+constinit const FixedAttackTables kFixedAttackTables = build_fixed_attack_tables();
 
 std::uint64_t bishop_attacks(int square, std::uint64_t occupied) noexcept {
     if (square < 0 || square >= 64) return 0;
@@ -356,21 +326,6 @@ std::uint64_t queen_attacks(int square, std::uint64_t occupied) noexcept {
         kSliderTables.rook[index].lookup(occupied);
 }
 
-std::uint64_t bishop_pseudo_attacks(int square) noexcept {
-    if (square < 0 || square >= 64) return 0;
-    return kTables.bishop_pseudo[static_cast<std::size_t>(square)];
-}
-
-std::uint64_t rook_pseudo_attacks(int square) noexcept {
-    if (square < 0 || square >= 64) return 0;
-    return kTables.rook_pseudo[static_cast<std::size_t>(square)];
-}
-
-std::uint64_t ray_attacks(int square, int direction) noexcept {
-    if (square < 0 || square >= 64 || direction < 0 || direction >= kAttackDirections) return 0;
-    return kTables.rays[static_cast<std::size_t>(direction)][static_cast<std::size_t>(square)];
-}
-
 int nearest_blocker(int square, int direction, std::uint64_t occupied) noexcept {
     const U64 ray = ray_attacks(square, direction);
     if (ray == 0) return -1;
@@ -378,16 +333,6 @@ int nearest_blocker(int square, int direction, std::uint64_t occupied) noexcept 
     if (blockers == 0) return -1;
     const int step = kSteps[static_cast<std::size_t>(direction)];
     return step > 0 ? std::countr_zero(blockers) : 63 - std::countl_zero(blockers);
-}
-
-std::uint64_t line_mask(int sq1, int sq2) noexcept {
-    if (sq1 < 0 || sq1 >= 64 || sq2 < 0 || sq2 >= 64) return 0;
-    return kTables.line[static_cast<std::size_t>(sq1)][static_cast<std::size_t>(sq2)];
-}
-
-std::uint64_t between_mask(int sq1, int sq2) noexcept {
-    if (sq1 < 0 || sq1 >= 64 || sq2 < 0 || sq2 >= 64) return 0;
-    return kTables.between[static_cast<std::size_t>(sq1)][static_cast<std::size_t>(sq2)];
 }
 
 } // namespace koi::detail

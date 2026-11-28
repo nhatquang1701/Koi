@@ -1393,6 +1393,37 @@ void test_high_latency_usable_clock_engages_emergency_pacing() {
             "low-latency 3500ms clock must stay out of emergency pacing and keep larger budgets");
 }
 
+void test_emergency_high_effort_depth5_recapture_cutoff() {
+    auto emg_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager emg(clock_limits(milliseconds{2'000}, milliseconds{1'000}),
+                    koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                    [emg_now] { return *emg_now; });
+    emg.observe_iteration({4, 25, false, false, false, 10'000, 9'500, milliseconds{5}});
+    emg.observe_iteration({5, 25, false, false, false, 10'000, 9'500, milliseconds{5}});
+    const auto emg_opt = emg.diagnostics().optimum_budget;
+    *emg_now += (emg_opt * 50) / 100;
+    require(emg.diagnostics().emergency_pacing &&
+                !emg.should_stop_after_iteration() &&
+                emg.should_start_next_iteration(milliseconds{1}),
+            "emergency high-effort depth-5 search at 50% optimum_budget must continue");
+    *emg_now += (emg_opt * 12) / 100 + milliseconds{1};
+    require(emg.should_stop_after_iteration() &&
+                !emg.should_start_next_iteration(milliseconds{1}),
+            "emergency high-effort depth-5 search past 60% optimum_budget must exit symmetrically");
+
+    auto healthy_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager healthy(clock_limits(milliseconds{60'000}, milliseconds{1'000}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [healthy_now] { return *healthy_now; });
+    healthy.observe_iteration({4, 25, false, false, false, 10'000, 9'500, milliseconds{10}});
+    healthy.observe_iteration({5, 25, false, false, false, 10'000, 9'500, milliseconds{10}});
+    *healthy_now += (healthy.diagnostics().optimum_budget * 65) / 100;
+    require(!healthy.diagnostics().emergency_pacing &&
+                !healthy.should_stop_after_iteration() &&
+                healthy.should_start_next_iteration(milliseconds{1}),
+            "healthy clock at depth 5 and 65% optimum_budget must keep depth-6 effort gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1457,6 +1488,8 @@ int main(int argc, char** argv) {
          test_hard_position_doomed_overrun_ply_guard},
         {"high latency usable clock emergency pacing",
          test_high_latency_usable_clock_engages_emergency_pacing},
+        {"emergency high effort depth 5 recapture cutoff",
+         test_emergency_high_effort_depth5_recapture_cutoff},
     };
     return koi::test::run_tests(tests, argc, argv);
 }
