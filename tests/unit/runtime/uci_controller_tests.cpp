@@ -80,6 +80,8 @@ void test_network_overhead_estimator_tracks_gui_latency() {
             "small latency jitter near the existing peak must keep the estimate steady");
     require(derive_network_overhead_ms(60'000, 0, 1'000, 58'960, 1'200) == 1'055,
             "sustained low latency after a transient lag spike must decay gradually");
+    require(derive_network_overhead_ms(60'000, 0, 1'000, 58'990, 1'200) == 1'052,
+            "sub-noise-floor positive RTT after a transient lag spike must decay gradually");
 }
 
 

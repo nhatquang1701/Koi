@@ -913,7 +913,8 @@ bool TimeManager::clock_early_stop_reached(
             elapsed >= scale_fraction(soft_target, 25, 100)) {
             return true;
         }
-        const int min_effort_depth = emergency_pacing_ ? 5 : 6;
+        const bool sudden_death_scramble = is_sudden_death_scramble();
+        const int min_effort_depth = (emergency_pacing_ || sudden_death_scramble) ? 5 : 6;
         if (has_effort_sample_ && best_move_effort_permille_ >= 900U &&
             last_observed_depth_ >= min_effort_depth && stable_observations_ >= 2 &&
             best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&
@@ -927,7 +928,6 @@ bool TimeManager::clock_early_stop_reached(
             elapsed >= scale_fraction(soft_target, 75, 100)) {
             return true;
         }
-        const bool sudden_death_scramble = is_sudden_death_scramble();
         if ((emergency_pacing_ || sudden_death_scramble) &&
             last_observed_depth_ >= 5 && stable_observations_ >= 2 &&
             best_move_stability_ >= 2 && score_drop_cp_ <= 15 &&

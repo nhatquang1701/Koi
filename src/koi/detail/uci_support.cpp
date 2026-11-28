@@ -1134,6 +1134,11 @@ std::uint32_t derive_network_overhead_ms(const std::int64_t previous_remaining_m
     if (excess <= 0) {
         return previous_estimate_ms - previous_estimate_ms / 8U;
     }
+    if (previous_estimate_ms >= 300U) {
+        const std::uint32_t step =
+            (previous_estimate_ms - static_cast<std::uint32_t>(excess)) / 8U;
+        return previous_estimate_ms - std::max<std::uint32_t>(1U, step);
+    }
     return previous_estimate_ms;
 }
 

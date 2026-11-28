@@ -2113,6 +2113,23 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     continue;
                 }
             }
+            if (phase_rich_depth_one_candidate && !pv_node &&
+                quiet_forcing_parent_features == nullptr &&
+                root_direct_forcing_features == nullptr &&
+                SearchPolicy::quiet_futility_window(
+                    move_number, static_eval, depth, alpha) &&
+                !metadata.is_capture() && !metadata.gives_check &&
+                move.promotion() == Promotion::none &&
+                SearchPolicy::quiet_futility(
+                    phase_rich_quiet_position(), metadata.is_capture(),
+                    metadata.gives_check, move.promotion() != Promotion::none,
+                    move_number, static_eval, depth, alpha)) {
+                selective_pruning = true;
+                ++stats.quiet_futility_prunes;
+                ++move_number;
+                frame.move_count = move_number;
+                continue;
+            }
             if (lmr_candidate && !metadata.is_capture()) {
                 if (!lmr_parent_features_ready) {
                     lmr_parent_features_ready = true;
@@ -2272,6 +2289,8 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             }
 
             if (phase_rich_depth_one_candidate && !pv_node &&
+                (quiet_forcing_parent_features != nullptr ||
+                 root_direct_forcing_features != nullptr) &&
                 SearchPolicy::quiet_futility_window(
                     move_number, static_eval, depth, alpha) &&
                 !metadata.is_capture() && !metadata.gives_check &&

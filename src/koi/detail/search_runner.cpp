@@ -373,8 +373,10 @@ void confirm_depth_one_quiet_vs_forcing(
             !state.root.make_search_move(metadata)) {
             return false;
         }
+        QuietForcingAfterView after_view;
+        build_quiet_forcing_after_view(state.root, root_features.side_to_move, after_view);
         const bool forcing = quiet_move_is_forcing(
-            root_features, state.root.position_features(), metadata);
+            root_features, state.root, after_view, metadata);
         (void)state.root.unmake_move();
         return forcing;
     };
@@ -514,15 +516,19 @@ void confirm_shallow_quiet_forcing_root(SerialRootConfirmationState& state) {
 
     std::array<MoveMetadata, 3> candidates{};
     std::size_t candidate_count = 0;
-    std::vector<MoveMetadata> forcing_candidates;
-    std::vector<MoveMetadata> quiet_candidates;
+    std::array<MoveMetadata, 3> forcing_candidates{};
+    std::size_t forcing_count = 0;
+    std::array<MoveMetadata, 3> quiet_candidates{};
+    std::size_t quiet_count = 0;
     const PositionFeatures root_features = state.root.position_features();
     const auto is_forcing_quiet = [&state, &root_features](const MoveMetadata& metadata) {
         if (!state.root.make_search_move(metadata)) {
             return false;
         }
+        QuietForcingAfterView after_view;
+        build_quiet_forcing_after_view(state.root, root_features.side_to_move, after_view);
         const bool forcing = quiet_move_is_forcing(
-            root_features, state.root.position_features(), metadata);
+            root_features, state.root, after_view, metadata);
         (void)state.root.unmake_move();
         return forcing;
     };
@@ -535,21 +541,23 @@ void confirm_shallow_quiet_forcing_root(SerialRootConfirmationState& state) {
         }
         const MoveMetadata* const metadata = find_legal_move(state.legal_moves, root_score.move);
         if (metadata != nullptr && is_quiet_non_checking_move(*metadata)) {
-            (is_forcing_quiet(*metadata) ? forcing_candidates : quiet_candidates)
-                .push_back(*metadata);
+            if (is_forcing_quiet(*metadata)) {
+                if (forcing_count < forcing_candidates.size()) {
+                    forcing_candidates[forcing_count++] = *metadata;
+                }
+            } else if (quiet_count < quiet_candidates.size()) {
+                quiet_candidates[quiet_count++] = *metadata;
+            }
         }
     }
     const auto append_candidates = [&candidates, &candidate_count](
-        const std::vector<MoveMetadata>& source) {
-        for (const MoveMetadata& metadata : source) {
-            if (candidate_count == candidates.size()) {
-                break;
-            }
-            candidates[candidate_count++] = metadata;
+        const std::array<MoveMetadata, 3>& source, const std::size_t count) {
+        for (std::size_t idx = 0; idx < count && candidate_count < candidates.size(); ++idx) {
+            candidates[candidate_count++] = source[idx];
         }
     };
-    append_candidates(forcing_candidates);
-    append_candidates(quiet_candidates);
+    append_candidates(forcing_candidates, forcing_count);
+    append_candidates(quiet_candidates, quiet_count);
 
     const int shallow_score = state.score;
     for (std::size_t index = 0; index < candidate_count; ++index) {
@@ -2122,8 +2130,8 @@ void SearchRunner::run_impl() {
                         best_metadata.move.promotion() == Promotion::none &&
                         !mate_from_score(shallow_best.score).has_value()) {
                         const PositionFeatures root_features = root.position_features();
-                        std::vector<std::pair<std::size_t, MoveMetadata>> candidates;
-                        candidates.reserve(3);
+                        std::array<std::pair<std::size_t, MoveMetadata>, 3> candidates{};
+                        std::size_t candidate_count = 0;
                         for (const std::size_t candidate_index : ranked_indices) {
                             if (candidate_index == best_candidate_index ||
                                 lines[candidate_index].score <
@@ -2139,19 +2147,23 @@ void SearchRunner::run_impl() {
                             if (!root.make_search_move(metadata)) {
                                 continue;
                             }
+                            QuietForcingAfterView after_view;
+                            build_quiet_forcing_after_view(
+                                root, root_features.side_to_move, after_view);
                             const bool forcing = quiet_move_is_forcing(
-                                root_features, root.position_features(), metadata);
+                                root_features, root, after_view, metadata);
                             (void)root.unmake_move();
                             if (!forcing) {
                                 continue;
                             }
-                            candidates.emplace_back(candidate_index, metadata);
-                            if (candidates.size() == 3) {
+                            candidates[candidate_count++] = {candidate_index, metadata};
+                            if (candidate_count == candidates.size()) {
                                 break;
                             }
                         }
 
-                        for (const auto& [candidate_index, metadata] : candidates) {
+                        for (std::size_t idx = 0; idx < candidate_count; ++idx) {
+                            const auto& [candidate_index, metadata] = candidates[idx];
                             if (time_manager.should_stop(root_context.visited_nodes())) {
                                 break;
                             }

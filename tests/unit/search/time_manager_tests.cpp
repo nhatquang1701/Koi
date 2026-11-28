@@ -1963,6 +1963,42 @@ void test_high_latency_usable_clock_sudden_death_scramble_and_subsecond() {
             "low-latency 10500 ms sudden-death clock with usable > 9 s must continue at depth 5 and 72% target");
 }
 
+void test_sudden_death_scramble_high_effort_depth5_recapture_cutoff() {
+    auto now_high = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits scramble_clock = clock_limits(milliseconds{8'000}, milliseconds{0});
+    TimeManager scr_high(scramble_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                         warm_context(), [now_high] { return *now_high; });
+    scr_high.observe_iteration({4, 25, false, false, false, 10'000, 9'500, milliseconds{6}});
+    scr_high.observe_iteration({5, 25, false, false, false, 10'000, 9'500, milliseconds{8}});
+    *now_high += (scr_high.diagnostics().optimum_budget * 62) / 100;
+    require(!scr_high.diagnostics().emergency_pacing &&
+                scr_high.should_stop_after_iteration() &&
+                !scr_high.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble high-effort recapture at depth 5 must exit at 60% target");
+
+    auto now_mod = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager scr_mod(scramble_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), [now_mod] { return *now_mod; });
+    scr_mod.observe_iteration({4, 25, false, false, false, 10'000, 5'000, milliseconds{6}});
+    scr_mod.observe_iteration({5, 25, false, false, false, 10'000, 5'000, milliseconds{8}});
+    *now_mod += (scr_mod.diagnostics().optimum_budget * 62) / 100;
+    require(!scr_mod.should_stop_after_iteration() &&
+                scr_mod.should_start_next_iteration(milliseconds{1}),
+            "sudden-death scramble moderate-effort search at depth 5 and 62% must continue");
+
+    auto now_inc = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager non_scramble(clock_limits(milliseconds{8'000}, milliseconds{1'000}),
+                             koi::Color::white, 100, kMoveOverheadMs, 100,
+                             warm_context(), [now_inc] { return *now_inc; });
+    non_scramble.observe_iteration({4, 25, false, false, false, 10'000, 9'500, milliseconds{6}});
+    non_scramble.observe_iteration({5, 25, false, false, false, 10'000, 9'500, milliseconds{8}});
+    *now_inc += (non_scramble.diagnostics().optimum_budget * 62) / 100;
+    require(!non_scramble.diagnostics().emergency_pacing &&
+                !non_scramble.should_stop_after_iteration() &&
+                non_scramble.should_start_next_iteration(milliseconds{1}),
+            "incremental 8s+1s high-effort search at depth 5 and 62% must retain depth>=6 gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2051,6 +2087,8 @@ int main(int argc, char** argv) {
          test_emergency_single_move_and_winning_mate_fast_exit},
         {"high latency usable clock scramble and subsecond",
          test_high_latency_usable_clock_sudden_death_scramble_and_subsecond},
+        {"sudden death scramble high effort depth 5 cutoff",
+         test_sudden_death_scramble_high_effort_depth5_recapture_cutoff},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

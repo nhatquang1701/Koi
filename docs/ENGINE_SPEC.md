@@ -731,7 +731,8 @@ the search but cannot push it past the cap.
   under emergency pacing) `>= 90%` best-move-share
   converted `ponderhit` searches past `25%` of the soft/optimum target,
   in calm high-effort positions (`>= 90%` best-move node share at
-  `depth >= 6`, or `depth >= 5` under emergency pacing) past `60%` of the
+  `depth >= 6`, or `depth >= 5` under emergency pacing or sudden-death
+  scrambles) past `60%` of the
   soft/optimum target, in sudden-death scrambles without
   `movestogo` (`remaining <= 10 s` or `usable <= 9 s`) or during
   `emergency_pacing` on calm `depth >= 5`
