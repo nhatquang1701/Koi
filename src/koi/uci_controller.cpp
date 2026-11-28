@@ -1422,36 +1422,26 @@ void UciController::handle_annotate(std::istream& command) {
 }
 
 void UciController::handle_display() {
-    const std::string board = detail::format_ascii_board(position_);
-    std::lock_guard lock(output_mutex_);
-    output_ << board << std::flush;
+    write_plain_output(detail::format_ascii_board(position_));
 }
 
 void UciController::handle_fen() {
-    const std::string fen = position_.fen();
-    std::lock_guard lock(output_mutex_);
-    output_ << fen << '\n' << std::flush;
+    write_plain_output(position_.fen() + '\n');
 }
 
 void UciController::handle_epd() {
-    const std::string epd = detail::format_epd(position_);
-    std::lock_guard lock(output_mutex_);
-    output_ << epd << std::flush;
+    write_plain_output(detail::format_epd(position_));
 }
 
 void UciController::handle_key() {
-    const std::string text = detail::format_key_info(position_);
-    std::lock_guard lock(output_mutex_);
-    output_ << text << std::flush;
+    write_plain_output(detail::format_key_info(position_));
 }
 
 void UciController::handle_moves(std::istream& command) {
     std::string mode;
-    const bool san = (command >> mode) && equals_ignore_case(mode, "san");
-    const std::string text =
-        san ? detail::format_legal_moves_san(position_) : detail::format_legal_moves(position_);
-    std::lock_guard lock(output_mutex_);
-    output_ << text << std::flush;
+    const bool san = (command >> mode) && (equals_ignore_case(mode, "san") || mode == "--san");
+    write_plain_output(san ? detail::format_legal_moves_san(position_)
+                           : detail::format_legal_moves(position_));
 }
 
 void UciController::handle_book() {
@@ -1463,22 +1453,17 @@ void UciController::handle_book() {
         const std::vector<BookChoice> entries = opening_book_.probe_all(position_);
         text = detail::format_book_entries(book_path.filename().string(), entries);
     }
-    std::lock_guard lock(output_mutex_);
-    output_ << text << std::flush;
+    write_plain_output(text);
 }
 
 void UciController::handle_tb() {
     ensure_auto_syzygy_loaded();
-    const std::string text = detail::format_syzygy_probe(syzygy_.get(), position_);
-    std::lock_guard lock(output_mutex_);
-    output_ << text << std::flush;
+    write_plain_output(detail::format_syzygy_probe(syzygy_.get(), position_));
 }
 
 void UciController::handle_eval() {
     const std::shared_ptr<const Evaluator> evaluator = search_service_.evaluator();
-    const std::string text = detail::format_eval_summary(position_, evaluator.get(), hce_active_);
-    std::lock_guard lock(output_mutex_);
-    output_ << text << std::flush;
+    write_plain_output(detail::format_eval_summary(position_, evaluator.get(), hce_active_));
 }
 
 void UciController::handle_nnue() {
@@ -1500,14 +1485,13 @@ void UciController::handle_nnue() {
     } else {
         text = "NNUE : unavailable\n";
     }
-    std::lock_guard lock(output_mutex_);
-    output_ << text << std::flush;
+    write_plain_output(text);
 }
 
 void UciController::handle_see(std::istream& command) {
     std::string token;
     if (!(command >> token)) {
-        write_uci_info_string("see requires a legal UCI move (e.g. see e4d5)");
+        write_uci_info_string("see requires a legal UCI or SAN move (e.g. see e4d5)");
         return;
     }
     const std::optional<Move> move = detail::parse_move_uci_or_san(position_, token);
@@ -1516,9 +1500,7 @@ void UciController::handle_see(std::istream& command) {
         return;
     }
     const int gain = detail::static_exchange_gain(position_, *move);
-    const std::string line = detail::format_see_result(move->uci(), gain);
-    std::lock_guard lock(output_mutex_);
-    output_ << line << std::flush;
+    write_plain_output(detail::format_see_result(move->uci(), gain));
 }
 
 void UciController::handle_flip() {
@@ -1608,15 +1590,11 @@ void UciController::handle_undo(std::istream& command) {
 }
 
 void UciController::handle_history() {
-    const std::string text = detail::format_move_history(position_origin_, position_moves_);
-    std::lock_guard lock(output_mutex_);
-    output_ << text << std::flush;
+    write_plain_output(detail::format_move_history(position_origin_, position_moves_));
 }
 
 void UciController::handle_pgn() {
-    const std::string text = detail::format_pgn(position_origin_, position_moves_);
-    std::lock_guard lock(output_mutex_);
-    output_ << text << std::flush;
+    write_plain_output(detail::format_pgn(position_origin_, position_moves_));
 }
 
 void UciController::handle_perft_command(std::istream& command) {
@@ -1650,10 +1628,8 @@ void UciController::handle_perft_command(std::istream& command) {
 }
 
 void UciController::handle_compiler() {
-    const std::string info =
-        detail::format_compiler_info(KOI_ENGINE_BUILD_VERSION, KOI_ENGINE_BUILD_COMMIT);
-    std::lock_guard lock(output_mutex_);
-    output_ << info << std::flush;
+    write_plain_output(
+        detail::format_compiler_info(KOI_ENGINE_BUILD_VERSION, KOI_ENGINE_BUILD_COMMIT));
 }
 
 void UciController::handle_bench(std::istream& command) {
@@ -1723,9 +1699,7 @@ void UciController::handle_wait() {
 }
 
 void UciController::handle_help() {
-    const std::string text = detail::format_interactive_help();
-    std::lock_guard lock(output_mutex_);
-    output_ << text << std::flush;
+    write_plain_output(detail::format_interactive_help());
 }
 
 void UciController::handle_options() {
@@ -2933,6 +2907,11 @@ void UciController::write_uci_info_string_locked(const std::string_view message)
 void UciController::write_uci_info_string(const std::string_view message) {
     std::lock_guard lock(output_mutex_);
     write_uci_info_string_locked(message);
+}
+
+void UciController::write_plain_output(const std::string_view text) {
+    std::lock_guard lock(output_mutex_);
+    output_ << text << std::flush;
 }
 
 void UciController::write_position_error(const char* message) {

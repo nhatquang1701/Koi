@@ -14,7 +14,7 @@
 
 namespace {
 
-constexpr std::array<const char*, 37> kCliEnvVars = {
+constexpr std::array<const char*, 38> kCliEnvVars = {
     "KOI_PROTOCOL",
     "KOI_CLI_HASH",
     "KOI_CLI_THREADS",
@@ -29,6 +29,7 @@ constexpr std::array<const char*, 37> kCliEnvVars = {
     "KOI_CLI_KEY",
     "KOI_CLI_MOVES",
     "KOI_CLI_MOVES_SAN",
+    "KOI_CLI_HISTORY",
     "KOI_CLI_PGN",
     "KOI_CLI_FLIP",
     "KOI_CLI_BOOK",
@@ -492,6 +493,31 @@ void test_unquoted_fen_and_inspection_subcommands() {
                                out.str().find("1. e4 e5 2. Nf3 *\n") != std::string::npos,
                            "zero-network pgn command must emit FIDE PGN; got:\n" + out.str());
     }
+    {
+        env.clear_all();
+        koi::cli::CliOptions history_opts;
+        koi::test::require(!invoke_parse({"history", "moves", "e4", "e5", "Nf3"}, history_opts)
+                                .has_value() &&
+                               history_opts.history &&
+                               history_opts.inspect_fen == "moves e4 e5 Nf3",
+                           "history subcommand must store trailing position spec");
+        koi::cli::CliOptions history_reexec;
+        koi::test::require(!invoke_parse({}, history_reexec).has_value() &&
+                               history_reexec.history &&
+                               history_reexec.inspect_fen == "moves e4 e5 Nf3",
+                           "KOI_CLI_HISTORY and KOI_CLI_FEN must roundtrip across empty argv");
+        std::array<std::string, 1> storage{{"koi-engine"}};
+        std::array<char*, 1> argv{{storage[0].data()}};
+        ScopedStreamCapture out(std::cout);
+        const auto run_exit = koi::cli::run_zero_network_cli_command(
+            history_opts, static_cast<int>(argv.size()), argv.data(), "1.2.0", "testsha");
+        koi::test::require(run_exit == std::optional<int>(0) &&
+                               out.str().find("Origin  : startpos\n") != std::string::npos &&
+                               out.str().find("Moves   : e2e4 e7e5 g1f3\n") != std::string::npos &&
+                               out.str().find("SAN     : 1. e4 e5 2. Nf3\n") != std::string::npos,
+                           "zero-network history command must emit formatted history; got:\n" +
+                               out.str());
+    }
 
     for (const std::vector<std::string>& bad : std::vector<std::vector<std::string>>{
              {"perft"},
@@ -499,6 +525,7 @@ void test_unquoted_fen_and_inspection_subcommands() {
              {"perft", "11"},
              {"perft", "--suite", "startpos"},
              {"-c", "uci", "perft", "--suite"},
+             {"-c", "uci", "history"},
              {"see"},
          }) {
         env.clear_all();

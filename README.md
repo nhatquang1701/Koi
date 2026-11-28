@@ -88,6 +88,7 @@ koi-engine fen [fen]                   # print six-field FEN after optional move
 koi-engine epd [fen]                   # print standard EPD (hmvc/fmvn) for startpos, FEN, or moves sequence
 koi-engine key [fen]
 koi-engine moves [--san] [fen]         # sorted legal moves in UCI or FIDE SAN notation
+koi-engine history [fen]               # print origin, plies, UCI moves, SAN movetext, and position command
 koi-engine pgn [fen]                   # export position/moves as FIDE PGN
 koi-engine flip [fen]
 koi-engine book [fen]                  # optional --book <path>
@@ -154,7 +155,7 @@ cmake --preset linux-gcc-release && cmake --build --preset linux-gcc-release && 
 cmake --preset macos-arm64-release && cmake --build --preset macos-arm64-release && ctest --preset macos-arm64-release
 ```
 
-Available presets in [CMakePresets.json](CMakePresets.json): `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-clang-asan`, `linux-gcc-tsan`, `macos-arm64-release`, `macos-arm64-debug`, and `macos-arm64-asan`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](Makefile) (`make`, `make tools`, `make profile-build` for PGO, `make asan`, `make EXE=koi-engine`, `make engine-json`, `make smoke`, `make speedtest`, `make bench EVALFILE=...`, `make nnue`, `make options`, `make eval`, `make d`, `make version`, `make compiler`, `make perft PERFT_DEPTH=... [FEN=...]`, `make pgn [FEN=...]`, `make test`, `make docs`). See the [User Guide](docs/USER_GUIDE.md#build-prerequisites) for Profile-Guided Optimization (`-DKOI_PGO=generate|use`), CPU variant selection (`KOI_CPU_VARIANT`), and developer tools (`koi-bench`, `koi-perft`, `koi-replay`).
+Available presets in [CMakePresets.json](CMakePresets.json): `windows-release`, `windows-debug`, `windows-asan`, `linux-gcc-release`, `linux-clang-release`, `linux-clang-asan`, `linux-gcc-tsan`, `macos-arm64-release`, `macos-arm64-debug`, and `macos-arm64-asan`. On Linux and macOS you can also use the OpenBench-compatible [Makefile](Makefile) (`make`, `make tools`, `make profile-build` for PGO, `make asan`, `make EXE=koi-engine`, `make engine-json`, `make smoke`, `make speedtest`, `make bench EVALFILE=...`, `make nnue`, `make options`, `make eval`, `make d`, `make version`, `make compiler`, `make perft PERFT_DEPTH=... [FEN=...]`, `make epd [FEN=...]`, `make history [FEN=...]`, `make pgn [FEN=...]`, `make test`, `make docs`). See the [User Guide](docs/USER_GUIDE.md#build-prerequisites) for Profile-Guided Optimization (`-DKOI_PGO=generate|use`), CPU variant selection (`KOI_CPU_VARIANT`), and developer tools (`koi-bench`, `koi-perft`, `koi-replay`).
 
 ---
 

@@ -3313,6 +3313,8 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
         "position startpos\n"
         "moves san\n"
         "annotate e4 depth 1\n"
+        "position startpos moves e2e4\n"
+        "moves --san\n"
         "quit\n");
     std::ostringstream pgn_out;
     std::ostringstream pgn_diag;
@@ -3328,6 +3330,7 @@ void test_interactive_engine_commands_display_eval_compiler_and_bench() {
                     "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - hmvc 1; fmvn 2;\n") !=
                     std::string::npos &&
                 pgn_raw.find("Legal moves (20): Na3 Nc3 Nf3 Nh3 ") != std::string::npos &&
+                pgn_raw.find("Legal moves (20): Na6 Nc6 Nf6 Nh6 ") != std::string::npos &&
                 pgn_raw.find("info string annotate move e2e4 ply 0 side white ") !=
                     std::string::npos,
             "interactive pgn/epd/moves san and SAN annotate output mismatch; got:\n" + pgn_raw);

@@ -175,6 +175,7 @@ private:
                                ProtocolMode protocol);
     void write_uci_info_string_locked(std::string_view message);
     void write_uci_info_string(std::string_view message);
+    void write_plain_output(std::string_view text);
     void write_position_error(const char* message);
     // Book auto-detection: a book beside the executable is used without the GUI
     // setting OwnBook, so shipping one is enough for it to take effect.

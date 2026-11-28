@@ -90,6 +90,7 @@ class CliSubcommandsTest(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn("Usage: koi-engine", proc.stdout)
             self.assertIn("eval, --eval [fen]", proc.stdout)
+            self.assertIn("history [fen]", proc.stdout)
             self.assertIn("perft <depth|--suite> [fen]", proc.stdout)
 
         proc = self._run(["--engine-json"], disable_nnue=True)
@@ -317,6 +318,33 @@ class CliSubcommandsTest(unittest.TestCase):
         pgn_bad_fen = self._run(["pgn", "bad fen"], disable_nnue=True)
         self.assertEqual(pgn_bad_fen.returncode, 2)
         self.assertIn("invalid FEN", pgn_bad_fen.stderr)
+
+        history_start = self._run(["history"], disable_nnue=True)
+        self.assertEqual(history_start.returncode, 0, history_start.stderr)
+        self.assertIn("Origin  : startpos", history_start.stdout)
+        self.assertIn("Plies   : 0", history_start.stdout)
+        self.assertIn("Moves   : (none)", history_start.stdout)
+        self.assertIn("SAN     : (none)", history_start.stdout)
+
+        history_moves = self._run(["history", "moves", "e4", "e5", "Nf3"], disable_nnue=True)
+        self.assertEqual(history_moves.returncode, 0, history_moves.stderr)
+        self.assertIn("Plies   : 3", history_moves.stdout)
+        self.assertIn("Moves   : e2e4 e7e5 g1f3", history_moves.stdout)
+        self.assertIn("SAN     : 1. e4 e5 2. Nf3", history_moves.stdout)
+        self.assertIn("Command : position startpos moves e2e4 e7e5 g1f3", history_moves.stdout)
+
+        history_fen4 = self._run(
+            ["history", "r3k2r/8/8/8/8/8/8/R3K2R w KQkq -", "moves", "O-O"],
+            disable_nnue=True,
+        )
+        self.assertEqual(history_fen4.returncode, 0, history_fen4.stderr)
+        self.assertIn("Origin  : r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", history_fen4.stdout)
+        self.assertIn("Moves   : e1g1", history_fen4.stdout)
+        self.assertIn("SAN     : 1. O-O", history_fen4.stdout)
+
+        history_bad_fen = self._run(["history", "bad fen"], disable_nnue=True)
+        self.assertEqual(history_bad_fen.returncode, 2)
+        self.assertIn("invalid FEN", history_bad_fen.stderr)
 
         fen_4field = self._run(["fen", "6k1/5ppp/8/8/8/8/8/3R2K1 w - -"], disable_nnue=True)
         self.assertEqual(fen_4field.returncode, 0, fen_4field.stderr)
@@ -743,6 +771,14 @@ class CliSubcommandsTest(unittest.TestCase):
         self.assertIn("PASS startpos depth 4 nodes 197281", perft_cmd.stdout)
         self.assertIn("suite 6/6 passed | nodes 10746536 |", perft_cmd.stdout)
         self.assertIn("info string perft ignored unexpected trailing argument 'extra'", perft_cmd.stdout)
+
+        moves_san_cmd = self._run(["--hce", "-c", "moves --san"], disable_nnue=True)
+        self.assertEqual(moves_san_cmd.returncode, 0, moves_san_cmd.stderr)
+        self.assertEqual(moves_san_cmd.stderr, "")
+        self.assertIn(
+            "Legal moves (20): Na3 Nc3 Nf3 Nh3 a3 a4 b3 b4 c3 c4 d3 d4 e3 e4 f3 f4 g3 g4 h3 h4",
+            moves_san_cmd.stdout,
+        )
 
         cli_hash_threads = self._run(
             ["--hce", "--hash", "64", "--threads", "1", "options"],

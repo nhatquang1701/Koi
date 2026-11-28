@@ -28,7 +28,7 @@ else
   CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release -DKOI_BUILD_MODULES=OFF
 endif
 
-.PHONY: all release tools profile-build bench speedtest eval nnue options engine-json version compiler perft perft-suite d epd pgn smoke test asan docs clean help
+.PHONY: all release tools profile-build bench speedtest eval nnue options engine-json version compiler perft perft-suite d epd history pgn smoke test asan docs clean help
 
 all: release
 
@@ -147,6 +147,13 @@ epd: release
 	  "$(BUILD_DIR)/koi-engine" epd; \
 	fi
 
+history: release
+	@if [ -n "$(FEN)" ]; then \
+	  "$(BUILD_DIR)/koi-engine" history "$(FEN)"; \
+	else \
+	  "$(BUILD_DIR)/koi-engine" history; \
+	fi
+
 pgn: release
 	@if [ -n "$(FEN)" ]; then \
 	  "$(BUILD_DIR)/koi-engine" pgn "$(FEN)"; \
@@ -195,6 +202,7 @@ help:
 	@echo "  make perft-suite                       Build koi-engine and run 6-position CPW suite"
 	@echo "  make d [FEN=...]                       Build and print ASCII board, FEN, key, and FIDE state"
 	@echo "  make epd [FEN=...]                     Build and print standard EPD (hmvc/fmvn) for position"
+	@echo "  make history [FEN=...]                 Build and print move history and reconstructed position command"
 	@echo "  make pgn [FEN=...]                     Build and export position/moves as FIDE PGN"
 	@echo "  make smoke [EVALFILE=...]              Run one-shot UCI handshake + depth-2 search smoke check"
 	@echo "  make test                              Build full suite and run CTest"

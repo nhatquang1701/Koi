@@ -42,7 +42,7 @@ Available presets: `windows-release`, `windows-debug`, `windows-asan`, `linux-gc
 On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engine-avx512` or `koi-engine-avx2` when the host CPU supports them (with fast `PEXT`), or runs the baseline build in place. Set `KOI_CPU_VARIANT=generic|avx2|avx512` to force a specific binary.
 
 ```bash
-# Deterministic OpenBench-compatible node benchmark & timed NPS throughput check (plus Makefile targets: `make tools`, `make smoke`, `make speedtest`, `make profile-build`, `make asan`, `make engine-json`, `make nnue`, `make options`, `make eval`, `make d`, `make epd`, `make pgn`, `make version`, `make compiler`, `make perft`, `make perft-suite`)
+# Deterministic OpenBench-compatible node benchmark & timed NPS throughput check (plus Makefile targets: `make tools`, `make smoke`, `make speedtest`, `make profile-build`, `make asan`, `make engine-json`, `make nnue`, `make options`, `make eval`, `make d`, `make epd`, `make history`, `make pgn`, `make version`, `make compiler`, `make perft`, `make perft-suite`)
 ./build/windows-release/koi-engine.exe bench
 ./build/windows-release/koi-engine.exe speedtest 1 128 3
 
@@ -57,7 +57,7 @@ On Windows and Linux x86-64, `koi-engine` automatically dispatches to `koi-engin
 ./build/linux-gcc-release/koi-engine --hash 64 --threads 1 -c "uci" -c "isready" -c "position startpos" -c "go depth 4"
 ```
 
-Supported zero-network CLI inspection subcommands also include `version`, `help`, `nnue [path]`, `fen [pos]`, `epd [pos]`, `key [pos]`, `moves [--san] [pos]`, `pgn [pos]`, `flip [pos]`, `book [pos]` (optional `--book <path>`), `tb [pos]` (optional `--syzygy <path>`), and `perft --suite`, while evaluator-backed `eval [pos]` and `options` boot the active NNUE network or `--hce`. `[pos]` accepts `startpos`, a quoted/unquoted 4- or 6-field FEN, or `[startpos|fen] [moves <uci|san>...]`.
+Supported zero-network CLI inspection subcommands also include `version`, `help`, `nnue [path]`, `fen [pos]`, `epd [pos]`, `key [pos]`, `moves [--san] [pos]`, `history [pos]`, `pgn [pos]`, `flip [pos]`, `book [pos]` (optional `--book <path>`), `tb [pos]` (optional `--syzygy <path>`), and `perft --suite`, while evaluator-backed `eval [pos]` and `options` boot the active NNUE network or `--hce`. `[pos]` accepts `startpos`, a quoted/unquoted 4- or 6-field FEN, or `[startpos|fen] [moves <uci|san>...]`.
 
 ---
 

@@ -113,6 +113,7 @@ void write_help(std::string_view version, std::string_view commit) {
               << "  epd [fen]                                Print standard EPD (hmvc/fmvn) for startpos, FEN, or moves sequence\n"
               << "  key [fen]                                Print Zobrist position, pawn, and Polyglot hash keys\n"
               << "  moves [--san] [fen]                      List sorted legal UCI (or FIDE SAN) moves from startpos or FEN\n"
+              << "  history [fen]                            Print origin, plies, UCI moves, FIDE SAN movetext, and position command\n"
               << "  pgn [fen]                                Export startpos, FEN, or moves sequence as FIDE PGN\n"
               << "  flip [fen]                               Toggle side to move if legal and print updated FEN\n"
               << "  book [fen]                               Probe Polyglot opening book entries for position\n"
@@ -402,6 +403,10 @@ std::optional<int> parse_cli_options(
             set_inspect_command(index, out.moves, "KOI_CLI_MOVES");
             continue;
         }
+        if (arg == "history") {
+            set_inspect_command(index, out.history, "KOI_CLI_HISTORY");
+            continue;
+        }
         if (arg == "pgn") {
             set_inspect_command(index, out.pgn, "KOI_CLI_PGN");
             continue;
@@ -652,7 +657,8 @@ std::optional<int> parse_cli_options(
                      "--hce, --nnue <path>, --book <path>, --syzygy <path>, "
                      "bench [depth [hash [threads]]], speedtest [threads [hash [seconds]]], "
                      "compiler, nnue [path], eval [fen], options, perft <depth|--suite> [fen], "
-                     "d [fen], fen [fen], key [fen], moves [fen], pgn [fen], flip [fen], book [fen], "
+                     "d [fen], fen [fen], epd [fen], key [fen], moves [--san] [fen], "
+                     "history [fen], pgn [fen], flip [fen], book [fen], "
                      "tb [fen], see <move> [fen]).\n";
         return 2;
     }
@@ -722,6 +728,7 @@ std::optional<int> parse_cli_options(
     restore_env_flag(out.key, "KOI_CLI_KEY");
     restore_env_flag(out.moves, "KOI_CLI_MOVES");
     restore_env_flag(out.moves_san, "KOI_CLI_MOVES_SAN");
+    restore_env_flag(out.history, "KOI_CLI_HISTORY");
     restore_env_flag(out.pgn, "KOI_CLI_PGN");
     restore_env_flag(out.flip, "KOI_CLI_FLIP");
     restore_env_flag(out.book, "KOI_CLI_BOOK");
@@ -767,8 +774,8 @@ std::optional<int> parse_cli_options(
     }
     if (!out.commands.empty() &&
         (out.bench_depth.has_value() || out.speedtest || out.compiler || out.nnue_info ||
-         out.display || out.fen || out.epd || out.key || out.moves || out.pgn || out.flip ||
-         out.book || out.tb || out.see_move.has_value() || out.eval || out.options ||
+         out.display || out.fen || out.epd || out.key || out.moves || out.history || out.pgn ||
+         out.flip || out.book || out.tb || out.see_move.has_value() || out.eval || out.options ||
          out.perft_depth.has_value() || out.perft_suite)) {
         std::cerr << "koi-engine: --cmd cannot be combined with one-shot subcommands.\n";
         return 2;
@@ -804,7 +811,7 @@ std::optional<int> run_zero_network_cli_command(
         std::cout << detail::format_nnue_info(display_name, *loaded) << std::flush;
         return 0;
     }
-    if (options.pgn) {
+    if (options.pgn || options.history) {
         detail::ParsedCliPosition parsed{GameState::startpos(), {}, GameState::startpos()};
         if (options.inspect_fen.has_value()) {
             std::string error;
@@ -816,7 +823,9 @@ std::optional<int> run_zero_network_cli_command(
             }
             parsed = *resolved;
         }
-        std::cout << detail::format_pgn(parsed.origin, parsed.moves) << std::flush;
+        std::cout << (options.pgn ? detail::format_pgn(parsed.origin, parsed.moves)
+                                  : detail::format_move_history(parsed.origin, parsed.moves))
+                  << std::flush;
         return 0;
     }
     if (options.display || options.fen || options.epd || options.key || options.moves ||
