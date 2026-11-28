@@ -2144,18 +2144,20 @@ void test_sudden_death_scramble_conversion_drawn_and_ponderhit_bank() {
             "incremental 6s+1s dead-drawn endgame at depth 7 must retain depth>=10/stability>=4 gate");
 
     auto scr_ph_now = std::make_shared<Clock::time_point>(Clock::now());
-    SearchLimits scr_ponder = clock_limits(milliseconds{6'000}, milliseconds{0});
+    const SearchLimits scr_live = clock_limits(milliseconds{6'000}, milliseconds{0});
+    SearchLimits scr_ponder = scr_live;
     scr_ponder.ponder = true;
+    const auto scr_ph_hard = TimeManager(
+        scr_live, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context()).diagnostics().hard_budget;
     TimeManager scr_ph(scr_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
                        warm_context(), [scr_ph_now] { return *scr_ph_now; });
-    const auto scr_ph_hard = scr_ph.diagnostics().hard_budget;
     const auto sample1 = std::max(milliseconds{12}, (scr_ph_hard * 45) / 100);
     const auto sample2 = std::max(milliseconds{20}, (scr_ph_hard * 90) / 100);
     const auto sample3 = std::max(milliseconds{30}, (scr_ph_hard * 150) / 100);
     scr_ph.observe_iteration({5, 25, false, false, false, 10'000, 5'000, sample1});
     scr_ph.observe_iteration({6, 25, false, false, false, 10'000, 5'000, sample2});
     scr_ph.observe_iteration({7, 25, false, false, false, 10'000, 5'000, sample3});
-    scr_ph.reconfigure(clock_limits(milliseconds{6'000}, milliseconds{0}),
+    scr_ph.reconfigure(scr_live,
                        koi::Color::white, 100, kMoveOverheadMs, 100,
                        warm_context(), false, *scr_ph_now, 0);
     require(!scr_ph.diagnostics().emergency_pacing &&
@@ -2164,18 +2166,20 @@ void test_sudden_death_scramble_conversion_drawn_and_ponderhit_bank() {
             "sudden-death scramble calm depth-7 ponderhit with doomed next ply must bank immediately");
 
     auto inc_ph_now = std::make_shared<Clock::time_point>(Clock::now());
-    SearchLimits inc_ponder = clock_limits(milliseconds{6'000}, milliseconds{1'000});
+    const SearchLimits inc_live = clock_limits(milliseconds{6'000}, milliseconds{1'000});
+    SearchLimits inc_ponder = inc_live;
     inc_ponder.ponder = true;
+    const auto inc_ph_hard = TimeManager(
+        inc_live, koi::Color::white, 100, kMoveOverheadMs, 100, warm_context()).diagnostics().hard_budget;
     TimeManager inc_ph(inc_ponder, koi::Color::white, 100, kMoveOverheadMs, 100,
                        warm_context(), [inc_ph_now] { return *inc_ph_now; });
-    const auto inc_ph_hard = inc_ph.diagnostics().hard_budget;
     inc_ph.observe_iteration(
         {5, 25, false, false, false, 10'000, 5'000, std::max(milliseconds{20}, (inc_ph_hard * 45) / 100)});
     inc_ph.observe_iteration(
         {6, 25, false, false, false, 10'000, 5'000, std::max(milliseconds{30}, (inc_ph_hard * 90) / 100)});
     inc_ph.observe_iteration(
         {7, 25, false, false, false, 10'000, 5'000, std::max(milliseconds{40}, (inc_ph_hard * 150) / 100)});
-    inc_ph.reconfigure(clock_limits(milliseconds{6'000}, milliseconds{1'000}),
+    inc_ph.reconfigure(inc_live,
                        koi::Color::white, 100, kMoveOverheadMs, 100,
                        warm_context(), false, *inc_ph_now, 0);
     require(!inc_ph.diagnostics().emergency_pacing &&
