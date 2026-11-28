@@ -617,7 +617,7 @@ void test_forced_mate_lookahead_and_instability_signals() {
     for (int depth = 4; depth <= 6; ++depth) {
         SearchIterationObservation obs;
         obs.depth = depth;
-        obs.score_cp = 20;
+        obs.score_cp = 100;
         obs.nodes = 10'000;
         obs.best_move_nodes = 5'000;
         obs.iteration_elapsed = soft;
