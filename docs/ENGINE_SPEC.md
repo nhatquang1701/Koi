@@ -741,7 +741,8 @@ the search but cannot push it past the cap.
   `score_drop < 60` cp, `5 ms` sample floor in
   emergency pacing vs `20 ms` otherwise, predicted next ply exceeding
   hard_budget`), and a hard-position pre-overrun guard once past `65%` of
-  `hard_budget` (`depth >= 7`, `best_move_stability >= 1`, `score_drop < 40` cp,
+  `hard_budget` (`depth >= 7`, or `depth >= 5` under emergency pacing,
+  `best_move_stability >= 1`, `score_drop < 40` cp,
   `!last_aspiration_researched`, predicted next ply exceeding `1.4×`
   `hard_budget`), in addition to the hard deadline.
 - `ponderhit` captures the arrival timestamp (`PonderhitConversion::received_at`)

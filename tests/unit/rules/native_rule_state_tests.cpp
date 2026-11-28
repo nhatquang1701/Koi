@@ -565,6 +565,57 @@ void test_slider_attack_tables_match_the_ray_reference() {
             "out-of-range slider queries must answer zero");
 }
 
+void test_bounded_legal_move_count_and_checking_move_probe() {
+    const std::array<std::string_view, 5> count_fens{
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "4k3/8/8/8/8/8/4Q3/4K3 b - - 0 1",
+        "r3k2r/8/8/8/8/8/8/4K2R b Kkq - 0 1",
+        "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1",
+        "7k/5Q2/6K1/8/8/8/8/8 w - - 0 1",
+    };
+    for (const std::string_view fen : count_fens) {
+        const GameState state = require_state(fen);
+        const koi::Position pos(state.fen());
+        const std::size_t full_count = state.legal_moves().size();
+        for (const std::size_t limit : {std::size_t{0}, std::size_t{1}, std::size_t{3},
+                                        std::size_t{4}, std::size_t{20}, std::size_t{64}}) {
+            const std::size_t expected = std::min(limit, full_count);
+            require(state.count_legal_moves_up_to(limit) == expected &&
+                        pos.count_legal_moves_up_to(limit) == expected,
+                    "bounded legal move count must match min(limit, total) and stop early");
+        }
+    }
+
+    struct CheckCase {
+        std::string_view fen;
+        bool expected;
+    };
+    const std::array<CheckCase, 9> check_cases{{
+        {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", false},
+        {"4k3/8/8/8/8/8/4Q3/4K3 w - - 0 1", true},
+        {"4k3/8/8/8/3N4/8/8/4K3 w - - 0 1", true},
+        {"4k3/3P4/8/8/8/8/8/4K3 w - - 0 1", true},
+        {"4k3/8/8/8/4N3/8/4R3/4K3 w - - 0 1", true},
+        {"5k2/8/8/8/8/8/8/4K2R w K - 0 1", true},
+        {"4k3/1P6/8/8/8/8/8/4K3 w - - 0 1", true},
+        {"4k3/8/8/8/8/8/4Q3/4K3 b - - 0 1", false},
+        {"4k3/8/8/8/8/8/8/4K3 w - - 0 1", false},
+    }};
+    for (const CheckCase& item : check_cases) {
+        const GameState state = require_state(item.fen);
+        const koi::Position pos(state.fen());
+        koi::MoveMetadataList moves;
+        state.legal_moves_with_metadata(moves, true, false, koi::CheckFlagMode::all_moves);
+        const bool expected = std::any_of(
+            moves.begin(), moves.end(),
+            [](const koi::MoveMetadata& move) { return move.gives_check; });
+        require(expected == item.expected &&
+                    state.has_legal_checking_move() == item.expected &&
+                    pos.has_legal_checking_move() == item.expected,
+                "has_legal_checking_move must match exhaustive gives_check scan");
+    }
+}
+
 void test_null_move_keeps_native_and_mirror_consistent() {
     GameState state = require_state(
         "r3k2r/ppp2ppp/2n1bn2/3qp3/3P4/2NB1N2/PPP2PPP/R2Q1RK1 w kq - 10 9");
@@ -614,6 +665,7 @@ int main(int argc, char** argv) {
         {"null move mirror consistency", test_null_move_keeps_native_and_mirror_consistent},
         {"detached state make move", test_detached_state_make_move_uses_native_rules},
         {"slider attacks match the ray reference", test_slider_attack_tables_match_the_ray_reference},
+        {"bounded legal count and check probe", test_bounded_legal_move_count_and_checking_move_probe},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

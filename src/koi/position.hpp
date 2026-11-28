@@ -42,6 +42,8 @@ public:
     // only its first entries (internal callers always pass the 256-move
     // maximum, so truncation only affects external users).
     [[nodiscard]] std::size_t legal_moves_into(std::span<Move> output) const noexcept;
+    // Stops pseudo-legal generation once `limit` legal moves are counted.
+    [[nodiscard]] std::size_t count_legal_moves_up_to(std::size_t limit) const noexcept;
     // Tactical-only variant for quiescence: captures, en-passant, and
     // promotions, in the same relative order as legal_moves_into().
     [[nodiscard]] std::size_t legal_tactical_moves_into(std::span<Move> output) const noexcept;
@@ -62,6 +64,8 @@ public:
         MoveMetadataList& output) const noexcept;
     // True as soon as one legal move is found, without generating the rest.
     [[nodiscard]] bool has_legal_move() const noexcept;
+    // True as soon as one legal checking move is found, without generating the rest.
+    [[nodiscard]] bool has_legal_checking_move() const noexcept;
     [[nodiscard]] bool is_legal(const Move& move) const noexcept;
     [[nodiscard]] bool is_capture(const Move& move) const noexcept;
     // Per-move board facts resolved in one pass: the origin and destination

@@ -606,8 +606,7 @@ bool narrow_deep_quiet_check_candidate(GameState& state, const MoveMetadata& met
     if (!state.make_search_move(metadata)) {
         return false;
     }
-    std::array<Move, 4> narrow_replies{};
-    const bool narrow_evasion_set = state.legal_moves_into(narrow_replies) <= 3;
+    const bool narrow_evasion_set = state.count_legal_moves_up_to(4) <= 3;
     (void)state.unmake_move();
     return narrow_evasion_set;
 }
@@ -619,14 +618,7 @@ bool root_move_exposes_immediate_check(const GameState& root,
         if (!after_move.make_search_move(metadata) || after_move.in_check()) {
             return false;
         }
-
-        MoveMetadataList opponent_moves;
-        after_move.legal_moves_with_metadata(
-            opponent_moves, true, false, CheckFlagMode::all_moves);
-        return std::any_of(opponent_moves.begin(), opponent_moves.end(),
-                           [](const MoveMetadata& opponent_move) {
-                               return opponent_move.gives_check;
-                           });
+        return after_move.has_legal_checking_move();
     } catch (...) {
         return false;
     }

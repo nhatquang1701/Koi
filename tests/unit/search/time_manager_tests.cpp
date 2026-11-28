@@ -1465,6 +1465,49 @@ void test_emergency_doomed_depth5_ply_guard() {
             "healthy clock at depth 5 past optimum_budget must retain depth>=6 doomed-ply threshold");
 }
 
+void test_emergency_hard_position_doomed_overrun_depth5_guard() {
+    auto stable_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto dropping_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits emg_clock = clock_limits(milliseconds{2'000}, milliseconds{1'000});
+    TimeManager stable_emg(emg_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                           warm_context(), [stable_now] { return *stable_now; });
+    TimeManager dropping_emg(emg_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                             warm_context(), [dropping_now] { return *dropping_now; });
+
+    const auto emg_hard = stable_emg.diagnostics().hard_budget;
+    const auto d4_time = std::max(milliseconds{10}, (emg_hard * 30) / 100);
+    const auto d5_time = std::max(milliseconds{20}, (emg_hard * 52) / 100);
+    for (TimeManager* tm : {&stable_emg, &dropping_emg}) {
+        tm->observe_iteration({4, 50, true, false, false, 10'000, 2'000, d4_time});
+    }
+    stable_emg.observe_iteration({5, 45, false, false, false, 10'000, 2'000, d5_time});
+    dropping_emg.observe_iteration({5, 5, false, false, false, 10'000, 2'000, d5_time});
+
+    const auto elapsed_70 = (emg_hard * 70) / 100;
+    *stable_now += elapsed_70;
+    *dropping_now += elapsed_70;
+    require(stable_emg.diagnostics().emergency_pacing &&
+                elapsed_70 < stable_emg.diagnostics().optimum_budget &&
+                !stable_emg.should_start_next_iteration(milliseconds{1}),
+            "emergency hard position at depth 5 and >=65% hard_budget with >140% overrun next ply must bank clock");
+    require(dropping_emg.should_start_next_iteration(milliseconds{1}),
+            "emergency hard position suffering >=40 cp score drop at depth 5 must still attempt depth 6 inside hard_budget");
+
+    auto healthy_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits healthy_clock = clock_limits(milliseconds{60'000}, milliseconds{1'000});
+    TimeManager healthy(healthy_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                        warm_context(), [healthy_now] { return *healthy_now; });
+    const auto healthy_hard = healthy.diagnostics().hard_budget;
+    healthy.observe_iteration(
+        {4, 50, true, false, false, 10'000, 2'000, (healthy_hard * 30) / 100});
+    healthy.observe_iteration(
+        {5, 45, false, false, false, 10'000, 2'000, (healthy_hard * 52) / 100});
+    *healthy_now += (healthy_hard * 70) / 100;
+    require(!healthy.diagnostics().emergency_pacing &&
+                healthy.should_start_next_iteration(milliseconds{1}),
+            "healthy clock hard position at depth 5 must retain depth>=7 pre-overrun guard");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1533,6 +1576,8 @@ int main(int argc, char** argv) {
          test_emergency_high_effort_depth5_recapture_cutoff},
         {"emergency doomed depth 5 ply guard",
          test_emergency_doomed_depth5_ply_guard},
+        {"emergency hard position depth 5 overrun guard",
+         test_emergency_hard_position_doomed_overrun_depth5_guard},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

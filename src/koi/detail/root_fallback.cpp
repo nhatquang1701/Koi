@@ -839,7 +839,8 @@ bool root_move_is_broad_quiet_check(
     try {
         GameState after_check = root;
         return after_check.make_search_move(metadata) && after_check.in_check() &&
-            after_check.legal_moves_into({}) > kMaximumEmergencyForcingCheckEvasions;
+            after_check.count_legal_moves_up_to(kMaximumEmergencyForcingCheckEvasions + 1) >
+                kMaximumEmergencyForcingCheckEvasions;
     } catch (...) {
         return false;
     }

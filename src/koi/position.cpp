@@ -66,6 +66,23 @@ private:
     std::size_t count_ = 0;
 };
 
+class BoundedCountMoveSink {
+public:
+    explicit BoundedCountMoveSink(std::size_t limit) noexcept : limit_(limit) {}
+
+    template <typename... Arguments>
+    [[nodiscard]] bool emplace_back(Arguments&&...) noexcept {
+        ++count_;
+        return count_ < limit_;
+    }
+
+    [[nodiscard]] std::size_t count() const noexcept { return count_; }
+
+private:
+    std::size_t limit_ = 0;
+    std::size_t count_ = 0;
+};
+
 struct ZobristKeys {
     std::array<std::array<std::array<std::uint64_t, 64>, 7>, 2> pieces{};
     std::array<std::uint64_t, 16> castling{};
@@ -599,17 +616,29 @@ template <typename MoveSink>
     return moves.emplace_back(from, to, Promotion::knight);
 }
 
-template <bool IncludeCheckFlags, bool QuietChecksOnly, bool DropNonCheckingQuiets>
+template <bool IncludeCheckFlags, bool QuietChecksOnly, bool DropNonCheckingQuiets,
+          bool StopOnFirstCheck = false>
 class SearchMetadataSink {
 public:
     using MetadataTag = void;
 
     SearchMetadataSink(const NativeState& state,
                        MoveMetadataList& output) noexcept
+        : SearchMetadataSink(state, &output) {}
+
+    explicit SearchMetadataSink(const NativeState& state) noexcept
+        requires (StopOnFirstCheck)
+        : SearchMetadataSink(state, nullptr) {}
+
+    [[nodiscard]] bool found_check() const noexcept { return found_check_; }
+
+private:
+    SearchMetadataSink(const NativeState& state,
+                       MoveMetadataList* output) noexcept
         : state_(state),
           output_(output),
-          storage_(output.begin()),
-          count_(output.size()),
+          storage_(output != nullptr ? output->begin() : nullptr),
+          count_(output != nullptr ? output->size() : 0U),
           position_key_(state.key) {
         if constexpr (!IncludeCheckFlags) {
             return;
@@ -623,10 +652,17 @@ public:
         friendly_bishop_queen_ =
             state.piece_bitboards[side_idx][static_cast<std::size_t>(PieceType::bishop)] |
             state.piece_bitboards[side_idx][static_cast<std::size_t>(PieceType::queen)];
+        const std::uint64_t promo_pawns =
+            state.piece_bitboards[side_idx][static_cast<std::size_t>(PieceType::pawn)] &
+            (state.side == Color::white ? 0x00FF000000000000ULL : 0x000000000000FF00ULL);
         if (enemy_king_ != 0 && (enemy_king_ & (enemy_king_ - 1U)) == 0U) {
             king_square_ = static_cast<int>(std::countr_zero(enemy_king_));
-            rook_rays_pre_ = detail::rook_attacks(king_square_, state.occupied);
-            bishop_rays_pre_ = detail::bishop_attacks(king_square_, state.occupied);
+            rook_rays_pre_ = (friendly_rook_queen_ | promo_pawns) != 0
+                ? detail::rook_attacks(king_square_, state.occupied)
+                : 0ULL;
+            bishop_rays_pre_ = (friendly_bishop_queen_ | promo_pawns) != 0
+                ? detail::bishop_attacks(king_square_, state.occupied)
+                : 0ULL;
             pre_rays_ = rook_rays_pre_ | bishop_rays_pre_;
             direct_pawn_checks_ =
                 detail::pawn_attackers_of(king_square_, state.side == Color::white);
@@ -638,22 +674,30 @@ public:
             can_fast_direct_ = !already_checking_sliders;
             if (can_fast_direct_) {
                 const std::uint64_t friendly = state.occupancy[side_idx];
-                const std::uint64_t rook_blockers = rook_rays_pre_ & friendly;
-                const std::uint64_t bishop_blockers = bishop_rays_pre_ & friendly;
-                if (rook_blockers != 0 && friendly_rook_queen_ != 0) {
+                const std::uint64_t rook_snipers = friendly_rook_queen_ != 0
+                    ? (detail::rook_pseudo_attacks(king_square_) & friendly_rook_queen_)
+                    : 0ULL;
+                const std::uint64_t rook_blockers =
+                    rook_snipers != 0 ? (rook_rays_pre_ & friendly) : 0ULL;
+                if (rook_blockers != 0) {
                     std::uint64_t pinners =
                         detail::rook_attacks(king_square_, state.occupied ^ rook_blockers) &
-                        friendly_rook_queen_;
+                        rook_snipers;
                     while (pinners != 0) {
                         const int sniper = static_cast<int>(std::countr_zero(pinners));
                         pinners &= pinners - 1;
                         dc_blockers_ |= detail::between_mask(king_square_, sniper) & rook_blockers;
                     }
                 }
-                if (bishop_blockers != 0 && friendly_bishop_queen_ != 0) {
+                const std::uint64_t bishop_snipers = friendly_bishop_queen_ != 0
+                    ? (detail::bishop_pseudo_attacks(king_square_) & friendly_bishop_queen_)
+                    : 0ULL;
+                const std::uint64_t bishop_blockers =
+                    bishop_snipers != 0 ? (bishop_rays_pre_ & friendly) : 0ULL;
+                if (bishop_blockers != 0) {
                     std::uint64_t pinners =
                         detail::bishop_attacks(king_square_, state.occupied ^ bishop_blockers) &
-                        friendly_bishop_queen_;
+                        bishop_snipers;
                     while (pinners != 0) {
                         const int sniper = static_cast<int>(std::countr_zero(pinners));
                         pinners &= pinners - 1;
@@ -664,6 +708,8 @@ public:
             }
         }
     }
+
+public:
 
     [[nodiscard]] static constexpr bool has_check_probe() noexcept { return IncludeCheckFlags; }
     [[nodiscard]] bool can_fast_direct() const noexcept { return can_fast_direct_; }
@@ -806,13 +852,22 @@ public:
     }
 
     void finish() noexcept {
-        output_.resize(count_);
+        if constexpr (!StopOnFirstCheck) {
+            output_->resize(count_);
+        }
     }
 
 private:
     [[nodiscard]] bool append_record(const Move move, const PieceType moving,
                                      const PieceType captured, const MoveKind kind,
                                      const bool gives_check) noexcept {
+        if constexpr (StopOnFirstCheck) {
+            if (gives_check) {
+                found_check_ = true;
+                return false;
+            }
+            return true;
+        }
         if (count_ >= kMaximumLegalMoves) [[unlikely]] {
             return false;
         }
@@ -917,26 +972,39 @@ private:
                     (detail::king_attacks(to) & enemy_king_) != 0;
                 break;
             case PieceType::bishop:
-                if (destination_on_ray) {
+                if (destination_on_ray &&
+                    (!rays_known ||
+                     (detail::bishop_pseudo_attacks(king_square) & destination_bit) != 0)) {
                     direct_check = (bishop_rays() & destination_bit) != 0;
                 }
                 break;
             case PieceType::rook:
-                if (destination_on_ray) {
+                if (destination_on_ray &&
+                    (!rays_known ||
+                     (detail::rook_pseudo_attacks(king_square) & destination_bit) != 0)) {
                     direct_check = (rook_rays() & destination_bit) != 0;
                 }
                 break;
             case PieceType::queen:
                 if (destination_on_ray) {
-                    direct_check = ((rook_rays() | bishop_rays()) & destination_bit) != 0;
+                    const bool on_rook = !rays_known ||
+                        (detail::rook_pseudo_attacks(king_square) & destination_bit) != 0;
+                    const bool on_bishop = !rays_known ||
+                        (detail::bishop_pseudo_attacks(king_square) & destination_bit) != 0;
+                    direct_check =
+                        (on_rook && (rook_rays() & destination_bit) != 0) ||
+                        (on_bishop && (bishop_rays() & destination_bit) != 0);
                 }
                 break;
             default:
                 break;
         }
-        if (kind == MoveKind::castling && valid_square(rook_destination) &&
-            (rook_rays() & (std::uint64_t{1} << rook_destination)) != 0) {
-            direct_check = true;
+        if (kind == MoveKind::castling && valid_square(rook_destination)) {
+            const std::uint64_t rook_dest_bit = std::uint64_t{1} << rook_destination;
+            if ((detail::rook_pseudo_attacks(king_square) & rook_dest_bit) != 0 &&
+                (rook_rays() & rook_dest_bit) != 0) {
+                direct_check = true;
+            }
         }
         if (direct_check) {
             return true;
@@ -948,7 +1016,14 @@ private:
                 rq &= ~castling_rook_source_bit;
                 bq &= ~castling_rook_source_bit;
             }
-            if ((rook_rays() & rq) != 0 || (bishop_rays() & bq) != 0) {
+            const std::uint64_t rq_cand = rq != 0
+                ? (detail::rook_pseudo_attacks(king_square) & rq)
+                : 0ULL;
+            const std::uint64_t bq_cand = bq != 0
+                ? (detail::bishop_pseudo_attacks(king_square) & bq)
+                : 0ULL;
+            if ((rq_cand != 0 && (rook_rays() & rq_cand) != 0) ||
+                (bq_cand != 0 && (bishop_rays() & bq_cand) != 0)) {
                 return true;
             }
         }
@@ -956,7 +1031,7 @@ private:
     }
 
     const NativeState& state_;
-    MoveMetadataList& output_;
+    MoveMetadataList* output_ = nullptr;
     MoveMetadata* storage_ = nullptr;
     std::size_t count_ = 0;
     std::uint64_t position_key_ = 0;
@@ -973,6 +1048,7 @@ private:
     std::uint64_t direct_king_checks_ = 0;
     int king_square_ = -1;
     bool can_fast_direct_ = false;
+    bool found_check_ = false;
 };
 
 template <typename T>
@@ -1287,6 +1363,21 @@ public:
 
     std::size_t legal_moves_into(std::span<Move> output) {
         return legal_moves_into_impl<PseudoGenMode::all>(output);
+    }
+
+    [[nodiscard]] std::size_t count_legal_moves_up_to(const std::size_t limit) noexcept {
+        if (limit == 0) {
+            return 0;
+        }
+        BoundedCountMoveSink sink(limit);
+        generate_pseudo<PseudoGenMode::all>(sink);
+        return sink.count();
+    }
+
+    [[nodiscard]] bool has_legal_checking_move() noexcept {
+        SearchMetadataSink<true, false, true, true> sink(state);
+        generate_pseudo<PseudoGenMode::tactical_and_checks>(sink);
+        return sink.found_check();
     }
 
     std::size_t legal_tactical_moves_into(std::span<Move> output) {
@@ -2120,33 +2211,45 @@ private:
                 }
             }
             if (!reused_probe) {
-                if (ek < 0) {
-                    ek = static_cast<int>(std::countr_zero(enemy_king_bb));
-                    direct_pawn_checks = detail::pawn_attackers_of(ek, side == Color::white);
-                    direct_knight_checks = detail::knight_attacks(ek);
-                    direct_rook_checks = detail::rook_attacks(ek, state.occupied);
-                    direct_bishop_checks = detail::bishop_attacks(ek, state.occupied);
-                }
                 const std::uint64_t friendly_rq =
                     state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::rook)] |
                     state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)];
                 const std::uint64_t friendly_bq =
                     state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::bishop)] |
                     state.piece_bitboards[side_index][static_cast<std::size_t>(PieceType::queen)];
-                const std::uint64_t rook_blockers = direct_rook_checks & friendly;
-                const std::uint64_t bishop_blockers = direct_bishop_checks & friendly;
-                if (rook_blockers != 0 && friendly_rq != 0) {
+                if (ek < 0) {
+                    ek = static_cast<int>(std::countr_zero(enemy_king_bb));
+                    direct_pawn_checks = detail::pawn_attackers_of(ek, side == Color::white);
+                    direct_knight_checks = detail::knight_attacks(ek);
+                    direct_rook_checks = friendly_rq != 0
+                        ? detail::rook_attacks(ek, state.occupied)
+                        : 0ULL;
+                    direct_bishop_checks = friendly_bq != 0
+                        ? detail::bishop_attacks(ek, state.occupied)
+                        : 0ULL;
+                }
+                const std::uint64_t rook_snipers = friendly_rq != 0
+                    ? (detail::rook_pseudo_attacks(ek) & friendly_rq)
+                    : 0ULL;
+                const std::uint64_t bishop_snipers = friendly_bq != 0
+                    ? (detail::bishop_pseudo_attacks(ek) & friendly_bq)
+                    : 0ULL;
+                const std::uint64_t rook_blockers =
+                    rook_snipers != 0 ? (direct_rook_checks & friendly) : 0ULL;
+                const std::uint64_t bishop_blockers =
+                    bishop_snipers != 0 ? (direct_bishop_checks & friendly) : 0ULL;
+                if (rook_blockers != 0) {
                     std::uint64_t pinners =
-                        detail::rook_attacks(ek, state.occupied ^ rook_blockers) & friendly_rq;
+                        detail::rook_attacks(ek, state.occupied ^ rook_blockers) & rook_snipers;
                     while (pinners != 0) {
                         const int sniper = static_cast<int>(std::countr_zero(pinners));
                         pinners &= pinners - 1;
                         dc_blockers |= detail::between_mask(ek, sniper) & rook_blockers;
                     }
                 }
-                if (bishop_blockers != 0 && friendly_bq != 0) {
+                if (bishop_blockers != 0) {
                     std::uint64_t pinners =
-                        detail::bishop_attacks(ek, state.occupied ^ bishop_blockers) & friendly_bq;
+                        detail::bishop_attacks(ek, state.occupied ^ bishop_blockers) & bishop_snipers;
                     while (pinners != 0) {
                         const int sniper = static_cast<int>(std::countr_zero(pinners));
                         pinners &= pinners - 1;
@@ -3159,6 +3262,14 @@ std::size_t Position::legal_moves_into(std::span<Move> output) const noexcept {
     }
 }
 
+std::size_t Position::count_legal_moves_up_to(const std::size_t limit) const noexcept {
+    try {
+        return const_cast<NativePosition&>(impl_->position).count_legal_moves_up_to(limit);
+    } catch (...) {
+        return 0;
+    }
+}
+
 std::size_t Position::legal_tactical_moves_into(std::span<Move> output) const noexcept {
     try {
         return const_cast<NativePosition&>(impl_->position).legal_tactical_moves_into(output);
@@ -3205,6 +3316,14 @@ void Position::append_quiet_search_metadata_into(
 bool Position::has_legal_move() const noexcept {
     try {
         return const_cast<NativePosition&>(impl_->position).has_legal_move();
+    } catch (...) {
+        return false;
+    }
+}
+
+bool Position::has_legal_checking_move() const noexcept {
+    try {
+        return const_cast<NativePosition&>(impl_->position).has_legal_checking_move();
     } catch (...) {
         return false;
     }

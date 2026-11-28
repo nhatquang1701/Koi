@@ -301,10 +301,14 @@ public:
     // the total legal move count, and a span smaller than that count receives
     // only its first entries. Forwards Position::legal_moves_into.
     [[nodiscard]] std::size_t legal_moves_into(std::span<Move> output) const noexcept;
+    // Stops legal generation once `limit` legal moves are counted.
+    [[nodiscard]] std::size_t count_legal_moves_up_to(std::size_t limit) const noexcept;
     // True as soon as one legal move is found, without generating the rest.
     // Forwards Position::has_legal_move; quiescence uses it to keep terminal
     // precedence when a stand-pat cutoff returns before tactical generation.
     [[nodiscard]] bool has_legal_move() const noexcept;
+    // True as soon as one legal checking move is found, without generating the rest.
+    [[nodiscard]] bool has_legal_checking_move() const noexcept;
     [[nodiscard]] PositionConsistencySnapshot consistency_snapshot() const;
     // Cheap search-boundary mirror check. The exhaustive consistency snapshot
     // remains available for tests and incident reports.

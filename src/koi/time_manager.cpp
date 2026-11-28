@@ -988,11 +988,13 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         }
     }
     // Hard positions whose optimum_budget expanded up to hard_budget can still
-    // finish a deep ply with >= 65% of hard_budget already spent and a next ply
-    // predicted to overrun hard_budget by > 40%. When the best move is stable
-    // and the score is not collapsing, skip that guaranteed-aborted ply to bank
-    // up to 35% of the move's clock instead of running into the hard deadline.
-    if (clock_mode_ && last_observed_depth_ >= 7 &&
+    // finish a deep ply (`depth >= 7`, or `depth >= 5` in emergency pacing)
+    // with >= 65% of hard_budget already spent and a next ply predicted to
+    // overrun hard_budget by > 40%. When the best move is stable and the score
+    // is not collapsing, skip that guaranteed-aborted ply to bank up to 35% of
+    // the move's clock instead of running into the hard deadline.
+    const int min_hard_overrun_depth = emergency_pacing_ ? 5 : 7;
+    if (clock_mode_ && last_observed_depth_ >= min_hard_overrun_depth &&
         best_move_stability_ >= 1 && score_drop_cp_ < 40 &&
         !last_aspiration_researched_ &&
         last_iteration_elapsed_ >= min_doomed_sample &&

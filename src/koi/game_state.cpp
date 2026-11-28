@@ -1364,12 +1364,28 @@ std::size_t GameState::legal_moves_into(std::span<Move> output) const noexcept {
     return impl_->native_position.legal_moves_into(output);
 }
 
+std::size_t GameState::count_legal_moves_up_to(const std::size_t limit) const noexcept {
+    try {
+        return impl_->native_position.count_legal_moves_up_to(limit);
+    } catch (...) {
+        return 0;
+    }
+}
+
 bool GameState::has_legal_move() const noexcept {
     // Same terminal verdict contract as Position::has_legal_move(): a
     // generation failure reports "no legal move" rather than propagating, so
     // quiescence keeps the generation-based terminal precedence.
     try {
         return impl_->native_position.has_legal_move();
+    } catch (...) {
+        return false;
+    }
+}
+
+bool GameState::has_legal_checking_move() const noexcept {
+    try {
+        return impl_->native_position.has_legal_checking_move();
     } catch (...) {
         return false;
     }
