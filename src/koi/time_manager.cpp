@@ -962,8 +962,11 @@ bool TimeManager::should_start_next_iteration(std::chrono::milliseconds estimate
         }
         // Pre-iteration lookahead for stable clock searches: when adaptive
         // branching shows the next ply will push past 1.2x soft_target after
-        // 55% elapsed, skip starting it.
-        if (!hard_position_ && last_observed_depth_ >= 5 && best_move_stability_ >= 2 &&
+        // 55% elapsed, skip starting it (`depth >= 4` in emergency pacing,
+        // `depth >= 5` on healthy clocks).
+        const int min_lookahead_depth = emergency_pacing_ ? 4 : 5;
+        if (!hard_position_ && last_observed_depth_ >= min_lookahead_depth &&
+            best_move_stability_ >= 2 &&
             score_drop_cp_ <= 20 && !last_aspiration_researched_ &&
             last_iteration_elapsed_ > std::chrono::milliseconds::zero()) {
             const auto predicted_next = scale_fraction(

@@ -488,11 +488,14 @@ SearchMovePicker::SearchMovePicker(
     const SearchMoveOrdering& ordering, const GameState& state,
     const MoveMetadataList& moves, std::optional<Move> tt_move,
     const SearchHistoryContext* history_context, const Mode mode,
-    const Move excluded_move, MoveMetadataList* const mutable_moves) noexcept
+    const Move excluded_move, MoveMetadataList* const mutable_moves,
+    const std::optional<Color> side_to_move_hint) noexcept
     : ordering_(ordering), state_(state), moves_(moves),
       history_context_(history_context), tt_move_(tt_move),
       excluded_move_(excluded_move), mode_(mode), stage_(first_stage()),
-      mutable_moves_(mutable_moves), defer_quiets_(mutable_moves != nullptr) {
+      mutable_moves_(mutable_moves), defer_quiets_(mutable_moves != nullptr),
+      side_to_move_(side_to_move_hint.value_or(Color::white)),
+      side_to_move_ready_(side_to_move_hint.has_value()) {
     // Only a main-mode picker reaches materialize()'s lazy SEE and capture-check
     // probes; quiescence and evasion pickers never read them, so only main
     // mode pays for zeroing those bitsets.
@@ -635,7 +638,7 @@ void SearchMovePicker::prepare_quiescence_candidates() {
 
 void SearchMovePicker::prepare_evasion_candidates() {
     captures_prepared_ = true;
-    const Color side = state_.side_to_move();
+    const Color side = side_to_move();
     const auto [killer0, killer1] = ordering_.tables_.killers_at_ply(history_context_->ply);
     const Move previous = history_context_->count > 0 ?
         history_context_->continuation_moves[0] : Move::no_move();
@@ -737,7 +740,7 @@ void SearchMovePicker::prepare_main_quiets_impl(
 
 void SearchMovePicker::prepare_main_quiets() {
     quiets_prepared_ = true;
-    const Color side = state_.side_to_move();
+    const Color side = side_to_move();
     const auto quiet_batch = ordering_.tables_.prepare_quiet_history_batch(side, *history_context_);
     if (quiet_batch.all_cont && quiet_batch.low_ply_row == nullptr) {
         prepare_main_quiets_impl<true, true>(side, quiet_batch);
@@ -750,7 +753,7 @@ void SearchMovePicker::score_quiescence_quiet_checks() {
     quiet_checks_scored_ = true;
     const std::size_t rank = static_cast<std::size_t>(Stage::quiet_checks);
     const auto quiet_batch = ordering_.tables_.prepare_quiet_history_batch(
-        state_.side_to_move(), *history_context_);
+        side_to_move(), *history_context_);
     for (std::size_t s = stage_begin_[rank]; s < stage_end_[rank]; ++s) {
         const std::size_t src = candidate_source_index(staged_[s]);
         const MoveMetadata& check_meta = moves_[src];

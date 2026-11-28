@@ -883,15 +883,23 @@ std::uint64_t native_feature_attacks(const NativeFeatureBitboards& pieces,
     return 0;
 }
 
-[[nodiscard]] NativeCheckProbe native_check_probe(const Position& position) noexcept {
+[[nodiscard]] NativeCheckProbe build_native_check_probe(
+    const Position::ExchangeSnapshot& snap) noexcept {
     NativeCheckProbe probe;
-    probe.moving_color = position.side_to_move();
-    probe.enemy_king = position.piece_bitboard(PieceType::king, opposite(probe.moving_color));
-    probe.occupied = position.occupied_squares();
-    probe.friendly_rook_queen = position.piece_bitboard(PieceType::rook, probe.moving_color) |
-        position.piece_bitboard(PieceType::queen, probe.moving_color);
-    probe.friendly_bishop_queen = position.piece_bitboard(PieceType::bishop, probe.moving_color) |
-        position.piece_bitboard(PieceType::queen, probe.moving_color);
+    probe.moving_color = snap.side_to_move;
+    probe.occupied = snap.occupied;
+    if (snap.piece_bitboards != nullptr) {
+        const std::size_t side_idx = snap.side_to_move == Color::white ? 0U : 1U;
+        const std::size_t opp_idx = 1U - side_idx;
+        const auto& bbs = *snap.piece_bitboards;
+        probe.enemy_king = bbs[opp_idx][static_cast<std::size_t>(PieceType::king)];
+        probe.friendly_rook_queen =
+            bbs[side_idx][static_cast<std::size_t>(PieceType::rook)] |
+            bbs[side_idx][static_cast<std::size_t>(PieceType::queen)];
+        probe.friendly_bishop_queen =
+            bbs[side_idx][static_cast<std::size_t>(PieceType::bishop)] |
+            bbs[side_idx][static_cast<std::size_t>(PieceType::queen)];
+    }
     if (probe.enemy_king != 0 && (probe.enemy_king & (probe.enemy_king - 1)) == 0) {
         const int king_square = static_cast<int>(std::countr_zero(probe.enemy_king));
         probe.king_square = king_square;
@@ -914,37 +922,38 @@ std::uint64_t native_feature_attacks(const NativeFeatureBitboards& pieces,
     return probe;
 }
 
-// Recomputes the six inputs native_check_probe() reads and reports whether they
-// still match `probe`.  The probe is a pure function of those inputs, so a
-// match guarantees the cached probe is bit-identical to a fresh build and the
-// caller may skip the rebuild.  A default-constructed probe can only match a
-// degenerate empty position, where a fresh probe would be identical anyway.
-bool native_check_probe_matches(const Position& position,
-                                const NativeCheckProbe& probe) noexcept {
-    if (position.side_to_move() != probe.moving_color) {
-        return false;
+[[nodiscard]] NativeCheckProbe native_check_probe(const Position& position) noexcept {
+    return build_native_check_probe(position.exchange_snapshot());
+}
+
+// Recomputes the six inputs native_check_probe() reads via a single
+// exchange_snapshot() call and rebuilds `probe` in place only on mismatch.
+void ensure_native_check_probe(const Position& position,
+                               NativeCheckProbe& probe) noexcept {
+    const Position::ExchangeSnapshot snap = position.exchange_snapshot();
+    std::uint64_t enemy_king = 0;
+    std::uint64_t friendly_rook_queen = 0;
+    std::uint64_t friendly_bishop_queen = 0;
+    if (snap.piece_bitboards != nullptr) {
+        const std::size_t side_idx = snap.side_to_move == Color::white ? 0U : 1U;
+        const std::size_t opp_idx = 1U - side_idx;
+        const auto& bbs = *snap.piece_bitboards;
+        enemy_king = bbs[opp_idx][static_cast<std::size_t>(PieceType::king)];
+        friendly_rook_queen =
+            bbs[side_idx][static_cast<std::size_t>(PieceType::rook)] |
+            bbs[side_idx][static_cast<std::size_t>(PieceType::queen)];
+        friendly_bishop_queen =
+            bbs[side_idx][static_cast<std::size_t>(PieceType::bishop)] |
+            bbs[side_idx][static_cast<std::size_t>(PieceType::queen)];
     }
-    const std::uint64_t enemy_king =
-        position.piece_bitboard(PieceType::king, opposite(probe.moving_color));
-    if (enemy_king != probe.enemy_king ||
-        position.occupied_squares() != probe.occupied) {
-        return false;
+    if (snap.side_to_move == probe.moving_color &&
+        enemy_king == probe.enemy_king &&
+        snap.occupied == probe.occupied &&
+        friendly_rook_queen == probe.friendly_rook_queen &&
+        friendly_bishop_queen == probe.friendly_bishop_queen) {
+        return;
     }
-    if ((position.piece_bitboard(PieceType::rook, probe.moving_color) |
-         position.piece_bitboard(PieceType::queen, probe.moving_color)) !=
-        probe.friendly_rook_queen) {
-        return false;
-    }
-    if ((position.piece_bitboard(PieceType::bishop, probe.moving_color) |
-         position.piece_bitboard(PieceType::queen, probe.moving_color)) !=
-        probe.friendly_bishop_queen) {
-        return false;
-    }
-    // king_slider_rays is derived solely from enemy_king (countr_zero plus
-    // open-board rook/bishop attacks; see native_check_probe), and enemy_king
-    // equality was already required above, so a fresh ray computation would
-    // necessarily equal the stored field.  No separate comparison is needed.
-    return true;
+    probe = build_native_check_probe(snap);
 }
 
 [[nodiscard]] Position::MoveFacts move_facts_from_snapshot(
@@ -1093,26 +1102,39 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
                 (detail::king_attacks(destination) & enemy_king) != 0;
             break;
         case PieceType::bishop:
-            if (destination_on_ray) {
+            if (destination_on_ray &&
+                (!rays_known ||
+                 (detail::bishop_pseudo_attacks(king_square) & destination_bit) != 0)) {
                 direct_check = (bishop_rays() & destination_bit) != 0;
             }
             break;
         case PieceType::rook:
-            if (destination_on_ray) {
+            if (destination_on_ray &&
+                (!rays_known ||
+                 (detail::rook_pseudo_attacks(king_square) & destination_bit) != 0)) {
                 direct_check = (rook_rays() & destination_bit) != 0;
             }
             break;
         case PieceType::queen:
             if (destination_on_ray) {
-                direct_check = ((rook_rays() | bishop_rays()) & destination_bit) != 0;
+                const bool on_rook = !rays_known ||
+                    (detail::rook_pseudo_attacks(king_square) & destination_bit) != 0;
+                const bool on_bishop = !rays_known ||
+                    (detail::bishop_pseudo_attacks(king_square) & destination_bit) != 0;
+                direct_check =
+                    (on_rook && (rook_rays() & destination_bit) != 0) ||
+                    (on_bishop && (bishop_rays() & destination_bit) != 0);
             }
             break;
         default:
             break;
     }
-    if (castling && rook_destination < Square::kInvalid &&
-        (rook_rays() & (std::uint64_t{1} << rook_destination)) != 0) {
-        direct_check = true;
+    if (castling && rook_destination < Square::kInvalid) {
+        const std::uint64_t rook_dest_bit = std::uint64_t{1} << rook_destination;
+        if ((detail::rook_pseudo_attacks(king_square) & rook_dest_bit) != 0 &&
+            (rook_rays() & rook_dest_bit) != 0) {
+            direct_check = true;
+        }
     }
     if (direct_check) {
         return true;
@@ -1128,10 +1150,16 @@ bool native_move_gives_check(const Move& move, const Position::MoveFacts& facts,
             friendly_rook_queen &= ~castling_rook_source_bit;
             friendly_bishop_queen &= ~castling_rook_source_bit;
         }
-        if ((rook_rays() & friendly_rook_queen) != 0) {
+        const std::uint64_t rq_cand = friendly_rook_queen != 0
+            ? (detail::rook_pseudo_attacks(king_square) & friendly_rook_queen)
+            : 0ULL;
+        if (rq_cand != 0 && (rook_rays() & rq_cand) != 0) {
             return true;
         }
-        if ((bishop_rays() & friendly_bishop_queen) != 0) {
+        const std::uint64_t bq_cand = friendly_bishop_queen != 0
+            ? (detail::bishop_pseudo_attacks(king_square) & friendly_bishop_queen)
+            : 0ULL;
+        if (bq_cand != 0 && (bishop_rays() & bq_cand) != 0) {
             return true;
         }
     }
@@ -1688,8 +1716,8 @@ bool GameState::try_legal_search_move_metadata(
         &impl_->native_position,
         impl_->mirror_tracking ? &impl_->compatibility_mirror : nullptr};
     const bool use_probe = context.mirror == nullptr;
-    if (use_probe && !native_check_probe_matches(*context.position, impl_->check_probe)) {
-        impl_->check_probe = native_check_probe(*context.position);
+    if (use_probe) {
+        ensure_native_check_probe(*context.position, impl_->check_probe);
     }
     if (!fill_move_metadata_from_facts(context, move, facts, impl_->check_probe,
                                        true, CheckFlagMode::all_moves, metadata)) {
@@ -1698,6 +1726,20 @@ bool GameState::try_legal_search_move_metadata(
     metadata.position_key = position_key();
     metadata.validation_token = impl_->mirror_tracking ?
         metadata_validation_token(metadata.position_key, metadata) : 0;
+    return true;
+}
+
+bool GameState::try_legal_quiet_move_piece(
+    const Move& move, PieceType& moving_piece) const noexcept {
+    if (move.is_no_move() || move.promotion() != Promotion::none) {
+        return false;
+    }
+    Position::MoveFacts facts;
+    if (!impl_->native_position.try_legal_move_facts(move, facts) ||
+        facts.is_capture()) {
+        return false;
+    }
+    moving_piece = facts.from.type;
     return true;
 }
 
@@ -1997,13 +2039,11 @@ bool GameState::is_capture(const Move& move) const noexcept {
 
 bool GameState::move_gives_check(const Move& move) const noexcept {
     const Position& position = impl_->native_position;
-    // The probe is a pure function of the six inputs compared here, so equal
+    // The probe is a pure function of the five inputs compared here, so equal
     // inputs reuse a probe bit-identical to a fresh build; a moved (or copied)
     // state fails the comparison and rebuilds.  No explicit invalidation hook
     // is needed because every call validates the cache first.
-    if (!native_check_probe_matches(position, impl_->check_probe)) {
-        impl_->check_probe = native_check_probe(position);
-    }
+    ensure_native_check_probe(position, impl_->check_probe);
     return native_move_gives_check(position, move, impl_->check_probe);
 }
 

@@ -349,6 +349,10 @@ public:
     // without generating the full legal move list. Leaves SEE uncomputed.
     [[nodiscard]] bool try_legal_search_move_metadata(
         const Move& move, MoveMetadata& metadata) const noexcept;
+    // Fast-path legal quiet move check that avoids building full MoveMetadata
+    // or probing enemy king rays when only the moving piece type is needed.
+    [[nodiscard]] bool try_legal_quiet_move_piece(
+        const Move& move, PieceType& moving_piece) const noexcept;
     [[nodiscard]] std::optional<MoveMetadata> describe_move(const Move&) const noexcept;
     [[nodiscard]] PositionFeatures position_features() const noexcept;
     // Output-parameter form of position_features(): fills an existing snapshot

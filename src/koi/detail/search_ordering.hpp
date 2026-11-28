@@ -140,7 +140,8 @@ public:
                      const MoveMetadataList& moves, std::optional<Move> tt_move,
                      const SearchHistoryContext* history_context, Mode mode,
                      Move excluded_move = Move::no_move(),
-                     MoveMetadataList* mutable_moves = nullptr) noexcept;
+                     MoveMetadataList* mutable_moves = nullptr,
+                     std::optional<Color> side_to_move_hint = std::nullopt) noexcept;
 
     // Emits the next candidate, or nullptr when no stage remains.  The
     // returned record lives in the picker's emission scratch and is valid
@@ -205,6 +206,13 @@ private:
     [[nodiscard]] const MoveMetadata* emit_tt();
     [[nodiscard]] int resolved_capture_priority(std::size_t source_index,
                                                 std::uint64_t candidate) const;
+    [[nodiscard]] Color side_to_move() const noexcept {
+        if (!side_to_move_ready_) {
+            side_to_move_ = state_.side_to_move();
+            side_to_move_ready_ = true;
+        }
+        return side_to_move_;
+    }
 
     // Compact bitset whose words are deliberately not zeroed by construction.
     // std::bitset's default constructor always clears its storage, which
@@ -289,6 +297,8 @@ private:
     bool tt_emitted_ = false;
     bool skip_quiets_ = false;
     bool defer_quiets_ = false;
+    mutable Color side_to_move_ = Color::white;
+    mutable bool side_to_move_ready_ = false;
 };
 
 } // namespace koi::detail

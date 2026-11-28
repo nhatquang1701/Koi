@@ -1549,6 +1549,45 @@ void test_emergency_calm_depth5_70pct_cutoff() {
             "emergency incremental search with aspiration re-search at depth 5 must not cut off at 72%");
 }
 
+void test_emergency_calm_depth4_pre_iteration_lookahead() {
+    auto emg_now = std::make_shared<Clock::time_point>(Clock::now());
+    auto early_now = std::make_shared<Clock::time_point>(Clock::now());
+    const SearchLimits emg_clock = clock_limits(milliseconds{2'000}, milliseconds{0});
+    TimeManager emg(emg_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                    warm_context(), [emg_now] { return *emg_now; });
+    TimeManager emg_early(emg_clock, koi::Color::white, 100, kMoveOverheadMs, 100,
+                          warm_context(), [early_now] { return *early_now; });
+    const auto d3 = std::max(milliseconds{5}, (emg.diagnostics().soft_budget * 25) / 100);
+    const auto d4 = std::max(milliseconds{10}, (emg.diagnostics().soft_budget * 50) / 100);
+    for (TimeManager* tm : {&emg, &emg_early}) {
+        tm->observe_iteration({3, 20, false, false, false, 10'000, 5'000, d3});
+        tm->observe_iteration({4, 20, false, false, false, 10'000, 5'000, d4});
+    }
+    const auto emg_opt = emg.diagnostics().optimum_budget;
+    *emg_now += (emg_opt * 60) / 100;
+    *early_now += (emg_opt * 45) / 100;
+    require(emg.diagnostics().emergency_pacing &&
+                !emg.should_stop_after_iteration() &&
+                !emg.should_start_next_iteration(milliseconds{1}),
+            "emergency calm depth-4 lookahead at 60% optimum_budget must skip doomed depth 5");
+    require(emg_early.should_start_next_iteration(milliseconds{1}),
+            "emergency calm depth-4 lookahead before 55% optimum_budget must continue");
+
+    auto healthy_now = std::make_shared<Clock::time_point>(Clock::now());
+    TimeManager healthy(clock_limits(milliseconds{60'000}, milliseconds{1'000}),
+                        koi::Color::white, 100, kMoveOverheadMs, 100, warm_context(),
+                        [healthy_now] { return *healthy_now; });
+    const auto healthy_soft = healthy.diagnostics().soft_budget;
+    healthy.observe_iteration(
+        {3, 20, false, false, false, 10'000, 5'000, (healthy_soft * 25) / 100});
+    healthy.observe_iteration(
+        {4, 20, false, false, false, 10'000, 5'000, (healthy_soft * 50) / 100});
+    *healthy_now += (healthy.diagnostics().optimum_budget * 60) / 100;
+    require(!healthy.diagnostics().emergency_pacing &&
+                healthy.should_start_next_iteration(milliseconds{1}),
+            "healthy clock at depth 4 and 60% optimum_budget must retain depth>=5 lookahead gate");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1621,6 +1660,8 @@ int main(int argc, char** argv) {
          test_emergency_hard_position_doomed_overrun_depth5_guard},
         {"emergency calm depth 5 70pct cutoff",
          test_emergency_calm_depth5_70pct_cutoff},
+        {"emergency calm depth 4 lookahead",
+         test_emergency_calm_depth4_pre_iteration_lookahead},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

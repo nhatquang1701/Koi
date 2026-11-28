@@ -195,21 +195,21 @@ KOI_CTX_NOINLINE void SearchContext::reinforce_tt_lower_quiet(
                 ++stats.continuation_history_updates;
             }
         }
-    } else if (!state.is_capture(tt_best_move) &&
-               tt_best_move.promotion() == Promotion::none) {
-        if (const std::optional<MoveMetadata> tt_metadata =
-                state.describe_move(tt_best_move);
-            tt_metadata.has_value() && !tt_metadata->is_capture() &&
-            tt_metadata->move.promotion() == Promotion::none) {
-            const SearchHistoryContext& tt_history = get_history();
-            const Color moving_side = history_side(side_to_move, false);
-            ordering.record_quiet_cutoff(
-                history_side(moving_side, true), *tt_metadata,
-                std::max(1, depth / 2), tt_history);
-            ++stats.quiet_history_updates;
-            if (tt_history.count > 0) {
-                ++stats.continuation_history_updates;
-            }
+    } else if (PieceType moving_piece = PieceType::none;
+               state.try_legal_quiet_move_piece(tt_best_move, moving_piece)) {
+        MoveMetadata tt_metadata{};
+        tt_metadata.move = tt_best_move;
+        tt_metadata.moving_piece = moving_piece;
+        tt_metadata.captured_piece = PieceType::none;
+        tt_metadata.kind = MoveKind::quiet;
+        const SearchHistoryContext& tt_history = get_history();
+        const Color moving_side = history_side(side_to_move, false);
+        ordering.record_quiet_cutoff(
+            history_side(moving_side, true), tt_metadata,
+            std::max(1, depth / 2), tt_history);
+        ++stats.quiet_history_updates;
+        if (tt_history.count > 0) {
+            ++stats.continuation_history_updates;
         }
     }
 }
@@ -322,7 +322,8 @@ KOI_CTX_NOINLINE int SearchContext::run_null_verification(
 KOI_CTX_NOINLINE bool SearchContext::run_probcut(
     GameState& state, const int ply, const int beta, const int probcut_beta,
     const int probcut_depth, const int static_eval, const int raw_static_eval,
-    const std::uint64_t transposition_key, const MoveMetadataList* existing_moves,
+    const std::uint64_t position_key, const std::uint64_t transposition_key,
+    const MoveMetadataList* existing_moves,
     const Move excluded_move, const std::optional<Move> tt_move,
     const SearchHistoryContext& history, PrincipalVariation& probcut_pv,
     MoveMetadataList& probcut_moves, const int child_check_extensions_remaining,
@@ -361,14 +362,13 @@ KOI_CTX_NOINLINE bool SearchContext::run_probcut(
             return true;
         }
         ++stats.probcut_searches;
-        const bool candidate_gives_check = candidate.gives_check ||
-            (candidate.is_capture() && state.move_gives_check(candidate.move));
         if (candidate.is_capture() &&
             candidate.see_score < probcut_beta - static_eval &&
-            !candidate_gives_check) {
+            !candidate.gives_check &&
+            !state.move_gives_check(candidate.move)) {
             continue;
         }
-        if (!make_observed(state, candidate, ply)) {
+        if (!make_observed(state, candidate, ply, position_key)) {
             continue;
         }
         probcut_pv.clear();
@@ -861,7 +861,8 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
 #endif
         SearchMovePicker& picker = lease.emplace_picker(
             ordering, state, moves, tt_move, &history_storage[0],
-            checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::quiescence);
+            checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::quiescence,
+            Move::no_move(), nullptr, side_to_move);
         const Square previous_destination = previous_move.has_value() ?
             previous_move->to() : Square::from_index(Square::kInvalid);
         const int futility_base = !checked && best > -kMateThreshold ?
@@ -1765,7 +1766,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
             }
             int cutoff_score = 0;
             if (run_probcut(state, ply, beta, probcut.beta, probcut.depth, static_eval,
-                            raw_static_eval, transposition_key,
+                            raw_static_eval, position_key, transposition_key,
                             moves_generated ? &moves : nullptr,
                             excluded_move, tt_move, ensure_history(), lease.slot().child_pv,
                             *lease.slot().aux_moves, child_check_extensions_remaining,
@@ -1847,14 +1848,14 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     tactical_only_deferred ? std::nullopt : picker_tt,
                     &ensure_history(), SearchMovePicker::Mode::main,
                     picker_excluded,
-                    tactical_only_deferred ? &moves : nullptr);
+                    tactical_only_deferred ? &moves : nullptr, side_to_move);
                 return;
             }
             (void)ensure_moves();
             picker = &lease.emplace_picker(
                 ordering, state, moves, picker_tt, &ensure_history(),
                 checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::main,
-                picker_excluded);
+                picker_excluded, nullptr, side_to_move);
         };
         if (!pre_tt_pending) {
             emplace_picker(tt_move, excluded_move);
