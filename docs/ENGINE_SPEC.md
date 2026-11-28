@@ -694,9 +694,10 @@ the search but cannot push it past the cap.
   re-research), `score_gain_cp_`, `last_aspiration_researched_`,
   single-legal-move cap (`min(150 ms, soft / 8)`), confirmed winning forced-mate
   fast exit (`>= 2` stable deep `+M` mate iterations, capped at `250 ms`; getting
-  mated `-M` retains defensive search time), asymmetric
-  conversion speedup (`score >= +500` cp winning or `<= -700` cp decisively
-  lost with a stable deep line), dead-drawn low-phase endgame speedup (`0.78×`
+  mated `-M` retains defensive search time), asymmetric conversion speedup
+  (`score >= +500` cp winning or `<= -700` cp decisively lost with a stable
+  line at `depth >= 8`, or `depth >= 5` under emergency pacing), dead-drawn
+  low-phase endgame speedup (`0.78×`
   when `!hard_position_`, `0 <= game_phase <= 4`, `|score| <= 15` cp,
   `depth >= 10`, `stability >= 4`, `score_drop <= 10` cp, and no aspiration
   re-research), and a 20% ponder-time-saved discount when a

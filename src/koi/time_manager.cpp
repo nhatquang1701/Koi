@@ -761,8 +761,10 @@ void TimeManager::update_optimum_budget() noexcept {
     // Asymmetric conversion speedup: clearly winning positions (>= +500 cp) and
     // decisively hopeless positions (<= -700 cp) with a stable deep best move
     // move faster so won games never flag, while -500..-699 cp still gets full
-    // defensive search time.
-    if (previous_score_.has_value() && last_observed_depth_ >= 8 &&
+    // defensive search time (`depth >= 5` under emergency pacing, `depth >= 8`
+    // otherwise).
+    const int min_conversion_depth = emergency_pacing_ ? 5 : 8;
+    if (previous_score_.has_value() && last_observed_depth_ >= min_conversion_depth &&
         best_move_stability_ >= 2 && score_drop_cp_ <= 25 &&
         !last_aspiration_researched_) {
         std::uint64_t conversion_scale = 1000ULL;

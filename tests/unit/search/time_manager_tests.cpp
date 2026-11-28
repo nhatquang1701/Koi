@@ -1631,6 +1631,40 @@ void test_emergency_depth4_branching_factor_updates_lookahead() {
             "healthy clock at depth 4 must retain depth>=5 branching-factor update gate");
 }
 
+void test_emergency_depth5_asymmetric_conversion_speedup() {
+    auto emg_opt_at = [](const int score_cp) {
+        TimeManager tm(clock_limits(milliseconds{2'000}, milliseconds{1'000}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+        tm.observe_iteration({4, score_cp, false, false, false, 10'000, 5'000, milliseconds{10}});
+        tm.observe_iteration({5, score_cp, false, false, false, 10'000, 5'000, milliseconds{15}});
+        require(tm.diagnostics().emergency_pacing,
+                "low clock must engage emergency pacing for conversion test");
+        return tm.diagnostics().optimum_budget;
+    };
+    const auto emg_even = emg_opt_at(20);
+    const auto emg_win = emg_opt_at(700);
+    const auto emg_loss = emg_opt_at(-750);
+    const auto emg_defense = emg_opt_at(-550);
+    require(emg_win < emg_even,
+            "emergency winning position (>=+500 cp) at depth 5 must engage conversion speedup");
+    require(emg_loss < emg_even,
+            "emergency hopeless position (<=-700 cp) at depth 5 must engage conversion speedup");
+    require(emg_defense == emg_even,
+            "emergency defensive band (-500..-699 cp) at depth 5 must retain full optimum_budget");
+
+    auto healthy_opt_at = [](const int score_cp) {
+        TimeManager tm(clock_limits(milliseconds{60'000}, milliseconds{1'000}),
+                       koi::Color::white, 100, kMoveOverheadMs, 100, warm_context());
+        tm.observe_iteration({4, score_cp, false, false, false, 10'000, 5'000, milliseconds{10}});
+        tm.observe_iteration({5, score_cp, false, false, false, 10'000, 5'000, milliseconds{15}});
+        require(!tm.diagnostics().emergency_pacing,
+                "healthy clock must stay out of emergency pacing");
+        return tm.diagnostics().optimum_budget;
+    };
+    require(healthy_opt_at(700) == healthy_opt_at(20),
+            "healthy clock at depth 5 must retain depth>=8 conversion speedup threshold");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1707,6 +1741,8 @@ int main(int argc, char** argv) {
          test_emergency_calm_depth4_pre_iteration_lookahead},
         {"emergency depth 4 branching lookahead",
          test_emergency_depth4_branching_factor_updates_lookahead},
+        {"emergency depth 5 conversion speedup",
+         test_emergency_depth5_asymmetric_conversion_speedup},
     };
     return koi::test::run_tests(tests, argc, argv);
 }

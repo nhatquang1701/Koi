@@ -820,49 +820,48 @@ int SearchContext::quiescence(GameState& state, int alpha, int beta, int ply,
         // and rule-clock identity but not these qsearch-only dimensions, so
         // the worker-local cache below includes them.
 
-        // Pawn history is read only when a quiet move is ranked.  The tactical
-        // generator stops adding quiet checks at the check-depth horizon, and
-        // even shallow tactical nodes only rank a quiet move if `moves` contains
-        // at least one non-capture, non-promotion checking move.  Avoid paying
-        // for pawn_key() + history-context initialization when no quiet move can
-        // reach ranking.
-        bool quiet_history_needed = checked;
-        if (!checked && qdepth < quiescence_check_depth_limit) {
-            for (const MoveMetadata& candidate : moves) {
-                if (!candidate.is_capture() && candidate.gives_check &&
-                    candidate.move.promotion() == Promotion::none) {
-                    quiet_history_needed = true;
-                    break;
-                }
-            }
-        }
-        // With no quiet candidate every entry in `moves` is a capture or
-        // promotion whose priority() branches return before any history read,
-        // and the lazy re-priority path that could re-read it is main-mode only.
-        // The storage is started without stores, so an unreachable context
-        // costs nothing; the reachable branch assigns a fully written context
-        // over it, and the picker below borrows whichever value is current.
+        // Pawn history is read only when a quiet move is ranked.  For checked
+        // evasion searches initialize eagerly; for normal qsearch nodes pass
+        // nullptr and let score_quiescence_quiet_checks() materialize the
+        // context lazily only if Stage::quiet_checks is actually reached.
         NoInitArray<SearchHistoryContext, 1> history_storage;
         std::optional<Move> tt_move;
         if (tt_entry.has_value() && !tt_entry->best_move.is_no_move()) {
             tt_move = tt_entry->best_move;
         }
 
-        if (quiet_history_needed) {
+        if (checked) {
             init_history_context(history_storage[0], ply, previous_move, node_info.pawn_key);
         }
 #ifndef NDEBUG
         else {
-            // Poison the unreachable context in debug builds so a future
-            // reader that invalidates the reachability proof fails a test
-            // loudly instead of ranking moves from indeterminate bytes.
+            // Poison the unreachable context in debug builds until lazy
+            // Stage::quiet_checks initialization overwrites it.
             std::memset(history_storage.data(), 0xAA, sizeof(SearchHistoryContext));
         }
 #endif
+        struct LazyQHistoryCtx {
+            SearchContext* self;
+            SearchHistoryContext* storage;
+            int ply;
+            std::optional<Move> previous_move;
+            std::uint64_t pawn_key;
+        } lazy_history_ctx{this, &history_storage[0], ply, previous_move, node_info.pawn_key};
         SearchMovePicker& picker = lease.emplace_picker(
-            ordering, state, moves, tt_move, &history_storage[0],
+            ordering, state, moves, tt_move,
+            checked ? &history_storage[0] : nullptr,
             checked ? SearchMovePicker::Mode::evasion : SearchMovePicker::Mode::quiescence,
             Move::no_move(), nullptr, side_to_move);
+        if (!checked) {
+            picker.set_lazy_history(
+                [](void* raw) noexcept -> const SearchHistoryContext* {
+                    auto* ctx = static_cast<LazyQHistoryCtx*>(raw);
+                    ctx->self->init_history_context(
+                        *ctx->storage, ctx->ply, ctx->previous_move, ctx->pawn_key);
+                    return ctx->storage;
+                },
+                &lazy_history_ctx);
+        }
         const Square previous_destination = previous_move.has_value() ?
             previous_move->to() : Square::from_index(Square::kInvalid);
         const int futility_base = !checked && best > -kMateThreshold ?
@@ -1268,37 +1267,23 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
                     (excluded_search ? alpha : terminal_score(checked, side_to_move, ply));
             }
         } else {
-            bool has_legal_moves_verified = node_info.has_quick_legal_move;
-            const auto ensure_has_legal_move = [&]() -> bool {
-                if (has_legal_moves_verified) {
-                    return true;
+            if (!checked) {
+                if (is_forced_draw_status(draw_status) || claimable_draw) {
+                    // Without check, even a zero-move stalemate returns draw_value,
+                    // so a forced or claimable draw at ply > 0 needs neither
+                    // has_legal_move() nor movegen.
+                    return draw_value(side_to_move);
                 }
-                if (moves_generated) {
-                    has_legal_moves_verified = !moves.empty();
-                    return has_legal_moves_verified;
+            } else {
+                if (!state.has_legal_move()) {
+                    return terminal_score(true, side_to_move, ply);
                 }
-                has_legal_moves_verified = state.has_legal_move();
-                return has_legal_moves_verified;
-            };
-            if (!checked &&
-                (is_forced_draw_status(draw_status) || claimable_draw)) {
-                // Without check, even a zero-move stalemate returns draw_value,
-                // so a forced or claimable draw at ply > 0 needs neither
-                // has_legal_move() nor movegen.
-                return draw_value(side_to_move);
-            }
-            if ((checked || is_forced_draw_status(draw_status) || claimable_draw) &&
-                !ensure_has_legal_move()) {
-                return terminal_score(checked, side_to_move, ply);
-            }
-            if (is_forced_draw_status(draw_status) || claimable_draw) {
-                return draw_value(side_to_move);
+                if (is_forced_draw_status(draw_status) || claimable_draw) {
+                    return draw_value(side_to_move);
+                }
             }
         }
         if (claimable_draw) {
-            if (ply > 0) {
-                return draw_value(side_to_move);
-            }
             // At root (ply == 0), a claim is an available floor, not a forced terminal result.
             // Raise the lower edge before node-type selection so a null
             // window with beta <= 0 can use the claim as a valid cutoff.
@@ -1327,8 +1312,7 @@ int SearchContext::negamax(GameState& state, int depth, int alpha, int beta, int
         // mate window can discard the very checking line the extension is
         // meant to inspect.
         if (!excluded_search && ply > 0) {
-            if (!checked && !claimable_draw && !moves_generated &&
-                !node_info.has_quick_legal_move && !state.has_legal_move()) {
+            if (!checked && !node_info.has_quick_legal_move && !state.has_legal_move()) {
                 return terminal_score(checked, side_to_move, ply);
             }
             alpha = std::max(alpha, -kMateScore + ply);

@@ -136,12 +136,19 @@ class SearchMovePicker {
 public:
     enum class Mode : std::uint8_t { main, quiescence, evasion };
 
+    using HistoryInitFn = const SearchHistoryContext* (*)(void*) noexcept;
+
     SearchMovePicker(const SearchMoveOrdering& ordering, const GameState& state,
                      const MoveMetadataList& moves, std::optional<Move> tt_move,
                      const SearchHistoryContext* history_context, Mode mode,
                      Move excluded_move = Move::no_move(),
                      MoveMetadataList* mutable_moves = nullptr,
                      std::optional<Color> side_to_move_hint = std::nullopt) noexcept;
+
+    void set_lazy_history(const HistoryInitFn fn, void* const ctx) noexcept {
+        history_init_fn_ = fn;
+        history_init_ctx_ = ctx;
+    }
 
     // Emits the next candidate, or nullptr when no stage remains.  The
     // returned record lives in the picker's emission scratch and is valid
@@ -189,7 +196,6 @@ private:
 #define KOI_PICKER_NOINLINE
 #endif
 
-    [[nodiscard]] bool is_excluded(std::size_t index) const noexcept;
     [[nodiscard]] bool is_good_capture(const MoveMetadata& metadata) const noexcept;
     [[nodiscard]] Stage first_stage() const noexcept;
     [[nodiscard]] MoveMetadata materialize(std::size_t index);
@@ -248,6 +254,8 @@ private:
     // caller keeps alive through the picker loop, so the picker never carries
     // a copy of the 96-byte record.
     const SearchHistoryContext* history_context_;
+    HistoryInitFn history_init_fn_ = nullptr;
+    void* history_init_ctx_ = nullptr;
     std::optional<Move> tt_move_;
     Move excluded_move_;
     Mode mode_ = Mode::main;
